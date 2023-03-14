@@ -35,20 +35,20 @@
 # mlab.show()
 
 ## -------------------
-import numpy as np
-import pyvista as pv
-from pyvista import examples
-
-kpos = [(-6.68, 11.9, 11.6), (3.5, 2.5, 1.26), (0.45, -0.4, 0.8)]
-mesh = examples.download_kitchen()
-kitchen = examples.download_kitchen(split=True)
-
-streamlines = mesh.streamlines(n_points=40, source_center=(0.08, 3, 0.71))
-
-p = pv.Plotter()
-p.add_mesh(mesh.outline(), color="k")
-p.add_mesh(kitchen, color=True)
-p.add_mesh(streamlines.tube(radius=0.01), scalars="velocity", lighting=False)
-p.camera_position = kpos
-p.show()
+# import numpy as np
+# import pyvista as pv
+# from pyvista import examples
+#
+# kpos = [(-6.68, 11.9, 11.6), (3.5, 2.5, 1.26), (0.45, -0.4, 0.8)]
+# mesh = examples.download_kitchen()
+# kitchen = examples.download_kitchen(split=True)
+#
+# streamlines = mesh.streamlines(n_points=40, source_center=(0.08, 3, 0.71))
+#
+# p = pv.Plotter()
+# p.add_mesh(mesh.outline(), color="k")
+# p.add_mesh(kitchen, color=True)
+# p.add_mesh(streamlines.tube(radius=0.01), scalars="velocity", lighting=False)
+# p.camera_position = kpos
+# p.show()
 
