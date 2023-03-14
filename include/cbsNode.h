@@ -11,7 +11,10 @@ class CBSNode{
 public:
     CBSNode(){};
 
-    std::list<Constraint> constraints;
+    CBSNode* parent;
+    std::map<int, std::vector<Constraint>>* constraints;
+    std::map<int, Path>* paths;
+
 };
 
 #endif //MAPF_PIPELINE_CBSNODE_H

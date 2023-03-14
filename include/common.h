@@ -18,7 +18,7 @@
 struct PathEntry
 {
     int location = -1;
-    PathEntry(int loc = -1) { location = loc;}
+    PathEntry(int loc = -1) {location = loc;}
 };
 
 typedef std::vector<PathEntry> Path;

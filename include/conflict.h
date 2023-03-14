@@ -7,9 +7,11 @@
 
 #include "common.h"
 
-enum constraint_type { LEQLENGTH, GLENGTH, RANGE, BARRIER, VERTEX, EDGE,
-    POSITIVE_VERTEX, POSITIVE_EDGE, POSITIVE_BARRIER, POSITIVE_RANGE };
+enum constraint_type {
+    LEQLENGTH, GLENGTH, RANGE, BARRIER, VERTEX, EDGE,
+    POSITIVE_VERTEX, POSITIVE_EDGE, POSITIVE_BARRIER, POSITIVE_RANGE
+    };
 
-typedef std::tuple<int, int, int, int, constraint_type> Constraint;
+typedef std::tuple<int, int, int, constraint_type> Constraint;
 
 #endif //MAPF_PIPELINE_CONFLICT_H
