@@ -12,10 +12,5 @@ std::list<int> Instance::getNeighbors(int curr) const {
             curr + num_of_cols,
             curr - num_of_cols
     };
-    for (int next : candidates) {
-        if (validMove(curr, next)){
-            neighbors.emplace_back(next);
-        }
-    }
     return neighbors;
 }

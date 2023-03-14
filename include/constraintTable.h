@@ -26,13 +26,14 @@ public:
 
     // bool isConstrained(size_t loc, int t) const;
     bool isConstrained(size_t loc) const;
+    int getNumOfConflictsForStep(int curr_loc, int next_loc) const;
 
 private:
     // location -> time range, or edge -> time range
     // boost::unordered_map<int, std::list<std::pair<int, int>>> ct;
 
     std::map<int, int> ct;
-    std::vector<int> cat;
+    std::map<int, int> cat;
 
 };
 

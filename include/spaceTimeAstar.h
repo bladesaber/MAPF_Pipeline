@@ -91,11 +91,20 @@ public:
         return g_val + h_val;
     }
 
+    void copy(const AStarNode& node){
+        location = node.location;
+        g_val = node.g_val;
+        h_val = node.h_val;
+        parent = node.parent;
+        timestep = node.timestep;
+        num_of_conflicts = node.num_of_conflicts;
+    }
+
 };
 
 class SpaceTimeAStar{
 public:
-    SpaceTimeAStar(){};
+    SpaceTimeAStar(int agent_idx):agent_idx(agent_idx){};
     ~SpaceTimeAStar(){};
 
     int num_expanded = 0;
@@ -115,11 +124,16 @@ public:
     bool validMove(Instance& instance, ConstraintTable& constrain_table, int curr, int next) const;
     
     Path findPath(
-        const CBSNode& node, Instance& instance, int agent,
+        const CBSNode& node, Instance& instance, 
         const std::pair<int, int> start_state, std::pair<int, int> goal_state
     );
+    void updatePath(const AStarNode* goal, Path& path);
+
+    void releaseNodes();
 
 private:
+    int agent_idx;
+
     typedef boost::heap::pairing_heap<AStarNode*, boost::heap::compare<AStarNode::compare_node>> Heap_open_t;
     typedef boost::heap::pairing_heap<AStarNode*, boost::heap::compare<AStarNode::secondary_compare_node> > Heap_focal_t;
     Heap_open_t open_list;
