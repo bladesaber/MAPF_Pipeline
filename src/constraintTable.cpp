@@ -12,20 +12,14 @@ void ConstraintTable::insert2CT(int loc){
     this->ct[loc] = 1;
 }
 
-void ConstraintTable::buildCT(const CBSNode& node, int agent){
-    auto curr = &node;
+void ConstraintTable::insertConstrains2CT(std::vector<Constraint>& constrains){
     int a, loc, t;
 	constraint_type type;
-
-    while (curr->parent != nullptr)
+    
+    for (const Constraint constrain : constrains)
     {
-        std::map<int, std::vector<Constraint>> constrains = curr->constraints;
-        std::vector<Constraint> agent_constrains = constrains[agent];
-        for (const Constraint constrain : agent_constrains)
-        {
-            std::tie(a, loc, t, type) = constrain;
-            insert2CT(loc);
-        }
+        std::tie(a, loc, t, type) = constrain;
+        insert2CT(loc);
     }
 }
 
@@ -39,19 +33,11 @@ void ConstraintTable::insert2CAT(int loc){
     }
 }
 
-void ConstraintTable::buildCAT(const CBSNode& node, int agent){
-    auto curr = &node;
-    std::map<int, Path> paths = node.paths;
-    for (auto it = paths.begin(); it != paths.end(); it++) {
-        if (it->first != agent)
-        {
-            for (PathEntry loc : it->second)
-            {
-                insert2CAT(loc.location);
-            }
-        }
+void ConstraintTable::insertPath2CAT(Path& path){
+    for (size_t loc : path)
+    {
+        insert2CAT(loc);
     }
-
 }
 
 bool ConstraintTable::isConstrained(size_t loc) const{

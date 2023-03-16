@@ -6,12 +6,15 @@
 #define MAPF_PIPELINE_CONSTRAINTTABLE_H
 
 #include "common.h"
-#include "cbsNode.h"
+#include "conflict.h"
 
 class ConstraintTable{
 public:
     ConstraintTable(){};
-    ~ConstraintTable(){};
+    ~ConstraintTable(){
+        ct.clear();
+        cat.clear();
+    };
 
     ConstraintTable(const ConstraintTable& other) {
         copy(other);
@@ -21,17 +24,21 @@ public:
     void insert2CT(int loc);
     void insert2CAT(int loc);
 
-    void buildCT(const CBSNode& node, int agent);
-    void buildCAT(const CBSNode& node, int agent);
+    void insertConstrains2CT(std::vector<Constraint>& constrains);
+    void insertPath2CAT(Path& path);
 
     // bool isConstrained(size_t loc, int t) const;
     bool isConstrained(size_t loc) const;
     int getNumOfConflictsForStep(int curr_loc, int next_loc) const;
 
+    std::map<int, int>& getCT(){return ct;}
+    std::map<int, int>& getCAT(){return cat;}
+
 private:
     // location -> time range, or edge -> time range
     // boost::unordered_map<int, std::list<std::pair<int, int>>> ct;
 
+    // Using Map is just because faster to find
     std::map<int, int> ct;
     std::map<int, int> cat;
 

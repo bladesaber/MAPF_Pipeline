@@ -8,7 +8,6 @@
 #include "iostream"
 #include "common.h"
 #include "instance.h"
-#include "cbsNode.h"
 #include "constraintTable.h"
 
 class AStarNode
@@ -59,8 +58,9 @@ public:
 		size_t operator()(const AStarNode* n) const
 		{
 			size_t loc_hash = std::hash<int>()(n->location);
-			size_t timestep_hash = std::hash<int>()(n->timestep);
-			return (loc_hash ^ (timestep_hash << 1));
+			// size_t timestep_hash = std::hash<int>()(n->timestep);
+			// return (loc_hash ^ (timestep_hash << 1));
+            return loc_hash;
 		}
 	};
 
@@ -70,10 +70,9 @@ public:
 	{
 		bool operator()(const AStarNode* s1, const AStarNode* s2) const
 		{
-			return (
-                s1 == s2) || 
-                (s1 && s2 && s1->location == s2->location && s1->timestep == s2->timestep
-            );
+			// return (s1 == s2) || 
+            //     (s1 && s2 && s1->location == s2->location && s1->timestep == s2->timestep);
+            return (s1 == s2) || (s1->location == s2->location);
 		}
 	};
 
@@ -92,10 +91,14 @@ public:
     }
 
     void copy(const AStarNode& node){
-        location = node.location;
-        g_val = node.g_val;
-        h_val = node.h_val;
         parent = node.parent;
+        location = node.location;
+        
+        // special for skip-Astar
+        // g_val = node.g_val;
+        g_val = std::min(node.g_val, g_val);
+
+        h_val = node.h_val;
         timestep = node.timestep;
         num_of_conflicts = node.num_of_conflicts;
     }
@@ -111,8 +114,13 @@ public:
 	int num_generated = 0;
     double runtime_build_CT = 0; // runtime of building constraint table
 	double runtime_build_CAT = 0; // runtime of building conflict avoidance table
-    int timestep = 0;
+    double runtime_search = 0; // runtime of Astar search
+
     bool focus_optimal = false;
+    double focus_w = 1.0;
+
+    // 用于通道回避A-star
+    double bandwith = 0.0;
 
     int getHeuristic(Instance& instance, int loc1, int loc2){
         return instance.getManhattanDistance(loc1, loc2);
@@ -123,10 +131,29 @@ public:
 
     bool validMove(Instance& instance, ConstraintTable& constrain_table, int curr, int next) const;
     
+    // template<typename Instanct_type, typename State_type>
+    // Path findPath(
+    //     std::map<int, Path>& paths,
+    //     std::map<int, std::vector<Constraint>>& constraints,
+    //     Instanct_type& instance, 
+    //     const State_type& start_state, 
+    //     const State_type& goal_state
+    // );
     Path findPath(
-        const CBSNode& node, Instance& instance, 
-        const std::pair<int, int> start_state, std::pair<int, int> goal_state
+        std::map<int, Path>& paths,
+        std::map<int, std::vector<Constraint>>& constraints,
+        Instance& instance, 
+        const std::pair<int, int>& start_state, 
+        const std::pair<int, int>& goal_state
     );
+    Path findPath(
+        std::map<int, Path>& paths,
+        std::map<int, std::vector<Constraint>>& constraints,
+        Instance3D& instance,
+        const std::tuple<int, int, int>& start_state, 
+        const std::tuple<int, int, int>& goal_state
+    );
+
     void updatePath(const AStarNode* goal, Path& path);
 
     void releaseNodes();
@@ -139,8 +166,8 @@ private:
     Heap_open_t open_list;
 	Heap_focal_t focal_list;
 
-    int min_f_val; // minimal f value in OPEN
-	int lower_bound; // Threshold for FOCAL
+    double min_f_val; // minimal f value in OPEN
+	double lower_bound; // Threshold for FOCAL
 
     // define typedef for hash_map
 	typedef boost::unordered_set<AStarNode*, AStarNode::NodeHasher, AStarNode::eqnode> hashtable_t;
