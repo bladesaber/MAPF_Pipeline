@@ -156,6 +156,15 @@ public:
 
     void updatePath(const AStarNode* goal, Path& path);
 
+    template<typename Instance_type>
+    void debugPrint(const AStarNode* next_node, Instance_type& instance, std::string tag){
+        std::cout << tag;
+        instance.printCoordinate(next_node->location);
+        std::cout << "->";
+        instance.printCoordinate(next_node->parent->location);
+        std::cout << std::endl;
+    };
+
     void releaseNodes();
 
 private:

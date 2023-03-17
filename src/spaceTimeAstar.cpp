@@ -77,7 +77,6 @@ void SpaceTimeAStar::updatePath(const AStarNode* goal_node, Path& path){
         path[curr->timestep] = curr->location;
         curr = curr->parent;
     }
-    
 }
 
 // template<typename Instanct_type, typename State_type>
@@ -118,6 +117,7 @@ Path SpaceTimeAStar::findPath(
     }
     runtime_build_CAT = (double) (clock() - starrt_time) / CLOCKS_PER_SEC;
 
+    // state: (row(y), col(x))
     int start_loc = instance.linearizeCoordinate(start_state);
     int goal_loc = instance.linearizeCoordinate(goal_state);
 
@@ -157,7 +157,7 @@ Path SpaceTimeAStar::findPath(
             {
                 int next_timestep = curr->timestep + 1;
                 int next_g_val = curr->g_val + 1;
-                int next_h_val = getHeuristic(instance, curr->location, goal_loc);
+                int next_h_val = getHeuristic(instance, neighbour_loc, goal_loc);
                 int next_internal_conflicts = curr->num_of_conflicts + constrain_table.getNumOfConflictsForStep(
                     curr->location, neighbour_loc
                 );
@@ -175,6 +175,10 @@ Path SpaceTimeAStar::findPath(
                 auto it = allNodes_table.find(next_node);
                 if (it == allNodes_table.end())
                 {
+                    // ------ debug
+                    // debugPrint(next_node, instance, "Next node:");
+                    // --------
+
                     pushNode(next_node);
                     allNodes_table.insert(next_node);
                     continue;
@@ -191,6 +195,11 @@ Path SpaceTimeAStar::findPath(
                 {
                     if (!existing_next->in_openlist) // if its in the closed list (reopen)
                     {
+                        
+                        // ------ debug
+                        // debugPrint(next_node, instance, "Reopen node:");
+                        // ------
+
                         existing_next->copy(*next_node);
                         pushNode(existing_next);
 
@@ -228,6 +237,11 @@ Path SpaceTimeAStar::findPath(
                         if (update_open){
                             open_list.increase(existing_next->open_handle);
                         }
+
+                        // ------ debug
+                        // debugPrint(next_node, instance, "Update node:");
+                        // ------
+
                     }
                 }
                 delete next_node;
@@ -314,7 +328,7 @@ Path SpaceTimeAStar::findPath(
             {
                 int next_timestep = curr->timestep + 1;
                 int next_g_val = curr->g_val + 1;
-                int next_h_val = getHeuristic(instance, curr->location, goal_loc);
+                int next_h_val = getHeuristic(instance, neighbour_loc, goal_loc);
                 int next_internal_conflicts = curr->num_of_conflicts + constrain_table.getNumOfConflictsForStep(
                     curr->location, neighbour_loc
                 );
@@ -334,13 +348,18 @@ Path SpaceTimeAStar::findPath(
                 {
                     pushNode(next_node);
                     allNodes_table.insert(next_node);
+
+                    // ------ debug
+                    // debugPrint(next_node, instance, "Next node:");
+                    // --------
+
                     continue;
                 }
                 
                 AStarNode* existing_next = *it;
                 if (
-                    next_node->getFVal() < existing_next->getFVal() ||
-                    (
+                    next_node->getFVal() < existing_next->getFVal() 
+                    || (
                         next_node->getFVal() <= existing_next->getFVal() + bandwith && 
                         next_node->num_of_conflicts < existing_next->num_of_conflicts
                     )
@@ -350,6 +369,10 @@ Path SpaceTimeAStar::findPath(
                     {
                         existing_next->copy(*next_node);
                         pushNode(existing_next);
+
+                        // ------ debug
+                        // debugPrint(next_node, instance, "Reopen node:");
+                        // ------
 
                     }else{
                         bool update_open = false;
@@ -385,11 +408,17 @@ Path SpaceTimeAStar::findPath(
                         if (update_open){
                             open_list.increase(existing_next->open_handle);
                         }
+
+                        // ------ debug
+                        // debugPrint(next_node, instance, "updateOpen node:");
+                        // ------
+
                     }
                 }
                 delete next_node;
             }
         }
+
     }
 
     releaseNodes();

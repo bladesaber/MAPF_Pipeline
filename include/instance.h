@@ -55,6 +55,11 @@ public:
         std::cout << "Row: " << num_of_rows << " Cols: " << num_of_cols << " Map Size: " << map_size << std::endl;
     }
 
+    inline void printCoordinate(int curr){
+        std::pair<int, int> coodr = getCoordinate(curr);
+        std::cout << curr << ":(" << coodr.first << " ," << coodr.second << ")";
+    }
+
 };
 
 class Instance3D: public Instance{
@@ -90,6 +95,11 @@ public:
             getRowCoordinate(curr), getColCoordinate(curr), getZCoordinate(curr)
         );
         return res;
+    }
+
+    inline void printCoordinate(int curr){
+        std::tuple<int, int, int> coodr = getCoordinate(curr);
+        std::cout << curr << ":(" << std::get<0>(coodr) << " ," << std::get<1>(coodr) << " ," << std::get<2>(coodr) << ")";
     }
 
     inline int getManhattanDistance(int loc1, int loc2) const

@@ -6,15 +6,25 @@
 
 std::list<int> Instance::getNeighbors(int curr) const {
     std::list<int> neighbors;
-    int candidates[4] = {
-            curr + 1,
-            curr - 1,
-            curr + num_of_cols,
-            curr - num_of_cols
+
+    int x = getColCoordinate(curr);
+    int y = getRowCoordinate(curr);
+    std::list<std::pair<int, int>> candidates{
+        std::pair<int, int>(y,   x+1),
+        std::pair<int, int>(y,   x-1),
+        std::pair<int, int>(y+1, x  ),
+        std::pair<int, int>(y-1, x  )
     };
-    for (int next : candidates){
-        if (next >= 0 && next < map_size){
-            neighbors.emplace_back(next);
+
+    for (auto next : candidates){
+        y = next.first;
+        x = next.second;
+        if (
+            (x >= 0 && x < num_of_cols) && 
+            (y >= 0 && y < num_of_rows)
+        )
+        {
+            neighbors.emplace_back(linearizeCoordinate(y, x));
         }
     }
     return neighbors;
@@ -36,8 +46,8 @@ std::list<int> Instance3D::getNeighbors(int curr) const {
     };
 
     for (auto next : candidates){
-        x = std::get<0>(next);
-        y = std::get<1>(next);
+        y = std::get<0>(next);
+        x = std::get<1>(next);
         z = std::get<2>(next);
         if (
             (x >= 0 && x < num_of_cols) && 

@@ -53,14 +53,15 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("print", &Instance3D::print)
         .def("getRowCoordinate", &Instance3D::getRowCoordinate, "curr"_a)
         .def("getColCoordinate", &Instance3D::getColCoordinate, "curr"_a)
-        .def("getColCoordinate", &Instance3D::getZCoordinate, "curr"_a)
+        .def("getZCoordinate", &Instance3D::getZCoordinate, "curr"_a)
         .def("getCoordinate", &Instance3D::getCoordinate, "curr"_a)
         .def("getNeighbors", &Instance3D::getNeighbors, "curr"_a)
         .def("linearizeCoordinate", py::overload_cast<int, int, int>(&Instance3D::linearizeCoordinate, py::const_), "row"_a, "col"_a, "z"_a)
         .def("linearizeCoordinate", py::overload_cast<const std::tuple<int, int, int>&>(&Instance3D::linearizeCoordinate, py::const_), "curr"_a)
         .def("getManhattanDistance", py::overload_cast<int, int>(&Instance3D::getManhattanDistance, py::const_), "loc1"_a, "loc2"_a)
         .def("getManhattanDistance", py::overload_cast<const std::tuple<int, int, int>&, const std::tuple<int, int, int>&>(
-            &Instance3D::getManhattanDistance, py::const_), "loc1"_a, "loc2"_a);
+            &Instance3D::getManhattanDistance, py::const_), "loc1"_a, "loc2"_a)
+        .def("printCoordinate", &Instance3D::printCoordinate);
 
     py::enum_<constraint_type>(m, "constraint_type")
             .value("LEQLENGTH", constraint_type::LEQLENGTH)
