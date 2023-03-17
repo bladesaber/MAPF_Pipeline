@@ -121,11 +121,9 @@ public:
 
     // 用于通道回避A-star
     double bandwith = 0.0;
-
-    int getHeuristic(Instance& instance, int loc1, int loc2){
-        return instance.getManhattanDistance(loc1, loc2);
-    };
-    int getHeuristic(Instance& instance, const std::pair<int, int>& loc1, const std::pair<int, int>& loc2){
+    
+    template<typename Instance_type>
+    int getHeuristic(Instance_type& instance, int loc1, int loc2){
         return instance.getManhattanDistance(loc1, loc2);
     };
 
@@ -160,8 +158,10 @@ public:
     void debugPrint(const AStarNode* next_node, Instance_type& instance, std::string tag){
         std::cout << tag;
         instance.printCoordinate(next_node->location);
+        std::cout << ":f(" << next_node->getFVal() << ")h:(" << next_node->h_val << ")g:(" << next_node->g_val << ")";
         std::cout << "->";
         instance.printCoordinate(next_node->parent->location);
+        std::cout << ":f(" << next_node->parent->getFVal() << ")h:(" << next_node->parent->h_val << ")g:(" << next_node->parent->g_val << ")";
         std::cout << std::endl;
     };
 

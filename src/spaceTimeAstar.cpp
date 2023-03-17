@@ -158,9 +158,7 @@ Path SpaceTimeAStar::findPath(
                 int next_timestep = curr->timestep + 1;
                 int next_g_val = curr->g_val + 1;
                 int next_h_val = getHeuristic(instance, neighbour_loc, goal_loc);
-                int next_internal_conflicts = curr->num_of_conflicts + constrain_table.getNumOfConflictsForStep(
-                    curr->location, neighbour_loc
-                );
+                int next_internal_conflicts = curr->num_of_conflicts + constrain_table.getNumOfConflictsForStep(curr->location, neighbour_loc);
 
                 AStarNode* next_node = new AStarNode(
                     neighbour_loc, // location
@@ -289,6 +287,7 @@ Path SpaceTimeAStar::findPath(
     }
     runtime_build_CAT = (double) (clock() - starrt_time) / CLOCKS_PER_SEC;
 
+    // State: (row(y), col(x), z)
     int start_loc = instance.linearizeCoordinate(start_state);
     int goal_loc = instance.linearizeCoordinate(goal_state);
 
@@ -329,9 +328,7 @@ Path SpaceTimeAStar::findPath(
                 int next_timestep = curr->timestep + 1;
                 int next_g_val = curr->g_val + 1;
                 int next_h_val = getHeuristic(instance, neighbour_loc, goal_loc);
-                int next_internal_conflicts = curr->num_of_conflicts + constrain_table.getNumOfConflictsForStep(
-                    curr->location, neighbour_loc
-                );
+                int next_internal_conflicts = curr->num_of_conflicts + constrain_table.getNumOfConflictsForStep(curr->location, neighbour_loc);
 
                 AStarNode* next_node = new AStarNode(
                     neighbour_loc, // location
@@ -358,8 +355,8 @@ Path SpaceTimeAStar::findPath(
                 
                 AStarNode* existing_next = *it;
                 if (
-                    next_node->getFVal() < existing_next->getFVal() 
-                    || (
+                    next_node->getFVal() < existing_next->getFVal() || 
+                    (
                         next_node->getFVal() <= existing_next->getFVal() + bandwith && 
                         next_node->num_of_conflicts < existing_next->num_of_conflicts
                     )

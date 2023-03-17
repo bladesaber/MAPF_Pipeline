@@ -104,12 +104,12 @@ public:
 
     inline int getManhattanDistance(int loc1, int loc2) const
     {
-        int loc1_x = getRowCoordinate(loc1);
-        int loc1_y = getColCoordinate(loc1);
+        int loc1_x = getColCoordinate(loc1);
+        int loc1_y = getRowCoordinate(loc1);
         int loc1_z = getZCoordinate(loc1);
 
-        int loc2_x = getRowCoordinate(loc2);
-        int loc2_y = getColCoordinate(loc2);
+        int loc2_x = getColCoordinate(loc2);
+        int loc2_y = getRowCoordinate(loc2);
         int loc2_z = getZCoordinate(loc2);
 
         return abs(loc1_x - loc2_x) + abs(loc1_y - loc2_y) + abs(loc1_z - loc2_z);
