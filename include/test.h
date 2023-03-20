@@ -13,7 +13,8 @@
 #include "list"
 #include "string"
 
-#include "instance.h"
+// #include "instance.h"
+// #include "cbsNode.h"
 
 int testPring(int i, int j) {
     return i + j;
@@ -70,5 +71,17 @@ void debugPring(){
         std::cout << x << " | " << y << " | " << z << std::endl;
     }
 }
+
+// 针对自定义对象 pybind 会传导指针
+// void debugTransformArg_Ownclass(CBSNode* node){
+//     node->g_val = 100;
+// }
+// void debugTransformArg_Ownclass(CBSNode& node){
+//     node.g_val = 100;
+// }
+// 针对转换对象， pybind会将python类型转为C++类型，转换过程必然使指针变更，因为这是个新的类型
+// void debugTransformArg(std::vector<int>* a){
+//     a->emplace_back(10);
+// }
 
 #endif //MAPF_PIPELINE_TEST_H

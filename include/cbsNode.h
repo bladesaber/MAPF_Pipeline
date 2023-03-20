@@ -2,6 +2,7 @@
 #define MAPF_PIPELINE_CBSNODE_H
 
 #include "common.h"
+#include "conflict.h"
 
 class CBSNode{
 public:
@@ -49,6 +50,9 @@ public:
     Open_handle_t open_handle;
 	Focal_handle_t focal_handle;
 
+	std::vector<Conflict> conflicts;
+	void findConflicts();
+
 	inline double getFVal() const{
         return g_val + h_val;
     }
@@ -95,6 +99,10 @@ public:
 
 	Path getPath(int agent){
 		return paths[agent];
+	}
+
+	std::vector<Constraint> getConstrains(int agent){
+		return this->constraints[agent];
 	}
 
 	void clear(){

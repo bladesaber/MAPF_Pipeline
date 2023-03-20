@@ -31,6 +31,7 @@ pybind11_add_module(mapf_pipeline src/driver.cpp
         src/spaceTimeAstar.cpp
         src/instance.cpp
         src/constraintTable.cpp
+        src/cbsNode.cpp
         src/cbs.cpp
         )
 target_link_libraries(mapf_pipeline PRIVATE

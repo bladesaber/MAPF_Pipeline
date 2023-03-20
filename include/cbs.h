@@ -35,15 +35,15 @@ public:
     double time_limit;
     Instance3D& instance;
 
-    // 后期更改为传递指针，减少拷贝
-    std::vector<Conflict> findConflicts(CBSNode& node);
-
     void solvePath(CBSNode& node, int agent);
 
-    // 目前我无法在外部pybind进行调用，只能够在解决指针传递而非赋值传递才行
+    // 由于为特定对象指针，pybind不会进行自动类型转换，因此可使用
     void updateFocalList();
     void pushNode(CBSNode* node);
     CBSNode* popNode();
+    bool is_openList_empty(){
+        return this->open_list.empty();
+    }
 
     inline void clear(){
         this->clearSearchEngines();
@@ -68,7 +68,6 @@ private:
     double min_f_val;
 	double focal_list_threshold;
     double focal_w;
-    bool solution_found = false;
 
     std::map<int, SpaceTimeAStar*> search_engines;
 

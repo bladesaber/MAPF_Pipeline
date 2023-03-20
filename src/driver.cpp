@@ -21,13 +21,15 @@ PYBIND11_MODULE(mapf_pipeline, m) {
     m.doc() = "mapf pipeline"; // optional module docstring
 
     // Debug Functions
-    m.def("testPring", &testPring, "A function for test", "i"_a, "j"_a);
-    m.def("testPring_vector", &debugPring_vector, "A function for test vector", "i"_a);
-    m.def("testPring_list", &debugPring_list, "A function for test list", "i"_a);
-    m.def("testPring_map", &debugPring_map, "A function for test map", "i"_a);
-    m.def("testPring_pair", &debugPring_pair, "A function for test pair", "i"_a);
-    m.def("testPring_tuple", &debugPring_tuple, "A function for test tuple", "i"_a);
-    m.def("debugPring", &debugPring, "A function for debug");
+    // m.def("testPring", &testPring, "A function for test", "i"_a, "j"_a);
+    // m.def("testPring_vector", &debugPring_vector, "A function for test vector", "i"_a);
+    // m.def("testPring_list", &debugPring_list, "A function for test list", "i"_a);
+    // m.def("testPring_map", &debugPring_map, "A function for test map", "i"_a);
+    // m.def("testPring_pair", &debugPring_pair, "A function for test pair", "i"_a);
+    // m.def("testPring_tuple", &debugPring_tuple, "A function for test tuple", "i"_a);
+    // m.def("debugPring", &debugPring, "A function for debug");
+    // m.def("debugTransformArg", &debugTransformArg, "A function for debug transorm Arg");
+    // m.def("debugTransformArg_Ownclass", &debugTransformArg_Ownclass, "A function for debug transorm Arg");
 
     py::class_<Instance>(m, "Instance")
         .def(py::init<int, int>())
@@ -136,6 +138,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("runtime_search", &CBSNode::runtime_search)
         .def_readonly("runtime_build_CT", &CBSNode::runtime_build_CT)
         .def_readonly("runtime_build_CAT", &CBSNode::runtime_build_CAT)
+        .def_readonly("conflicts", &CBSNode::conflicts)
         .def("getFVal", &CBSNode::getFVal)
         .def("updatePath", &CBSNode::updatePath, "agent"_a, "path"_a)
         .def("insertConstraint", &CBSNode::insertConstraint, "agent"_a, "constraint"_a)
@@ -143,12 +146,18 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("updateMakespan", &CBSNode::updateMakespan, "agent"_a=-1)
         .def("updateGval", &CBSNode::updateGval)
         .def("copy", &CBSNode::copy, "other_node"_a)
-        .def("getPath", &CBSNode::getPath, "agent"_a);
+        .def("getPath", &CBSNode::getPath, "agent"_a)
+        .def("getConstrains", &CBSNode::getConstrains, "agent"_a)
+        .def("findConflicts", &CBSNode::findConflicts);
     
     py::class_<CBS>(m, "CBS")
         .def(py::init<int, Instance3D&, std::map<int, std::tuple<int, int, int>>&, std::map<int, std::tuple<int, int, int>>&>())
-        .def("findConflicts", &CBS::findConflicts, "node"_a)
+        .def_readwrite("focal_optimal", &CBS::focal_optimal)
         .def("solvePath", &CBS::solvePath, "node"_a, "agent"_a)
+        .def("updateFocalList", &CBS::updateFocalList)
+        .def("pushNode", &CBS::pushNode, "node"_a)
+        .def("popNode", &CBS::popNode)
+        .def("is_openList_empty", &CBS::is_openList_empty)
         .def("print", &CBS::print);
 
 }

@@ -68,5 +68,15 @@ def debug_instance3D():
     h_val = instance.getManhattanDistance(start_yxz, goal_yxz)
     print(h_val)
 
+def debug_transformArg():
+    node = mapf_pipeline.CBSNode()
+    mapf_pipeline.debugTransformArg_Ownclass(node)
+    print(node.g_val)
+
+    # a = []
+    # mapf_pipeline.debugTransformArg(a)
+    # print(a)
+
 if __name__ == '__main__':
-    debug_instance3D()
+    # debug_instance3D()
+    debug_transformArg()

@@ -1,4 +1,5 @@
 import numpy as np
+import multiprocessing
 
 from build import mapf_pipeline
 
@@ -108,24 +109,99 @@ def easy_debug():
             )
         )
 
+class CBS_Solver(object):
+    def __init__(self, num_of_agents, instance, start_states, goal_states):
+        self.num_of_agents = num_of_agents
+        self.instance = instance
+        self.start_states = start_states
+        self.goal_states = goal_states
+        self.cbs_planner = mapf_pipeline.CBS(num_of_agents, instance, start_states, goal_states)
+
+    def solve(self):
+        # cbs_planner.print()
+
+        root = mapf_pipeline.CBSNode()
+        for agent_idx in range(self.num_of_agents):
+            self.cbs_planner.solvePath(root, agent_idx)
+            # print("runtime_search:%f, runtime_build_CT:%f, runtime_build_CAT:%f" % (
+                # root.runtime_search, root.runtime_build_CT, root.runtime_build_CAT
+            # ))
+
+        if not self.check_valid(root):
+            return None
+
+        root.findConflicts()
+        # root.updateMakespan()
+        root.updateGval()
+        self.cbs_planner.pushNode(root)
+
+        success_node = None
+        while not self.cbs_planner.is_openList_empty():
+            self.cbs_planner.updateFocalList()
+            node = self.cbs_planner.popNode()
+
+            if len(node.conflicts) == 0:
+                success_node = node
+                break
+
+            select_conflict, minum_conflict_timeStep = None, np.inf
+            for conflict in node.conflicts:
+                # print("[Debug] %d(%d) <-> %d(%d) in %d" % (
+                #     conflict.a1, conflict.a2, conflict.a1_timeStep, conflict.a2_timeStep, conflict.loc
+                # ))
+                min_timeStep = min(conflict.a1_timeStep, conflict.a2_timeStep)
+                if min_timeStep < minum_conflict_timeStep:
+                    minum_conflict_timeStep = min_timeStep
+                    select_conflict = conflict
+            select_conflict.vertexConflict()
+
+            constrains = [select_conflict.constraint1, select_conflict.constraint2]
+            child_nodes = []
+            for constrain in constrains:
+                agent_idx = constrain[0]
+                child_node = mapf_pipeline.CBSNode()
+                child_node.copy(node)
+                child_node.insertConstraint(agent=agent_idx, constraint=constrain)
+
+                self.cbs_planner.solvePath(child_node, agent_idx)
+                if not self.check_valid(child_node):
+                    continue
+
+                child_node.findConflicts()
+                # child_node.updateMakespan(agent_idx)
+                child_node.updateGval()
+
+                if child_node.g_val <= node.g_val and len(child_node.conflicts) < len(node.conflicts):
+                    child_nodes.clear()
+                    child_nodes.append(child_node)
+                    break
+
+                else:
+                    child_nodes.append(child_node)
+
+            for child_node in child_nodes:
+                print('[Debug] Node with f_val: %f conflict:%d' % (
+                    child_node.getFVal(), len(child_node.conflicts)
+                ))
+                self.cbs_planner.pushNode(child_node)
+
+        return success_node
+
+    def check_valid(self, node):
+        for agent_idx in range(self.num_of_agents):
+            if len(node.getPath(agent_idx)) == 0:
+                return False
+        return True
+
 def main():
     num_of_agents = cond_params['num_of_agents']
     instance, start_states, goal_states = getMap(num_of_agents=num_of_agents)
 
-    cbs_planner = mapf_pipeline.CBS(num_of_agents, instance, start_states, goal_states)
-    # cbs_planner.print()
-
-    root = mapf_pipeline.CBSNode()
-    for agent_idx in range(num_of_agents):
-        cbs_planner.solvePath(root, agent_idx)
-        # print("runtime_search:%f, runtime_build_CT:%f, runtime_build_CAT:%f" % (
-            # root.runtime_search, root.runtime_build_CT, root.runtime_build_CAT
-        # ))
-    root.updateMakespan()
-    root.updateGval()
-
-    
-
+    cbs_searcher = CBS_Solver(
+        num_of_agents, instance, start_states, goal_states
+    )
+    success_node = cbs_searcher.solve()
+    print(success_node)
 
 if __name__ == '__main__':
     # easy_debug()

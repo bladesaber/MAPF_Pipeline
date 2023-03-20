@@ -134,10 +134,17 @@ def test_single():
         obs_xyzs.append([x, y, z])
     obs_xyzs = np.array(obs_xyzs)
 
-    vis.plot_box(vis.ploter, xyz=[start_yxz[1], start_yxz[0], start_yxz[2]], color=(0.0, 1.0, 0.0))
-    vis.plot_box(vis.ploter, xyz=[goal_yxz[1], goal_yxz[0], goal_yxz[2]], color=(1.0, 0.0, 0.0))
-    vis.plot_many_boxs(vis.ploter, obs_xyzs, length=1.0, color=(0.0, 0.0, 0.0))
-    vis.plot_tube(vis.ploter, path_xyz, color=(0.1, 0.5, 0.8), radius=0.5)
+    box1_mesh = vis.create_box(xyz=[start_yxz[1], start_yxz[0], start_yxz[2]])
+    vis.plot(box1_mesh, color=(0.0, 1.0, 0.0))
+
+    box2_mesh = vis.create_box(xyz=[goal_yxz[1], goal_yxz[0], goal_yxz[2]])
+    vis.plot(box2_mesh, color=(1.0, 0.0, 0.0))
+
+    boxs_mesh = vis.create_many_boxs(obs_xyzs, length=1.0)
+    vis.plot(boxs_mesh, color=(0.0, 0.0, 0.0))
+
+    tube_mesh = vis.create_tube(path_xyz, radius=0.5)
+    vis.plot(tube_mesh, color=(0.1, 0.5, 0.8))
 
     vis.show()
 
