@@ -1,0 +1,132 @@
+import numpy as np
+
+from build import mapf_pipeline
+
+cond_params = {
+    'row': 5,
+    'col': 5,
+    'z': 5,
+    'num_of_agents': 5,
+
+    'load_path': '/home/quan/Desktop/MAPF_Pipeline/scripts/map.npy',
+    'save_path': '/home/quan/Desktop/MAPF_Pipeline/scripts/map',
+    "load": True,
+}
+
+def getMap(num_of_agents):
+    instance = mapf_pipeline.Instance3D(cond_params['row'], cond_params['col'], cond_params['z'])
+
+    start_states = {}
+    goal_states = {}
+
+    if cond_params['load']:
+        states = np.load(cond_params['load_path'], allow_pickle=True).item()
+        start_states = states['start_states']
+        goal_states = states['goal_states']
+
+    else:
+        records = []
+        for agent_idx in range(num_of_agents):
+            while True:
+                start_yxz = [
+                    np.random.randint(0, cond_params['row']),
+                    np.random.randint(0, cond_params['col']),
+                    np.random.randint(0, cond_params['z'])
+                ]
+            
+                cut = np.random.uniform(0.0, 1.0)
+                if cut <= 1.0 / 3.0:
+                    start_yxz[0] = 0
+                elif cut > 2.0 / 3.0:
+                    start_yxz[1] = 0
+                else:
+                    start_yxz[2] = 0
+            
+                loc = instance.linearizeCoordinate(start_yxz)
+                if loc not in records:
+                    records.append(loc)
+                    start_states[agent_idx] = tuple(start_yxz)
+                    break
+            
+            while True:
+                goal_yxz = [
+                    np.random.randint(0, cond_params['row']),
+                    np.random.randint(0, cond_params['col']),
+                    np.random.randint(0, cond_params['z'])
+                ]
+
+                cut = np.random.uniform(0.0, 1.0)
+                if cut <= 1.0 / 3.0:
+                    goal_yxz[0] = 0
+                elif cut > 2.0 / 3.0:
+                    goal_yxz[1] = 0
+                else:
+                    goal_yxz[2] = 0
+                
+                loc = instance.linearizeCoordinate(goal_yxz)
+                if loc not in records:
+                    records.append(loc)
+                    goal_states[agent_idx] = tuple(goal_yxz)
+                    break
+        
+        np.save(
+            cond_params['save_path'], 
+            {
+                'start_states': start_states,
+                'goal_states': goal_states
+            }
+        )
+
+    return instance, start_states, goal_states
+
+def easy_debug():
+    num_of_agents = cond_params['num_of_agents']
+    instance, start_states, goal_states = getMap(num_of_agents=num_of_agents)
+    # print("start states: ", start_states)
+    # print("goal states: ", goal_states)
+
+    cbs_planner = mapf_pipeline.CBS(num_of_agents, instance, start_states, goal_states)
+    cbs_planner.print()
+
+    root = mapf_pipeline.CBSNode()
+    for agent_idx in range(num_of_agents):
+        cbs_planner.solvePath(root, agent_idx)
+        print("runtime_search:%f, runtime_build_CT:%f, runtime_build_CAT:%f" % (
+            root.runtime_search, root.runtime_build_CT, root.runtime_build_CAT
+        ))
+
+    for agent_idx in range(num_of_agents):
+        path = root.getPath(agent_idx)
+        print(path)
+
+    conflicts = cbs_planner.findConflicts(root)
+    for conflict in conflicts:
+        print("[Debug] %d(%d) <-> %d(%d) in %d" % (
+            conflict.a1, conflict.a2, 
+            conflict.a1_timeStep, conflict.a2_timeStep, 
+            conflict.loc
+            )
+        )
+
+def main():
+    num_of_agents = cond_params['num_of_agents']
+    instance, start_states, goal_states = getMap(num_of_agents=num_of_agents)
+
+    cbs_planner = mapf_pipeline.CBS(num_of_agents, instance, start_states, goal_states)
+    # cbs_planner.print()
+
+    root = mapf_pipeline.CBSNode()
+    for agent_idx in range(num_of_agents):
+        cbs_planner.solvePath(root, agent_idx)
+        # print("runtime_search:%f, runtime_build_CT:%f, runtime_build_CAT:%f" % (
+            # root.runtime_search, root.runtime_build_CT, root.runtime_build_CAT
+        # ))
+    root.updateMakespan()
+    root.updateGval()
+
+    
+
+
+if __name__ == '__main__':
+    # easy_debug()
+    main()

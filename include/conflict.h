@@ -20,18 +20,20 @@ public:
     Constraint constraint1;
     Constraint constraint2;
 
-    void vertexConflict(int a1, int a2, size_t loc){
-        this->a1 = a1;
-        this->a2 = a2;
-        this->loc = loc;
+    Conflict(size_t a1, size_t a2, size_t a1_timeStep, size_t a2_timeStep, size_t loc):
+        a1(a1), a2(a2), a1_timeStep(a1_timeStep), a2_timeStep(a2_timeStep), loc(loc)
+    {};
+
+    void vertexConflict(){
         this->constraint1 = std::make_tuple(a1, loc, 0, constraint_type::VERTEX);
         this->constraint2 = std::make_tuple(a2, loc, 0, constraint_type::VERTEX);
-    }
+    };
 
-private:
-    int a1;
-    int a2;
-    int loc;
+    size_t a1;
+    size_t a2;
+    size_t a1_timeStep;
+    size_t a2_timeStep;
+    size_t loc;
 };
 
 #endif //MAPF_PIPELINE_CONFLICT_H

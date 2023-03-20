@@ -89,7 +89,6 @@ Path SpaceTimeAStar::findPath(
     // Instanct_type& instance, 
     // const State_type& start_state, 
     // const State_type& goal_state
-
 ){
     num_expanded = 0;
 	num_generated = 0;

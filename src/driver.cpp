@@ -11,6 +11,7 @@
 #include "instance.h"
 #include "constraintTable.h"
 #include "conflict.h"
+#include "cbsNode.h"
 #include "cbs.h"
 
 namespace py = pybind11;
@@ -113,5 +114,41 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             const std::tuple<int, int, int>&
             >(&SpaceTimeAStar::findPath), 
             "paths"_a, "constraints"_a, "instance"_a, "start_state"_a, "goal_state"_a);
+
+    py::class_<Conflict>(m, "Conflict")
+        .def(py::init<size_t, size_t, size_t, size_t, size_t>())
+        .def_readonly("a1", &Conflict::a1)
+        .def_readonly("a2", &Conflict::a2)
+        .def_readonly("a1_timeStep", &Conflict::a1_timeStep)
+        .def_readonly("a2_timeStep", &Conflict::a2_timeStep)
+        .def_readonly("loc", &Conflict::loc)
+        .def_readonly("constraint1", &Conflict::constraint1)
+        .def_readonly("constraint2", &Conflict::constraint2)
+        .def("vertexConflict", &Conflict::vertexConflict);
+
+    py::class_<CBSNode>(m, "CBSNode")
+        .def(py::init<>())
+        .def_readwrite("depth", &CBSNode::depth)
+        .def_readonly("g_val", &CBSNode::g_val)
+        .def_readonly("h_val", &CBSNode::h_val)
+        .def_readonly("makespan", &CBSNode::makespan)
+        .def_readonly("tie_breaking", &CBSNode::tie_breaking)
+        .def_readonly("runtime_search", &CBSNode::runtime_search)
+        .def_readonly("runtime_build_CT", &CBSNode::runtime_build_CT)
+        .def_readonly("runtime_build_CAT", &CBSNode::runtime_build_CAT)
+        .def("getFVal", &CBSNode::getFVal)
+        .def("updatePath", &CBSNode::updatePath, "agent"_a, "path"_a)
+        .def("insertConstraint", &CBSNode::insertConstraint, "agent"_a, "constraint"_a)
+        .def("updateConstraint", &CBSNode::updateConstraint, "agent"_a, "constraint"_a)
+        .def("updateMakespan", &CBSNode::updateMakespan, "agent"_a=-1)
+        .def("updateGval", &CBSNode::updateGval)
+        .def("copy", &CBSNode::copy, "other_node"_a)
+        .def("getPath", &CBSNode::getPath, "agent"_a);
+    
+    py::class_<CBS>(m, "CBS")
+        .def(py::init<int, Instance3D&, std::map<int, std::tuple<int, int, int>>&, std::map<int, std::tuple<int, int, int>>&>())
+        .def("findConflicts", &CBS::findConflicts, "node"_a)
+        .def("solvePath", &CBS::solvePath, "node"_a, "agent"_a)
+        .def("print", &CBS::print);
 
 }
