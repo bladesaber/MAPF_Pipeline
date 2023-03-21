@@ -13,6 +13,7 @@
 #include "conflict.h"
 #include "cbsNode.h"
 #include "cbs.h"
+#include "utils.h"
 
 namespace py = pybind11;
 using namespace pybind11::literals;
@@ -30,6 +31,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
     // m.def("debugPring", &debugPring, "A function for debug");
     // m.def("debugTransformArg", &debugTransformArg, "A function for debug transorm Arg");
     // m.def("debugTransformArg_Ownclass", &debugTransformArg_Ownclass, "A function for debug transorm Arg");
+    m.def("printPointer", &printPointer<CBSNode>);
 
     py::class_<Instance>(m, "Instance")
         .def(py::init<int, int>())
@@ -131,6 +133,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
     py::class_<CBSNode>(m, "CBSNode")
         .def(py::init<>())
         .def_readwrite("depth", &CBSNode::depth)
+        .def_readwrite("node_id", &CBSNode::node_id)
         .def_readonly("g_val", &CBSNode::g_val)
         .def_readonly("h_val", &CBSNode::h_val)
         .def_readonly("makespan", &CBSNode::makespan)
@@ -138,13 +141,15 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("runtime_search", &CBSNode::runtime_search)
         .def_readonly("runtime_build_CT", &CBSNode::runtime_build_CT)
         .def_readonly("runtime_build_CAT", &CBSNode::runtime_build_CAT)
-        .def_readonly("conflicts", &CBSNode::conflicts)
+        .def_readonly("conflicts", &CBSNode::node_conflicts)
+        .def("printConflicts", &CBSNode::printConflicts)
         .def("getFVal", &CBSNode::getFVal)
         .def("updatePath", &CBSNode::updatePath, "agent"_a, "path"_a)
         .def("insertConstraint", &CBSNode::insertConstraint, "agent"_a, "constraint"_a)
         .def("updateConstraint", &CBSNode::updateConstraint, "agent"_a, "constraint"_a)
         .def("updateMakespan", &CBSNode::updateMakespan, "agent"_a=-1)
         .def("updateGval", &CBSNode::updateGval)
+        .def("updateTiebreaking", &CBSNode::updateTiebreaking, "score"_a)
         .def("copy", &CBSNode::copy, "other_node"_a)
         .def("getPath", &CBSNode::getPath, "agent"_a)
         .def("getConstrains", &CBSNode::getConstrains, "agent"_a)
@@ -153,6 +158,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
     py::class_<CBS>(m, "CBS")
         .def(py::init<int, Instance3D&, std::map<int, std::tuple<int, int, int>>&, std::map<int, std::tuple<int, int, int>>&>())
         .def_readwrite("focal_optimal", &CBS::focal_optimal)
+        .def_readwrite("focal_w", &CBS::focal_w)
         .def("solvePath", &CBS::solvePath, "node"_a, "agent"_a)
         .def("updateFocalList", &CBS::updateFocalList)
         .def("pushNode", &CBS::pushNode, "node"_a)

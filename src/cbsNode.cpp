@@ -1,6 +1,8 @@
 #include "cbsNode.h"
 
 void CBSNode::findConflicts(){
+    node_conflicts.clear();
+
     std::map<int, std::vector<std::pair<int, size_t>>> records;
 
     for (auto iter = paths.begin(); iter != paths.end(); iter++){
@@ -17,7 +19,7 @@ void CBSNode::findConflicts(){
                 {
                     int a2 = i->first;
                     size_t a2_timeStep = i->second;
-                    conflicts.emplace_back(Conflict(a1, a2, a1_timeStep, a2_timeStep, loc));
+                    node_conflicts.emplace_back(Conflict(a1, a2, a1_timeStep, a2_timeStep, loc));
                 } 
             }
             

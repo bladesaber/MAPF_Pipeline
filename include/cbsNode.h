@@ -17,6 +17,7 @@ public:
     // agent, Path
 	std::map<int, Path> paths;
 
+	int node_id;
     int g_val;
 	int h_val = 0;
 	int depth; // depth of this CT node
@@ -50,8 +51,17 @@ public:
     Open_handle_t open_handle;
 	Focal_handle_t focal_handle;
 
-	std::vector<Conflict> conflicts;
+	std::vector<Conflict> node_conflicts;
 	void findConflicts();
+	void printConflicts(){
+		for (Conflict i : node_conflicts)
+		{
+			std::cout << "a1:" << i.a1 << " a2:" << i.a2;
+			std::cout << " a1_timeStep:" << i.a1_timeStep << " a2_timeStep:" << i.a2_timeStep;
+			std::cout << " loc:" << i.loc << std::endl;
+		}
+		
+	}
 
 	inline double getFVal() const{
         return g_val + h_val;
@@ -87,6 +97,10 @@ public:
 		for(auto iter = paths.begin(); iter != paths.end(); iter++){
 			g_val += (int)iter->second.size();
 		}
+	}
+
+	void updateTiebreaking(int score){
+		this->tie_breaking = score;
 	}
 
 	void copy(CBSNode& other_node){

@@ -32,6 +32,7 @@ public:
     std::map<int, std::tuple<int, int, int>> goal_states;
 
     bool focal_optimal = false;
+    double focal_w;
     double time_limit;
     Instance3D& instance;
 
@@ -53,12 +54,14 @@ public:
     void print(){
         instance.print();
         for (auto iter = start_states.begin(); iter != start_states.end(); iter++){
-            std::cout << "   Agent: " << iter->first << " Start(";
+            std::cout << "   Agent: " << iter->first << " Start ";
+            std::cout << instance.linearizeCoordinate(iter->second) << " (";
             std::cout << std::get<0>(iter->second) << ", " << std::get<1>(iter->second) << ", " << std::get<2>(iter->second) << ")";
             std::cout << std::endl;
         }
         for (auto iter = goal_states.begin(); iter != goal_states.end(); iter++){
-            std::cout << "   Agent: " << iter->first << " Goal(";
+            std::cout << "   Agent: " << iter->first << " Goal ";
+            std::cout << instance.linearizeCoordinate(iter->second) << " (";
             std::cout << std::get<0>(iter->second) << ", " << std::get<1>(iter->second) << ", " << std::get<2>(iter->second) << ")";
             std::cout << std::endl;
         }
@@ -67,13 +70,12 @@ public:
 private:
     double min_f_val;
 	double focal_list_threshold;
-    double focal_w;
 
     std::map<int, SpaceTimeAStar*> search_engines;
 
     boost::heap::pairing_heap< CBSNode*, boost::heap::compare<CBSNode::compare_node> > open_list;
 	boost::heap::pairing_heap< CBSNode*, boost::heap::compare<CBSNode::secondary_compare_node> > focal_list;
-	std::list<CBSNode*> allNodes_table;
+	// std::list<CBSNode*> allNodes_table;
 
     void clearSearchEngines(){
         for (auto iter = this->search_engines.begin(); iter != search_engines.end(); iter++)
@@ -85,9 +87,11 @@ private:
     inline void releaseNodes(){
         open_list.clear();
         focal_list.clear();
-        for (auto node : allNodes_table)
-            delete node;
-        allNodes_table.clear();
+
+        // Ownership 交由Python管理
+        // for (auto node : allNodes_table)
+        //     delete node;
+        // allNodes_table.clear();
     }
     
 };

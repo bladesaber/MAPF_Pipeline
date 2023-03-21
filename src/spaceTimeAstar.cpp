@@ -119,6 +119,11 @@ Path SpaceTimeAStar::findPath(
     // state: (row(y), col(x))
     int start_loc = instance.linearizeCoordinate(start_state);
     int goal_loc = instance.linearizeCoordinate(goal_state);
+    Path path;
+
+    if (constrain_table.isConstrained(start_loc) || constrain_table.isConstrained(goal_loc)){
+        return path;
+    }
 
     auto start_node = new AStarNode(
         start_loc,  // location
@@ -136,7 +141,6 @@ Path SpaceTimeAStar::findPath(
 	allNodes_table.insert(start_node);
 
     starrt_time = clock();
-    Path path;
     while (!open_list.empty())
     {
         updateFocalList(); // update FOCAL if min f-val increased
@@ -289,6 +293,11 @@ Path SpaceTimeAStar::findPath(
     // State: (row(y), col(x), z)
     int start_loc = instance.linearizeCoordinate(start_state);
     int goal_loc = instance.linearizeCoordinate(goal_state);
+    Path path;
+
+    if (constrain_table.isConstrained(start_loc) || constrain_table.isConstrained(goal_loc)){
+        return path;
+    }
 
     auto start_node = new AStarNode(
         start_loc,  // location
@@ -306,7 +315,6 @@ Path SpaceTimeAStar::findPath(
 	allNodes_table.insert(start_node);
 
     starrt_time = clock();
-    Path path;
     while (!open_list.empty())
     {
         updateFocalList(); // update FOCAL if min f-val increased

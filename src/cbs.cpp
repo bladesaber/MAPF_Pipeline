@@ -36,7 +36,7 @@ void CBS::pushNode(CBSNode* node){
             node->focal_handle = focal_list.push(node);
         }
     }
-    // 常规下没必要保留已探索节点
+    // 交由Python管理
     // allNodes_table.push_back(node);
 }
 
