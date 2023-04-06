@@ -26,13 +26,22 @@ include_directories(
 #        ${Boost_LIBRARIES}
 #        )
 
-pybind11_add_module(mapf_pipeline src/driver.cpp
+### Version 0.1
+# pybind11_add_module(mapf_pipeline src/driver.cpp
+#         src/spaceTimeAstar.cpp
+#         src/instance.cpp
+#         src/constraintTable.cpp
+#         src/cbsNode.cpp
+#         src/cbs.cpp
+#         )
+# target_link_libraries(mapf_pipeline PRIVATE
+#         pybind11::module
+#         Eigen3::Eigen
+#         ${Boost_LIBRARIES}
+#         )
 
-        src/spaceTimeAstar.cpp
-        src/instance.cpp
-        src/constraintTable.cpp
-        src/cbsNode.cpp
-        src/cbs.cpp
+### Version 0.2
+pybind11_add_module(mapf_pipeline src/Aux_driver.cpp
         )
 target_link_libraries(mapf_pipeline PRIVATE
         pybind11::module
