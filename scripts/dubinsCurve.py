@@ -1,9 +1,16 @@
 import numpy as np
 import math
+
 import sympy
+### similar to mathematica
+
+from sympy import Symbol
 from sympy.vector import CoordSys3D
 from sympy import MatrixSymbol
 from sympy.vector import Vector
+from sympy import Point3D, Line3D
+from sympy import symbols
+from sympy import separatevars
 
 def point2line(xyz:np.array, plane_xyz:np.array, plane_vec:np.array):
     x = plane_xyz - xyz
@@ -41,33 +48,53 @@ def planes_intersect_line(plane1_vec:np.array, plane2_vec:np.array):
 
     return line_vec, np.array([xy[0], xy[1], 1.])
 
-def test():
-    from sympy import Point, Line
+def compute_perfect_DubinsCruve():
+    ### too complex to solve
 
-    p1 = Point(1, 2, 3)
-    p2 = Point(4, 5, 6)
-    l1 = Line(p1, p2)
-    # print(l1)
+    ### define environment
+    coodr = CoordSys3D('coodr')
+    ps_x, ps_y, ps_z = symbols('ps_x ps_y ps_z')
+    vs_x, vs_y, vs_z = symbols('vs_x vs_y vs_z')
+    point_s = Point3D(ps_x, ps_y, ps_z)
+    vec_s = vs_x * coodr.i + vs_y * coodr.j + vs_z * coodr.k
 
-    print(type(l1.direction))
+    pt_x, pt_y, pt_z = symbols('pt_x pt_y pt_z')
+    vt_x, vt_y, vt_z = symbols('vt_x vt_y vt_z')
+    point_t = Point3D(pt_x, pt_y, pt_z)
+    vec_t = vt_x * coodr.i + vt_y * coodr.j + vt_z * coodr.k
 
-    # xyz3 = np.array([])
-    #
-    # vec1_s = xyz3 - xyz1
-    # vec2_s = xyz3 - xyz2
-    # plane1_vec = np.cross(vec1_s, vec1)
-    # plane2_vec = np.cross(vec2_s, vec2)
-    # vec3 = np.cross(plane1_vec, plane2_vec)
-    #
-    # ### dist1 = r
-    # a1 = np.linalg.norm(xyz3 - xyz1, ord=2)
-    # b1 = np.dot(xyz3 - xyz1, vec3.T) / np.linalg.norm(vec3, ord=2)
-    # dist1 = np.square(a1 ** 2 - b1 ** 2)
-    #
-    # ### dist2 = r
-    # a2 = np.linalg.norm(xyz3 - xyz2, ord=2)
-    # b2 = np.dot(xyz3 - xyz2, vec3.T) / np.linalg.norm(vec3, ord=2)
-    # dist2 = np.square(a2 ** 2 - b2 ** 2)
+    radius = sympy.Symbol('radius')
+
+    ### define denpedent variables
+    pm_x, pm_y, pm_z = symbols('pm_x pm_y pm_z')
+    point_m = Point3D(pm_x, pm_y, pm_z)
+
+    ### compute two plane's intersect line vector
+    ### Step 1: compute norm vector vector_sm of point_s->point_m and vector_s
+    ### Step 2: compute norm vector vector_tm of point_t->point_m and vector_t
+    ### Step 3: two plane's intersect line vector norm_tm
+    vec_sm = (point_m.x - point_s.x) * coodr.i + \
+             (point_m.y - point_s.y) * coodr.j + \
+             (point_m.z - point_s.z) * coodr.k
+    norm_sm = vec_sm.cross(vec_s)
+
+    vec_tm = (point_m.x - point_t.x) * coodr.i + \
+             (point_m.y - point_t.y) * coodr.j + \
+             (point_m.z - point_t.z) * coodr.k
+    norm_tm = vec_tm.cross(vec_t)
+
+    vec_m = (norm_sm.cross(norm_tm)).normalize()
+
+    ### define equation
+    ### Eq1: distance between point_s and line(point_m, norm_tm) is radius
+    ### Eq1: distance between point_t and line(point_m, norm_tm) is radius
+    length_ms = sympy.sqrt(vec_sm.dot(vec_sm) - (-vec_sm).dot(vec_m))
+    length_mt = sympy.sqrt(vec_tm.dot(vec_tm) - (-vec_tm).dot(vec_m))
+
+    expr1 = sympy.Equality(length_ms, radius)
+    expr2 = sympy.Equality(length_mt, radius)
+
+    r = sympy.solve([expr1, expr2], [pm_x, pm_y, pm_z], dict=True)
 
 if __name__ == '__main__':
     # x = sympy.Symbol('x')
