@@ -63,7 +63,7 @@ def main():
     p1 = (p1_xy[0], p1_xy[1], p1_theta)
     p1_vec = np.array([np.cos(p1_theta), np.sin(p1_theta)])
 
-    radius = 1.0
+    radius = 0.5
 
     # res = mapf_pipeline.DubinsPath()
     # for method in methods:
@@ -90,20 +90,33 @@ def main():
     ax.plot(p0_left_center[0], p0_left_center[1], 'or')
     ax.plot(p1_left_center[0], p1_left_center[1], 'or')
 
-    ax.add_patch(mpatches.Arc(
-        p0_left_center,
-        radius * 2.0, radius * 2.0,
-        angle = 0,
-        theta1=np.rad2deg(p0_theta) - 90.0, theta2=np.rad2deg(p0_theta) - 90.0 + np.rad2deg(p0_move_theta),
-    ))
-    # end_angel = mod2pi(-45.0, degree=True)
+    # ax.add_patch(mpatches.Arc(
+    #     p0_left_center,
+    #     radius * 2.0, radius * 2.0,
+    #     angle = 0,
+    #     theta1=np.rad2deg(p0_theta) - 90.0, theta2=np.rad2deg(p0_theta) - 90.0 + np.rad2deg(p0_move_theta),
+    # ))
+    theta_0 = np.deg2rad(np.rad2deg(p0_theta) - 90.0 + np.rad2deg(p0_move_theta))
+    inter_0 = p0_left_center + radius * np.array([math.cos(theta_0), math.sin(theta_0)])
+    ax.plot(inter_0[0], inter_0[1], '^')
+    ax.add_patch(mpatches.Circle(p0_left_center, radius=radius, fill=False))
+
     end_angel = 360.0 - 45.0 - 90.0
-    ax.add_patch(mpatches.Arc(
-        p1_left_center,
-        radius * 2.0, radius * 2.0,
-        angle = 0.,
-        theta1=end_angel-np.rad2deg(p1_move_theta), theta2=end_angel,
-    ))
+    theta_1 = end_angel-np.rad2deg(p1_move_theta)
+    inter_1 = p1_left_center + radius * np.array([math.cos(theta_1), math.sin(theta_1)])
+    ax.plot(inter_1[0], inter_1[1], '^')
+    ax.add_patch(mpatches.Circle(p1_left_center, radius=radius, fill=False))
+    # ax.add_patch(mpatches.Arc(
+    #     p1_left_center,
+    #     radius * 2.0, radius * 2.0,
+    #     angle = 0.,
+    #     theta1=end_angel-np.rad2deg(p1_move_theta), theta2=end_angel,
+    # ))
+
+    ax.plot([inter_0[0], inter_1[0]], [inter_0[1], inter_1[1]])
+
+    print(res.param)
+    print(np.linalg.norm(inter_0-inter_1, ord=2))
 
     ax.legend()
     ax.grid(True)

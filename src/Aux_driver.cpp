@@ -34,5 +34,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("param", &DubinsPath::param)
         .def_readonly("type", &DubinsPath::type);
     m.def("compute_dubins_path", &compute_dubins_path, "result"_a, "xyz_s"_a, "xyz_t"_a, "rho"_a, "pathType"_a);
+    m.def("mod2pi", &mod2pi, "theta"_a);
+    m.def("mod2singlePi", &mod2singlePi, "theta"_a);
 
 }

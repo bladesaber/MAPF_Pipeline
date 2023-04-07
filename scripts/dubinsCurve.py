@@ -49,6 +49,7 @@ def planes_intersect_line(plane1_vec:np.array, plane2_vec:np.array):
     return line_vec, np.array([xy[0], xy[1], 1.])
 
 def compute_perfect_DubinsCruve():
+    ### wrong
     ### too complex to solve
 
     ### define environment
@@ -106,4 +107,4 @@ if __name__ == '__main__':
     # r = sympy.solve(expr, y, dict=True)
     # print(r)
 
-    test()
+    pass

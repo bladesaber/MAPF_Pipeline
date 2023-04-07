@@ -3,6 +3,7 @@
 
 #include <math.h>
 #include <tuple>
+#include <map>
 
 enum DubinsErrorCodes {
     EDUBOK,         /* No error */
@@ -16,6 +17,13 @@ enum DubinsPathType {
     LSL, LSR, RSL, RSR, RLR, LRL,
 };
 
+enum SegmentType
+{
+    L_SEG = 0,
+    S_SEG = 1,
+    R_SEG = 2
+};
+
 typedef struct 
 {
     /* the initial configuration (x, y, theta) */
@@ -25,28 +33,32 @@ typedef struct
     /* the radius of wheel */
     double rho;
 
-    /* radian or length */
+    // for L or R: radian
+    // for S: length / radian
     std::tuple<double, double, double> param;
     /* the path type described */    
     DubinsPathType type;
 
+    std::tuple<double, double, double> lengths;
+    double total_length = 0.0;
+
+    SegmentType segmentTypes[3];
+    std::tuple<double, double> scenter;
+    std::tuple<double, double> srange;
+
+    std::tuple<double, double> tcenter;
+    std::tuple<double, double> trange;
+
 } DubinsPath;
 
-// typedef enum 
-// {
-//     L_SEG = 0,
-//     S_SEG = 1,
-//     R_SEG = 2
-// } SegmentType;
-
-// /* The segment types for each of the Path types */
-// const SegmentType DIRDATA[][3] = {
-//     { L_SEG, S_SEG, L_SEG },
-//     { L_SEG, S_SEG, R_SEG },
-//     { R_SEG, S_SEG, L_SEG },
-//     { R_SEG, S_SEG, R_SEG },
-//     { R_SEG, L_SEG, R_SEG },
-//     { L_SEG, R_SEG, L_SEG }
+/* The segment types for each of the Path types */
+// static std::map<DubinsPathType, std::tuple<SegmentType, SegmentType, SegmentType>> DubinsMap{
+//     {LSL, { L_SEG, S_SEG, L_SEG }},
+//     {LSR, { L_SEG, S_SEG, R_SEG }},
+//     {RSL, { R_SEG, S_SEG, L_SEG }},
+//     {RSR, { R_SEG, S_SEG, R_SEG }},
+//     {RLR, { R_SEG, L_SEG, R_SEG }},
+//     {LRL, { L_SEG, R_SEG, L_SEG }},
 // };
 
 typedef struct 
@@ -70,6 +82,10 @@ double fmodr( double x, double y)
 double mod2pi(double theta)
 {
     return fmodr( theta, 2 * M_PI );
+}
+
+double mod2singlePi(double theta){
+    return fmodr(theta + M_PI, 2 * M_PI ) - M_PI;
 }
 
 int dubins_intermediate_results(
@@ -110,6 +126,17 @@ int dubins_intermediate_results(
     in->d_sq  = d * d;
 
     return EDUBOK;
+}
+
+void compute_dubins_pathLength(DubinsPath* path)
+{
+    double length1, length2, length3;
+    length1 = std::get<0>(path->param) * path->rho;
+    length2 = std::get<1>(path->param) * path->rho;
+    length3 = std::get<1>(path->param) * path->rho;
+
+    path->total_length += length1 + length2 + length3;
+    path->lengths = std::make_tuple(length1, length2, length3);
 }
 
 int dubins_LSL(DubinsIntermediateResults* in, double out[3]) 
@@ -201,6 +228,75 @@ int dubins_LSR(DubinsIntermediateResults* in, double out[3])
     return EDUBNOPATH;
 }
 
+void compute_info(DubinsPath* path)
+{
+    double center[2];
+    double ranges[2];
+
+    compute_CircleInfo(
+        std::get<0>(path->q0),
+        std::get<1>(path->q0),
+        path->rho,
+        std::get<2>(path->q0),
+        std::get<0>(path->param),
+        center,
+        ranges,
+        path->segmentTypes[0],
+        false
+    );
+    path->scenter = std::make_tuple(center[0], center[1]);
+    path->srange = std::make_tuple(ranges[0], ranges[1]);
+
+    compute_CircleInfo(
+        std::get<0>(path->q1),
+        std::get<1>(path->q1),
+        path->rho,
+        std::get<2>(path->q1),
+        std::get<2>(path->param),
+        center,
+        ranges,
+        path->segmentTypes[2],
+        true
+    );
+    path->tcenter = std::make_tuple(center[0], center[1]);
+    path->trange = std::make_tuple(ranges[0], ranges[1]);
+}
+
+void compute_CircleInfo(
+    double x, double y, double rho, double radian, double move_radian,
+    double center[2], double range[2],
+    SegmentType circleType, bool last_circle
+){
+    if (circleType == L_SEG)
+    {
+        center[0] = x - sin(radian) * rho;
+        center[1] = y + cos(radian) * rho;
+
+        if (~last_circle)
+        {
+            range[0] = radian - M_PI / 2.0;
+            range[1] = range[0] + move_radian;
+        }else{
+            range[1] = radian - M_PI / 2.0;
+            range[0] = range[1] - move_radian;
+        }
+        
+
+    }else if (circleType == R_SEG)
+    {
+        center[0] = x + sin(radian) * rho;
+        center[1] = y - cos(radian) * rho;
+
+        if (~last_circle){
+            range[0] = radian + M_PI / 2.0;
+            range[1] = range[0] - move_radian;
+        }else{
+            range[1] = radian + M_PI / 2.0;
+            range[0] = range[0] + move_radian;
+        }
+    }
+}
+
 int compute_dubins_path(
     DubinsPath* result, 
     std::tuple<double, double, double> xyz_s, 
@@ -224,27 +320,45 @@ int compute_dubins_path(
         {
         case LSL:
             errcode = dubins_LSL(&in, params);
+            result->segmentTypes[0] = L_SEG;
+            result->segmentTypes[1] = S_SEG;
+            result->segmentTypes[2] = L_SEG;
             break;
 
         case RSL:
             errcode = dubins_RSL(&in, params);
+            result->segmentTypes[0] = R_SEG;
+            result->segmentTypes[1] = S_SEG;
+            result->segmentTypes[2] = L_SEG;
             break;
 
         case LSR:
             errcode = dubins_LSR(&in, params);
+            result->segmentTypes[0] = L_SEG;
+            result->segmentTypes[1] = S_SEG;
+            result->segmentTypes[2] = R_SEG;
             break;
 
         case RSR:
             errcode = dubins_RSR(&in, params);
+            result->segmentTypes[0] = R_SEG;
+            result->segmentTypes[1] = S_SEG;
+            result->segmentTypes[2] = R_SEG;
             break;
 
-        case LRL:
-            errcode = dubins_LRL(&in, params);
-            break;
+        // case LRL:
+        //     errcode = dubins_LRL(&in, params);
+        //     result->segmentTypes[0] = L_SEG;
+        //     result->segmentTypes[1] = R_SEG;
+        //     result->segmentTypes[2] = L_SEG;
+        //     break;
 
-        case RLR:
-            errcode = dubins_RLR(&in, params);
-            break;
+        // case RLR:
+        //     errcode = dubins_RLR(&in, params);
+        //     result->segmentTypes[0] = R_SEG;
+        //     result->segmentTypes[1] = L_SEG;
+        //     result->segmentTypes[2] = R_SEG;
+        //     break;
         
         default:
             errcode = EDUBNOPATH;
@@ -257,6 +371,7 @@ int compute_dubins_path(
             result->param = std::make_tuple(params[0], params[1], params[2]);
             result->rho = rho;
             result->type = pathType;
+            compute_dubins_pathLength(result);
         }
     }
     return errcode;
