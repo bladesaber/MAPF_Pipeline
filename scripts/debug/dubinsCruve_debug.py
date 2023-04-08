@@ -14,14 +14,25 @@ def plot_arrow(x, y, yaw, arrow_length=1.0, head_width=0.1, ax=None):
         plt.arrow(x, y, arrow_length * math.cos(yaw), arrow_length * math.sin(yaw), head_width=head_width, fc='r', ec='k')
         plt.plot(x, y, 'xr')
 
-methods = [
-    mapf_pipeline.DubinsPathType.LSL,
-    mapf_pipeline.DubinsPathType.LSR,
-    mapf_pipeline.DubinsPathType.RSL,
-    mapf_pipeline.DubinsPathType.RSR,
-    mapf_pipeline.DubinsPathType.RLR,
-    mapf_pipeline.DubinsPathType.LRL
-]
+def plot_ARC(ax, center, radius, start_angel, end_angel, segmentType, shift_angel=0.0):
+    start_angel = np.rad2deg(start_angel)
+    end_angel = np.rad2deg(end_angel)
+    shift_angel = np.rad2deg(shift_angel)
+
+    if segmentType == mapf_pipeline.SegmentType.R_SEG:
+        tem = start_angel
+        start_angel = end_angel
+        end_angel = tem
+
+    ax.add_patch(mpatches.Arc(
+        center,
+        radius * 2.0, radius * 2.0,
+        angle = shift_angel,
+        theta1=start_angel, theta2=end_angel,
+    ))
+
+def plot_path(ax, wayPoints):
+    ax.scatter(wayPoints[:, 0], wayPoints[:, 1])
 
 erroeCode_dict = {
     mapf_pipeline.DubinsErrorCodes.EDUBOK: 'success',
@@ -31,116 +42,98 @@ erroeCode_dict = {
     mapf_pipeline.DubinsErrorCodes.EDUBNOPATH: 'no connection between configurations with this word',
 }
 
+Dubins_SegmentType = {
+    mapf_pipeline.DubinsPathType.LSL: (mapf_pipeline.SegmentType.L_SEG, mapf_pipeline.SegmentType.S_SEG, mapf_pipeline.SegmentType.L_SEG),
+    mapf_pipeline.DubinsPathType.LSR: (mapf_pipeline.SegmentType.L_SEG, mapf_pipeline.SegmentType.S_SEG, mapf_pipeline.SegmentType.R_SEG),
+    mapf_pipeline.DubinsPathType.RSL: (mapf_pipeline.SegmentType.R_SEG, mapf_pipeline.SegmentType.S_SEG, mapf_pipeline.SegmentType.L_SEG),
+    mapf_pipeline.DubinsPathType.RSR: (mapf_pipeline.SegmentType.R_SEG, mapf_pipeline.SegmentType.S_SEG, mapf_pipeline.SegmentType.R_SEG),
+    # mapf_pipeline.DubinsPathType.RLR: (mapf_pipeline.SegmentType.R_SEG, mapf_pipeline.SegmentType.L_SEG, mapf_pipeline.SegmentType.R_SEG),
+    # mapf_pipeline.DubinsPathType.LRL: (mapf_pipeline.SegmentType.L_SEG, mapf_pipeline.SegmentType.R_SEG, mapf_pipeline.SegmentType.L_SEG)
+}
+
+Dubins_Direction = {
+    mapf_pipeline.SegmentType.L_SEG: 'left',
+    mapf_pipeline.SegmentType.S_SEG: 'straight',
+    mapf_pipeline.SegmentType.R_SEG: 'right'
+}
+
 def compute_LeftCenter(vec, radius, p):
     vec_l = np.array([-vec[1], vec[0]])
     center_left = p + vec_l * radius
     return center_left
-
-def mod2pi(x, zero_2_2pi=True, degree=False):
-    x = np.asarray(x).flatten()
-    if degree:
-        x = np.deg2rad(x)
-
-    if zero_2_2pi:
-        mod_angle = x % (2 * np.pi)
-    else:
-        mod_angle = (x + np.pi) % (2 * np.pi) - np.pi
-
-    if degree:
-        mod_angle = np.rad2deg(mod_angle)
-
-    return mod_angle
 
 def main():
     ### x, y, theta
     p0_theta = np.deg2rad(45.0)
     p0_xy = np.array([1.0, 1.0])
     p0 = (p0_xy[0], p0_xy[1], p0_theta)
-    p0_vec = np.array([np.cos(p0_theta), np.sin(p0_theta)])
 
     p1_theta = np.deg2rad(-45.0)
     p1_xy = np.array([-3.0, -3.0])
     p1 = (p1_xy[0], p1_xy[1], p1_theta)
-    p1_vec = np.array([np.cos(p1_theta), np.sin(p1_theta)])
 
-    radius = 0.5
-
-    # res = mapf_pipeline.DubinsPath()
-    # for method in methods:
-    #     res = mapf_pipeline.DubinsPath()
-    #     errorCode = mapf_pipeline.compute_dubins_path(res, p0, p1, radius, method)
-        
-    #     if errorCode == mapf_pipeline.DubinsErrorCodes.EDUBOK:
-    #         print(res.param)
-    #         break
+    radius = 0.66
     
-    res = mapf_pipeline.DubinsPath()
-    errorCode = mapf_pipeline.compute_dubins_path(
-        res, p0, p1, radius, mapf_pipeline.DubinsPathType.LSL
-    )
-    p0_move_theta = res.param[0]
-    p1_move_theta = res.param[2]
+    for method in Dubins_SegmentType.keys():
+        res = mapf_pipeline.DubinsPath()
+        errorCode = mapf_pipeline.compute_dubins_path(
+            res, p0, p1, radius, 
+            # mapf_pipeline.DubinsPathType.LSL
+            # mapf_pipeline.DubinsPathType.RSR
+            method
+        )
+        mapf_pipeline.compute_dubins_info(res)
 
-    p0_left_center = compute_LeftCenter(p0_vec, radius, p0_xy)
-    p1_left_center = compute_LeftCenter(p1_vec, radius, p1_xy)
+        print('Circle 1st: move: %f from %f -> %f direction: %s' % (
+            np.rad2deg(res.param[0]), 
+            np.rad2deg(res.start_range[0]),
+            np.rad2deg(res.start_range[1]),
+            Dubins_Direction[Dubins_SegmentType[res.type][0]]
+        ))
+        print('Circle 3st: move: %f from %f -> %f direction: %s' % (
+            np.rad2deg(res.param[2]), 
+            np.rad2deg(res.final_range[0]),
+            np.rad2deg(res.final_range[1]),
+            Dubins_Direction[Dubins_SegmentType[res.type][-1]]
+        ))
 
-    fig, ax = plt.subplots()
-    plot_arrow(p0[0], p0[1], p0[2], ax=ax)
-    plot_arrow(p1[0], p1[1], p1[2], ax=ax)
-    ax.plot(p0_left_center[0], p0_left_center[1], 'or')
-    ax.plot(p1_left_center[0], p1_left_center[1], 'or')
+        print(res.lengths)
 
-    # ax.add_patch(mpatches.Arc(
-    #     p0_left_center,
-    #     radius * 2.0, radius * 2.0,
-    #     angle = 0,
-    #     theta1=np.rad2deg(p0_theta) - 90.0, theta2=np.rad2deg(p0_theta) - 90.0 + np.rad2deg(p0_move_theta),
-    # ))
-    theta_0 = np.deg2rad(np.rad2deg(p0_theta) - 90.0 + np.rad2deg(p0_move_theta))
-    inter_0 = p0_left_center + radius * np.array([math.cos(theta_0), math.sin(theta_0)])
-    ax.plot(inter_0[0], inter_0[1], '^')
-    ax.add_patch(mpatches.Circle(p0_left_center, radius=radius, fill=False))
+        path_wayPoints = mapf_pipeline.sample_dubins_path(res, 30)
+        path_wayPoints = np.array(path_wayPoints)
 
-    end_angel = 360.0 - 45.0 - 90.0
-    theta_1 = end_angel-np.rad2deg(p1_move_theta)
-    inter_1 = p1_left_center + radius * np.array([math.cos(theta_1), math.sin(theta_1)])
-    ax.plot(inter_1[0], inter_1[1], '^')
-    ax.add_patch(mpatches.Circle(p1_left_center, radius=radius, fill=False))
-    # ax.add_patch(mpatches.Arc(
-    #     p1_left_center,
-    #     radius * 2.0, radius * 2.0,
-    #     angle = 0.,
-    #     theta1=end_angel-np.rad2deg(p1_move_theta), theta2=end_angel,
-    # ))
+        fig, ax = plt.subplots()
+        plot_arrow(res.q0[0], res.q0[1], res.q0[2], ax=ax)
+        plot_arrow(res.q1[0], res.q1[1], res.q1[2], ax=ax)
 
-    ax.plot([inter_0[0], inter_1[0]], [inter_0[1], inter_1[1]])
+        ax.plot(res.start_center[0], res.start_center[1], 'or')
+        ax.plot(res.final_center[0], res.final_center[1], 'or')
+        ax.plot(res.line_sxy[0], res.line_sxy[1], '^r')
+        ax.plot(res.line_fxy[0], res.line_fxy[1], '^r')
 
-    print(res.param)
-    print(np.linalg.norm(inter_0-inter_1, ord=2))
+        # plot_ARC(
+        #     ax,
+        #     center=np.array([res.start_center[0], res.start_center[1]]),
+        #     radius=radius, 
+        #     start_angel=res.start_range[0],
+        #     end_angel=res.start_range[1],
+        #     segmentType=Dubins_SegmentType[res.type][0]
+        # )
+        # plot_ARC(
+        #     ax,
+        #     center=np.array([res.final_center[0], res.final_center[1]]),
+        #     radius=radius, 
+        #     start_angel=res.final_range[0],
+        #     end_angel=res.final_range[1],
+        #     segmentType=Dubins_SegmentType[res.type][-1]
+        # )
 
-    ax.legend()
-    ax.grid(True)
-    ax.axis("equal")
-    plt.show()
+        plot_path(ax, path_wayPoints)
 
-def test():
-    fig,ax=plt.subplots()
-    
-    #使用一个横线和一个弧线组成头的边框
-    head=mpatches.Arc(
-        [0, 0],
-        3,
-        3,
-        angle=0.0,
-        theta1=0.0,
-        theta2=90,
-    )
-    
-    ax.add_patch(head)
-    ax.axis("equal")
-
-    plt.show()#展示图像
+        ax.legend()
+        ax.grid(True)
+        ax.axis("equal")
+        plt.show()
 
 if __name__ == '__main__':
     main()
-    # test()

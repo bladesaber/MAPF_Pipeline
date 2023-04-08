@@ -43,11 +43,14 @@ typedef struct
     double total_length = 0.0;
 
     SegmentType segmentTypes[3];
-    std::tuple<double, double> scenter;
-    std::tuple<double, double> srange;
+    std::tuple<double, double> start_center;
+    std::tuple<double, double> start_range;
 
-    std::tuple<double, double> tcenter;
-    std::tuple<double, double> trange;
+    std::tuple<double, double> final_center;
+    std::tuple<double, double> final_range;
+
+    std::tuple<double, double> line_sxy;
+    std::tuple<double, double> line_fxy;
 
 } DubinsPath;
 
@@ -86,6 +89,10 @@ double mod2pi(double theta)
 
 double mod2singlePi(double theta){
     return fmodr(theta + M_PI, 2 * M_PI ) - M_PI;
+}
+
+double rad2degree(double theta){
+    return theta / M_PI * 180.0;
 }
 
 int dubins_intermediate_results(
@@ -133,7 +140,7 @@ void compute_dubins_pathLength(DubinsPath* path)
     double length1, length2, length3;
     length1 = std::get<0>(path->param) * path->rho;
     length2 = std::get<1>(path->param) * path->rho;
-    length3 = std::get<1>(path->param) * path->rho;
+    length3 = std::get<2>(path->param) * path->rho;
 
     path->total_length += length1 + length2 + length3;
     path->lengths = std::make_tuple(length1, length2, length3);
@@ -228,7 +235,43 @@ int dubins_LSR(DubinsIntermediateResults* in, double out[3])
     return EDUBNOPATH;
 }
 
-void compute_info(DubinsPath* path)
+void compute_CircleInfo(
+    double x, double y, double rho, double radian, double move_radian,
+    double center[2], double range[2],
+    SegmentType circleType, bool last_circle
+){
+    if (circleType == L_SEG)
+    {
+        center[0] = x - sin(radian) * rho;
+        center[1] = y + cos(radian) * rho;
+
+        if (last_circle)
+        {
+            range[1] = radian - M_PI / 2.0;
+            range[0] = range[1] - move_radian;
+
+        }else{
+            range[0] = radian - M_PI / 2.0;
+            range[1] = range[0] + move_radian;
+        }
+
+    }else if (circleType == R_SEG)
+    {
+        center[0] = x + sin(radian) * rho;
+        center[1] = y - cos(radian) * rho;
+
+        if (last_circle){
+            range[1] = radian + M_PI / 2.0;
+            range[0] = range[1] + move_radian;
+
+        }else{
+            range[0] = radian + M_PI / 2.0;
+            range[1] = range[0] - move_radian;
+        }
+    }
+}
+
+void compute_dubins_info(DubinsPath* path)
 {
     double center[2];
     double ranges[2];
@@ -244,8 +287,12 @@ void compute_info(DubinsPath* path)
         path->segmentTypes[0],
         false
     );
-    path->scenter = std::make_tuple(center[0], center[1]);
-    path->srange = std::make_tuple(ranges[0], ranges[1]);
+    path->start_center = std::make_tuple(center[0], center[1]);
+    path->start_range = std::make_tuple(ranges[0], ranges[1]);
+    path->line_sxy = std::make_tuple(
+        center[0] + path->rho * cos(ranges[1]), 
+        center[1] + path->rho * sin(ranges[1])
+    );
 
     compute_CircleInfo(
         std::get<0>(path->q1),
@@ -258,43 +305,12 @@ void compute_info(DubinsPath* path)
         path->segmentTypes[2],
         true
     );
-    path->tcenter = std::make_tuple(center[0], center[1]);
-    path->trange = std::make_tuple(ranges[0], ranges[1]);
-}
-
-void compute_CircleInfo(
-    double x, double y, double rho, double radian, double move_radian,
-    double center[2], double range[2],
-    SegmentType circleType, bool last_circle
-){
-    if (circleType == L_SEG)
-    {
-        center[0] = x - sin(radian) * rho;
-        center[1] = y + cos(radian) * rho;
-
-        if (~last_circle)
-        {
-            range[0] = radian - M_PI / 2.0;
-            range[1] = range[0] + move_radian;
-        }else{
-            range[1] = radian - M_PI / 2.0;
-            range[0] = range[1] - move_radian;
-        }
-        
-
-    }else if (circleType == R_SEG)
-    {
-        center[0] = x + sin(radian) * rho;
-        center[1] = y - cos(radian) * rho;
-
-        if (~last_circle){
-            range[0] = radian + M_PI / 2.0;
-            range[1] = range[0] - move_radian;
-        }else{
-            range[1] = radian + M_PI / 2.0;
-            range[0] = range[0] + move_radian;
-        }
-    }
+    path->final_center = std::make_tuple(center[0], center[1]);
+    path->final_range = std::make_tuple(ranges[0], ranges[1]);
+    path->line_fxy = std::make_tuple(
+        center[0] + path->rho * cos(ranges[0]), 
+        center[1] + path->rho * sin(ranges[0])
+    );
 }
 
 int compute_dubins_path(
@@ -371,10 +387,93 @@ int compute_dubins_path(
             result->param = std::make_tuple(params[0], params[1], params[2]);
             result->rho = rho;
             result->type = pathType;
+
             compute_dubins_pathLength(result);
+            // compute_dubins_info(result);
         }
     }
     return errcode;
+}
+
+void sample_CircleSegment(
+    double length, double rho, 
+    double start_radian, double center_x, double center_y, 
+    SegmentType circleType, double xy[2]
+){
+    double radian = length / rho;
+    double end_radian;
+
+    if (circleType == L_SEG)
+    {
+        end_radian = start_radian + radian;
+        xy[0] = center_x + rho * cos(end_radian);
+        xy[1] = center_y + rho * sin(end_radian);
+
+    }else if(circleType == R_SEG){
+        end_radian = start_radian - radian;
+        xy[0] = center_x + rho * cos(end_radian);
+        xy[1] = center_y + rho * sin(end_radian);
+    }
+}
+
+void sample_LineSegment(
+    double length, double radian, double sx, double sy, double xy[2]
+){
+    xy[0] = sx + length * cos(radian);
+    xy[1] = sy + length * sin(radian);
+}
+
+std::list<std::pair<double, double>> sample_dubins_path(DubinsPath* path, size_t sample_size){
+    double step_length = path->total_length / (double)sample_size;
+    double line_x = std::get<0>(path->line_sxy);
+    double line_y = std::get<1>(path->line_sxy);
+
+    double line_radian = atan2(
+        std::get<1>(path->line_fxy) - std::get<1>(path->line_sxy),
+        std::get<0>(path->line_fxy) - std::get<0>(path->line_sxy)
+    );
+
+    double stage1 = std::get<0>(path->lengths);
+    double stage2 = stage1 + std::get<1>(path->lengths);
+
+    double cur_length = 0.0;
+    double xy[2];
+    std::list<std::pair<double, double>> sample_waypoints;
+
+    while (cur_length <= path->total_length)
+    {
+        if (cur_length < stage1)
+        {
+            sample_CircleSegment(
+                cur_length, 
+                path->rho, std::get<0>(path->start_range),
+                std::get<0>(path->start_center), std::get<1>(path->start_center),
+                path->segmentTypes[0], xy
+            );
+
+        }
+        else if (cur_length < stage2)
+        {
+            sample_LineSegment(
+                cur_length - stage1, 
+                line_radian, line_x, line_y, xy
+            );
+
+        }
+        else{
+            sample_CircleSegment(
+                cur_length - stage2, 
+                path->rho, std::get<0>(path->final_range),
+                std::get<0>(path->final_center), std::get<1>(path->final_center),
+                path->segmentTypes[2], xy
+            );
+        }
+        
+        sample_waypoints.push_back(std::make_pair(xy[0], xy[1]));
+        cur_length += step_length;
+    }
+    
+    return sample_waypoints;
 }
 
 #endif /* MAPF_PIPELINE_AUX_DUBINS_H */
