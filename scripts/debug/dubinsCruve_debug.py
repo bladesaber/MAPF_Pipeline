@@ -57,11 +57,6 @@ Dubins_Direction = {
     mapf_pipeline.SegmentType.R_SEG: 'right'
 }
 
-def compute_LeftCenter(vec, radius, p):
-    vec_l = np.array([-vec[1], vec[0]])
-    center_left = p + vec_l * radius
-    return center_left
-
 def main():
     ### x, y, theta
     p0_theta = np.deg2rad(45.0)
@@ -96,8 +91,6 @@ def main():
             np.rad2deg(res.final_range[1]),
             Dubins_Direction[Dubins_SegmentType[res.type][-1]]
         ))
-
-        print(res.lengths)
 
         path_wayPoints = mapf_pipeline.sample_dubins_path(res, 30)
         path_wayPoints = np.array(path_wayPoints)

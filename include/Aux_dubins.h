@@ -440,8 +440,9 @@ std::list<std::pair<double, double>> sample_dubins_path(DubinsPath* path, size_t
     double xy[2];
     std::list<std::pair<double, double>> sample_waypoints;
 
-    while (cur_length <= path->total_length)
+    for (size_t i = 0; i < sample_size + 1; i++)
     {
+        cur_length = i * step_length;
         if (cur_length < stage1)
         {
             sample_CircleSegment(
@@ -470,7 +471,7 @@ std::list<std::pair<double, double>> sample_dubins_path(DubinsPath* path, size_t
         }
         
         sample_waypoints.push_back(std::make_pair(xy[0], xy[1]));
-        cur_length += step_length;
+
     }
     
     return sample_waypoints;

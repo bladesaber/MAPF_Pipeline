@@ -3,3 +3,5 @@
 /Company Record
 /Thirdparty/*
 /build
+.vscode
+__pycache__
