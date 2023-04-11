@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import math
 
 def point2line(xyz:np.array, plane_xyz:np.array, plane_vec:np.array):
     x = plane_xyz - xyz
@@ -36,3 +37,52 @@ def planes_intersect_line(plane1_vec:np.array, plane2_vec:np.array):
     xy = (np.linalg.inv(xy_cor) @ res).T
 
     return line_vec, np.array([xy[0], xy[1], 1.])
+
+def compute_dubinsAuxAngel(target_theta):
+    '''
+                         C
+                        **
+                     * * |
+                   *  *  |
+                 *   *   |
+               *    *    |
+             *     *     |   y
+           *      *      |
+         *       *       |
+       *        *        |
+     *         *         |
+    *---------*----------|
+    A  (1.0)        x    B
+
+    angel(AC, AB) = target_angel (1)
+    x^2 + y^2 = 1.0              (2)
+
+    =>
+    x^ + y^2 = 1.0
+    y / (1.0 + x) = tan(target_theta)
+
+    solve by sympy in math_infer.ipynb
+    '''
+    tan_theta = math.tan(target_theta)
+    x = (1.0 - tan_theta ** 2) / (1.0 + tan_theta**2)
+    y = 2.0 * tan_theta / (1.0 + tan_theta**2)
+    # assert x >= 0. and y >= 0.
+
+    radian = math.atan2(y, x)
+
+    return radian
+
+def polar3D2vec(theta, length=1.0):
+    dz = length * math.sin(theta[1])
+    dl = length * math.cos(theta[1])
+    dx = dl * math.cos(theta[0])
+    dy = dl * math.sin(theta[0])
+    return np.array([dx, dy, dz])
+
+def vec2polar3D(vec):
+    theta0 = math.atan2(vec[1], vec[0])
+    theta1 = math.atan2(
+        vec[2],
+        math.sqrt(vec[0]**2 + vec[1]**2)
+    )
+    return np.array([theta0, theta1])

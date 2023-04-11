@@ -1,38 +1,13 @@
 import numpy as np
 import pandas as pd
 import math
-import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 
+from scripts.vis_utils import plot_Arc2D, plot_Arrow2D, plot_Path2D
+from scripts.vis_utils import create_Graph3D, plot_Arrow3D, plot_Path3D
+from scripts.utils import compute_dubinsAuxAngel, polar3D2vec, vec2polar3D
+
 from build import mapf_pipeline
-
-def plot_arrow(x, y, yaw, arrow_length=1.0, head_width=0.1, ax=None):
-    if ax is not None:
-        ax.arrow(x, y, arrow_length * math.cos(yaw), arrow_length * math.sin(yaw), head_width=head_width, fc='r', ec='k')
-        ax.plot(x, y, 'xr')
-    else:
-        plt.arrow(x, y, arrow_length * math.cos(yaw), arrow_length * math.sin(yaw), head_width=head_width, fc='r', ec='k')
-        plt.plot(x, y, 'xr')
-
-def plot_ARC(ax, center, radius, start_angel, end_angel, segmentType, shift_angel=0.0):
-    start_angel = np.rad2deg(start_angel)
-    end_angel = np.rad2deg(end_angel)
-    shift_angel = np.rad2deg(shift_angel)
-
-    if segmentType == mapf_pipeline.SegmentType.R_SEG:
-        tem = start_angel
-        start_angel = end_angel
-        end_angel = tem
-
-    ax.add_patch(mpatches.Arc(
-        center,
-        radius * 2.0, radius * 2.0,
-        angle = shift_angel,
-        theta1=start_angel, theta2=end_angel,
-    ))
-
-def plot_path(ax, wayPoints):
-    ax.scatter(wayPoints[:, 0], wayPoints[:, 1])
 
 erroeCode_dict = {
     mapf_pipeline.DubinsErrorCodes.EDUBOK: 'success',
@@ -57,18 +32,12 @@ Dubins_Direction = {
     mapf_pipeline.SegmentType.R_SEG: 'right'
 }
 
-def main():
-    ### x, y, theta
-    p0_theta = np.deg2rad(45.0)
-    p0_xy = np.array([1.0, 1.0])
-    p0 = (p0_xy[0], p0_xy[1], p0_theta)
+Dubins_Dire = {
+    mapf_pipeline.SegmentType.L_SEG: False,
+    mapf_pipeline.SegmentType.R_SEG: True
+}
 
-    p1_theta = np.deg2rad(-45.0)
-    p1_xy = np.array([-3.0, -3.0])
-    p1 = (p1_xy[0], p1_xy[1], p1_theta)
-
-    radius = 0.66
-    
+def debug_dubinsPath_2D(p0, p1, radius):    
     for method in Dubins_SegmentType.keys():
         res = mapf_pipeline.DubinsPath()
         errorCode = mapf_pipeline.compute_dubins_path(
@@ -96,37 +65,165 @@ def main():
         path_wayPoints = np.array(path_wayPoints)
 
         fig, ax = plt.subplots()
-        plot_arrow(res.q0[0], res.q0[1], res.q0[2], ax=ax)
-        plot_arrow(res.q1[0], res.q1[1], res.q1[2], ax=ax)
+        plot_Arrow2D(res.q0[0], res.q0[1], res.q0[2], ax=ax)
+        plot_Arrow2D(res.q1[0], res.q1[1], res.q1[2], ax=ax)
 
         ax.plot(res.start_center[0], res.start_center[1], 'or')
         ax.plot(res.final_center[0], res.final_center[1], 'or')
         ax.plot(res.line_sxy[0], res.line_sxy[1], '^r')
         ax.plot(res.line_fxy[0], res.line_fxy[1], '^r')
 
-        # plot_ARC(
+        # plot_Arc2D(
         #     ax,
         #     center=np.array([res.start_center[0], res.start_center[1]]),
         #     radius=radius, 
         #     start_angel=res.start_range[0],
         #     end_angel=res.start_range[1],
-        #     segmentType=Dubins_SegmentType[res.type][0]
+        #     right_dire=Dubins_Dire[Dubins_SegmentType[res.type][0]]
         # )
-        # plot_ARC(
+        # plot_Arc2D(
         #     ax,
         #     center=np.array([res.final_center[0], res.final_center[1]]),
         #     radius=radius, 
         #     start_angel=res.final_range[0],
         #     end_angel=res.final_range[1],
-        #     segmentType=Dubins_SegmentType[res.type][-1]
+        #     right_dire=Dubins_Dire[Dubins_SegmentType[res.type][0]]
         # )
 
-        plot_path(ax, path_wayPoints)
+        plot_Path2D(ax, path_wayPoints)
 
         ax.legend()
         ax.grid(True)
         ax.axis("equal")
         plt.show()
 
+def dubinsCruve3D_compute(
+    xyz_d, theta_d, 
+    method1=mapf_pipeline.DubinsPathType.LSL, 
+    method2=mapf_pipeline.DubinsPathType.LSL, 
+    radius=1.0
+):
+    ### ------ first compute
+    p0 = (0., 0., 0.)
+    p1 = (xyz_d[0], xyz_d[1], theta_d[0])
+
+    res0 = mapf_pipeline.DubinsPath()
+    errorCode = mapf_pipeline.compute_dubins_path(res0, p0, p1, radius, method1)
+    if errorCode != mapf_pipeline.DubinsErrorCodes.EDUBOK:
+        raise ValueError('Error')
+    
+    ### ------ second compute
+    p0 = (0., 0., 0.)
+    aux_theta = compute_dubinsAuxAngel(theta_d[1])
+    p1 = (res0.total_length, xyz_d[2], aux_theta)
+    # p1 = (0., xyz_d[2], theta_d[1])
+
+    res1 = mapf_pipeline.DubinsPath()
+    errorCode = mapf_pipeline.compute_dubins_path(res1, p0, p1, radius, method2)
+    if errorCode != mapf_pipeline.DubinsErrorCodes.EDUBOK:
+        raise ValueError('Error')
+
+    ### ------ extract_path
+    mapf_pipeline.compute_dubins_info(res0)
+    path_xys = mapf_pipeline.sample_dubins_path(res0, 50)
+    path_xys = np.array(path_xys)
+
+    mapf_pipeline.compute_dubins_info(res1)
+    path_xzs = mapf_pipeline.sample_dubins_path(res1, 50)
+    path_xzs = np.array(path_xzs)
+
+    ### ------ debug
+    fig, (ax0, ax1) = plt.subplots(nrows=2, ncols=1)
+
+    plot_Arrow2D(res0.q0[0], res0.q0[1], res0.q0[2], ax=ax0)
+    plot_Arrow2D(res0.q1[0], res0.q1[1], res0.q1[2], ax=ax0)
+    ax0.plot(res0.start_center[0], res0.start_center[1], 'or')
+    ax0.plot(res0.final_center[0], res0.final_center[1], 'or')
+    ax0.plot(res0.line_sxy[0], res0.line_sxy[1], '^r')
+    ax0.plot(res0.line_fxy[0], res0.line_fxy[1], '^r')
+    plot_Path2D(ax0, path_xys)
+    ax0.legend()
+    ax0.grid(True)
+    ax0.axis("equal")
+
+    plot_Arrow2D(res1.q0[0], res1.q0[1], res1.q0[2], ax=ax1)
+    plot_Arrow2D(res1.q1[0], res1.q1[1], res1.q1[2], ax=ax1)
+    ax1.plot(res1.start_center[0], res1.start_center[1], 'or')
+    ax1.plot(res1.final_center[0], res1.final_center[1], 'or')
+    ax1.plot(res1.line_sxy[0], res1.line_sxy[1], '^r')
+    ax1.plot(res1.line_fxy[0], res1.line_fxy[1], '^r')
+    plot_Path2D(ax1, path_xzs)
+    ax1.legend()
+    ax1.grid(True)
+    ax1.axis("equal")
+    # plt.show()
+    ### --------------------------------
+
+    path_xyzs = np.concatenate([
+        path_xys, 
+        path_xzs[:, 1:2]
+        # np.zeros((path_xys.shape[0], 1))
+    ], axis=1)
+    
+    return path_xyzs
+
+def dubinsCruve3D_debug(xyz0, theta0, xyz1, theta1, method1, method2, radius=1.0):
+    xyz_d = xyz1 - xyz0
+    theta_d = theta1 - theta0
+
+    assert theta_d[1] >= -math.pi / 2.0 and theta_d[1] <= math.pi / 2.0
+
+    if abs(theta_d[1]) <= math.pi / 4.0:
+        path_xyzs = dubinsCruve3D_compute(xyz_d, theta_d, method1=method1, method2=method2, radius=radius)
+
+    else:
+        xyz_d = np.array([xyz_d[0], xyz_d[2], xyz_d[1]])
+
+        vec = polar3D2vec(theta_d)
+        vec = np.array([vec[0], vec[2], vec[1]])
+        theta_d = vec2polar3D(vec)
+
+        path_xyzs = dubinsCruve3D_compute(xyz_d, theta_d, method1=method1, method2=method2, radius=radius)
+        path_xyzs = np.concatenate([
+            path_xyzs[:, 0:1], path_xyzs[:, 2:3], path_xyzs[:, 1:2]
+        ], axis=1)
+
+    return path_xyzs
+
 if __name__ == '__main__':
-    main()
+    # ### ------ 2D dubins path debug
+    # p0_theta = np.deg2rad(45.0)
+    # p0_xy = np.array([1.0, 1.0])
+    # p0 = (p0_xy[0], p0_xy[1], p0_theta)
+
+    # p1_theta = np.deg2rad(-45.0)
+    # p1_xy = np.array([-3.0, -3.0])
+    # p1 = (p1_xy[0], p1_xy[1], p1_theta)
+
+    # radius = 0.66
+
+    # debug_dubinsPath_2D(p0, p1, radius)
+    # ### ---------------------------------------------
+
+    # ### ------ 3D dubins path debug
+    # xyz0 = np.array([0.0, 0.0, 0.0])
+    # theta0 = np.array([np.deg2rad(0.0), np.deg2rad(0.0)])
+    # xyz1 = np.array([3.0, 4.0, 2.5])
+    # theta1 = np.array([np.deg2rad(240.0), np.deg2rad(-65)])
+
+    # # path_xyzs = dubinsCruve3D_fullSolution(xyz0, theta0, xyz1, theta1)
+    # path_xyzs = dubinsCruve3D_debug(xyz0, theta0, xyz1, theta1, sample_size=40, radius=1.0)
+
+    # ### ------ draw solution
+    # vec0 = polar3D2vec(theta0)
+    # vec1 = polar3D2vec(theta1)
+
+    # ax = create_Graph3D(xmax=6.0, ymax=6.0, zmax=6.0)
+    # plot_Arrow3D(ax, xyz0, vec0)
+    # plot_Arrow3D(ax, xyz1, vec1)
+    # plot_Path3D(ax, path_xyzs)
+
+    # plt.show()
+    # ### ---------------------------------------------
+
+    pass

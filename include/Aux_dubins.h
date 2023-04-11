@@ -1,9 +1,7 @@
 #ifndef MAPF_PIPELINE_AUX_DUBINS_H
 #define MAPF_PIPELINE_AUX_DUBINS_H
 
-#include <math.h>
-#include <tuple>
-#include <map>
+#include "Aux_common.h"
 
 enum DubinsErrorCodes {
     EDUBOK,         /* No error */
@@ -76,24 +74,6 @@ typedef struct
     double c_ab;
     double d_sq;
 } DubinsIntermediateResults;
-
-double fmodr( double x, double y)
-{
-    return x - y * floor(x / y);
-}
-
-double mod2pi(double theta)
-{
-    return fmodr( theta, 2 * M_PI );
-}
-
-double mod2singlePi(double theta){
-    return fmodr(theta + M_PI, 2 * M_PI ) - M_PI;
-}
-
-double rad2degree(double theta){
-    return theta / M_PI * 180.0;
-}
 
 int dubins_intermediate_results(
     DubinsIntermediateResults* in, double q0[3], double q1[3], double rho

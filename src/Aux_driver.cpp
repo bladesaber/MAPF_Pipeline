@@ -4,6 +4,7 @@
 #include "test.h"
 #include "Aux_common.h"
 #include "Aux_dubins.h"
+#include "Aux_continusAstar.h"
 
 namespace py = pybind11;
 using namespace pybind11::literals;
@@ -49,7 +50,32 @@ PYBIND11_MODULE(mapf_pipeline, m) {
     m.def("compute_dubins_path", &compute_dubins_path, "result"_a, "xyz_s"_a, "xyz_t"_a, "rho"_a, "pathType"_a);
     m.def("compute_dubins_info", &compute_dubins_info, "path"_a);
     m.def("sample_dubins_path", &sample_dubins_path, "path"_a, "sample_size"_a);
+    
     m.def("mod2pi", &mod2pi, "theta"_a);
     m.def("mod2singlePi", &mod2singlePi, "theta"_a);
+    m.def("polar3D_to_vec3D", &polar3D_to_vec3D, "alpha"_a, "beta"_a, "length"_a);
+    m.def("vec3D_to_polar3D", &polar3D_to_vec3D, "vec_x"_a, "vec_y"_a, "vec_z"_a);
 
+    py::class_<HybridAstarNode>(m, "HybridAstarNode")
+        .def(py::init<double, double, double, double, double, HybridAstarNode*, bool>(), "x"_a, "y"_a, "z"_a, "alpha"_a, "beta"_a, "parent"_a, "in_openlist"_a)
+        .def("setRoundCoodr", &HybridAstarNode::setRoundCoodr, "x"_a, "y"_a, "z"_a, "alpha"_a, "beta"_a)
+        .def("getFVal", &HybridAstarNode::getFVal)
+        .def("getHashTag", &HybridAstarNode::getHashTag)
+        .def_readonly("x", &HybridAstarNode::x)
+        .def_readonly("y", &HybridAstarNode::y)
+        .def_readonly("z", &HybridAstarNode::z)
+        .def_readonly("alpha", &HybridAstarNode::alpha)
+        .def_readonly("beta", &HybridAstarNode::beta)
+        .def_readonly("x_round", &HybridAstarNode::x_round)
+        .def_readonly("y_round", &HybridAstarNode::y_round)
+        .def_readonly("z_round", &HybridAstarNode::z_round)
+        .def_readonly("alpha_round", &HybridAstarNode::alpha_round)
+        .def_readonly("beta_round", &HybridAstarNode::beta_round)
+        .def_readonly("g_val", &HybridAstarNode::g_val)
+        .def_readonly("h_val", &HybridAstarNode::h_val);
+
+    py::class_<HybridAstar>(m, "HybridAstar")
+        .def(py::init<>())
+        .def("pushNode", &HybridAstar::pushNode, "node"_a)
+        .def("popNode", &HybridAstar::popNode);
 }

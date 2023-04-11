@@ -42,6 +42,7 @@ include_directories(
 
 ### Version 0.2
 pybind11_add_module(mapf_pipeline src/Aux_driver.cpp
+        src/Aux_continusAstar.cpp
         )
 target_link_libraries(mapf_pipeline PRIVATE
         pybind11::module
