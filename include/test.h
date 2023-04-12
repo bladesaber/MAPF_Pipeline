@@ -8,6 +8,7 @@
 #include <iostream>
 
 #include <pybind11/stl.h>
+#include <pybind11/numpy.h>
 #include "vector"
 #include "map"
 #include "list"
@@ -15,6 +16,8 @@
 
 // #include "instance.h"
 // #include "cbsNode.h"
+
+namespace py = pybind11;
 
 int testPring(int i, int j) {
     return i + j;
@@ -82,6 +85,11 @@ void debugPring(){
 // 针对转换对象， pybind会将python类型转为C++类型，转换过程必然使指针变更，因为这是个新的类型
 // void debugTransformArg(std::vector<int>* a){
 //     a->emplace_back(10);
+// }
+
+// void debugNumpy(py::array_t<double> xyzs){
+//     py::buffer_info buf1 = xyzs.request();
+//     std::cout << "xyzs Shape: " << buf1.shape[0] << " and " << buf1.shape[1] << std::endl;
 // }
 
 #endif //MAPF_PIPELINE_TEST_H

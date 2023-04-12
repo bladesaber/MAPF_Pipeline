@@ -2,7 +2,7 @@ import numpy as np
 import math
 
 from build import mapf_pipeline
-from scripts.utils import compute_aux_angel
+from scripts.utils import compute_dubinsAuxAngel
 
 Dubins_SegmentType = {
     mapf_pipeline.DubinsPathType.LSL: (mapf_pipeline.SegmentType.L_SEG, mapf_pipeline.SegmentType.S_SEG, mapf_pipeline.SegmentType.L_SEG),
@@ -17,7 +17,7 @@ def compute_shorestDubinsPath3D(xyz_d, theta_d, radius):
     best_reses, best_cost = None, np.inf
     p0 = (0., 0., 0.)
     p1 = (xyz_d[0], xyz_d[1], theta_d[0])
-    aux_theta = compute_aux_angel(theta_d[1])
+    aux_theta = compute_dubinsAuxAngel(theta_d[1])
     xy_length = np.linalg.norm(xyz_d[:2], ord=2)
 
     for method0 in Dubins_SegmentType.keys():
@@ -28,7 +28,7 @@ def compute_shorestDubinsPath3D(xyz_d, theta_d, radius):
 
         cost0 = res0.total_length
         
-        hs_length = xy_length * 0.3 + res0.total_length * 0.7
+        hs_length = xy_length * 0.5 + res0.total_length * 0.5
         p2 = (hs_length, xyz_d[2], aux_theta)
         for method1 in Dubins_SegmentType.keys():
             res1 = mapf_pipeline.DubinsPath()

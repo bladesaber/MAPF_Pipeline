@@ -39,11 +39,11 @@ class Instance(object):
         pos: (x, y, z, alpha, beta)
         '''
         return (
-            pos[0] / self.cell_size,
-            pos[1] / self.cell_size,
-            pos[2] / self.cell_size,
-            pos[3] / self.horizon_delRadian,
-            pos[4] / self.vertical_delRadian,
+            int(round(pos[0] / self.cell_size, 0)),
+            int(round(pos[1] / self.cell_size, 0)),
+            int(round(pos[2] / self.cell_size, 0)),
+            int(round(pos[3] / self.horizon_delRadian, 0)),
+            int(round(pos[4] / self.vertical_delRadian, 0)),
         )
 
     def getEulerDistance(self, pos0, pos1):
@@ -53,10 +53,10 @@ class Instance(object):
         return np.linalg.norm(pos0[:3]-pos1[:3], ord=1)
     
     def getDubinsDistance(self, pos0, pos1):
-        _, cost, _ = compute_dubinsPath3D(pos0, pos1, self.radius)
-        return cost
+        solutions, cost, invert_yz = compute_dubinsPath3D(pos0, pos1, self.radius)
+        return cost, (solutions, invert_yz)
 
-    def idValidGrid(self, pos):
+    def isValidGrid(self, pos):
         if pos[0] > self.num_of_cols:
             return False
         elif pos[0] < 0:
@@ -89,3 +89,8 @@ class Instance(object):
                 neighborTable.append([new_x, new_y, new_z, new_alpha, new_beta])
 
         return neighborTable
+    
+    def compute_pathDist(self, path):
+        dists = np.linalg.norm(path[:, 1:] - path[:, :-1], ord=2, axis=1)
+        total_dist = np.sum(dists)
+        return total_dist

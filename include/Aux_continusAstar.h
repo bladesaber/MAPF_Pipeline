@@ -2,6 +2,7 @@
 #define MAPF_PIPELINE_AUX_CONTINUSASTAR_H
 
 #include "Aux_common.h"
+#include "Aux_dubins.h"
 
 class HybridAstarNode
 {
@@ -25,7 +26,15 @@ public:
     double g_val;
     double h_val;
     int timestep;
+    std::string hashTag;
+
     bool in_openlist;
+
+    // store dubins path if exist
+    std::tuple<DubinsPath, DubinsPath> dubins_solutions;
+    bool invert_yz;
+    std::vector<std::tuple<double, double, double>> dubinsPath3D;
+    double dubinsLength3D;
 
     HybridAstarNode* parent;
 
@@ -35,6 +44,37 @@ public:
         this->z_round = z;
         this->alpha_round = alpha;
         this->beta_round = beta;
+
+        this->hashTag = getHashTag();
+    }
+
+    void setRoundCoodr(std::tuple<int, int, int, int, int> pos){
+        this->x_round = std::get<0>(pos);
+        this->y_round = std::get<1>(pos);
+        this->z_round = std::get<2>(pos);
+        this->alpha_round = std::get<3>(pos);
+        this->beta_round = std::get<4>(pos);
+
+        this->hashTag = getHashTag();
+    }
+
+    std::tuple<double, double, double, double, double> getCoodr(){
+        return std::make_tuple(x, y, z, alpha, beta);
+    }
+    
+    std::tuple<int, int, int, int, int> getRoundCoodr(){
+        return std::make_tuple(x_round, y_round, z_round, alpha_round, beta_round);
+    }
+
+    void copy(HybridAstarNode* rhs){
+        x = rhs->x;
+        y = rhs->y;
+        z = rhs->z;
+        alpha = rhs->alpha;
+        beta = rhs->beta;
+        g_val = rhs->g_val;
+        h_val = rhs->h_val;
+        parent = rhs->parent;
     }
 
     bool operator == (const HybridAstarNode& rhs) const{
@@ -102,6 +142,14 @@ public:
     typedef boost::heap::pairing_heap<HybridAstarNode*, boost::heap::compare<HybridAstarNode::compare_node>>::handle_type Open_handle_t;
 	Open_handle_t open_handle;
 
+    bool equal(HybridAstarNode* rhs){
+        return x_round == rhs->x_round &&
+               y_round == rhs->y_round &&
+               z_round == rhs->z_round &&
+               alpha_round == rhs->alpha_round &&
+               beta_round == rhs->beta_round;
+    }
+
 };
 
 class HybridAstar
@@ -118,6 +166,14 @@ public:
 
     void pushNode(HybridAstarNode* node);
     HybridAstarNode* popNode();
+
+    bool is_openList_empty(){
+        return this->open_list.empty();
+    }
+
+    void release(){
+        open_list.clear();
+    }
 
 private:
     typedef boost::heap::pairing_heap<HybridAstarNode*, boost::heap::compare<HybridAstarNode::compare_node>> Heap_open_t;

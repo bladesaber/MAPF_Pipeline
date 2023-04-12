@@ -1,8 +1,9 @@
 #include <pybind11/pybind11.h>
 #include "iostream"
 
-#include "test.h"
 #include "Aux_common.h"
+#include "test.h"
+#include "Aux_utils.h"
 #include "Aux_dubins.h"
 #include "Aux_continusAstar.h"
 
@@ -11,6 +12,9 @@ using namespace pybind11::literals;
 
 PYBIND11_MODULE(mapf_pipeline, m) {
     m.doc() = "mapf pipeline"; // optional module docstring
+
+    // DEBUG Fun
+    // m.def("debugNumpy", &debugNumpy);
 
     py::enum_<SegmentType>(m, "SegmentType")
         .value("L_SEG", SegmentType::L_SEG)
@@ -58,9 +62,13 @@ PYBIND11_MODULE(mapf_pipeline, m) {
 
     py::class_<HybridAstarNode>(m, "HybridAstarNode")
         .def(py::init<double, double, double, double, double, HybridAstarNode*, bool>(), "x"_a, "y"_a, "z"_a, "alpha"_a, "beta"_a, "parent"_a, "in_openlist"_a)
-        .def("setRoundCoodr", &HybridAstarNode::setRoundCoodr, "x"_a, "y"_a, "z"_a, "alpha"_a, "beta"_a)
+        .def("setRoundCoodr", py::overload_cast<int, int, int, int, int>(&HybridAstarNode::setRoundCoodr), "x"_a, "y"_a, "z"_a, "alpha"_a, "beta"_a)
+        .def("setRoundCoodr", py::overload_cast<std::tuple<int, int, int, int, int>>(&HybridAstarNode::setRoundCoodr), "pos"_a)
         .def("getFVal", &HybridAstarNode::getFVal)
-        .def("getHashTag", &HybridAstarNode::getHashTag)
+        .def("getCoodr", &HybridAstarNode::getCoodr)
+        .def("getRoundCoodr", &HybridAstarNode::getRoundCoodr)
+        .def("copy", &HybridAstarNode::copy, "rhs"_a)
+        .def("equal", &HybridAstarNode::equal, "rhs"_a)
         .def_readonly("x", &HybridAstarNode::x)
         .def_readonly("y", &HybridAstarNode::y)
         .def_readonly("z", &HybridAstarNode::z)
@@ -71,11 +79,19 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("z_round", &HybridAstarNode::z_round)
         .def_readonly("alpha_round", &HybridAstarNode::alpha_round)
         .def_readonly("beta_round", &HybridAstarNode::beta_round)
-        .def_readonly("g_val", &HybridAstarNode::g_val)
-        .def_readonly("h_val", &HybridAstarNode::h_val);
+        .def_readonly("hashTag", &HybridAstarNode::hashTag)
+        .def_readonly("parent", &HybridAstarNode::parent)
+        .def_readwrite("g_val", &HybridAstarNode::g_val)
+        .def_readwrite("h_val", &HybridAstarNode::h_val)
+        .def_readwrite("dubins_solutions", &HybridAstarNode::dubins_solutions)
+        .def_readwrite("invert_yz", &HybridAstarNode::invert_yz)
+        .def_readwrite("dubinsPath3D", &HybridAstarNode::dubinsPath3D)
+        .def_readwrite("dubinsLength3D", &HybridAstarNode::dubinsLength3D);
 
     py::class_<HybridAstar>(m, "HybridAstar")
         .def(py::init<>())
         .def("pushNode", &HybridAstar::pushNode, "node"_a)
-        .def("popNode", &HybridAstar::popNode);
+        .def("popNode", &HybridAstar::popNode)
+        .def("is_openList_empty", &HybridAstar::is_openList_empty)
+        .def("release", &HybridAstar::release);
 }

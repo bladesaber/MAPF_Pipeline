@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import math
+from scipy.spatial import transform
 
 def point2line(xyz:np.array, plane_xyz:np.array, plane_vec:np.array):
     x = plane_xyz - xyz
@@ -86,3 +87,57 @@ def vec2polar3D(vec):
         math.sqrt(vec[0]**2 + vec[1]**2)
     )
     return np.array([theta0, theta1])
+
+def quaternion_to_rotationMat_scipy(quaternion):
+    r = transform.Rotation(quat=quaternion)
+    return r.as_matrix()
+
+def quaternion_to_eulerAngles_scipy(quaternion, degrees=False):
+    r = transform.Rotation(quat=quaternion)
+    return r.as_euler(seq='xyz', degrees=degrees)
+
+def rotationMat_to_quaternion_scipy(R):
+    r = transform.Rotation.from_matrix(matrix=R)
+    return r.as_quat()
+
+def rotationMat_to_eulerAngles_scipy(R, degrees=False):
+    r = transform.Rotation.from_matrix(matrix=R)
+    return r.as_euler(seq='xyz', degrees=degrees)
+
+def eulerAngles_to_quaternion_scipy(theta, degress):
+    r = transform.Rotation.from_euler(seq='xyz', angles=theta, degrees=degress)
+    return r.as_quat()
+
+def eulerAngles_to_rotationMat_scipy(theta, degress):
+    r = transform.Rotation.from_euler(seq='xyz', angles=theta, degrees=degress)
+    return r.as_matrix()
+
+def rotationVec_to_rotationMat_scipy(vec):
+    r = transform.Rotation.from_rotvec(vec)
+    return r.as_matrix()
+
+def rotationVec_to_quaternion_scipy(vec):
+    r = transform.Rotation.from_rotvec(vec)
+    return r.as_quat()
+
+def polar2RotMatrix(alpha, beta):
+    ### TODO need to be simplify
+
+    vec = polar3D2vec((alpha, beta), length=1.0)
+
+    gamma = math.atan(vec[1]/vec[0])
+    Rz = transform.Rotation.from_euler(
+        seq='xyz', angles=np.array([0.0, 0.0, gamma]), degrees=False
+    ).as_matrix()
+
+    vec = Rz.T @ vec.reshape((-1, 1))
+    vec = vec.reshape(-1)
+
+    beta = math.atan(vec[0]/vec[2])
+    Ry = transform.Rotation.from_euler(
+        seq='xyz', angles=np.array([0.0, beta, 0.0]), degrees=False
+    ).as_matrix()
+
+    rot_mat = Rz @ Ry
+    
+    return rot_mat

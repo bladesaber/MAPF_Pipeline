@@ -1,5 +1,5 @@
 import numpy as np
-import open3d
+import open3d as o3d
 import pyvista
 from typing import Callable
 from tqdm import tqdm
@@ -63,7 +63,6 @@ class InterativeVista(VisulizerVista):
 
     def update_tube(self):
         xyzs = np.array(np.random.randint(0, 4, size=(10, 3)))
-
 
 if __name__ == '__main__':
     vis = InterativeVista()
