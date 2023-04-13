@@ -37,7 +37,7 @@ Dubins_Dire = {
     mapf_pipeline.SegmentType.R_SEG: True
 }
 
-def debug_dubinsPath_2D(p0, p1, radius):    
+def debug_dubinsPath_2D(p0, p1, radius):
     for method in Dubins_SegmentType.keys():
         res = mapf_pipeline.DubinsPath()
         errorCode = mapf_pipeline.compute_dubins_path(
@@ -115,8 +115,12 @@ def dubinsCruve3D_compute(
     ### ------ second compute
     p0 = (0., 0., 0.)
     aux_theta = compute_dubinsAuxAngel(theta_d[1])
-    p1 = (res0.total_length, xyz_d[2], aux_theta)
-    # p1 = (0., xyz_d[2], theta_d[1])
+
+    xy_length = np.linalg.norm(xyz_d[:2], ord=2)
+    hs_length = xy_length * 0.5 + res0.total_length * 0.5
+
+    p1 = (hs_length, xyz_d[2], aux_theta)
+    # p1 = (hs_length, xyz_d[2], theta_d[1])
 
     res1 = mapf_pipeline.DubinsPath()
     errorCode = mapf_pipeline.compute_dubins_path(res1, p0, p1, radius, method2)
@@ -125,11 +129,11 @@ def dubinsCruve3D_compute(
 
     ### ------ extract_path
     mapf_pipeline.compute_dubins_info(res0)
-    path_xys = mapf_pipeline.sample_dubins_path(res0, 50)
+    path_xys = mapf_pipeline.sample_dubins_path(res0, 30)
     path_xys = np.array(path_xys)
 
     mapf_pipeline.compute_dubins_info(res1)
-    path_xzs = mapf_pipeline.sample_dubins_path(res1, 50)
+    path_xzs = mapf_pipeline.sample_dubins_path(res1, 30)
     path_xzs = np.array(path_xzs)
 
     ### ------ debug
@@ -167,7 +171,13 @@ def dubinsCruve3D_compute(
     
     return path_xyzs
 
-def dubinsCruve3D_debug(xyz0, theta0, xyz1, theta1, method1, method2, radius=1.0):
+def dubinsCruve3D_debug(
+        xyz0, theta0, 
+        xyz1, theta1, 
+        method1=mapf_pipeline.DubinsPathType.LSL, 
+        method2=mapf_pipeline.DubinsPathType.LSL, 
+        radius=1.0
+    ):
     xyz_d = xyz1 - xyz0
     theta_d = theta1 - theta0
 
@@ -205,25 +215,24 @@ if __name__ == '__main__':
     # debug_dubinsPath_2D(p0, p1, radius)
     # ### ---------------------------------------------
 
-    # ### ------ 3D dubins path debug
-    # xyz0 = np.array([0.0, 0.0, 0.0])
-    # theta0 = np.array([np.deg2rad(0.0), np.deg2rad(0.0)])
-    # xyz1 = np.array([3.0, 4.0, 2.5])
-    # theta1 = np.array([np.deg2rad(240.0), np.deg2rad(-65)])
+    ### ------ 3D dubins path debug
+    xyz0 = np.array([0.0, 0.0, 0.0])
+    theta0 = np.array([np.deg2rad(0.0), np.deg2rad(0.0)])
+    xyz1 = np.array([3.0, 4.0, 2.5])
+    theta1 = np.array([np.deg2rad(240.0), np.deg2rad(-25)])
 
-    # # path_xyzs = dubinsCruve3D_fullSolution(xyz0, theta0, xyz1, theta1)
-    # path_xyzs = dubinsCruve3D_debug(xyz0, theta0, xyz1, theta1, sample_size=40, radius=1.0)
+    path_xyzs = dubinsCruve3D_debug(xyz0, theta0, xyz1, theta1, radius=1.0)
 
-    # ### ------ draw solution
-    # vec0 = polar3D2vec(theta0)
-    # vec1 = polar3D2vec(theta1)
+    ### ------ draw solution
+    vec0 = polar3D2vec(theta0)
+    vec1 = polar3D2vec(theta1)
 
-    # ax = create_Graph3D(xmax=6.0, ymax=6.0, zmax=6.0)
-    # plot_Arrow3D(ax, xyz0, vec0)
-    # plot_Arrow3D(ax, xyz1, vec1)
-    # plot_Path3D(ax, path_xyzs)
+    ax = create_Graph3D(xmax=6.0, ymax=6.0, zmax=6.0)
+    plot_Arrow3D(ax, xyz0, vec0)
+    plot_Arrow3D(ax, xyz1, vec1)
+    plot_Path3D(ax, path_xyzs)
 
-    # plt.show()
-    # ### ---------------------------------------------
+    plt.show()
+    ### ---------------------------------------------
 
     pass

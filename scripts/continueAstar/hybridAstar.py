@@ -1,8 +1,13 @@
 import numpy as np
 import math
+import time
 
 from scripts.continueAstar.instance import Instance
 from scripts.continueAstar.constrainTable import ConstrainTable
+from scripts.continueAstar.dubinsCruve import compute_dubinsPath3D
+
+# from scripts.visulizer import VisulizerVista
+from scripts.visulizer import VisulizerO3D
 
 from build import mapf_pipeline
 
@@ -18,8 +23,8 @@ class HybridAstarWrap(object):
 
         self.allNodes = {}
         self.hybridAstar = mapf_pipeline.HybridAstar()
-
         self.radius = radius
+        self.searching_time = None
 
     def findPath(self, start_pos, goal_pose):
         self.startNode = mapf_pipeline.HybridAstarNode(
@@ -44,17 +49,20 @@ class HybridAstarWrap(object):
         self.hybridAstar.pushNode(self.startNode)
         self.allNodes[self.startNode.hashTag] = self.startNode      
 
-        self.lower_bound = np.inf
-        self.best_node = None
+        start_time = time.time()
 
+        best_node = None
         while(not self.hybridAstar.is_openList_empty()):
             node = self.hybridAstar.popNode()
 
-            if node.getFval() > self.lower_bound:
-                continue
+            self.hybridAstar.num_expanded += 1
+
+            ### ------ debug print
+            # self.printNode(node)
+            ### ------------
 
             if self.isGoal(node):
-                self.best_node = node
+                best_node = node
                 break
 
             coodr = node.getCoodr()
@@ -62,8 +70,8 @@ class HybridAstarWrap(object):
                 if not self.instance.isValidGrid(near_coodr):
                     continue
 
-                if self.constrainTable.coodrIsConstrained(x=near_coodr[0], y=near_coodr[1], z=near_coodr[2]):
-                    continue
+                # if self.constrainTable.coodrIsConstrained(x=near_coodr[0], y=near_coodr[1], z=near_coodr[2], radius=self.radius):
+                #     continue
                 
                 nearNode = mapf_pipeline.HybridAstarNode(
                     x=near_coodr[0], y=near_coodr[1], z=near_coodr[2],
@@ -71,20 +79,19 @@ class HybridAstarWrap(object):
                     parent=node, in_openlist=False
                 )
                 nearNode.setRoundCoodr(self.instance.getRoundCoordinate(nearNode.getCoodr()))
+                nearNode.parentTag = node.hashTag
 
-                nearNode.h_val, (nearNode.dubins_solutions, nearNode.invert_yz) = self.getHeuristic(nearNode)
-                if np.random.uniform(0.0, 1.0) > 0.65:
-                    find_dubinsShot = self.test_dubinsShot(nearNode)
-                    if find_dubinsShot:
-                        self.lower_bound = nearNode.dubinsLength3D + nearNode.g_val
-                        self.best_node = nearNode
-
+                nearNode.h_val = self.getHeuristic(nearNode)
                 nearNode.g_val = nearNode.parent.g_val + self.instance.step_length
+
+                ### ------ debug print
+                # self.printNode(nearNode)
+                ### ------------
 
                 hashTag = nearNode.hashTag
                 if nearNode.hashTag not in self.allNodes.keys():
-                    self.allNodes[hashTag] = nearNode
                     self.hybridAstar.pushNode(nearNode)
+                    self.allNodes[hashTag] = nearNode
                 
                 else:
                     exit_node = self.allNodes[hashTag]
@@ -94,47 +101,15 @@ class HybridAstarWrap(object):
                     exit_node.copy(nearNode)
                     self.hybridAstar.pushNode(exit_node)
 
+        self.searching_time = time.time() - start_time
+
+        path = None
+        if best_node is not None:
+            path = self.updatePath(best_node)
+        
         self.release()
 
-        if self.best_node is None:
-            return None
-
-        path = self.updatePath(self.best_node)
         return path
-
-    def test_dubinsShot(self, node:mapf_pipeline.HybridAstarNode):
-        (res0, res1) = node.dubins_solutions
-        invert_yz = node.invert_yz
-
-        mapf_pipeline.compute_dubins_info(res0)
-        path_xys = mapf_pipeline.sample_dubins_path(res0, 30)
-        path_xys = np.array(path_xys)
-
-        mapf_pipeline.compute_dubins_info(res1)
-        path_xzs = mapf_pipeline.sample_dubins_path(res1, 30)
-        path_xzs = np.array(path_xzs)
-
-        path_xyzs = np.concatenate([
-            path_xys, 
-            path_xzs[:, 1:2]
-        ], axis=1)
-        if invert_yz:
-            path_xyzs = np.concatenate([
-                path_xyzs[:, 0:1], path_xyzs[:, 2:3], path_xyzs[:, 1:2]
-            ], axis=1)
-
-        if self.constrainTable.lineIsConstrained(path_xyzs, self.radius):
-            return False
-        
-        total_dist = self.instance.compute_pathDist(path_xyzs)
-        node.dubinsLength3D = total_dist
-
-        dubins_list = []
-        for xyz in path_xyzs:
-            dubins_list.append((xyz[0], xyz[1], xyz[2]))
-        node.dubinsPath3D = dubins_list
-        
-        return True
 
     def isValid(self, node:mapf_pipeline.HybridAstarNode):
         isValid = self.constrainTable.isConstrained(node)
@@ -142,32 +117,34 @@ class HybridAstarWrap(object):
 
     def getHeuristic(self, node:mapf_pipeline.HybridAstarNode):
         dist0 = self.instance.getEulerDistance(
-            pos0 = (node.x, node.y, node.z),
-            pos1 = (self.goal_node.x, self.goal_node.y, self.goal_node.z)
+            pos0 = np.array(node.getCoodr()),
+            pos1 = np.array(self.goalNode.getCoodr())
         )
-        dist1, (solutions, invert_yz) = self.instance.getDubinsDistance(
-            pos0 = (node.x, node.y, node.z, node.alpha, node.beta),
-            pos1 = (self.goal_node.x, self.goal_node.y, self.goal_node.z, self.goal_node.alpha, self.goal_node.beta)
+
+        ### dubins启发式不适合在局部空间使用，因为跨出局部空间的最短路径不是有效评估
+        # dist1, (solutions, invert_yz) = self.instance.getDubinsDistance(
+        #     pos0 = np.array(node.getCoodr()),
+        #     pos1 = np.array(np.array(self.goalNode.getCoodr()))
+        # )
+        # return max(dist0, dist1), (solutions, invert_yz)
+
+        dist1 = self.instance.getThetaDistance(
+            pos0 = np.array(node.getCoodr()),
+            pos1 = np.array(self.goalNode.getCoodr())
         )
-        return max(dist0, dist1), (solutions, invert_yz)
+        return dist0 + dist1
 
     def updatePath(self, node:mapf_pipeline.HybridAstarNode):
-        if not node.equal(self.goalNode):
-            use_dubins = True
-            dubinsPath3D = node.dubinsPath3D
-
         path = []
         while True:
-            path.append([node.x, node.y, node.z])
+            path.append([node.x, node.y, node.z, node.alpha, node.beta])
+            # print('x:%.2f y:%.2f z:%.2f parent_tag:%s' % (node.x, node.y, node.z, node.parentTag))
 
             node = node.parent
             if node is None:
                 break
         
-        if use_dubins:
-            path.extend(dubinsPath3D)
-        
-        return path
+        return path[::-1]
 
     def isGoal(self, node:mapf_pipeline.HybridAstarNode):
         return node.equal(self.goalNode)
@@ -176,11 +153,20 @@ class HybridAstarWrap(object):
         self.hybridAstar.release()
         self.allNodes.clear()
 
+    def printNode(self, node):
+        print("nearNode x:%f y:%f z:%f alpha:%f beta:%f" % (
+            node.x, node.y, node.z, np.rad2deg(node.alpha), np.rad2deg(node.beta)
+        ))
+        print("nearNode xRound:%d yRound:%d zRound:%d alphaRound:%d betaRound:%d" % (
+            node.x_round, node.y_round, node.z_round, 
+            node.alpha_round, node.beta_round
+        ))
+        print("nearNode Tag: %s" % (node.hashTag))
+
     ### --------------- Just For Debug
+    '''
     def findPath_init(self, start_pos, goal_pose):
-        '''
-        pos: (x, y, z, alpha, beta)
-        '''
+        ### pos: (x, y, z, alpha, beta)
                 
         self.release()
 
@@ -204,36 +190,30 @@ class HybridAstarWrap(object):
         self.hybridAstar.pushNode(self.startNode)
         self.allNodes[self.startNode.hashTag] = self.startNode      
 
-        self.lower_bound = np.inf
         self.best_node = None
-    
+
     def findPath_step(self):
+        node = self.hybridAstar.popNode()
         res = {
             'state': 'Error',
             'nodes': [],
-            'cur_node': None
+            'cur_node': node
         }
-
-        node = self.hybridAstar.popNode()
-        res['cur_node'] = node
-
-        if node.getFval() > self.lower_bound:
-            res.update( {'state': 'skip'})
-            return res
 
         if self.isGoal(node):
             self.best_node = node
-            res.update( {'state': 'find_direct_goal'})
+            res.update({'state': 'find_direct_goal'})
             return res
         
         coodr = node.getCoodr()
         for near_coodr in self.instance.getNeighbors(coodr):
+            
             if not self.instance.isValidGrid(near_coodr):
                 continue
-
-            if self.constrainTable.coodrIsConstrained(x=near_coodr[0], y=near_coodr[1], z=near_coodr[2]):
+            
+            if self.constrainTable.coodrIsConstrained(x=near_coodr[0], y=near_coodr[1], z=near_coodr[2], radius=self.radius):
                 continue
-                
+            
             nearNode = mapf_pipeline.HybridAstarNode(
                 x=near_coodr[0], y=near_coodr[1], z=near_coodr[2],
                 alpha=near_coodr[3], beta=near_coodr[4], 
@@ -241,13 +221,7 @@ class HybridAstarWrap(object):
             )
             nearNode.setRoundCoodr(self.instance.getRoundCoordinate(nearNode.getCoodr()))
 
-            nearNode.h_val, (nearNode.dubins_solutions, nearNode.invert_yz) = self.getHeuristic(nearNode)
-            if np.random.uniform(0.0, 1.0) > 0.65:
-                find_dubinsShot = self.test_dubinsShot(nearNode)
-                if find_dubinsShot:
-                    self.lower_bound = nearNode.dubinsLength3D + nearNode.g_val
-                    self.best_node = nearNode
-
+            nearNode.h_val = self.getHeuristic(nearNode)
             nearNode.g_val = nearNode.parent.g_val + self.instance.step_length
 
             hashTag = nearNode.hashTag
@@ -269,8 +243,53 @@ class HybridAstarWrap(object):
 
         return res
 
+    def compute_dubinsPath(self, node):
+        (res0, res1), cost, invert_yz = compute_dubinsPath3D(
+            np.array(node.getCoodr()), 
+            np.array(self.goalNode.getCoodr()), 
+            self.radius
+        )
+
+        mapf_pipeline.compute_dubins_info(res0)
+        path_xys = mapf_pipeline.sample_dubins_path(res0, 30)
+        path_xys = np.array(path_xys)
+
+        mapf_pipeline.compute_dubins_info(res1)
+        path_xzs = mapf_pipeline.sample_dubins_path(res1, 30)
+        path_xzs = np.array(path_xzs)
+
+        path_xyzs = np.concatenate([
+            path_xys, 
+            path_xzs[:, 1:2]
+        ], axis=1)
+        if invert_yz:
+            path_xyzs = np.concatenate([
+                path_xyzs[:, 0:1], path_xyzs[:, 2:3], path_xyzs[:, 1:2]
+            ], axis=1)
+
+        dubins_list = []
+        for xyz in path_xyzs:
+            dubins_list.append((xyz[0], xyz[1], xyz[2]))
+        node.dubinsPath3D = dubins_list
+
+        if self.constrainTable.lineIsConstrained(path_xyzs, self.radius):
+            node.findValidDubinsPath = False
+            return False
+        
+        if not self.instance.lineIsValidGrid(path_xyzs):
+            node.findValidDubinsPath = False
+            return False
+
+        node.findValidDubinsPath = True
+        total_dist = self.instance.compute_pathDist(path_xyzs)
+        node.dubinsLength3D = total_dist
+
+        return True
+
+    '''
+    
 if __name__ == '__main__':
-    instance = Instance(40, 40, 40, radius=1.5, cell_size=1.0, horizon_discrete_num=24, vertical_discrete_num=12)
+    # instance = Instance(10, 10, 10, radius=1.5, cell_size=1.0, horizon_discrete_num=24, vertical_discrete_num=12)
 
     ### --------- HybridAstarNode Debug
     # node0 = mapf_pipeline.HybridAstarNode(1.3, 2.3, 3.1, np.deg2rad(0.), np.deg2rad(0.), None, False)
@@ -290,15 +309,45 @@ if __name__ == '__main__':
     # print(node0.equal(node1))
     ### ---------------------------------------------
 
+    instance = Instance(15, 15, 15, radius=1.5, cell_size=1.0, horizon_discrete_num=24, vertical_discrete_num=12)
+
     constrainTable = ConstrainTable()
-    constrainTable.insert2CT(x=20, y=20, z=20, radius=1.0)
+    constrainTable.insert2CT(x=1., y=1., z=1., radius=2.0)
     constrainTable.update_numpy()
 
+    start_pos=(0.0, 2.0, 2.0, np.deg2rad(0.), np.deg2rad(0.))
+    goal_pose=(15.0, 12.0, 12.0, np.deg2rad(0.), np.deg2rad(0.))
+
+    radius = 0.5
     model = HybridAstarWrap(
-        radius=0.5, 
+        radius=radius, 
         instance=instance, 
-        constrainTable=constrainTable,
-        start_pos=(0.0, 10.0, 5.0, np.deg2rad(0.), np.deg2rad(0.)),
-        goal_pose=(40.0, 20.0, 30.0, np.deg2rad(0.), np.deg2rad(0.)),
+        constrainTable=constrainTable
     )
-    model.findPath()
+
+    print("Start Searching ......")
+    path = model.findPath(
+        start_pos, goal_pose
+    )
+    path = np.array(path)
+
+    print("num_expanded:%d num_generated:%d searchingTime:%.3f" % (
+        model.hybridAstar.num_expanded, model.hybridAstar.num_generated,
+        model.searching_time
+    ))
+
+    # path = np.array(path)
+    # print(np.round(path, decimals=2))
+
+    # ### ------ Vista
+    # vis = VisulizerVista()
+    # tube_mesh = vis.create_tube(path, radius=radius)
+    # vis.plot(tube_mesh, color=(0.1, 0.5, 0.8))
+    # vis.show()
+
+    ### ------ open3D
+    vis = VisulizerO3D()
+    vis.addArrow(start_pos, color=np.array([1.0, 0.0, 0.0]))
+    vis.addArrow(goal_pose, color=np.array([0.0, 0.0, 1.0]))
+    vis.addPathPoint(path[:, :3], color=np.array([0.0, 0.0, 0.0]))
+    vis.show()

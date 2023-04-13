@@ -27,7 +27,7 @@ std::tuple<double, double, double> polar3D_to_vec3D(double alpha, double beta, d
 }
 
 std::tuple<double, double> vec3D_to_polar3D(double vec_x, double vec_y, double vec_z){
-    double alpha = atan2(vec_y, vec_x);
+    double alpha = mod2pi(atan2(vec_y, vec_x));
     double length = sqrt( pow(vec_x, 2) + pow(vec_y, 2));
     double beta = atan2(vec_z, length);
     return std::make_tuple(alpha, beta);

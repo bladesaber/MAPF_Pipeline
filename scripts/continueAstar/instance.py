@@ -27,11 +27,13 @@ class Instance(object):
 
         self.step_length = math.sqrt(math.pow(self.cell_size, 2) * 3.0)
 
+        self.alpha_delta = np.deg2rad(30.0)
+        self.beta_delta = np.deg2rad(30.0)
         self.alpha_deltas = [
-            np.deg2rad(-30.0), np.deg2rad(0.0), np.deg2rad(30.0)
+            -self.alpha_delta, 0.0, self.alpha_delta
         ]
         self.beta_deltas = [
-            np.deg2rad(-30.0), np.deg2rad(0.0), np.deg2rad(30.0)
+            -self.beta_delta, 0.0, self.beta_delta
         ]
 
     def getRoundCoordinate(self,  pos):
@@ -56,6 +58,11 @@ class Instance(object):
         solutions, cost, invert_yz = compute_dubinsPath3D(pos0, pos1, self.radius)
         return cost, (solutions, invert_yz)
 
+    def getThetaDistance(self, pos0, pos1):
+        alpha_steps = abs(pos1[3] - pos0[3]) / self.alpha_delta
+        beta_steps = abs(pos1[4] - pos0[4]) / self.beta_delta
+        return max(alpha_steps, beta_steps) * self.step_length
+
     def isValidGrid(self, pos):
         if pos[0] > self.num_of_cols:
             return False
@@ -72,6 +79,13 @@ class Instance(object):
         
         return True
 
+    def lineIsValidGrid(self, path):
+        for xyz in path:
+            if not self.isValidGrid(xyz):
+                return False
+
+        return True
+
     def getNeighbors(self, pos):
         x, y, z, alpha, beta = pos
 
@@ -81,7 +95,9 @@ class Instance(object):
                 new_alpha = alpha + alpha_delta
                 new_beta = beta + beta_delta
                 
-                vec = mapf_pipeline.polar3D_to_vec3D(new_alpha, new_alpha, self.step_length)
+                vec = mapf_pipeline.polar3D_to_vec3D(new_alpha, new_beta, self.step_length)
+                new_alpha, new_beta = mapf_pipeline.vec3D_to_polar3D(vec[0], vec[1], vec[2])
+
                 new_x = x + vec[0]
                 new_y = y + vec[1]
                 new_z = z + vec[2]

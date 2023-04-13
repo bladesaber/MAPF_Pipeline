@@ -64,7 +64,7 @@ def compute_dubinsPath3D(xyz_AlphaBeta0, xyz_AlphaBeta1, radius):
         invert_yz = True
 
         xyz_d = (xyz_d[0], xyz_d[2], xyz_d[1])
-        vec = mapf_pipeline.polar3D_to_vec3D(theta_d)
+        vec = mapf_pipeline.polar3D_to_vec3D(theta_d[0], theta_d[1])
         vec = (vec[0], vec[2], vec[1])
         theta_d = mapf_pipeline.vec3D_to_polar3D(vec)
 

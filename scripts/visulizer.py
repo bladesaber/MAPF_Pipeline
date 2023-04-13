@@ -4,6 +4,8 @@ import pyvista
 from typing import Callable
 from tqdm import tqdm
 
+from scripts.utils import polar2RotMatrix
+
 class VisulizerVista(object):
     def __init__(self):
         self.ploter = pyvista.Plotter()
@@ -63,6 +65,78 @@ class InterativeVista(VisulizerVista):
 
     def update_tube(self):
         xyzs = np.array(np.random.randint(0, 4, size=(10, 3)))
+
+class VisulizerO3D(object):
+    def __init__(self):
+        self.vis = o3d.visualization.Visualizer()
+        self.vis.create_window(height=720, width=960)
+
+        coodr = self.create_Axis(size=5.0)
+        self.vis.add_geometry(coodr, reset_bounding_box=True)
+
+        self.vis.create_window(height=720, width=960)
+
+    def create_Arrow(
+            self, x, y, z, alpha, beta,
+            cylinder_radius=0.05, cone_radius=0.2, cylinder_height=1.0, cone_height=0.25
+        ):
+        rot_mat = polar2RotMatrix(alpha, beta)
+
+        arrow: o3d.geometry.TriangleMesh = o3d.geometry.TriangleMesh.create_arrow(
+            cylinder_radius=cylinder_radius, 
+            cone_radius=cone_radius,
+            cylinder_height=cylinder_height,
+            cone_height=cone_height,
+        )
+        arrow.rotate(rot_mat, center=np.array([0., 0., 0.]))
+        arrow.translate(np.array([x, y, z]))
+        return arrow
+
+    def create_Axis(self, size=1.0, origin=np.array([0., 0., 0.])):
+        coodr = o3d.geometry.TriangleMesh.create_coordinate_frame(size=size, origin=origin)
+        return coodr
+
+    def create_Sphere(self, x, y, z, radius):
+        sphere: o3d.geometry.TriangleMesh = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
+        sphere.translate(np.array([x, y, z]))
+        return sphere
+
+    def addArrow(self, pos, color):
+        arrow = self.create_Arrow(pos[0], pos[1], pos[2], pos[3], pos[4])
+        arrow.paint_uniform_color(color)
+        self.vis.add_geometry(arrow, reset_bounding_box=False)
+
+    def addConstrain(self, x, y, z, radius):
+        sphere = self.create_Sphere(x, y, z, radius)
+        sphere.paint_uniform_color(np.array([0.0, 0.0, 0.0]))
+        self.vis.add_geometry(sphere, reset_bounding_box=False)
+
+    def addPathArrow(self, xyz_thetas, color):
+        for x, y, z, alpha, beta in xyz_thetas:
+            arrow: o3d.geometry.TriangleMesh = self.create_Arrow(x, y, z, alpha, beta)
+            arrow.paint_uniform_color(color)
+            self.vis.add_geometry(arrow, reset_bounding_box=False)
+
+    def addPathPoint(self, xyzs, color):
+        dist = xyzs[1:, :] - xyzs[:-1, :]
+        xyzs = np.concatenate([
+            xyzs,
+            xyzs[:-1, :] + 0.25 * dist,
+            xyzs[:-1, :] + 0.50 * dist,
+            xyzs[:-1, :] + 0.75 * dist
+        ], axis=0)
+
+        path_pcd = o3d.geometry.PointCloud()
+        path_pcd.points = o3d.utility.Vector3dVector(xyzs)
+
+        color_np = np.tile(color.reshape((1, -1)), [xyzs.shape[0], 1])
+        path_pcd.colors = o3d.utility.Vector3dVector(color_np)
+
+        self.vis.add_geometry(path_pcd, reset_bounding_box=False)
+
+    def show(self):
+        self.vis.run()
+        self.vis.destroy_window()
 
 if __name__ == '__main__':
     vis = InterativeVista()

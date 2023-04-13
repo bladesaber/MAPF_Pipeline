@@ -59,7 +59,7 @@ def compute_dubinsAuxAngel(target_theta):
     x^2 + y^2 = 1.0              (2)
 
     =>
-    x^ + y^2 = 1.0
+    x^2 + y^2 = 1.0
     y / (1.0 + x) = tan(target_theta)
 
     solve by sympy in math_infer.ipynb
@@ -125,15 +125,22 @@ def polar2RotMatrix(alpha, beta):
 
     vec = polar3D2vec((alpha, beta), length=1.0)
 
-    gamma = math.atan(vec[1]/vec[0])
+    # gamma = math.atan(vec[1] / (vec[0]+1e-4))
+    gamma = math.atan2(vec[1], vec[0])
     Rz = transform.Rotation.from_euler(
         seq='xyz', angles=np.array([0.0, 0.0, gamma]), degrees=False
     ).as_matrix()
 
-    vec = Rz.T @ vec.reshape((-1, 1))
+    # vec = Rz.T @ vec.reshape((-1, 1))
+    vec = np.linalg.inv(Rz) @ vec.reshape((-1, 1))
     vec = vec.reshape(-1)
 
-    beta = math.atan(vec[0]/vec[2])
+    # beta = math.atan(vec[0] / (vec[2] + 1e-4))
+    # Ry = transform.Rotation.from_euler(
+    #     seq='xyz', angles=np.array([0.0, beta, 0.0]), degrees=False
+    # ).as_matrix()
+
+    beta = math.atan2(vec[0], vec[2])
     Ry = transform.Rotation.from_euler(
         seq='xyz', angles=np.array([0.0, beta, 0.0]), degrees=False
     ).as_matrix()

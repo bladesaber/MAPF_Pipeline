@@ -30,13 +30,17 @@ public:
 
     bool in_openlist;
 
+    /*
     // store dubins path if exist
     std::tuple<DubinsPath, DubinsPath> dubins_solutions;
     bool invert_yz;
     std::vector<std::tuple<double, double, double>> dubinsPath3D;
     double dubinsLength3D;
+    bool findValidDubinsPath = false;
+    */
 
     HybridAstarNode* parent;
+    std::string parentTag;
 
     void setRoundCoodr(int x, int y, int z, int alpha, int beta){
         this->x_round = x;
@@ -77,6 +81,7 @@ public:
         parent = rhs->parent;
     }
 
+    /*
     bool operator == (const HybridAstarNode& rhs) const{
         return x_round == rhs.x_round &&
                y_round == rhs.y_round &&
@@ -84,6 +89,7 @@ public:
                alpha_round == rhs.alpha_round &&
                beta_round == rhs.beta_round;
     }
+    */
 
     struct compare_node{
         // returns true if n1 > n2 (note -- this gives us *min*-heap).

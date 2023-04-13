@@ -13,12 +13,20 @@ class ConstrainTable(object):
     def update_numpy(self):
         CT_np = np.array(self.CT)
         self.CT_xyz = CT_np[:, :3]
+<<<<<<< HEAD
+        self.CT_radius = CT_np[:, 3]
+=======
         self.CT_radius = CT_np[:, 3:4]
+>>>>>>> e57c0262132c8c249bc6dad921d1b08186214af4
 
     def coodrIsConstrained(self, x, y, z, radius):
         node_np = np.array([x, y, z])
         dist = np.linalg.norm(self.CT_xyz - node_np, ord=2, axis=1)
+<<<<<<< HEAD
+        isConflict = np.any(dist < self.CT_radius + radius)
+=======
         isConflict = np.any(self.CT_radius - (dist + radius) < 0.0)
+>>>>>>> e57c0262132c8c249bc6dad921d1b08186214af4
         return isConflict
 
     def lineIsConstrained(self, path, radius):

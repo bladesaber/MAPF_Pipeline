@@ -58,7 +58,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
     m.def("mod2pi", &mod2pi, "theta"_a);
     m.def("mod2singlePi", &mod2singlePi, "theta"_a);
     m.def("polar3D_to_vec3D", &polar3D_to_vec3D, "alpha"_a, "beta"_a, "length"_a);
-    m.def("vec3D_to_polar3D", &polar3D_to_vec3D, "vec_x"_a, "vec_y"_a, "vec_z"_a);
+    m.def("vec3D_to_polar3D", &vec3D_to_polar3D, "vec_x"_a, "vec_y"_a, "vec_z"_a);
 
     py::class_<HybridAstarNode>(m, "HybridAstarNode")
         .def(py::init<double, double, double, double, double, HybridAstarNode*, bool>(), "x"_a, "y"_a, "z"_a, "alpha"_a, "beta"_a, "parent"_a, "in_openlist"_a)
@@ -83,15 +83,19 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("parent", &HybridAstarNode::parent)
         .def_readwrite("g_val", &HybridAstarNode::g_val)
         .def_readwrite("h_val", &HybridAstarNode::h_val)
-        .def_readwrite("dubins_solutions", &HybridAstarNode::dubins_solutions)
-        .def_readwrite("invert_yz", &HybridAstarNode::invert_yz)
-        .def_readwrite("dubinsPath3D", &HybridAstarNode::dubinsPath3D)
-        .def_readwrite("dubinsLength3D", &HybridAstarNode::dubinsLength3D);
+        .def_readwrite("parentTag", &HybridAstarNode::parentTag);
+        // .def_readwrite("dubins_solutions", &HybridAstarNode::dubins_solutions)
+        // .def_readwrite("invert_yz", &HybridAstarNode::invert_yz)
+        // .def_readwrite("dubinsPath3D", &HybridAstarNode::dubinsPath3D)
+        // .def_readwrite("dubinsLength3D", &HybridAstarNode::dubinsLength3D)
+        // .def_readwrite("findValidDubinsPath", &HybridAstarNode::findValidDubinsPath);
 
     py::class_<HybridAstar>(m, "HybridAstar")
         .def(py::init<>())
         .def("pushNode", &HybridAstar::pushNode, "node"_a)
         .def("popNode", &HybridAstar::popNode)
         .def("is_openList_empty", &HybridAstar::is_openList_empty)
-        .def("release", &HybridAstar::release);
+        .def("release", &HybridAstar::release)
+        .def_readwrite("num_expanded", &HybridAstar::num_expanded)
+        .def_readwrite("num_generated", &HybridAstar::num_generated);
 }
