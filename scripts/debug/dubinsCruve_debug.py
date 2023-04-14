@@ -103,29 +103,34 @@ def dubinsCruve3D_compute(
     method2=mapf_pipeline.DubinsPathType.LSL, 
     radius=1.0
 ):
-    ### ------ first compute
+    best_reses, best_cost = None, np.inf
     p0 = (0., 0., 0.)
     p1 = (xyz_d[0], xyz_d[1], theta_d[0])
 
-    res0 = mapf_pipeline.DubinsPath()
-    errorCode = mapf_pipeline.compute_dubins_path(res0, p0, p1, radius, method1)
-    if errorCode != mapf_pipeline.DubinsErrorCodes.EDUBOK:
-        raise ValueError('Error')
-    
-    ### ------ second compute
-    p0 = (0., 0., 0.)
-    aux_theta = compute_dubinsAuxAngel(theta_d[1])
+    for method0 in Dubins_SegmentType.keys():
+        res0 = mapf_pipeline.DubinsPath()
+        errorCode = mapf_pipeline.compute_dubins_path(res0, p0, p1, radius, method0)
+        if errorCode != mapf_pipeline.DubinsErrorCodes.EDUBOK:
+            continue
 
-    xy_length = np.linalg.norm(xyz_d[:2], ord=2)
-    hs_length = xy_length * 0.5 + res0.total_length * 0.5
+        cost0 = res0.total_length
+        
+        hs_length = res0.total_length
+        p2 = (hs_length, xyz_d[2], theta_d[1])
+        for method1 in Dubins_SegmentType.keys():
+            res1 = mapf_pipeline.DubinsPath()
+            errorCode = mapf_pipeline.compute_dubins_path(res1, p0, p2, radius, method1)
+            if errorCode != mapf_pipeline.DubinsErrorCodes.EDUBOK:
+                continue
+            
+            cost1 = res1.total_length
 
-    p1 = (hs_length, xyz_d[2], aux_theta)
-    # p1 = (hs_length, xyz_d[2], theta_d[1])
+            cost = cost0 + cost1
+            if cost < best_cost:
+                best_cost = cost
+                best_reses = (res0, res1)
 
-    res1 = mapf_pipeline.DubinsPath()
-    errorCode = mapf_pipeline.compute_dubins_path(res1, p0, p1, radius, method2)
-    if errorCode != mapf_pipeline.DubinsErrorCodes.EDUBOK:
-        raise ValueError('Error')
+    res0, res1 = best_reses
 
     ### ------ extract_path
     mapf_pipeline.compute_dubins_info(res0)
@@ -218,8 +223,8 @@ if __name__ == '__main__':
     ### ------ 3D dubins path debug
     xyz0 = np.array([0.0, 0.0, 0.0])
     theta0 = np.array([np.deg2rad(0.0), np.deg2rad(0.0)])
-    xyz1 = np.array([3.0, 4.0, 2.5])
-    theta1 = np.array([np.deg2rad(240.0), np.deg2rad(-25)])
+    xyz1 = np.array([4.0, 4.0, 4.0])
+    theta1 = np.array([np.deg2rad(30.0), np.deg2rad(30.0)])
 
     path_xyzs = dubinsCruve3D_debug(xyz0, theta0, xyz1, theta1, radius=1.0)
 
