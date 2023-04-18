@@ -54,12 +54,28 @@ def debug_utils():
     )
     print(dist)
 
+def debug_KDtree():
+    path = [
+        (0., 0., 0.),
+        (0., 0., 1.),
+        (0., 0., 2.),
+        (0., 1., 2.),
+        (0., 2., 2.),
+        (1., 2., 2.),
+        (2., 2., 2.)
+    ]
+
+    tree = mapf_pipeline.KDTreeWrapper()
+    tree.insertPath(path)
+
+    tree.nearest(0.0, 2.1, 2.1)
+
 ### ---------------------------------------------------
 cond_2DParams = {
-    'x': 15,
-    'y': 15,
+    'x': 30,
+    'y': 30,
     'z': 1,
-    'obs': 0.1,
+    'obs': 0.15,
     'radius': 0.5,
 
     'save_path': '/home/quan/Desktop/MAPF_Pipeline/scripts/version_3/map',
@@ -120,13 +136,13 @@ def debug_AngleAstar2D():
         start_xyz = instance.getCoordinate(start_loc)
         goal_xyz = instance.getCoordinate(goal_loc)
 
-    new_obs_loc = []
-    for loc in obs_locs:
-        (x, y, z) = instance.getCoordinate(loc)
-        if x>6 or y>6:
-            continue
-        new_obs_loc.append(loc)
-    obs_locs = new_obs_loc
+    # new_obs_loc = []
+    # for loc in obs_locs:
+    #     (x, y, z) = instance.getCoordinate(loc)
+    #     if x>6 or y>6:
+    #         continue
+    #     new_obs_loc.append(loc)
+    # obs_locs = new_obs_loc
 
     constraints = []
     for loc in obs_locs:
@@ -143,9 +159,7 @@ def debug_AngleAstar2D():
         goal_state = goal_xyz
     )
     print("num_expanded:%d, num_generated:%d" % (model.num_expanded, model.num_generated))
-    # print("runtime_search:%f, runtime_build_CT:%f, runtime_build_CAT:%f" % (
-    #     model.runtime_search, model.runtime_build_CT, model.runtime_build_CAT
-    # ))
+    print("runtime_search:%f" % (model.runtime_search))
     
     plt.scatter(
         [start_xyz[0], goal_xyz[0]], 
@@ -159,16 +173,23 @@ def debug_AngleAstar2D():
     obs_np = np.array(obs_np)
     plt.scatter(obs_np[:, 0], obs_np[:, 1], s=20.0, c='b')
 
-    path_np = []
-    for loc in path:
-        (x, y, z) = instance.getCoordinate(loc)
-        path_np.append([x, y])
-    path_np = np.array(path_np)
-    if path_np.shape[0]>0:
-        plt.plot(path_np[:, 0], path_np[:, 1], '-*', color='g')
+    # path_np = []
+    # for loc in path:
+    #     (x, y, z) = instance.getCoordinate(loc)
+    #     print((x, y, z))
+    #     path_np.append([x, y])
+    # path_np = np.array(path_np)
+    # if path_np.shape[0]>0:
+    #     plt.plot(path_np[:, 0], path_np[:, 1], '-*', color='g')
+    
+    cbs_planner = mapf_pipeline.CBS()
+    if len(path)>0:
+        detail_path = cbs_planner.sampleDetailPath(path, instance, 0.5)
+        detail_path = np.array(detail_path)
+        plt.plot(detail_path[:, 0], detail_path[:, 1], '-*', color='g')
 
-    plt.xlim(0, 14)
-    plt.ylim(0, 14)
+    plt.xlim(-1, cond_2DParams['x'] + 1)
+    plt.ylim(-1, cond_2DParams['y'] + 1)
 
     plt.show()
 
@@ -176,7 +197,9 @@ if __name__ == '__main__':
     # debug_instance()
     # debug_ConstraintTable()
 
-    debug_AngleAstar2D()
+    # debug_AngleAstar2D()
     # debug_utils()
+
+    debug_KDtree()
 
     pass

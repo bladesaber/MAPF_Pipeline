@@ -25,24 +25,25 @@ bool ConstraintTable::islineOnSight(Instance& instance, int parent_loc, int chil
     double lineEnd_y = instance.getYCoordinate(child_loc);
     double lineEnd_z = instance.getZCoordinate(child_loc);
 
+    double point_x, point_y, point_z, distance;
     for (auto iter : this->ct)
     {
         int constrainLoc = iter.first;
-        double point_x = instance.getXCoordinate(constrainLoc);
-        double point_y = instance.getYCoordinate(constrainLoc);
-        double point_z = instance.getZCoordinate(constrainLoc);
+        point_x = instance.getXCoordinate(constrainLoc);
+        point_y = instance.getYCoordinate(constrainLoc);
+        point_z = instance.getZCoordinate(constrainLoc);
 
-        double distance = point2LineSegmentDistance(
+        distance = point2LineSegmentDistance(
             lineStart_x, lineStart_y, lineStart_z,
             lineEnd_x, lineEnd_y, lineEnd_z,
             point_x, point_y, point_z
         );
 
         // ------ Debug
-        std::cout << "(lineStart_x:" << lineStart_x << " lineStart_y:" << lineStart_y << " lineStart_z:" << lineStart_z << ")";
-        std::cout << "(lineEnd_x:" << lineEnd_x << " lineEnd_y:" << lineEnd_y << " lineEnd_z:" << lineEnd_z << ")";
-        std::cout << "(point_x:" << point_x << " point_y:" << point_y << " point_z:" << point_z << ") -> " << distance;
-        std::cout << std::endl;
+        // std::cout << "(lineStart_x:" << lineStart_x << " lineStart_y:" << lineStart_y << " lineStart_z:" << lineStart_z << ")";
+        // std::cout << "(lineEnd_x:" << lineEnd_x << " lineEnd_y:" << lineEnd_y << " lineEnd_z:" << lineEnd_z << ")";
+        // std::cout << "(point_x:" << point_x << " point_y:" << point_y << " point_z:" << point_z << ") -> " << distance;
+        // std::cout << std::endl;
         // ---------------------------------
 
         if (distance < bound + iter.second)

@@ -6,6 +6,7 @@
 #include "instance.h"
 #include "constrainTable.h"
 #include "angleAstar.h"
+#include "cbs.h"
 
 namespace py = pybind11;
 using namespace pybind11::literals;
@@ -64,5 +65,17 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("runtime_build_CT", &AngleAStar::runtime_build_CT)
         // .def_readonly("runtime_build_CAT", &AngleAStar::runtime_build_CAT)
         .def("findPath", &AngleAStar::findPath, "constraints"_a, "instance"_a, "start_state"_a, "goal_state"_a);
+
+    py::class_<KDTreeWrapper>(m, "KDTreeWrapper")
+        .def(py::init<>())
+        .def("free", &KDTreeWrapper::free)
+        .def("insertPoint", &KDTreeWrapper::insertPoint, "x"_a, "y"_a, "z"_a)
+        .def("insertPath", &KDTreeWrapper::insertPath, "path"_a)
+        .def("nearest", &KDTreeWrapper::nearest, "x"_a, "y"_a, "z"_a);
+
+    py::class_<CBS>(m, "CBS")
+        .def(py::init<>())
+        .def("sampleDetailPath", &CBS::sampleDetailPath, "path"_a, "instance"_a, "stepLength"_a)
+        .def("findConflictFromTree", &CBS::findConflictFromTree, "tree"_a, "path"_a, "bound"_a);
 
 }

@@ -20,5 +20,6 @@
 #include <pybind11/numpy.h>
 
 typedef std::vector<size_t> Path;
+typedef std::vector<std::tuple<double, double, double>> DetailPath;
 
 #endif /* MAPF_PIPELINE_COMMON_H */

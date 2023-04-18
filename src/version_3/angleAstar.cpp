@@ -94,7 +94,7 @@ AStarNode* AngleAStar::getAnyAngleNode(
             {
                 
                 // ------ debug
-                debugPrint(next_node, instance, "[Interm]: Skip Node:");
+                // debugPrint(next_node, instance, "[Interm]: Skip Node:");
                 // --------
 
                 next_node->g_val = g_val_onSight;
@@ -107,7 +107,7 @@ AStarNode* AngleAStar::getAnyAngleNode(
     }
 
     // ------ debug
-    debugPrint(next_node, instance, "[Interm]: Near Node:");
+    // debugPrint(next_node, instance, "[Interm]: Near Node:");
     // --------
 
     return next_node;
@@ -190,7 +190,7 @@ Path AngleAStar::findPath(
                 allNodes_table.insert(next_node);
 
                 // ------ debug
-                debugPrint(next_node, instance, "New Next node:");
+                // debugPrint(next_node, instance, "New Next node:");
                 // --------
 
                 continue;
@@ -212,7 +212,7 @@ Path AngleAStar::findPath(
                     pushNode(existing_next);
 
                     // ------ debug
-                    debugPrint(next_node, instance, "Reopen node:");
+                    // debugPrint(next_node, instance, "Reopen node:");
                     // ------
 
                 }else{

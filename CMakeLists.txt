@@ -74,6 +74,8 @@ pybind11_add_module(mapf_pipeline ${Src_DIR}/driver.cpp
         ${Src_DIR}/instance.cpp
         ${Src_DIR}/constrainTable.cpp
         ${Src_DIR}/angleAstar.cpp
+        ${Src_DIR}/cbs.cpp
+        ${Src_DIR}/kdtree.c
         )
 target_link_libraries(mapf_pipeline PRIVATE
         pybind11::module
