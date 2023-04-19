@@ -71,17 +71,3 @@ DetailPath CBS::sampleDetailPath(Path& path, Instance& instance, double stepLeng
 
     return detail_path;
 }
-
-void CBS::findConflictFromTree(KDTreeWrapper& tree, DetailPath& path, double bound){
-    double x, y, z;
-    double treeX, treeY, treeZ;
-
-    for (size_t i = 0; i < path.size(); i++)
-    {
-        std::tie(x, y, z) = path[i];
-        std::tie(treeX, treeY, treeZ) = tree.nearest(x, y, z);
-
-        
-
-    }
-}

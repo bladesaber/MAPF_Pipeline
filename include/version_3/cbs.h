@@ -38,8 +38,6 @@ public:
 
     DetailPath sampleDetailPath(Path& path, Instance& instance, double stepLength);
 
-    void findConflictFromTree(KDTreeWrapper& tree, DetailPath& path, double bound);
-
     void pushNode(CBSNode* node);
     CBSNode* popNode();
     bool is_openList_empty(){
