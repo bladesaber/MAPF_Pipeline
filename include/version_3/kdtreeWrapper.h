@@ -3,6 +3,25 @@
 
 #include "common.h"
 #include "kdtree.h"
+#include "utils.h"
+
+struct KDTreeData{
+    double radius;
+    double length;
+
+    KDTreeData(){};
+    KDTreeData(double radius, double length):radius(radius), length(length){};
+};
+
+struct KDTreeRes{
+    double x, y, z;
+    KDTreeData* data;
+
+    KDTreeRes(){};
+    KDTreeRes(double x, double y, double z, KDTreeData* data):
+        x(x), y(y), z(z), data(data){};
+
+};
 
 class KDTreeWrapper{
 public:
@@ -17,20 +36,24 @@ public:
         kd_clear(tree);
     }
 
-    void insertPoint3D(double x, double y, double z);
+    void insertPoint3D(double x, double y, double z, KDTreeData* data);
 
-    void insertPath3D(DetailPath& path);
+    void insertPath3D(DetailPath& path, double radius);
 
-    std::tuple<double, double, double> nearest(double x, double y, double z);
+    void nearest(double x, double y, double z, KDTreeRes& res);
 
-    void debug();
-    
+    void debug_insert();
+    void debug_search();
+
 private:
     kdtree* tree;
 
     void release(){
-        kd_free(this->tree);
+        kd_free(tree);
     }
+
+    // template params
+    double x_round, y_round, z_round;
 };
 
 #endif

@@ -1,5 +1,10 @@
 #include "utils.h"
 
+template<typename T>
+void printPointer(T& a, std::string tag){
+    std::cout << tag << &a << std::endl;
+}
+
 double fmodr( double x, double y)
 {
     return x - y * floor(x / y);
@@ -138,4 +143,9 @@ double point2LineSegmentDistance(
     }
 
     return dist;
+}
+
+double round_decimal(double x, int k){
+    double tem = pow(10.0, k);
+    return round(x * tem) / tem;
 }

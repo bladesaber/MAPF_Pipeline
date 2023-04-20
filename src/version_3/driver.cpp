@@ -67,13 +67,34 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         // .def_readonly("runtime_build_CAT", &AngleAStar::runtime_build_CAT)
         .def("findPath", &AngleAStar::findPath, "constraints"_a, "instance"_a, "start_state"_a, "goal_state"_a);
 
+    py::class_<KDTreeData>(m, "KDTreeData")
+        .def(py::init<double, double>())
+        .def_readonly("radius", &KDTreeData::radius)
+        .def_readonly("length", &KDTreeData::length);
+    
+    py::class_<KDTreeRes>(m, "KDTreeRes")
+        .def(py::init<double, double, double, KDTreeData*>())
+        .def(py::init<>())
+        .def_readonly("x", &KDTreeRes::x)
+        .def_readonly("y", &KDTreeRes::y)
+        .def_readonly("z", &KDTreeRes::z)
+        .def_readonly("data", &KDTreeRes::data);
+
     py::class_<KDTreeWrapper>(m, "KDTreeWrapper")
         .def(py::init<>())
-        .def("debug", &KDTreeWrapper::debug);
+        .def("insertPoint3D", &KDTreeWrapper::insertPoint3D, "x"_a, "y"_a, "z"_a, "data"_a)
+        .def("insertPath3D", &KDTreeWrapper::insertPath3D, "path"_a, "radius"_a)
+        .def("nearest", &KDTreeWrapper::nearest, "x"_a, "y"_a, "z"_a, "res"_a)
+        .def("clear", &KDTreeWrapper::clear)
+        .def("debug_insert", &KDTreeWrapper::debug_insert)
+        .def("debug_search", &KDTreeWrapper::debug_search);
 
     // py::class_<CBS>(m, "CBS")
     //     .def(py::init<>())
     //     .def("sampleDetailPath", &CBS::sampleDetailPath, "path"_a, "instance"_a, "stepLength"_a)
     //     .def("findConflictFromTree", &CBS::findConflictFromTree, "tree"_a, "path"_a, "bound"_a);
+
+    // it don't work, I don't know why
+    // m.def("printPointer", &printPointer<KDTreeData>, "a"_a, "tag"_a);
 
 }

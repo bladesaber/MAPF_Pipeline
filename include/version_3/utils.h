@@ -4,6 +4,9 @@
 #include "common.h"
 #include "kdtree.h"
 
+template<typename T>
+void printPointer(T& a, std::string tag);
+
 double fmodr( double x, double y);
 
 double mod2pi(double theta);
@@ -32,5 +35,7 @@ double point2LineSegmentDistance(
     double lineEnd_x, double lineEnd_y, double lineEnd_z,
     double point_x, double point_y, double point_z
 );
+
+double round_decimal(double x, int k);
 
 #endif

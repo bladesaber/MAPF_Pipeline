@@ -25,6 +25,7 @@ DetailPath CBS::sampleDetailPath(Path& path, Instance& instance, double stepLeng
     double vecX, vecY, vecZ;
     double distance, real_stepLength;
     size_t num;
+    double cur_length = 0.0;
     for (size_t i = 1; i < path.size(); i++)
     {
         std::tie(curX, curY, curZ) = instance.getCoordinate(path[i]);
@@ -57,10 +58,12 @@ DetailPath CBS::sampleDetailPath(Path& path, Instance& instance, double stepLeng
             //           << lastY + vecY * (j * real_stepLength) << ", "
             //           << lastZ + vecZ * (j * real_stepLength) << "]" << std::endl;
 
+            cur_length += real_stepLength;
             detail_path.emplace_back(std::make_tuple(
                 lastX + vecX * (j * real_stepLength),
                 lastY + vecY * (j * real_stepLength),
-                lastZ + vecZ * (j * real_stepLength)
+                lastZ + vecZ * (j * real_stepLength),
+                cur_length
             ));
         }
 

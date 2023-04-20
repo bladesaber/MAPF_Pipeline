@@ -233,7 +233,6 @@ Path AngleAStar::findPath(
 
 void AngleAStar::releaseNodes(){
     open_list.clear();
-	// focal_list.clear();
 	for (auto node: allNodes_table){
 		delete node;
     }
