@@ -112,7 +112,7 @@ public:
 
     Path findPath(
         // std::map<int, Path>& paths,
-        std::vector<std::pair<int, double>> constraints,
+        std::vector<ConstrainType> constraints,
         Instance& instance,
         const std::tuple<int, int, int>& start_state, 
         const std::tuple<int, int, int>& goal_state

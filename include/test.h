@@ -5,17 +5,14 @@
 #ifndef MAPF_PIPELINE_TEST_H
 #define MAPF_PIPELINE_TEST_H
 
-#include <iostream>
-
-#include <pybind11/stl.h>
-#include <pybind11/numpy.h>
-#include "vector"
-#include "map"
-#include "list"
-#include "string"
+#include "common.h"
 
 // #include "instance.h"
 // #include "cbsNode.h"
+
+#include<pcl/common/common.h>
+#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/point_cloud.h>
 
 namespace py = pybind11;
 
@@ -91,5 +88,43 @@ void debugPring(){
 //     py::buffer_info buf1 = xyzs.request();
 //     std::cout << "xyzs Shape: " << buf1.shape[0] << " and " << buf1.shape[1] << std::endl;
 // }
+
+void debug_kdtree(){
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    cloud->width = 5;
+    cloud->height = 1;
+    cloud->points.resize (5);
+
+    for (std::size_t i = 0; i < cloud->size (); ++i){
+        (*cloud)[i].x = (double)i;
+        (*cloud)[i].y = (double)i;
+        (*cloud)[i].z = (double)i;
+    }
+
+    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+    kdtree.setInputCloud(cloud);
+
+    pcl::PointXYZ searchPoint;
+    searchPoint.x = 2.0;
+    searchPoint.y = 2.0;
+    searchPoint.z = 2.0;
+
+    std::vector<int> pointIdxKNNSearch(1);
+    std::vector<float> pointKNNSquaredDistance(1);
+
+    kdtree.nearestKSearch(searchPoint, 1, pointIdxKNNSearch, pointKNNSquaredDistance);
+    for (size_t i = 0; i < pointIdxKNNSearch.size (); ++i){
+      std::cout << "x:" << (*cloud)[pointIdxKNNSearch[i]].x 
+                << " y:" << (*cloud)[pointIdxKNNSearch[i]].y 
+                << " z:" << (*cloud)[pointIdxKNNSearch[i]].z 
+                << " squared distance: " << pointKNNSquaredDistance[i] << std::endl;
+    }
+
+    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree2 = pcl::KdTreeFLANN<pcl::PointXYZ>(kdtree);
+
+    pcl::PointCloud<pcl::PointXYZ> cloud2 = pcl::PointCloud<pcl::PointXYZ>(*cloud);
+    std::cout << "c1 pointer: " << cloud << " c2 pointer: " << &cloud2;
+
+}
 
 #endif //MAPF_PIPELINE_TEST_H

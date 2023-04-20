@@ -4,26 +4,23 @@
 #include "common.h"
 #include "utils.h"
 #include "instance.h"
+#include "kdtreeWrapper.h"
 
 class ConstraintTable{
 public:
     ConstraintTable(){};
-    ~ConstraintTable(){
-        ct.clear();
-    };
+    ~ConstraintTable(){};
 
-    void insert2CT(int loc, double radius);
+    void insert2CT(double x, double y, double z, double radius);
+    void insert2CT(ConstrainType constrain);
 
-    bool isConstrained(int loc) const;
+    bool isConstrained(double x, double y, double z, double radius);
 
-    bool islineOnSight(Instance& instance, int parent_loc, int child_loc, double bound) const;
-
-    std::map<int, double>& getCT(){
-        return ct;
-    }
+    bool islineOnSight(Instance& instance, int parent_loc, int child_loc, double bound);
 
 private:
-    std::map<int, double> ct;
+    KDTreeWrapper constrainTree;
+    std::vector<std::tuple<double, double, double, double>> ct;
 
 };
 

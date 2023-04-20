@@ -44,4 +44,20 @@ def debug_insertAndSearch():
     kdtree.nearest(3.0, 3.0, 3.0, res)
     print(res.x, res.y, res.z, res.data.radius, res.data.length)
 
-debug_insertAndSearch()
+def debug_insertPath():
+    kdtree = mapf_pipeline.KDTreeWrapper()
+
+    path = [
+        (1.0, 1.0, 1.0, 1.0),
+        (2.0, 2.0, 2.0, 25.0),
+        (3.0, 3.0, 3.0, 3.0),
+        (4.0, 4.0, 4.0, 4.0),
+        (5.0, 5.0, 5.0, 10.0)
+    ]
+    kdtree.insertPath3D(path, 5.0)
+
+    res = mapf_pipeline.KDTreeRes()
+    kdtree.nearest(2.0, 2.0, 2.0, res)
+    print(res.x, res.y, res.z, res.data.radius, res.data.length)
+
+debug_insertPath()

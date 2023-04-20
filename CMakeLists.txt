@@ -14,7 +14,7 @@ set(PCL_INCLUDE_DIRS "/usr/include/pcl-1.8")
 # file(GLOB PCL_LIBRARIES "/usr/lib/libpcl*.so*")
 file(GLOB PCL_LIBRARIES "/usr/lib/x86_64-linux-gnu/libpcl*.so*")
 
-find_package(VTK 6.3 REQUIRED)
+# find_package(VTK 6.3 REQUIRED)
 set(VTK_INCLUDE_DIRS "/usr/include/vtk-6.3")
 file(GLOB VTK_LIBRARY_DIRS "/usr/lib/libvtk*.so*")
 

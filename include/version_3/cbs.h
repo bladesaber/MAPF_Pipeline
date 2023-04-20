@@ -4,15 +4,51 @@
 #include "common.h"
 #include "instance.h"
 #include "utils.h"
+#include "kdtreeWrapper.h"
+
+class AgentInfo{
+public:
+    size_ut agentIdx;
+    double radius;
+
+    // Path path;
+    DetailPath detailPath;
+
+    std::vector<ConstrainType> constrains;
+    KDTreeWrapper pathTree;
+
+    bool isConflict = false;
+    ConstrainType firstConflict;
+    double firstConflictLength;
+
+    std::map<size_ut, size_t> costMap;
+
+    AgentInfo(){};
+    AgentInfo(size_ut agentIdx, double radius):agentIdx(agentIdx), radius(radius){};
+
+};
 
 class CBSNode{
 public:
-    CBSNode(){};
+    CBSNode(size_t num_of_agents):num_of_agents(num_of_agents){};
     ~CBSNode(){};
+
+    size_t num_of_agents;
+
+    std::map<size_ut, AgentInfo> agentMap;
 
     double g_val = 0.0;
 	double h_val = 0.0;
 	int depth;
+
+    void updateAgentConflict(size_t agentIdx);
+    void findAllAgentConflict();
+    void updateFirstConflict(
+        double x, double y, double z, 
+        double radius, double length, AgentInfo* agent
+    );
+
+    double getHeuristics();
 
     struct compare_node 
 	{

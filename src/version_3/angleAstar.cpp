@@ -1,7 +1,10 @@
 #include "angleAstar.h"
 
 bool AngleAStar::validMove(Instance& instance, ConstraintTable& constrain_table, int curr, int next) const {
-    if(constrain_table.isConstrained(next)){
+    double x, y, z;
+    std::tie(x, y, z) = instance.getCoordinate(next);
+
+    if(constrain_table.isConstrained(x, y, z, radius)){
         return false;
     }
     return true;
@@ -115,7 +118,7 @@ AStarNode* AngleAStar::getAnyAngleNode(
 
 Path AngleAStar::findPath(
     // std::map<int, Path>& paths,
-    std::vector<std::pair<int, double>> constraints,
+    std::vector<ConstrainType> constraints,
     Instance& instance,
     const std::tuple<int, int, int>& start_state, 
     const std::tuple<int, int, int>& goal_state
@@ -126,9 +129,9 @@ Path AngleAStar::findPath(
 
     // ------ Create Constrain Table
     ConstraintTable constrain_table = ConstraintTable();
-    for (auto iter : constraints)
+    for (auto constraint : constraints)
     {
-        constrain_table.insert2CT(iter.first, iter.second);
+        constrain_table.insert2CT(constraint);
     }
     runtime_build_CT = (double) (clock() - start_time) / CLOCKS_PER_SEC;
 

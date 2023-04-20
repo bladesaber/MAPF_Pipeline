@@ -19,7 +19,13 @@
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
 
+#define CUSTOM_TYPE1 short unsigned int
+typedef CUSTOM_TYPE1 size_ut;
+
 typedef std::vector<size_t> Path;
 typedef std::vector<std::tuple<double, double, double, double>> DetailPath;
+
+// x, y, z, radius
+typedef std::tuple<double, double, double, double> ConstrainType;
 
 #endif /* MAPF_PIPELINE_COMMON_H */

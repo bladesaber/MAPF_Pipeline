@@ -9,11 +9,15 @@
 #include "angleAstar.h"
 #include "cbs.h"
 
+#include "test.h"
+
 namespace py = pybind11;
 using namespace pybind11::literals;
 
 PYBIND11_MODULE(mapf_pipeline, m) {
     m.doc() = "mapf pipeline"; // optional module docstring
+
+    m.def("debug_kdtree", &debug_kdtree);
 
     m.def("mod2pi", &mod2pi, "theta"_a);
     m.def("mod2singlePi", &mod2singlePi, "theta"_a);
@@ -48,14 +52,9 @@ PYBIND11_MODULE(mapf_pipeline, m) {
 
     py::class_<ConstraintTable>(m, "ConstraintTable")
         .def(py::init<>())
-        .def("insert2CT", &ConstraintTable::insert2CT, "loc"_a, "radius"_a)
-        // .def("insert2CAT", &ConstraintTable::insert2CAT, "loc"_a)
-        .def("getCT", &ConstraintTable::getCT)
-        // .def("getCAT", &ConstraintTable::getCAT)
-        // .def("insertConstrains2CT", &ConstraintTable::insertConstrains2CT, "constrains"_a)
-        // .def("insertPath2CAT", &ConstraintTable::insertPath2CAT, "path"_a)
-        .def("isConstrained", &ConstraintTable::isConstrained, "loc"_a)
-        // .def("getNumOfConflictsForStep", &ConstraintTable::getNumOfConflictsForStep, "curr_loc"_a, "next_loc"_a)
+        .def("insert2CT", py::overload_cast<double, double, double, double>(&ConstraintTable::insert2CT), "x"_a, "y"_a, "z"_a, "radius"_a)
+        .def("insert2CT", py::overload_cast<ConstrainType>(&ConstraintTable::insert2CT), "constrain"_a)
+        .def("isConstrained", &ConstraintTable::isConstrained, "x"_a, "y"_a, "z"_a, "radius"_a)
         .def("islineOnSight", &ConstraintTable::islineOnSight, "instance"_a, "parent_loc"_a, "child_loc"_a, "bound"_a);
 
     py::class_<AngleAStar>(m, "AngleAStar")
@@ -88,6 +87,20 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("clear", &KDTreeWrapper::clear)
         .def("debug_insert", &KDTreeWrapper::debug_insert)
         .def("debug_search", &KDTreeWrapper::debug_search);
+
+    // py::class_<AgentInfo>(m, "AgentInfo")
+    //     .def(py::init<size_ut, double>())
+    //     .def_readonly("agentIdx", &AgentInfo::agentIdx)
+    //     .def_readonly("radius", &AgentInfo::radius)
+    //     .def_readonly("detailPath", &AgentInfo::detailPath)
+    //     .def_readonly("pathTree", &AgentInfo::pathTree)
+    //     .def_readonly("isConflict", &AgentInfo::isConflict)
+    //     .def_readonly("firstConflict", &AgentInfo::firstConflict)
+    //     .def_readonly("firstConflictLength", &AgentInfo::firstConflictLength)
+    //     .def_readonly("costMap", &AgentInfo::costMap);
+
+    // py::class_<CBSNode>(m, "CBSNode")
+    //     .def(py::init<int>());
 
     // py::class_<CBS>(m, "CBS")
     //     .def(py::init<>())

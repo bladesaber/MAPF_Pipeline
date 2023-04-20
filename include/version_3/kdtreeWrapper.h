@@ -2,8 +2,9 @@
 #define MAPF_PIPELINE_KDTREEWRAPPER_H
 
 #include "common.h"
-#include "kdtree.h"
 #include "utils.h"
+
+#include "kdtree.h"
 
 struct KDTreeData{
     double radius;
