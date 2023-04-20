@@ -10,8 +10,11 @@ message("Thirdparty_DIR: " ${Thirdparty_DIR})
 ### I don't know why it can not work
 # find_package(PCL 1.8 REQUIRED)
 set(PCL_INCLUDE_DIRS "/usr/include/pcl-1.8")
-file(GLOB PCL_LIBRARY_DIRS "/usr/lib/libpcl*.so*")
+### please don't use this
+# file(GLOB PCL_LIBRARIES "/usr/lib/libpcl*.so*")
+file(GLOB PCL_LIBRARIES "/usr/lib/x86_64-linux-gnu/libpcl*.so*")
 
+find_package(VTK 6.3 REQUIRED)
 set(VTK_INCLUDE_DIRS "/usr/include/vtk-6.3")
 file(GLOB VTK_LIBRARY_DIRS "/usr/lib/libvtk*.so*")
 
@@ -19,9 +22,7 @@ find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
 message("Boost_INCLUDE_DIRS: " ${Boost_INCLUDE_DIRS})
 message("PCL_INCLUDE_DIR: " ${PCL_INCLUDE_DIRS})
-message("PCL_LIBRARY_DIR: " ${PCL_LIBRARY_DIRS})
-
-add_subdirectory(${Thirdparty_DIR}/pybind11)
+message("PCL_LIBRARY_DIR: " ${PCL_LIBRARIES})
 
 ### ---------------------- Version Setting
 # set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_1)
@@ -37,6 +38,8 @@ message("Include_DIR: " ${Include_DIR})
 message("Src_DIR: " ${Src_DIR})
 ### --------------------------------------------
 
+add_subdirectory(${Thirdparty_DIR}/pybind11)
+
 include_directories(
 #        ${Thirdparty_DIR}/pybind11
 #        ${Thirdparty_DIR}/pybind11/tools
@@ -45,14 +48,16 @@ include_directories(
         ${Include_DIR}
         ${Boost_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
-        ${VTK_INCLUDE_DIRS}
         ${PCL_INCLUDE_DIRS}
+        ${VTK_INCLUDE_DIRS}
 )
 
 link_directories(
-        ${VTK_LIBRARIES}
         ${PCL_LIBRARY_DIRS}
+        ${VTK_LIBRARIES}
 )
+
+add_definitions(${PCL_DEFINITIONS})
 
 ### Just For Debug
 #add_executable(mapf_pipeline src/main.cpp)
