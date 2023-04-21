@@ -17,7 +17,9 @@ using namespace pybind11::literals;
 PYBIND11_MODULE(mapf_pipeline, m) {
     m.doc() = "mapf pipeline"; // optional module docstring
 
-    m.def("debug_kdtree", &debug_kdtree);
+    // m.def("debug_kdtree", &debug_kdtree);
+    // m.def("debug_sharePtr", &debug_sharePtr);
+    // m.def("debug_setTuple", &debug_setTuple);
 
     m.def("mod2pi", &mod2pi, "theta"_a);
     m.def("mod2singlePi", &mod2singlePi, "theta"_a);
@@ -88,24 +90,41 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("debug_insert", &KDTreeWrapper::debug_insert)
         .def("debug_search", &KDTreeWrapper::debug_search);
 
-    // py::class_<AgentInfo>(m, "AgentInfo")
-    //     .def(py::init<size_ut, double>())
-    //     .def_readonly("agentIdx", &AgentInfo::agentIdx)
-    //     .def_readonly("radius", &AgentInfo::radius)
-    //     .def_readonly("detailPath", &AgentInfo::detailPath)
-    //     .def_readonly("pathTree", &AgentInfo::pathTree)
-    //     .def_readonly("isConflict", &AgentInfo::isConflict)
-    //     .def_readonly("firstConflict", &AgentInfo::firstConflict)
-    //     .def_readonly("firstConflictLength", &AgentInfo::firstConflictLength)
-    //     .def_readonly("costMap", &AgentInfo::costMap);
+    py::class_<AgentInfo>(m, "AgentInfo")
+        .def(py::init<size_ut, double>(), "agentIdx"_a, "radius"_a)
+        // .def(py::init<const AgentInfo&>(), "rhs"_a)
+        .def_readonly("agentIdx", &AgentInfo::agentIdx)
+        .def_readonly("radius", &AgentInfo::radius)
+        .def_readonly("isConflict", &AgentInfo::isConflict)
+        .def_readonly("firstConflict", &AgentInfo::firstConflict)
+        .def_readonly("firstConflictLength", &AgentInfo::firstConflictLength)
+        .def_readonly("conflictSet", &AgentInfo::conflictSet)
+        .def("getConstrains", &AgentInfo::getConstrains)
+        .def("getDetailPath", &AgentInfo::getDetailPath)
+        .def("update_Constrains", &AgentInfo::update_Constrains, "new_constrains"_a)
+        .def("update_DetailPath_And_Tree", &AgentInfo::update_DetailPath_And_Tree, "path"_a)
+        .def("copy", &AgentInfo::copy, "rhs"_a)
+        .def("info", &AgentInfo::info);
 
-    // py::class_<CBSNode>(m, "CBSNode")
-    //     .def(py::init<int>());
+    py::class_<CBSNode>(m, "CBSNode")
+        .def(py::init<int>(), "num_of_agents"_a)
+        .def_readonly("g_val", &CBSNode::g_val)
+        .def_readonly("h_val", &CBSNode::h_val)
+        .def_readonly("num_of_agents", &CBSNode::num_of_agents)
+        .def_readonly("agentMap", &CBSNode::agentMap)
+        // .def("updateAgentConflict", &CBSNode::updateAgentConflict, "agentIdx"_a)
+        .def("findAllAgentConflict", &CBSNode::findAllAgentConflict)
+        .def("update_Constrains", &CBSNode::update_Constrains, "agentIdx"_a, "new_constrains"_a)
+        .def("update_DetailPath_And_Tree", &CBSNode::update_DetailPath_And_Tree, "agentIdx"_a, "path"_a)
+        .def("setAgentInfo", &CBSNode::setAgentInfo, "agentIdx"_a, "agent"_a)
+        .def("copy", &CBSNode::copy, "rhs"_a)
+        .def("debug", &CBSNode::debug);
 
-    // py::class_<CBS>(m, "CBS")
-    //     .def(py::init<>())
-    //     .def("sampleDetailPath", &CBS::sampleDetailPath, "path"_a, "instance"_a, "stepLength"_a)
-    //     .def("findConflictFromTree", &CBS::findConflictFromTree, "tree"_a, "path"_a, "bound"_a);
+    py::class_<CBS>(m, "CBS")
+        .def(py::init<>())
+        .def("sampleDetailPath", &CBS::sampleDetailPath, "path"_a, "instance"_a, "stepLength"_a)
+        .def("compute_Heuristics", &CBS::compute_Heuristics, "node"_a)
+        .def("compute_Gval", &CBS::compute_Gval, "node"_a);
 
     // it don't work, I don't know why
     // m.def("printPointer", &printPointer<KDTreeData>, "a"_a, "tag"_a);

@@ -9,7 +9,9 @@
 class ConstraintTable{
 public:
     ConstraintTable(){};
-    ~ConstraintTable(){};
+    ~ConstraintTable(){
+        ct.clear();
+    };
 
     void insert2CT(double x, double y, double z, double radius);
     void insert2CT(ConstrainType constrain);
@@ -22,6 +24,8 @@ private:
     KDTreeWrapper constrainTree;
     std::vector<std::tuple<double, double, double, double>> ct;
 
+    // template params
+    double x_round, y_round, z_round;
 };
 
 #endif

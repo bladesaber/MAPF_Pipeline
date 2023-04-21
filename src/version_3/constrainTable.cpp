@@ -1,8 +1,14 @@
 #include "constrainTable.h"
 
 void ConstraintTable::insert2CT(double x, double y, double z, double radius){
+    x_round = round_decimal(x, 1);
+    y_round = round_decimal(y, 1);
+    z_round = round_decimal(z, 1);
+
     KDTreeData* m = new KDTreeData(radius, 0.0);
-    constrainTree.insertPoint3D(x, y, z, m);
+    constrainTree.insertPoint3D(x_round, y_round, z_round, m);
+
+    ct.emplace_back(std::make_tuple(x_round, y_round, z_round, radius));
 }
 
 void ConstraintTable::insert2CT(ConstrainType constrain){
@@ -15,6 +21,10 @@ bool ConstraintTable::isConstrained(double x, double y, double z, double radius)
     KDTreeRes res;
     double dist;
 
+    if (ct.size() == 0){
+        return false;
+    }
+
     constrainTree.nearest(x, y, z, res);
 
     dist = norm2_distance(
@@ -25,7 +35,7 @@ bool ConstraintTable::isConstrained(double x, double y, double z, double radius)
     {
         return true;
     }
-    return true;
+    return false;
 }
 
 bool ConstraintTable::islineOnSight(Instance& instance, int parent_loc, int child_loc, double bound){

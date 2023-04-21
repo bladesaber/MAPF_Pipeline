@@ -124,7 +124,61 @@ void debug_kdtree(){
 
     pcl::PointCloud<pcl::PointXYZ> cloud2 = pcl::PointCloud<pcl::PointXYZ>(*cloud);
     std::cout << "c1 pointer: " << cloud << " c2 pointer: " << &cloud2;
+}
 
+void test_sharePtr(std::shared_ptr<int>& p){
+    std::cout << "call share ptr: " << *p << std::endl;
+
+    std::shared_ptr<int> p_new(p);
+    std::cout << "p count = " << p.use_count() << " p_new count = " << p_new.use_count() << std::endl;
+}
+
+void debug_sharePtr(){
+    std::shared_ptr<int> p1 = std::make_shared<int>();//make_shared 创建空对象，
+	*p1 = 10;
+	std::cout << "p1 = " << *p1 << " count:" << p1.use_count() << std::endl;
+
+    std::shared_ptr<int> p2(p1);
+    std::cout << "p1 count = " << p1.use_count() << " p2 count = " << p2.use_count() << std::endl;
+
+    test_sharePtr(p1);
+    std::cout << "Again p1 count = " << p1.use_count() << " p2 count = " << p2.use_count() << std::endl;
+
+    // delete p2;
+    p1 = nullptr;
+    std::cout << "p1 count = " << p1.use_count() << " p2 count = " << p2.use_count() << std::endl;
+    std::cout << "p2 = " << *p2 << std::endl;
+    
+    p1 = std::make_shared<int>(20);
+    std::cout << "p1 = " << *p1 << " count:" << p1.use_count() << std::endl;
+
+    // DetailPath path;
+    // path.emplace_back(std::make_tuple(1.0, 2.0, 3.0, 4.0));
+    // path.emplace_back(std::make_tuple(5.0, 6.0, 7.0, 8.0));
+
+    // std::shared_ptr<DetailPath> p = std::make_shared<DetailPath>(path);
+    // double x, y, z, length;
+    // for (size_t i = 0; i < p->size(); i++)
+    // {
+    //     std::tie(x, y ,z, length) = (*p)[i];
+    //     std::cout << "x:" << x << " y:" << y << " z:" << z << " length:" << length << std::endl;
+    // }
+}
+
+void debug_setTuple(){
+    std::set<std::tuple<int, int, int>> a;
+    a.insert(std::make_tuple(1, 1, 1));
+    a.insert(std::make_tuple(1, 2, 1));
+    a.insert(std::make_tuple(1, 1, 2));
+    a.insert(std::make_tuple(1, 1, 1));
+
+    double x, y ,z;
+    for (auto i : a)
+    {
+        std::tie(x, y, z) = i;
+        std::cout << "x:" << x << " y:" << y << " z:" << z <<std::endl;
+    }
+    std::cout << a.size() << std::endl;
 }
 
 #endif //MAPF_PIPELINE_TEST_H

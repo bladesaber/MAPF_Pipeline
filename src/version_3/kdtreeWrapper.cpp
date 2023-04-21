@@ -1,20 +1,17 @@
 #include "kdtreeWrapper.h"
 
 void KDTreeWrapper::insertPoint3D(double x, double y, double z, KDTreeData* data){
-    x_round = round_decimal(x, 1);
-    y_round = round_decimal(y, 1);
-    z_round = round_decimal(z, 1);
-
-    kd_insert3(tree, x_round, y_round, z_round, data);
+    kd_insert3(tree, x, y, z, data);
 }
 
-void KDTreeWrapper::insertPath3D(DetailPath& path, double radius){
+void KDTreeWrapper::insertPath3D(const DetailPath& path, double radius){
     double x, y, z, length;
     for (size_t i = 0; i < path.size(); i++)
     {
         std::tie(x, y, z, length) = path[i];
-
         KDTreeData* m = new KDTreeData(radius, length);
+
+        dataStore.emplace_back(m);
         insertPoint3D(x, y, z, m);
     }
 }

@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "utils.h"
+#include <assert.h>
 
 #include "kdtree.h"
 
@@ -39,7 +40,7 @@ public:
 
     void insertPoint3D(double x, double y, double z, KDTreeData* data);
 
-    void insertPath3D(DetailPath& path, double radius);
+    void insertPath3D(const DetailPath& path, double radius);
 
     void nearest(double x, double y, double z, KDTreeRes& res);
 
@@ -48,13 +49,16 @@ public:
 
 private:
     kdtree* tree;
+    std::vector<KDTreeData*> dataStore;
 
     void release(){
         kd_free(tree);
+        for (size_t i = 0; i < dataStore.size(); i++)
+        {
+            delete dataStore[i];
+        }
+        dataStore.clear();        
     }
-
-    // template params
-    double x_round, y_round, z_round;
 };
 
 #endif

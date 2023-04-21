@@ -21,28 +21,29 @@ def debug_insertAndSearch():
     # kdtree.debug_insert()
     # kdtree.debug_search()
 
-    ### you must save KDTreeData here, other than it will be delete by python
-    datas = []
-    for i in range(5):
-        data = mapf_pipeline.KDTreeData(radius, i * 1.5)
+    # ### you must save KDTreeData here, other than it will be delete by python
+    # datas = []
+    # for i in range(5):
+    #     data = mapf_pipeline.KDTreeData(radius, i * 1.5)
         
-        kdtree.insertPoint3D(
-            i + np.random.normal(0.0, 0.5), 
-            i + np.random.normal(0.0, 0.5), 
-            i + np.random.normal(0.0, 0.5), 
-            data
-        )
-        datas.append(data)
+    #     kdtree.insertPoint3D(
+    #         # i + np.random.normal(0.0, 0.5), 
+    #         # i + np.random.normal(0.0, 0.5), 
+    #         # i + np.random.normal(0.0, 0.5), 
+    #         i, i, i,
+    #         data
+    #     )
+    #     datas.append(data)
 
-    res = mapf_pipeline.KDTreeRes()
-    kdtree.nearest(1.0, 1.0, 1.0, res)
-    print(res.x, res.y, res.z, res.data.radius, res.data.length)
+    # res = mapf_pipeline.KDTreeRes()
+    # kdtree.nearest(1.0, 1.0, 1.0, res)
+    # print(res.x, res.y, res.z, res.data.radius, res.data.length)
 
-    kdtree.nearest(2.0, 2.0, 2.0, res)
-    print(res.x, res.y, res.z, res.data.radius, res.data.length)
+    # kdtree.nearest(2.0, 2.0, 2.0, res)
+    # print(res.x, res.y, res.z, res.data.radius, res.data.length)
 
-    kdtree.nearest(3.0, 3.0, 3.0, res)
-    print(res.x, res.y, res.z, res.data.radius, res.data.length)
+    # kdtree.nearest(3.0, 3.0, 3.0, res)
+    # print(res.x, res.y, res.z, res.data.radius, res.data.length)
 
 def debug_insertPath():
     kdtree = mapf_pipeline.KDTreeWrapper()
@@ -57,7 +58,8 @@ def debug_insertPath():
     kdtree.insertPath3D(path, 5.0)
 
     res = mapf_pipeline.KDTreeRes()
-    kdtree.nearest(2.0, 2.0, 2.0, res)
+    kdtree.nearest(3.0, 3.0, 3.0, res)
     print(res.x, res.y, res.z, res.data.radius, res.data.length)
 
+# debug_insertAndSearch()
 debug_insertPath()
