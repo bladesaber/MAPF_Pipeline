@@ -238,3 +238,19 @@ void CBS::compute_Gval(CBSNode* node){
         node->g_val += (double)length;
     }
 }
+
+void CBS::update_AgentPath(Instance& instance, CBSNode* node, size_ut agentIdx){
+    AgentInfo* agent = node->agentMap[agentIdx];
+    Path path = search_engines[agentIdx]->findPath(
+        *agent->constrains,
+        instance,
+        agent->startPos,
+        agent->endPos
+    );
+
+    node->update_DetailPath_And_Tree(
+        agentIdx,
+        sampleDetailPath(path, instance, stepLength)
+    );
+
+}

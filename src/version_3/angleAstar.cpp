@@ -116,7 +116,7 @@ AStarNode* AngleAStar::getAnyAngleNode(
     return next_node;
 }
 
-Path AngleAStar::findPath(
+Path& AngleAStar::findPath(
     std::vector<ConstrainType> constraints,
     Instance& instance,
     const std::tuple<int, int, int>& start_state, 

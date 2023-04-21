@@ -74,7 +74,7 @@ def debug_CBSNode_Conflict():
         (4.0, 4.0, 0.0, 8.0)
     ]
     cbsNode.update_DetailPath_And_Tree(agentIdx=0, path=detailPath_1_after)
-    cbsNode.findAllAgentConflict(agentIdx=0)
+    cbsNode.findAllAgentConflict()
 
     for key in cbsNode.agentMap.keys():
         agent = cbsNode.agentMap[key]

@@ -91,7 +91,11 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("debug_search", &KDTreeWrapper::debug_search);
 
     py::class_<AgentInfo>(m, "AgentInfo")
-        .def(py::init<size_ut, double>(), "agentIdx"_a, "radius"_a)
+        .def(py::init<
+            size_ut, double, 
+            std::tuple<int, int, int>, 
+            std::tuple<int, int, int>
+            >(), "agentIdx"_a, "radius"_a, "startPos"_a, "endPos"_a)
         // .def(py::init<const AgentInfo&>(), "rhs"_a)
         .def_readonly("agentIdx", &AgentInfo::agentIdx)
         .def_readonly("radius", &AgentInfo::radius)
@@ -108,6 +112,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
 
     py::class_<CBSNode>(m, "CBSNode")
         .def(py::init<int>(), "num_of_agents"_a)
+        .def_readonly("node_id", &CBSNode::node_id)
         .def_readonly("g_val", &CBSNode::g_val)
         .def_readonly("h_val", &CBSNode::h_val)
         .def_readonly("num_of_agents", &CBSNode::num_of_agents)

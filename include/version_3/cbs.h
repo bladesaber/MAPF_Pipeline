@@ -4,12 +4,16 @@
 #include "common.h"
 #include "instance.h"
 #include "utils.h"
+
+#include "angleAstar.h"
 #include "kdtreeWrapper.h"
 
 class AgentInfo{
 public:
     size_ut agentIdx;
     double radius;
+    std::tuple<int, int, int> startPos;
+    std::tuple<int, int, int> endPos;
 
     bool isConflict = false;
     ConstrainType firstConflict;
@@ -18,7 +22,11 @@ public:
     std::set<std::tuple<int, int, int>> conflictSet;
 
     AgentInfo(){};
-    AgentInfo(size_ut agentIdx, double radius):agentIdx(agentIdx), radius(radius){};
+    AgentInfo(
+        size_ut agentIdx, double radius,
+        std::tuple<int, int, int> startPos,
+        std::tuple<int, int, int> endPos
+    ):agentIdx(agentIdx), radius(radius), startPos(startPos), endPos(endPos){};
     AgentInfo(AgentInfo* rhs){
         copy(rhs);
     }
@@ -48,6 +56,8 @@ public:
     void copy(AgentInfo* rhs){
         this->agentIdx = rhs->agentIdx;
         this->radius = rhs->radius;
+        this->startPos = rhs->startPos;
+        this->endPos = rhs->endPos;
 
         this->constrains = std::shared_ptr<std::vector<ConstrainType>>(rhs->constrains);
         this->detailPath = std::shared_ptr<DetailPath>(rhs->detailPath);
@@ -97,6 +107,7 @@ public:
 
     std::map<size_ut, AgentInfo*> agentMap;
 
+    int node_id;
     double g_val = 0.0;
 	double h_val = 0.0;
 	int depth;
@@ -165,14 +176,19 @@ private:
 class CBS{
 public:
     CBS(){};
-    ~CBS(){};
+    ~CBS(){
+        releaseNodes();
+        releaseEngines();
+    };
 
     double heuristics_mupltier = 1.5;
+    double stepLength = 0.5;
 
     DetailPath sampleDetailPath(Path& path, Instance& instance, double stepLength);
 
     void compute_Heuristics(CBSNode* node);
     void compute_Gval(CBSNode* node);
+    bool isGoal(CBSNode* node);
 
     void pushNode(CBSNode* node);
     CBSNode* popNode();
@@ -180,13 +196,25 @@ public:
         return this->open_list.empty();
     }
 
+    void update_AgentPath(Instance& instance, CBSNode* node, size_ut agentIdx);
+
 private:
+    std::map<size_ut, AngleAStar*> search_engines;
+
     boost::heap::pairing_heap< CBSNode*, boost::heap::compare<CBSNode::compare_node>> open_list;
 
     inline void releaseNodes(){
         open_list.clear();
     }
-    
+
+    inline void releaseEngines(){
+        for (auto iter : search_engines){
+            iter.second->releaseNodes();
+            delete iter.second;
+        }
+        search_engines.clear();
+    }
+
 };
 
 #endif

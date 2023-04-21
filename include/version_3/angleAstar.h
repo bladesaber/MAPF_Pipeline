@@ -110,7 +110,7 @@ public:
         Instance& instance
     );
 
-    Path findPath(
+    Path& findPath(
         std::vector<ConstrainType> constraints,
         Instance& instance,
         const std::tuple<int, int, int>& start_state, 
