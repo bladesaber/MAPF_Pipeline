@@ -103,8 +103,8 @@ class CBSSolver(object):
                 self.pushNode(child_node)
 
             run_times += 1
-            # if run_times > 100:
-            #     break
+            if run_times > 20:
+                break
 
             print("Running ... %d" % run_times)    
 
@@ -161,8 +161,8 @@ class CBSSolver(object):
                 continue
 
             ### ------ Just For Debug
-            # self.print_NodeInfo(new_node, print_constrains=True)
-            # self.print_NodeGraph(new_node, select_agentIdx=agentIdx)
+            self.print_NodeInfo(new_node, print_constrains=True)
+            self.print_NodeGraph(new_node, select_agentIdx=agentIdx)
             ### ---------------------------
 
             childNodes.append(new_node)
@@ -177,6 +177,7 @@ class CBSSolver(object):
         childNode.copy(node)
 
         childNode.update_Constrains(agentIdx, constrains)
+
         success = self.cbs_planner.update_AgentPath(self.instance, childNode, agentIdx)
         if not success:
             return None
@@ -205,7 +206,8 @@ class CBSSolver(object):
                 agent.firstConflict.info()
 
             if print_constrains:
-                print('Constrains:', agent.getConstrains())
+                # print('Constrains:', agent.getConstrains())
+                agent.debug()
 
             if print_path:
                 print("Path: ")

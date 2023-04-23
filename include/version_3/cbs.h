@@ -95,6 +95,15 @@ public:
         // std::cout << " pathTree.use_count: " << pathTree.use_count() << std::endl;
     }
 
+    void debug(){
+        double x, y, z, radius;
+        for (size_t i = 0; i < constrains->size(); i++)
+        {
+            std::tie(x, y, z, radius) = constrains->at(i);
+            std::cout << "x:" << x << " y:" << y << " z:" << z << " radius:" << radius << std::endl;
+        }
+    }
+
 };
 
 class CBSNode{

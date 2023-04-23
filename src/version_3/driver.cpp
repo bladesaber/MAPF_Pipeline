@@ -134,7 +134,8 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("update_Constrains", &AgentInfo::update_Constrains, "new_constrains"_a)
         .def("update_DetailPath_And_Tree", &AgentInfo::update_DetailPath_And_Tree, "path"_a)
         .def("copy", &AgentInfo::copy, "rhs"_a)
-        .def("info", &AgentInfo::info);
+        .def("info", &AgentInfo::info)
+        .def("debug", &AgentInfo::debug);
 
     py::class_<CBSNode>(m, "CBSNode")
         .def(py::init<int>(), "num_of_agents"_a)
