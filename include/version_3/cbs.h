@@ -4,6 +4,7 @@
 #include "common.h"
 #include "instance.h"
 #include "utils.h"
+#include "conflict.h"
 
 #include "angleAstar.h"
 #include "kdtreeWrapper.h"
@@ -16,10 +17,9 @@ public:
     std::tuple<int, int, int> endPos;
 
     bool isConflict = false;
-    ConstrainType firstConflict;
-    double firstConflictLength;
-
     std::set<std::tuple<int, int, int>> conflictSet;
+    size_t conflictNum = 0;
+    Conflict firstConflict;
 
     AgentInfo(){};
     AgentInfo(
@@ -83,15 +83,16 @@ public:
 
     void info(){
         std::cout << "AgentIdx: " << agentIdx << std::endl;
-        std::cout << "  Detail Path Size: " << (*detailPath).size() << std::endl;
-        std::cout << "  isConflict: " << isConflict << std::endl;
-        std::cout << "  firstConflictLength: " << firstConflictLength << std::endl;
+        std::cout << "   StartPos:" << " x:" << std::get<0>(startPos) << " y:" << std::get<1>(startPos) << " z:" << std::get<2>(startPos) << std::endl;
+        std::cout << "   EndPos:" << " x:" << std::get<0>(endPos) << " y:" << std::get<1>(endPos) << " z:" << std::get<2>(endPos) << std::endl;
+        std::cout << "   radius: " << radius << std::endl;
+        std::cout << "   isConflict: " << isConflict << std::endl;
+        std::cout << "   ConflictNum:" << conflictNum << std::endl;
+        std::cout << "   Constrain Size: " << (*constrains).size() << std::endl;
 
-        double x, y, z, radius;
-        std::tie(x, y, z, radius) = firstConflict;
-        std::cout << "   firstConflict x:" << x << " y:" << y << " z:" << z << " radius:" << radius << std::endl;
-
-        // std::cout << "   Constrain Size: " << (*constrains).size() << std::endl;
+        // std::cout << "   Share Ptr Test: constrains.use_count:" << constrains.use_count();
+        // std::cout << " detailPath.use_count:" << detailPath.use_count();
+        // std::cout << " pathTree.use_count: " << pathTree.use_count() << std::endl;
     }
 
 };
@@ -110,13 +111,18 @@ public:
     int node_id;
     double g_val = 0.0;
 	double h_val = 0.0;
-	int depth;
+	int depth = 0;
 
-    void updateAgentConflict(size_t agentIdx);
     void findAllAgentConflict();
     void updateFirstConflict(
-        double x, double y, double z, 
-        double radius, double length, AgentInfo* agent
+        AgentInfo* agent1,
+        
+        double conflict1_x, double conflict1_y, double conflict1_z, 
+        double conflict1_radius, double conflict1_length, 
+        
+        size_ut conflict_agentIdx,
+        double conflict2_x, double conflict2_y, double conflict2_z, 
+        double conflict2_radius, double conflict2_length
     );
 
     void copy(const CBSNode& rhs){
@@ -124,8 +130,8 @@ public:
 
         for (auto iter : rhs.agentMap)
         {
-            AgentInfo agent = AgentInfo(iter.second);
-            agentMap[iter.first] = &agent;
+            AgentInfo* agent = new AgentInfo(iter.second);
+            agentMap[iter.first] = agent;
         }
     }
 
@@ -152,7 +158,12 @@ public:
     // typedef boost::heap::pairing_heap<CBSNode*, boost::heap::compare<CBSNode::compare_node>>::handle_type Open_handle_t;
     // Open_handle_t open_handle;
 
-    void setAgentInfo(size_ut agentIdx, AgentInfo* agent){
+    void addAgent(
+        size_ut agentIdx, double radius,
+        std::tuple<int, int, int> startPos,
+        std::tuple<int, int, int> endPos
+    ){
+        AgentInfo* agent = new AgentInfo(agentIdx, radius, startPos, endPos);
         agentMap[agentIdx] = agent;
     }
 
@@ -167,6 +178,7 @@ private:
         for (auto iter : agentMap)
         {
             iter.second->release();
+            delete iter.second;
         }
         agentMap.clear();
     }
@@ -184,6 +196,8 @@ public:
     double heuristics_mupltier = 1.5;
     double stepLength = 0.5;
 
+    double runtime_search = 0;
+
     DetailPath sampleDetailPath(Path& path, Instance& instance, double stepLength);
 
     void compute_Heuristics(CBSNode* node);
@@ -196,7 +210,17 @@ public:
         return this->open_list.empty();
     }
 
-    void update_AgentPath(Instance& instance, CBSNode* node, size_ut agentIdx);
+    bool update_AgentPath(Instance& instance, CBSNode* node, size_ut agentIdx);
+
+    void addSearchEngine(size_ut agentIdx, double radius){
+        search_engines[agentIdx] = new AngleAStar(radius);
+    }
+
+    void info(){
+        std::cout << "CBS Info" << std::endl;
+        std::cout << "   SearchEngine Size: " << search_engines.size() << std::endl;
+        std::cout << "   openList Size: " << open_list.size() << std::endl;
+    }
 
 private:
     std::map<size_ut, AngleAStar*> search_engines;

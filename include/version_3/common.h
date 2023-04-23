@@ -11,6 +11,8 @@
 #include "list"
 #include "vector"
 #include "algorithm"
+#include <climits>
+#include <cfloat>
 
 #include <boost/heap/pairing_heap.hpp>
 #include <boost/unordered_set.hpp>

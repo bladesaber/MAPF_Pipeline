@@ -38,4 +38,6 @@ double point2LineSegmentDistance(
 
 double round_decimal(double x, int k);
 
+double roundInterval(double x, double interval);
+
 #endif

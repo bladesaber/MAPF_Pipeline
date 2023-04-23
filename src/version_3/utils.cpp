@@ -149,3 +149,7 @@ double round_decimal(double x, int k){
     double tem = pow(10.0, k);
     return round(x * tem) / tem;
 }
+
+double roundInterval(double x, double interval){
+    return round(x / interval) * interval;
+}

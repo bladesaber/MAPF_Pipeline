@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "kdtreeWrapper.h"
 #include "instance.h"
+#include "conflict.h"
 #include "constrainTable.h"
 #include "angleAstar.h"
 #include "cbs.h"
@@ -90,7 +91,32 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("debug_insert", &KDTreeWrapper::debug_insert)
         .def("debug_search", &KDTreeWrapper::debug_search);
 
+    py::class_<Conflict>(m, "Conflict")
+        .def(py::init<>())
+        .def(py::init<
+            size_ut, 
+            double, double, double, double, double,
+            size_ut, 
+            double, double, double, double, double
+            >())
+        .def_readonly("agent1", &Conflict::agent1)
+        .def_readonly("conflict1_x", &Conflict::conflict1_x)
+        .def_readonly("conflict1_y", &Conflict::conflict1_y)
+        .def_readonly("conflict1_z", &Conflict::conflict1_z)
+        .def_readonly("conflict1_radius", &Conflict::conflict1_radius)
+        .def_readonly("agent2", &Conflict::agent2)
+        .def_readonly("conflict2_x", &Conflict::conflict2_x)
+        .def_readonly("conflict2_y", &Conflict::conflict2_y)
+        .def_readonly("conflict2_z", &Conflict::conflict2_z)
+        .def_readonly("conflict2_radius", &Conflict::conflict2_radius)
+        .def_readonly("constrain1", &Conflict::constrain1)
+        .def_readonly("constrain2", &Conflict::constrain2)
+        .def("conflictExtend", &Conflict::conflictExtend)
+        .def("getMinLength", &Conflict::getMinLength)
+        .def("info", &Conflict::info);
+
     py::class_<AgentInfo>(m, "AgentInfo")
+        .def(py::init<>())
         .def(py::init<
             size_ut, double, 
             std::tuple<int, int, int>, 
@@ -101,8 +127,8 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("radius", &AgentInfo::radius)
         .def_readonly("isConflict", &AgentInfo::isConflict)
         .def_readonly("firstConflict", &AgentInfo::firstConflict)
-        .def_readonly("firstConflictLength", &AgentInfo::firstConflictLength)
         .def_readonly("conflictSet", &AgentInfo::conflictSet)
+        .def_readonly("conflictNum", &AgentInfo::conflictNum)
         .def("getConstrains", &AgentInfo::getConstrains)
         .def("getDetailPath", &AgentInfo::getDetailPath)
         .def("update_Constrains", &AgentInfo::update_Constrains, "new_constrains"_a)
@@ -112,7 +138,8 @@ PYBIND11_MODULE(mapf_pipeline, m) {
 
     py::class_<CBSNode>(m, "CBSNode")
         .def(py::init<int>(), "num_of_agents"_a)
-        .def_readonly("node_id", &CBSNode::node_id)
+        .def_readwrite("node_id", &CBSNode::node_id)
+        .def_readwrite("depth", &CBSNode::depth)
         .def_readonly("g_val", &CBSNode::g_val)
         .def_readonly("h_val", &CBSNode::h_val)
         .def_readonly("num_of_agents", &CBSNode::num_of_agents)
@@ -121,15 +148,23 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("findAllAgentConflict", &CBSNode::findAllAgentConflict)
         .def("update_Constrains", &CBSNode::update_Constrains, "agentIdx"_a, "new_constrains"_a)
         .def("update_DetailPath_And_Tree", &CBSNode::update_DetailPath_And_Tree, "agentIdx"_a, "path"_a)
-        .def("setAgentInfo", &CBSNode::setAgentInfo, "agentIdx"_a, "agent"_a)
+        .def("addAgent", &CBSNode::addAgent, "agentIdx"_a, "radius"_a, "startPos"_a, "endPos"_a)
         .def("copy", &CBSNode::copy, "rhs"_a)
         .def("debug", &CBSNode::debug);
 
     py::class_<CBS>(m, "CBS")
         .def(py::init<>())
+        .def_readonly("runtime_search", &CBS::runtime_search)
+        .def("pushNode", &CBS::pushNode, "node"_a)
+        .def("popNode", &CBS::popNode)
+        .def("is_openList_empty", &CBS::is_openList_empty)
+        .def("addSearchEngine", &CBS::addSearchEngine, "agentIdx"_a, "radius"_a)
         .def("sampleDetailPath", &CBS::sampleDetailPath, "path"_a, "instance"_a, "stepLength"_a)
         .def("compute_Heuristics", &CBS::compute_Heuristics, "node"_a)
-        .def("compute_Gval", &CBS::compute_Gval, "node"_a);
+        .def("compute_Gval", &CBS::compute_Gval, "node"_a)
+        .def("isGoal", &CBS::isGoal, "node"_a)
+        .def("update_AgentPath", &CBS::update_AgentPath, "instance"_a, "node"_a, "agentIdx"_a)
+        .def("info", &CBS::info);
 
     // it don't work, I don't know why
     // m.def("printPointer", &printPointer<KDTreeData>, "a"_a, "tag"_a);

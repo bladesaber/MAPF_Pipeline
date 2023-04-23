@@ -1,9 +1,9 @@
 #include "constrainTable.h"
 
 void ConstraintTable::insert2CT(double x, double y, double z, double radius){
-    x_round = round_decimal(x, 1);
-    y_round = round_decimal(y, 1);
-    z_round = round_decimal(z, 1);
+    x_round = roundInterval(x, conflict_precision);
+    y_round = roundInterval(y, conflict_precision);
+    z_round = roundInterval(z, conflict_precision);
 
     KDTreeData* m = new KDTreeData(radius, 0.0);
     constrainTree.insertPoint3D(x_round, y_round, z_round, m);

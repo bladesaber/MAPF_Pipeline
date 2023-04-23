@@ -1,28 +1,35 @@
 import numpy as np
 import os
 
+from scripts.version_3.cbs import CBSSolver
+
 cond_params = {
     'y': 8,
     'x': 8,
     'z': 8,
-    'num_of_agents': 5,
+    'num_of_agents': 3,
 
     'save_path': '/home/quan/Desktop/MAPF_Pipeline/scripts/version_3/map',
-    "load": False,
+    "load": True,
 }
 
 class MapGen(object):
     def __init__(self):
-        self.startPoses = []
-        self.endPoses = []
+        self.agentInfos = {}
 
     def create_agentPos(self, num):
         dires = np.random.choice(['x', 'y', 'z'], size=num)
-        for dire in dires:
-            startPos, endPos = self.create_Pos(dire)
+        for agentIdx, dire in enumerate(dires):
+            (startPos, startDire), (endPos, endDire) = self.create_Pos(dire)
 
-            self.startPoses.append(startPos)
-            self.endPoses.append(endPos)
+            self.agentInfos[agentIdx] = {
+                'agentIdx': agentIdx,
+                'startPos': startPos,
+                'endPos': endPos,
+                'radius': 0.5,
+                'startDire': startDire,
+                'endDire': endDire
+            }
 
     def create_Pos(self, dire):
         if dire == 'x':
@@ -36,6 +43,8 @@ class MapGen(object):
                 np.random.randint(0, cond_params['y']),
                 np.random.randint(0, cond_params['z'])
             )
+            startDire = (-1.0, 0.0, 0.0)
+            endDire = (1.0, 0.0, 0.0)
         
         elif dire == 'y':
             pos1 = (
@@ -48,6 +57,9 @@ class MapGen(object):
                 cond_params['y'] - 1, 
                 np.random.randint(0, cond_params['z'])
             )
+            startDire = (0.0, -1.0, 0.0)
+            endDire = (0.0, 1.0, 0.0)
+
         elif dire == 'z':
             pos1 = (
                 np.random.randint(0, cond_params['x']),
@@ -59,25 +71,19 @@ class MapGen(object):
                 np.random.randint(0, cond_params['y']),
                 cond_params['z'] - 1 
             )
+            startDire = (0.0, 0.0, -1.0)
+            endDire = (0.0, 0.0, 1.0)
         
         if np.random.uniform(0.0, 1.0) > 0.5:
-            return pos1, pos2
+            return (pos1, startDire), (pos2, endDire)
         else:
-            return pos2, pos1
+            return (pos2, endDire), (pos1, startDire)
 
     def save(self):
-        np.save(
-            cond_params['save_path'],
-            {
-                'startPoses': self.startPoses,
-                'endPoses': self.endPoses
-            }
-        )
+        np.save(cond_params['save_path'], self.agentInfos)
 
     def load(self):
-        d = np.load(os.path.join(cond_params['save_path']+'.npy'), allow_pickle=True).item()
-        self.startPoses = d['startPoses']
-        self.endPoses = d['endPoses']
+        self.agentInfos = np.load(os.path.join(cond_params['save_path']+'.npy'), allow_pickle=True).item()
 
 def main():
     map = MapGen()
@@ -86,6 +92,9 @@ def main():
     else:
         map.create_agentPos(cond_params['num_of_agents'])
         map.save()
+
+    planner = CBSSolver(cond_params, map.agentInfos)
+    planner.solve()
 
 if __name__ == '__main__':
     main()

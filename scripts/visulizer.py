@@ -33,6 +33,10 @@ class VisulizerVista(object):
         box.translate(xyz, inplace=True)
         return box
 
+    def create_sphere(self, xyz, radius):
+        sphere = pyvista.Sphere(radius, center=xyz)
+        return sphere
+
     def create_many_boxs(self, xyzs:np.array, length=1.0):
         semi_length = length / 2.0
 

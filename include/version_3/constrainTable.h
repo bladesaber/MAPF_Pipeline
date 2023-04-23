@@ -13,6 +13,8 @@ public:
         ct.clear();
     };
 
+    double conflict_precision = 0.25;
+
     void insert2CT(double x, double y, double z, double radius);
     void insert2CT(ConstrainType constrain);
 

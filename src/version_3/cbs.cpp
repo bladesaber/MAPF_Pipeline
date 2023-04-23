@@ -1,75 +1,49 @@
 #include "cbs.h"
 
 void CBSNode::updateFirstConflict(
-    double x, double y, double z, 
-    double radius, double length,
-    AgentInfo* agent
-){
-    if (!agent->isConflict)
-    {
-        agent->firstConflictLength = length;
-        agent->firstConflict = std::make_tuple(x, y, z, radius);
-        agent->isConflict = true;
-
-    }else{
-        if (length < agent->firstConflictLength)
-        {
-            agent->firstConflictLength = length;
-            agent->firstConflict = std::make_tuple(x, y, z, radius);
-        }
-    }
-}
-
-void CBSNode::updateAgentConflict(size_t agentIdx){
-    /*
-    TODO UnFinish
-
-    AgentInfo* agent = agentMap[agentIdx];
-    std::shared_ptr<DetailPath> path = agent->detailPath;
-
-    double x, y, z, length;
-    KDTreeRes res;
-    double distance;
-    AgentInfo* other_agent;
-    std::shared_ptr<KDTreeWrapper> otherAgent_tree;
-    double num_of_conflict;
-
-    agent->isConflict = false;
-
-    for (auto iter : agentMap)
-    {
-        if (iter.first == agentIdx){
-            continue;
-        }
+    AgentInfo* agent1,
         
-        other_agent = agentMap[iter.first];
-        num_of_conflict = 0;
-        otherAgent_tree = other_agent->pathTree;
+    double conflict1_x, double conflict1_y, double conflict1_z, 
+    double conflict1_radius, double conflict1_length, 
+        
+    size_ut conflict_agentIdx,
+    double conflict2_x, double conflict2_y, double conflict2_z, 
+    double conflict2_radius, double conflict2_length
+){
 
-        for (size_t i = 0; i < path->size(); i++)
+    // // ------ Just For Debug
+    // std::cout << "Debug3:" << std::endl;
+    // std::cout << "Agent1:" << agent1->agentIdx;
+    // std::cout << " x:" <<conflict1_x << " y:" << conflict1_y << " z:" << conflict1_z;
+    // std::cout << " radius:" << conflict1_radius << " length:" << conflict1_length << std::endl;
+    // std::cout << "Conflict Agent:" << conflict_agentIdx;
+    // std::cout << " x:" <<conflict2_x << " y:" << conflict2_y << " z:" << conflict2_z;
+    // std::cout << " radius:" << conflict2_radius << " length:" << conflict2_length << std::endl;
+    // // -------------------------------------------
+
+    if (!agent1->isConflict)
+    {
+        agent1->firstConflict = Conflict(
+            agent1->agentIdx, conflict1_length,
+            conflict1_x, conflict1_y, conflict1_z, conflict1_radius,
+            conflict_agentIdx, conflict2_length,
+            conflict2_x, conflict2_y, conflict2_z, conflict2_radius
+        );
+        agent1->isConflict = true;
+        
+    }else{
+        if (conflict1_length < agent1->firstConflict.conflict1_length)
         {
-            std::tie(x, y, z, length) = path->at(i);
-            otherAgent_tree->nearest(x, y, z, res);
-
-            distance = norm2_distance(
-                x, y, z,
-                res.x, res.y, res.z
-            );
-
-            if (distance >= agent->radius + other_agent->radius){
-                continue;
-            }
-
-            num_of_conflict += 1;
-            updateFirstConflict(
-                res.x, res.y, res.z, other_agent->radius, length, agent
+            agent1->firstConflict = Conflict(
+                agent1->agentIdx, conflict1_length,
+                conflict1_x, conflict1_y, conflict1_z, conflict1_radius,
+                conflict_agentIdx, conflict2_length,
+                conflict2_x, conflict2_y, conflict2_z, conflict2_radius
             );
         }
-
-        agent->costMap[other_agent->agentIdx] = num_of_conflict;
-        other_agent->costMap[agent->agentIdx] = num_of_conflict;
     }
-    */
+
+    // agent1->firstConflict.info();
 }
 
 void CBSNode::findAllAgentConflict(){
@@ -113,7 +87,8 @@ void CBSNode::findAllAgentConflict(){
                     continue;
                 }
 
-                // ------ Discrete Conflict Set
+                // ----- Discrete Conflict Set
+                // 因为agent是在步长为1的离散空间行走的，所以直接使用整数
                 agent_i->conflictSet.insert(
                     std::make_tuple(
                         (int)round(res.x),
@@ -129,14 +104,33 @@ void CBSNode::findAllAgentConflict(){
                     )
                 );
 
+                // // ------ Just For Debug
+                // std::cout << "Debug2:" << std::endl;
+                // std::cout << "   AgentIdx:" << agent_i->agentIdx << " x:" << res.x << " y:" << res.y << " z:" << res.z << " radius:" << res.data->radius << " length:" << length << std::endl;
+                // std::cout << "   AgentIdx:" << agent_j->agentIdx << " x:" << x << " y:" << y << " z:" << z << " radius:" << agent_i->radius << " length:" << res.data->length << std::endl;
+                // // -----------------------------------------
+
                 updateFirstConflict(
-                    res.x, res.y, res.z, agent_j->radius, length, agent_i
+                    agent_i,
+                    res.x, res.y, res.z, res.data->radius, length,
+                    agent_j->agentIdx,
+                    x, y, z, agent_i->radius,res.data->length
                 );
                 updateFirstConflict(
-                    x, y, z, agent_i->radius, res.data->length, agent_j
+                    agent_j,
+                    x, y, z, agent_i->radius, res.data->length, 
+                    agent_i->agentIdx,
+                    res.x, res.y, res.z, agent_j->radius, length
                 );
             }
         }
+    }
+
+    for (auto iter : agentMap)
+    {
+        agent_i = iter.second;
+        agent_i->conflictNum = agent_i->conflictSet.size();
+        agent_i->conflictSet.clear();
     }
 }
 
@@ -198,13 +192,14 @@ DetailPath CBS::sampleDetailPath(Path& path, Instance& instance, double stepLeng
             //           << lastY + vecY * (j * real_stepLength) << ", "
             //           << lastZ + vecZ * (j * real_stepLength) << "]" << std::endl;
 
-            cur_length += real_stepLength;
             detail_path.emplace_back(std::make_tuple(
                 lastX + vecX * (j * real_stepLength),
                 lastY + vecY * (j * real_stepLength),
                 lastZ + vecZ * (j * real_stepLength),
                 cur_length
             ));
+            cur_length += real_stepLength;
+
         }
 
         lastX = curX;
@@ -222,9 +217,7 @@ void CBS::compute_Heuristics(CBSNode* node){
     for (size_ut i = 0; i < node->num_of_agents; i++)
     {
         agent = node->agentMap[i];
-        for (size_ut j = i; j < node->num_of_agents; j++){
-            node->h_val += (double)agent->conflictSet.size() * heuristics_mupltier;
-        }
+        node->h_val += (double)agent->conflictNum / 2.0 * heuristics_mupltier;
     }
 }
 
@@ -235,11 +228,11 @@ void CBS::compute_Gval(CBSNode* node){
     for (auto iter : node->agentMap)
     {
         std::tie(x, y, z, length) = (*iter.second->detailPath).back();
-        node->g_val += (double)length;
+        node->g_val += length;
     }
 }
 
-void CBS::update_AgentPath(Instance& instance, CBSNode* node, size_ut agentIdx){
+bool CBS::update_AgentPath(Instance& instance, CBSNode* node, size_ut agentIdx){
     AgentInfo* agent = node->agentMap[agentIdx];
     Path path = search_engines[agentIdx]->findPath(
         *agent->constrains,
@@ -248,9 +241,26 @@ void CBS::update_AgentPath(Instance& instance, CBSNode* node, size_ut agentIdx){
         agent->endPos
     );
 
+    if (path.size() == 0){
+        return false;
+    }
+
     node->update_DetailPath_And_Tree(
         agentIdx,
         sampleDetailPath(path, instance, stepLength)
     );
 
+    runtime_search = search_engines[agentIdx]->runtime_search;
+
+    return true;
+}
+
+bool CBS::isGoal(CBSNode* node){
+    for (auto iter : node->agentMap)
+    {
+        if (iter.second->isConflict){
+            return false;
+        }
+    }
+    return true;
 }
