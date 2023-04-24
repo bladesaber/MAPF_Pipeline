@@ -108,7 +108,7 @@ class CBSSolver(object):
                 self.pushNode(child_node)
 
             run_times += 1
-            if run_times > 100:
+            if run_times > 300:
                 print("[DEBUG]: Out of Resource !!!")
                 break
 

@@ -214,7 +214,7 @@ public:
     };
 
     double heuristics_mupltier = 1.5;
-    double stepLength = 0.5;
+    double stepLength = 0.2;
 
     double runtime_search = 0;
 

@@ -7,7 +7,7 @@ cond_params = {
     'y': 15,
     'x': 15,
     'z': 15,
-    'num_of_agents': 10,
+    'num_of_agents': 15,
 
     'save_path': '/home/quan/Desktop/MAPF_Pipeline/scripts/version_3/map',
     "load": False,
