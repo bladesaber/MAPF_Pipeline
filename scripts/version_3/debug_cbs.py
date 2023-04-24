@@ -4,13 +4,13 @@ import os
 from scripts.version_3.cbs import CBSSolver
 
 cond_params = {
-    'y': 8,
-    'x': 8,
-    'z': 8,
-    'num_of_agents': 6,
+    'y': 15,
+    'x': 15,
+    'z': 15,
+    'num_of_agents': 10,
 
     'save_path': '/home/quan/Desktop/MAPF_Pipeline/scripts/version_3/map',
-    "load": True,
+    "load": False,
 }
 
 class MapGen(object):
@@ -34,7 +34,7 @@ class MapGen(object):
                 'agentIdx': agentIdx,
                 'startPos': startPos,
                 'endPos': endPos,
-                'radius': 0.5,
+                'radius': 0.45,
                 'startDire': startDire,
                 'endDire': endDire
             }

@@ -85,7 +85,7 @@ class CBSSolver(object):
         root.depth = 0
         root.findAllAgentConflict()
         # self.print_NodeInfo(root, print_conflict=True)
-        self.print_NodeGraph(root)
+        # self.print_NodeGraph(root)
 
         self.cbs_planner.compute_Heuristics(root)
         self.cbs_planner.compute_Gval(root)
@@ -108,7 +108,8 @@ class CBSSolver(object):
                 self.pushNode(child_node)
 
             run_times += 1
-            if run_times > 3:
+            if run_times > 100:
+                print("[DEBUG]: Out of Resource !!!")
                 break
 
             print("Running ... %d" % run_times)    
@@ -157,7 +158,7 @@ class CBSSolver(object):
 
         new_constrains = [
             (select_conflict.agent1, select_conflict.constrain1), 
-            # (select_conflict.agent2, select_conflict.constrain2)
+            (select_conflict.agent2, select_conflict.constrain2)
         ]
         childNodes = []
         for agentIdx, constrain in new_constrains:
@@ -168,11 +169,11 @@ class CBSSolver(object):
             if not success:
                 continue
 
-            ### ------ Just For Debug
-            self.print_NodeInfo(new_node, print_constrains=True, print_path=True)
-            self.print_NodeGraph(new_node, select_agentIdx=agentIdx)
-            print('------------------------------------------------')
-            ### ---------------------------
+            # ### ------ Just For Debug
+            # self.print_NodeInfo(new_node, print_constrains=True, print_path=True)
+            # self.print_NodeGraph(new_node, select_agentIdx=agentIdx)
+            # print('------------------------------------------------')
+            # ### ---------------------------
 
             childNodes.append(new_node)
 
