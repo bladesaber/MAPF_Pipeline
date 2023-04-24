@@ -63,6 +63,7 @@ void CBSNode::findAllAgentConflict(){
     double x, y, z, length;
     KDTreeRes res;
     double distance;
+    int tree_UseCount;
 
     for (size_ut i = 0; i < num_of_agents; i++)
     {
@@ -74,8 +75,12 @@ void CBSNode::findAllAgentConflict(){
             agent_j = agentMap[j];
             tree_j = agent_j->pathTree;
 
+            // tree_UseCount = tree_j.use_count();
+            // assert(("Tree Must Exist", tree_UseCount > 0));
+
             for (size_t k = 0; k < path_i->size(); k++){
                 std::tie(x, y, z, length) = path_i->at(k);
+
                 tree_j->nearest(x, y, z, res);
 
                 distance = norm2_distance(
@@ -242,9 +247,11 @@ bool CBS::update_AgentPath(Instance& instance, CBSNode* node, size_ut agentIdx){
     );
 
     if (path.size() == 0){
+        agent->findPath_Success = false;
         return false;
     }
 
+    agent->findPath_Success = true;
     node->update_DetailPath_And_Tree(
         agentIdx,
         sampleDetailPath(path, instance, stepLength)

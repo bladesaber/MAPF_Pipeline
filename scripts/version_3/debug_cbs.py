@@ -7,7 +7,7 @@ cond_params = {
     'y': 8,
     'x': 8,
     'z': 8,
-    'num_of_agents': 3,
+    'num_of_agents': 6,
 
     'save_path': '/home/quan/Desktop/MAPF_Pipeline/scripts/version_3/map',
     "load": True,
@@ -19,9 +19,17 @@ class MapGen(object):
 
     def create_agentPos(self, num):
         dires = np.random.choice(['x', 'y', 'z'], size=num)
-        for agentIdx, dire in enumerate(dires):
-            (startPos, startDire), (endPos, endDire) = self.create_Pos(dire)
 
+        records = []
+        for agentIdx, dire in enumerate(dires):
+            while True:
+                (startPos, startDire), (endPos, endDire) = self.create_Pos(dire)
+
+                if (startPos not in records) and (endPos not in records):
+                    break
+            
+            records.append(startPos)
+            records.append(endPos)
             self.agentInfos[agentIdx] = {
                 'agentIdx': agentIdx,
                 'startPos': startPos,
@@ -86,6 +94,7 @@ class MapGen(object):
         self.agentInfos = np.load(os.path.join(cond_params['save_path']+'.npy'), allow_pickle=True).item()
 
 def main():
+    print("Start Creating Map......")
     map = MapGen()
     if cond_params['load']:
         map.load()

@@ -13,6 +13,7 @@
 #include "algorithm"
 #include <climits>
 #include <cfloat>
+#include "assert.h"
 
 #include <boost/heap/pairing_heap.hpp>
 #include <boost/unordered_set.hpp>

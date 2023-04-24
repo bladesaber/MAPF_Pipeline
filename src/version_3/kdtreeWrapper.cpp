@@ -18,10 +18,11 @@ void KDTreeWrapper::insertPath3D(const DetailPath& path, double radius){
 
 void KDTreeWrapper::nearest(double x, double y, double z, KDTreeRes& res){
     double pos[3] = {x, y, z};
-    kdres* treeRes = kd_nearest(tree, pos);
+    kdres* treeRes;
+    treeRes = kd_nearest(tree, pos);
 
     KDTreeData* treeData = (KDTreeData*)kd_res_item(treeRes, pos);
-    
+
     res.x = pos[0];
     res.y = pos[1];
     res.z = pos[2];

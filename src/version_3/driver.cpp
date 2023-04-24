@@ -57,7 +57,8 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def(py::init<>())
         .def("insert2CT", py::overload_cast<double, double, double, double>(&ConstraintTable::insert2CT), "x"_a, "y"_a, "z"_a, "radius"_a)
         .def("insert2CT", py::overload_cast<ConstrainType>(&ConstraintTable::insert2CT), "constrain"_a)
-        .def("isConstrained", &ConstraintTable::isConstrained, "x"_a, "y"_a, "z"_a, "radius"_a)
+        .def("isConstrained", py::overload_cast<double, double, double, double>(&ConstraintTable::isConstrained), "x"_a, "y"_a, "z"_a, "radius"_a)
+        .def("isConstrained", py::overload_cast<Instance&, int, int, double>(&ConstraintTable::isConstrained), "instance"_a, "parent_loc"_a, "child_loc"_a, "radius"_a)
         .def("islineOnSight", &ConstraintTable::islineOnSight, "instance"_a, "parent_loc"_a, "child_loc"_a, "bound"_a);
 
     py::class_<AngleAStar>(m, "AngleAStar")
@@ -129,6 +130,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("firstConflict", &AgentInfo::firstConflict)
         .def_readonly("conflictSet", &AgentInfo::conflictSet)
         .def_readonly("conflictNum", &AgentInfo::conflictNum)
+        .def_readonly("findPath_Success", &AgentInfo::findPath_Success)
         .def("getConstrains", &AgentInfo::getConstrains)
         .def("getDetailPath", &AgentInfo::getDetailPath)
         .def("update_Constrains", &AgentInfo::update_Constrains, "new_constrains"_a)

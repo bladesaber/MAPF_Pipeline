@@ -71,10 +71,15 @@ class CBSSolver(object):
 
         ## 1.3 compute all agent path
         for agentIdx in self.agent_idxs:
-            self.cbs_planner.update_AgentPath(self.instance, root, agentIdx)
-            # print("Solving Cost: %f" % self.cbs_planner.runtime_search)
+            success = self.cbs_planner.update_AgentPath(self.instance, root, agentIdx)
+            print("AgentIdx:%d Solving Cost: %f success:%d" % (agentIdx, self.cbs_planner.runtime_search, success))
+
+            if not success:
+                print("[Debug]: Conflict Exist in Start Or End Pos")
+                return False
+
+        # self.print_NodeInfo(root, print_path=False, print_constrains=True)
         # self.print_NodeGraph(root)
-        # self.print_NodeInfo(root, print_path=True)
 
         ### 1.4 find all the conflict and compute cost and heuristics
         root.depth = 0
@@ -103,7 +108,7 @@ class CBSSolver(object):
                 self.pushNode(child_node)
 
             run_times += 1
-            if run_times > 20:
+            if run_times > 3:
                 break
 
             print("Running ... %d" % run_times)    
@@ -111,9 +116,12 @@ class CBSSolver(object):
         if success_node is not None: 
             self.print_NodeInfo(success_node)
             self.print_NodeGraph(success_node)
+            return True
+        
         else:
             print('Search Fail')
-
+            return False
+            
     def pushNode(self, node):
         node.node_id = self.node_id
         self.node_id += 1
@@ -149,20 +157,21 @@ class CBSSolver(object):
 
         new_constrains = [
             (select_conflict.agent1, select_conflict.constrain1), 
-            (select_conflict.agent2, select_conflict.constrain2)
+            # (select_conflict.agent2, select_conflict.constrain2)
         ]
         childNodes = []
         for agentIdx, constrain in new_constrains:
-            new_node = self.createCBSNode(
+            success, new_node = self.createCBSNode(
                 node, agentIdx, constrain
             )
 
-            if new_node is None:
+            if not success:
                 continue
 
             ### ------ Just For Debug
-            self.print_NodeInfo(new_node, print_constrains=True)
+            self.print_NodeInfo(new_node, print_constrains=True, print_path=True)
             self.print_NodeGraph(new_node, select_agentIdx=agentIdx)
+            print('------------------------------------------------')
             ### ---------------------------
 
             childNodes.append(new_node)
@@ -180,7 +189,7 @@ class CBSSolver(object):
 
         success = self.cbs_planner.update_AgentPath(self.instance, childNode, agentIdx)
         if not success:
-            return None
+            return False, None
 
         childNode.depth = node.depth + 1
         childNode.findAllAgentConflict()
@@ -188,7 +197,7 @@ class CBSSolver(object):
         self.cbs_planner.compute_Heuristics(childNode)
         self.cbs_planner.compute_Gval(childNode)
 
-        return childNode
+        return True, childNode
 
     def print_NodeInfo(
             self, node, 
@@ -196,7 +205,7 @@ class CBSSolver(object):
             print_conflict=False,
             print_path=False,
         ):
-        print("CBSNode: ")
+        print("CBSNode:")
         print(" Depth:", node.depth)
         for agentIdx in node.agentMap:
             agent = node.agentMap[agentIdx]
@@ -211,10 +220,13 @@ class CBSSolver(object):
 
             if print_path:
                 print("Path: ")
-                path = agent.getDetailPath()
-                path = np.array(path)
-                for xyzl in path:
-                    print("   x: %.1f y:%.1f z:%.1f length:%.1f" % (xyzl[0], xyzl[1], xyzl[2], xyzl[3]))
+                if agent.findPath_Success:
+                    path = agent.getDetailPath()
+                    path = np.array(path)
+                    for xyzl in path:
+                        print("   x: %.1f y:%.1f z:%.1f length:%.1f" % (xyzl[0], xyzl[1], xyzl[2], xyzl[3]))
+                else:
+                    print("   Fail")
 
     def print_NodeGraph(self, node, select_agentIdx=None):
         vis = VisulizerVista()
@@ -226,28 +238,38 @@ class CBSSolver(object):
         for agentIdx in node.agentMap.keys():
             agent = node.agentMap[agentIdx]
 
-            path = agent.getDetailPath()
-            path_xyz = np.array(path)[:, :3]
+            if agent.findPath_Success:
+                path = agent.getDetailPath()
+                path_xyz = np.array(path)[:, :3]
 
-            startDire = np.array(self.agentInfos[agentIdx]['startDire'])
-            padding_start = np.array([
-                # path_xyz[0] + startDire * 3.,
-                # path_xyz[0] + startDire * 2.,
-                path_xyz[0] + startDire * 1.,
-            ])
-            endDire = np.array(self.agentInfos[agentIdx]['endDire'])
-            padding_end = np.array([
-                path_xyz[-1] + endDire * 1.,
-                # path_xyz[0-1] + endDire * 2.,
-                # path_xyz[0-1] + endDire * 3.,
-            ])
+                startDire = np.array(self.agentInfos[agentIdx]['startDire'])
+                padding_start = np.array([
+                    # path_xyz[0] + startDire * 3.,
+                    # path_xyz[0] + startDire * 2.,
+                    path_xyz[0] + startDire * 1.,
+                ])
+                endDire = np.array(self.agentInfos[agentIdx]['endDire'])
+                padding_end = np.array([
+                    path_xyz[-1] + endDire * 1.,
+                    # path_xyz[0-1] + endDire * 2.,
+                    # path_xyz[0-1] + endDire * 3.,
+                ])
 
-            path_xyz = np.concatenate([
-                padding_start, path_xyz, padding_end
-            ], axis=0)
+                path_xyz = np.concatenate([
+                    padding_start, path_xyz, padding_end
+                ], axis=0)
 
-            tube_mesh = vis.create_tube(path_xyz)
-            vis.plot(tube_mesh, color=tuple(random_colors[agentIdx]))
+                tube_mesh = vis.create_tube(path_xyz)
+                vis.plot(tube_mesh, color=tuple(random_colors[agentIdx]))
+
+            vis.plot(
+                vis.create_box(np.array(self.agentInfos[agent.agentIdx]['startPos'])), 
+                color=tuple(random_colors[agentIdx])
+            )
+            vis.plot(
+                vis.create_box(np.array(self.agentInfos[agent.agentIdx]['endPos'])), 
+                color=tuple(random_colors[agentIdx])
+            )
 
             # for conflict in agent.conflictSet:
             #     print(conflict)
@@ -259,7 +281,7 @@ class CBSSolver(object):
             constrains = agent.getConstrains()
 
             for constrain in constrains:
-                obs = vis.create_sphere(np.array([constrain[0], constrain[1], constrain[2]]), radius=constrain[3])
+                obs = vis.create_sphere(np.array([constrain[0], constrain[1], constrain[2]]), radius=constrain[3] + 0.1)
                 vis.plot(obs, color=(0.0, 1.0, 0.0))
 
         vis.show()

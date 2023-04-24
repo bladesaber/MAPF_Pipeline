@@ -4,7 +4,10 @@ bool AngleAStar::validMove(Instance& instance, ConstraintTable& constrain_table,
     double x, y, z;
     std::tie(x, y, z) = instance.getCoordinate(next);
 
-    if(constrain_table.isConstrained(x, y, z, radius)){
+    // if(constrain_table.isConstrained(x, y, z, radius)){
+    //     return false;
+    // }
+    if(constrain_table.isConstrained(instance, curr, next, radius)){
         return false;
     }
     return true;

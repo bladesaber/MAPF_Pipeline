@@ -16,6 +16,8 @@ public:
     std::tuple<int, int, int> startPos;
     std::tuple<int, int, int> endPos;
 
+    bool findPath_Success = false;
+
     bool isConflict = false;
     std::set<std::tuple<int, int, int>> conflictSet;
     size_t conflictNum = 0;
@@ -30,7 +32,7 @@ public:
     AgentInfo(AgentInfo* rhs){
         copy(rhs);
     }
-
+    
     std::shared_ptr<std::vector<ConstrainType>> constrains;
     std::shared_ptr<DetailPath> detailPath;
     std::shared_ptr<KDTreeWrapper> pathTree;
@@ -58,6 +60,7 @@ public:
         this->radius = rhs->radius;
         this->startPos = rhs->startPos;
         this->endPos = rhs->endPos;
+        this->findPath_Success = rhs->findPath_Success;
 
         this->constrains = std::shared_ptr<std::vector<ConstrainType>>(rhs->constrains);
         this->detailPath = std::shared_ptr<DetailPath>(rhs->detailPath);
@@ -66,11 +69,19 @@ public:
 
     std::vector<ConstrainType> getConstrains(){
         // just for python test
+
+        int useCount = constrains.use_count();
+        assert(("Constrain Must Be Exist", useCount > 0));
+
         return *constrains;
     }
 
     DetailPath getDetailPath(){
         // just for python test
+
+        int useCount = detailPath.use_count();
+        assert(("Path Must Be Exist", useCount > 0));
+
         return *detailPath;
     }
 
