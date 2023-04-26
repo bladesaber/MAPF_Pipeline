@@ -7,7 +7,8 @@ cond_params = {
     'y': 15,
     'x': 15,
     'z': 15,
-    'num_of_agents': 15,
+    'num_of_agents': 10,
+    'radius_choices': [0.45, 0.85, 1.25],
 
     'save_path': '/home/quan/Desktop/MAPF_Pipeline/scripts/version_3/map',
     "load": False,
@@ -24,17 +25,19 @@ class MapGen(object):
         for agentIdx, dire in enumerate(dires):
             while True:
                 (startPos, startDire), (endPos, endDire) = self.create_Pos(dire)
+                radius = np.random.choice(cond_params['radius_choices'], size=1)
 
-                if (startPos not in records) and (endPos not in records):
+                valid = self.checkValid(startPos, endPos, radius)
+                if valid:
                     break
-            
+
             records.append(startPos)
             records.append(endPos)
             self.agentInfos[agentIdx] = {
                 'agentIdx': agentIdx,
                 'startPos': startPos,
                 'endPos': endPos,
-                'radius': 0.45,
+                'radius': radius,
                 'startDire': startDire,
                 'endDire': endDire
             }
@@ -86,6 +89,31 @@ class MapGen(object):
             return (pos1, startDire), (pos2, endDire)
         else:
             return (pos2, endDire), (pos1, startDire)
+
+    def checkValid(self, startPos, endPos, radius):
+        for agentIdx in self.agentInfos.keys():
+            agentInfo = self.agentInfos[agentIdx]
+
+            ref_Pos = np.array([
+                agentInfo['startPos'],
+                agentInfo['endPos'],
+            ])
+
+            if startPos == agentInfo['startPos']:
+                return False
+            
+            if endPos == agentInfo['endPos']:
+                return False
+
+            dist = (np.linalg.norm(np.array(startPos) - ref_Pos, ord=2, axis=1)).min()
+            if dist < agentInfo['radius'] + radius:
+                return False
+            
+            dist = (np.linalg.norm(np.array(endPos) - ref_Pos, ord=2, axis=1)).min()
+            if dist < agentInfo['radius'] + radius:
+                return False
+
+        return True
 
     def save(self):
         np.save(cond_params['save_path'], self.agentInfos)

@@ -153,3 +153,7 @@ double round_decimal(double x, int k){
 double roundInterval(double x, double interval){
     return round(x / interval) * interval;
 }
+
+double rangeClamp(double n, double lower, double upper) {
+  return std::max(lower, std::min(n, upper));
+}

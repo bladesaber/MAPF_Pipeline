@@ -40,4 +40,6 @@ double round_decimal(double x, int k);
 
 double roundInterval(double x, double interval);
 
+double rangeClamp(double n, double lower, double upper);
+
 #endif

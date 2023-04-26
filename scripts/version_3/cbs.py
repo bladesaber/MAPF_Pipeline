@@ -245,30 +245,36 @@ class CBSSolver(object):
 
                 startDire = np.array(self.agentInfos[agentIdx]['startDire'])
                 padding_start = np.array([
-                    # path_xyz[0] + startDire * 3.,
-                    # path_xyz[0] + startDire * 2.,
+                    path_xyz[0] + startDire * 3.,
+                    path_xyz[0] + startDire * 2.,
                     path_xyz[0] + startDire * 1.,
                 ])
                 endDire = np.array(self.agentInfos[agentIdx]['endDire'])
                 padding_end = np.array([
                     path_xyz[-1] + endDire * 1.,
-                    # path_xyz[0-1] + endDire * 2.,
-                    # path_xyz[0-1] + endDire * 3.,
+                    path_xyz[0-1] + endDire * 2.,
+                    path_xyz[0-1] + endDire * 3.,
                 ])
 
                 path_xyz = np.concatenate([
                     padding_start, path_xyz, padding_end
                 ], axis=0)
 
-                tube_mesh = vis.create_tube(path_xyz)
+                tube_mesh = vis.create_tube(path_xyz, radius=agent.radius)
                 vis.plot(tube_mesh, color=tuple(random_colors[agentIdx]))
 
             vis.plot(
-                vis.create_box(np.array(self.agentInfos[agent.agentIdx]['startPos'])), 
+                vis.create_box(
+                    np.array(self.agentInfos[agent.agentIdx]['startPos']),
+                    length=agent.radius*2.0
+                ), 
                 color=tuple(random_colors[agentIdx])
             )
             vis.plot(
-                vis.create_box(np.array(self.agentInfos[agent.agentIdx]['endPos'])), 
+                vis.create_box(
+                    np.array(self.agentInfos[agent.agentIdx]['endPos']),
+                    length=agent.radius*2.0
+                ), 
                 color=tuple(random_colors[agentIdx])
             )
 

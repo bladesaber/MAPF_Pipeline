@@ -3,12 +3,14 @@
 
 #include "common.h"
 #include "utils.h"
+#include "vector3d.h"
 #include "kdtreeWrapper.h"
 #include "instance.h"
 #include "conflict.h"
 #include "constrainTable.h"
 #include "angleAstar.h"
 #include "cbs.h"
+#include "smoother.h"
 
 #include "test.h"
 
@@ -168,6 +170,35 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("isGoal", &CBS::isGoal, "node"_a)
         .def("update_AgentPath", &CBS::update_AgentPath, "instance"_a, "node"_a, "agentIdx"_a)
         .def("info", &CBS::info);
+
+    py::class_<Vector3D>(m, "Vector3D")
+        .def(py::init<const double, const double, const double>())
+        .def("getX", &Vector3D::getX)
+        .def("getY", &Vector3D::getY)
+        .def("getZ", &Vector3D::getZ);
+
+    py::class_<AgentSmoothInfo>(m, "AgentSmoothInfo")
+        .def(py::init<size_ut, double, DetailPath&>())
+        .def_readonly("pathXYZ", &AgentSmoothInfo::pathXYZ)
+        .def_readonly("radius", &AgentSmoothInfo::radius)
+        .def_readonly("grads", &AgentSmoothInfo::grads);
+
+    py::class_<Smoother>(m, "Smoother")
+        .def(py::init<>())
+        // .def("getSmoothessGradent", &Smoother::getSmoothessGradent, "xim1"_a, "xi"_a, "xip1"_a)
+        // .def("getCurvatureGradent", &Smoother::getCurvatureGradent, "xim1"_a, "xi"_a, "xip1"_a)
+        // .def("getObscaleGradent", &Smoother::getObscaleGradent, "x1"_a, "obs"_a, "bound"_a)
+        .def("updateGradient", &Smoother::updateGradient)
+        .def("smoothPath", &Smoother::smoothPath, "updateTimes"_a)
+        .def("addAgentObj", &Smoother::addAgentObj, "agentIdx"_a, "radius"_a, "detailPath"_a)
+        .def("paddingPath", &Smoother::paddingPath, "detailPath"_a, "startPadding"_a, "endPadding"_a)
+        .def_readonly("agentMap", &Smoother::agentMap)
+        .def_readwrite("kappaMax", &Smoother::kappaMax)
+        .def_readwrite("alpha", &Smoother::alpha)
+        .def_readwrite("gradMax", &Smoother::gradMax)
+        .def_readwrite("wSmoothness", &Smoother::wSmoothness)
+        .def_readwrite("wObstacle", &Smoother::wObstacle)
+        .def_readwrite("wCurvature", &Smoother::wCurvature);
 
     // it don't work, I don't know why
     // m.def("printPointer", &printPointer<KDTreeData>, "a"_a, "tag"_a);
