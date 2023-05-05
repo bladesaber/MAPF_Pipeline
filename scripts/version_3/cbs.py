@@ -114,15 +114,18 @@ class CBSSolver(object):
 
             print("Running ... %d" % run_times)    
 
-        if success_node is not None: 
-            self.print_NodeInfo(success_node)
-            self.print_NodeGraph(success_node)
-            return True
+        ### ------ Just For Debug
+        # if success_node is not None: 
+        #     self.print_NodeInfo(success_node)
+        #     self.print_NodeGraph(success_node)
+        #     return True
+        # 
+        # else:
+        #     print('Search Fail')
+        #     return False
         
-        else:
-            print('Search Fail')
-            return False
-            
+        return success_node
+
     def pushNode(self, node):
         node.node_id = self.node_id
         self.node_id += 1

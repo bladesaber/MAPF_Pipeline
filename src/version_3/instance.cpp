@@ -30,3 +30,22 @@ std::list<int> Instance::getNeighbors(int curr) const {
     }
     return neighbors;
 }
+
+bool Instance::isValidPos(double x, double y, double z){
+    if (x < 0 || x > num_of_x - 1)
+    {
+        return false;
+    }
+
+    if (y < 0 || y > num_of_y - 1)
+    {
+        return false;
+    }
+    
+    if (z < 0 || z > num_of_z - 1)
+    {
+        return false;
+    }
+
+    return true;
+}

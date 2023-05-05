@@ -26,6 +26,7 @@
 typedef CUSTOM_TYPE1 size_ut;
 
 typedef std::vector<size_t> Path;
+// x, y, z, length
 typedef std::vector<std::tuple<double, double, double, double>> DetailPath;
 
 // x, y, z, radius

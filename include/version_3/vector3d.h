@@ -33,7 +33,7 @@ public:
     }
 
     friend std::ostream& operator<<(std::ostream& os, const Vector3D& b) {
-        os << "(" << b.x << "|" << b.y << "|" << b.z << ")"; return os; 
+        os << "(x:" << b.x << " y:" << b.y << " z:" << b.z << ")"; return os; 
     }
 
     double length() const {

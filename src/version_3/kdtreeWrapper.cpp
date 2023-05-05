@@ -35,7 +35,7 @@ void KDTreeWrapper::nearest_range(double x, double y, double z, double bound, st
     double pos[3] = {x, y, z};
     kdres* treeRes = kd_nearest_range(tree, pos, bound);
 
-    std::cout << "[DEBUG]: Found Result Size: " << kd_res_size(treeRes) << std::endl;
+    // std::cout << "[DEBUG]: Found Result Size: " << kd_res_size(treeRes) << std::endl;
 
     KDTreeData* data;
     while(!kd_res_end(treeRes)){

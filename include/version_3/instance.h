@@ -80,6 +80,8 @@ public:
 
     std::list<int> getNeighbors(int curr) const;
 
+    bool isValidPos(double x, double y, double z);
+
     void info(){
         std::cout << "X:" << num_of_x << " Y:" << num_of_y << " Z:" << num_of_z << " Map Size:" << map_size << std::endl;
     }

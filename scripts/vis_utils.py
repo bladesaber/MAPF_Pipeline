@@ -53,7 +53,7 @@ def plot_Arrow3D(ax, xyz, vec, length=1.0):
         length=length, normalize=True, color='r'
     )
 
-def plot_Path3D(ax, xyzs):
-    ax.plot(xyzs[:, 0], xyzs[:, 1], xyzs[:, 2])
-    # ax.plot(xyzs[:, 0], xyzs[:, 1], xyzs[:, 2], '*-')
+def plot_Path3D(ax, xyzs, color):
+    # ax.plot(xyzs[:, 0], xyzs[:, 1], xyzs[:, 2])
+    ax.plot(xyzs[:, 0], xyzs[:, 1], xyzs[:, 2], '*-', c=color)
     # ax.scatter(xyzs[:, 0], xyzs[:, 1], xyzs[:, 2])

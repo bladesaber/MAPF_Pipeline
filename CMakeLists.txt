@@ -101,6 +101,8 @@ pybind11_add_module(mapf_pipeline ${Src_DIR}/driver.cpp
         ${Src_DIR}/cbs.cpp
         ${Src_DIR}/kdtree.c
         ${Src_DIR}/kdtreeWrapper.cpp
+        ${Src_DIR}/smoother.cpp
+        ${Src_DIR}/smoother_random.cpp
         )
 target_link_libraries(mapf_pipeline PRIVATE
         pybind11::module

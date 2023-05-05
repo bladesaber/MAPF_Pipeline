@@ -11,6 +11,7 @@
 #include "angleAstar.h"
 #include "cbs.h"
 #include "smoother.h"
+#include "smoother_random.h"
 
 #include "test.h"
 
@@ -183,22 +184,37 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("radius", &AgentSmoothInfo::radius)
         .def_readonly("grads", &AgentSmoothInfo::grads);
 
-    py::class_<Smoother>(m, "Smoother")
-        .def(py::init<>())
-        // .def("getSmoothessGradent", &Smoother::getSmoothessGradent, "xim1"_a, "xi"_a, "xip1"_a)
-        // .def("getCurvatureGradent", &Smoother::getCurvatureGradent, "xim1"_a, "xi"_a, "xip1"_a)
-        // .def("getObscaleGradent", &Smoother::getObscaleGradent, "x1"_a, "obs"_a, "bound"_a)
-        .def("updateGradient", &Smoother::updateGradient)
-        .def("smoothPath", &Smoother::smoothPath, "updateTimes"_a)
-        .def("addAgentObj", &Smoother::addAgentObj, "agentIdx"_a, "radius"_a, "detailPath"_a)
-        .def("paddingPath", &Smoother::paddingPath, "detailPath"_a, "startPadding"_a, "endPadding"_a)
-        .def_readonly("agentMap", &Smoother::agentMap)
-        .def_readwrite("kappaMax", &Smoother::kappaMax)
-        .def_readwrite("alpha", &Smoother::alpha)
-        .def_readwrite("gradMax", &Smoother::gradMax)
-        .def_readwrite("wSmoothness", &Smoother::wSmoothness)
-        .def_readwrite("wObstacle", &Smoother::wObstacle)
-        .def_readwrite("wCurvature", &Smoother::wCurvature);
+    // py::class_<Smoother>(m, "Smoother")
+    //     .def(py::init<>())
+    //     // .def("getSmoothessGradent", &Smoother::getSmoothessGradent, "xim1"_a, "xi"_a, "xip1"_a)
+    //     // .def("getCurvatureGradent", &Smoother::getCurvatureGradent, "xim1"_a, "xi"_a, "xip1"_a)
+    //     // .def("getObscaleGradent", &Smoother::getObscaleGradent, "x1"_a, "obs"_a, "bound"_a)
+    //     .def("updateGradient", &Smoother::updateGradient)
+    //     .def("smoothPath", &Smoother::smoothPath, "updateTimes"_a)
+    //     .def("addAgentObj", &Smoother::addAgentObj, "agentIdx"_a, "radius"_a, "detailPath"_a)
+    //     .def("paddingPath", &Smoother::paddingPath, "detailPath"_a, "startPadding"_a, "endPadding"_a)
+    //     .def_readonly("agentMap", &Smoother::agentMap)
+    //     .def_readwrite("alpha", &Smoother::alpha)
+    //     .def_readwrite("gradMax", &Smoother::gradMax)
+    //     .def_readwrite("wSmoothness", &Smoother::wSmoothness)
+    //     .def_readwrite("wObstacle", &Smoother::wObstacle)
+    //     .def_readwrite("wCurvature", &Smoother::wCurvature);
+
+    py::class_<RandomStep_Smoother>(m, "RandomStep_Smoother")
+        .def(py::init<double, double, double, double, double, double, double>(), 
+            "xmin"_a, "xmax"_a, "ymin"_a, "ymax"_a, "zmin"_a, "zmax"_a, "stepReso"_a=0.1
+        )
+        .def("smoothPath", &RandomStep_Smoother::smoothPath, "updateTimes"_a)
+        .def("addAgentObj", &RandomStep_Smoother::addAgentObj, "agentIdx"_a, "radius"_a, "detailPath"_a)
+        .def("paddingPath", &RandomStep_Smoother::paddingPath, 
+            "detailPath"_a, "startPadding"_a, "endPadding"_a,
+            "x_shift"_a, "y_shift"_a, "z_shift"_a
+        )
+        .def("detailSamplePath", &RandomStep_Smoother::detailSamplePath, "path"_a, "stepLength"_a)
+        .def_readonly("agentMap", &RandomStep_Smoother::agentMap)
+        .def_readwrite("wSmoothness", &RandomStep_Smoother::wSmoothness)
+        .def_readwrite("wObstacle", &RandomStep_Smoother::wObstacle)
+        .def_readwrite("wCurvature", &RandomStep_Smoother::wCurvature);
 
     // it don't work, I don't know why
     // m.def("printPointer", &printPointer<KDTreeData>, "a"_a, "tag"_a);

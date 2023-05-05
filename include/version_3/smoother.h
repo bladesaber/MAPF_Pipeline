@@ -45,14 +45,12 @@ public:
 
 class Smoother{
 public:
-    double wSmoothness = 1.0;
+    double wSmoothness = 0.0;
     double wObstacle = 0.0;
     double wCurvature = 0.0;
 
     double alpha = 0.1;
     double gradMax = 3.0;
-
-    double kappaMax;
 
     std::map<size_ut, AgentSmoothInfo*> agentMap;
 
@@ -65,7 +63,14 @@ public:
     void smoothPath(size_t updateTimes);
 
     Vector3D getSmoothessGradent(Vector3D& xim2, Vector3D& xim1, Vector3D& xi, Vector3D& xip1, Vector3D& xip2);
-    Vector3D getCurvatureGradent(Vector3D& xim1, Vector3D& xi, Vector3D& xip1);
+    double getSmoothessLoss(Vector3D& xim2, Vector3D& xim1, Vector3D& xi, Vector3D& xip1, Vector3D& xip2);
+
+    Vector3D getCurvatureGradent(Vector3D& xim2, Vector3D& xim1, Vector3D& xi, Vector3D& xip1, Vector3D& xip2);
+    Vector3D getGradientFirst(Vector3D& xim2, Vector3D& xim1, Vector3D& xi);
+    Vector3D getGradientMid(Vector3D& xim1, Vector3D& xi, Vector3D& xip1);
+    Vector3D getGradientLast(Vector3D& xi, Vector3D& xip1, Vector3D& xip2);
+    double getCurvatureLoss(Vector3D& xim2, Vector3D& xim1, Vector3D& xi, Vector3D& xip1, Vector3D& xip2, bool debug=false);
+    
     Vector3D getObscaleGradent(Vector3D& x, Vector3D& y, double bound);
 
     void addAgentObj(size_ut agentIdx, double radius, DetailPath& detailPath);

@@ -13,7 +13,7 @@ Vector3D Smoother::getObscaleGradent(Vector3D& x1, Vector3D& obs, double bound){
     {
         Vector3D gradient = 2.0 * (-bound + dist) * vec_dif / dist;
 
-        gradient.clamp(-gradMax, gradMax);
+        // gradient.clamp(-gradMax, gradMax);
 
         return gradient;
 
@@ -24,17 +24,17 @@ Vector3D Smoother::getObscaleGradent(Vector3D& x1, Vector3D& obs, double bound){
 }
 
 Vector3D Smoother::getSmoothessGradent(Vector3D& xim2, Vector3D& xim1, Vector3D& xi, Vector3D& xip1, Vector3D& xip2){
-    // Vector3D gradient = (xim1 * -2.0) + (xi * 4.0) - (xip1 * 2.0);
-    // gradient.clamp(-gradMax, gradMax);
-
-    Vector3D gradient = xim2 - 4 * xim1 + 6 * xi - 4 * xip1 + xip2;
-    gradient.clamp(-gradMax, gradMax);
-
+    Vector3D gradient = (xim1 * -2.0) + (xi * 4.0) - (xip1 * 2.0);
     return gradient;
 }
 
+double Smoother::getSmoothessLoss(Vector3D& xim2, Vector3D& xim1, Vector3D& xi, Vector3D& xip1, Vector3D& xip2){
+    return (xip1 - xi).sqlength() + (xi -xim1).sqlength();
+}
+
+/* Deprecite
 Vector3D Smoother::getCurvatureGradent(Vector3D& xim1, Vector3D& xi, Vector3D& xip1){
-    /* Reference By Hybrid Astar */
+    // Reference By Hybrid Astar //
 
     Vector3D gradient;
     // the vectors between the nodes
@@ -84,10 +84,10 @@ Vector3D Smoother::getCurvatureGradent(Vector3D& xim1, Vector3D& xi, Vector3D& x
                 return zeros;
             }
 
-            gradient.clamp(-gradMax, gradMax);
+            // gradient.clamp(-gradMax, gradMax);
 
             // -------- Just For Debug
-            // std::cout << "theta:" << Dphi << " dist:" << absDxi << " kappa:" << kappa << " grad:" << gradient << std::endl;
+            std::cout << "theta:" << Dphi << " dist:" << absDxi << " kappa:" << kappa << std::endl;
             // ------------------------
 
             return gradient;
@@ -97,7 +97,81 @@ Vector3D Smoother::getCurvatureGradent(Vector3D& xim1, Vector3D& xi, Vector3D& x
         Vector3D zeros;
         return zeros;
     }
+}
+*/
 
+Vector3D Smoother::getCurvatureGradent(Vector3D& xim2, Vector3D& xim1, Vector3D& xi, Vector3D& xip1, Vector3D& xip2){
+    Vector3D gradient;
+    
+    gradient = gradient + getGradientFirst(xim2, xim1, xi);
+    
+    gradient = gradient + getGradientMid(xim1, xi, xip1);
+    
+    gradient = gradient + getGradientLast(xi, xip1, xip2);
+
+    return gradient;
+}
+
+Vector3D Smoother::getGradientFirst(Vector3D& xim2, Vector3D& xim1, Vector3D& xi){
+    Vector3D vec0 = xim1 - xim2;
+    Vector3D vec1 = xi - xim1;
+
+    double s1 = vec1.dot(vec0)/(vec0.length() * std::pow(vec1.length(), 3.0));
+    double s2 = vec0.length() * vec1.length();
+    
+    Vector3D grad = -(-vec1) * s1 - (vec0) * s2;
+    return grad;
+}
+
+Vector3D Smoother::getGradientMid(Vector3D& xim1, Vector3D& xi, Vector3D& xip1){
+    Vector3D vec1 = xi - xim1;
+    Vector3D vec2 = xip1 - xi;
+
+    double s1 = vec2.dot(vec1)/(vec2.length() * std::pow(vec1.length(), 3.0));
+    double s3 = vec2.dot(vec1)/(std::pow(vec2.length(), 3.0) * vec1.length());
+    double s7 = vec1.length() * vec2.length();
+
+    Vector3D grad = -(-vec1) * s1 - (-vec2) * s3 - (vec2 - vec1) * s7;
+
+    return grad;
+}
+
+Vector3D Smoother::getGradientLast(Vector3D& xi, Vector3D& xip1, Vector3D& xip2){
+    Vector3D vec2 = xip1 - xi;
+    Vector3D vec3 = xip2 - xip1;
+
+    double s4 = vec2.dot(vec3)/(std::pow(vec2.length(), 3.0) * vec3.length());
+    double s6 = vec2.length() * vec3.length();
+
+    Vector3D grad = -(vec2) * s4 - (-vec3) * s6;
+
+    return grad;
+}
+
+double Smoother::getCurvatureLoss(Vector3D& xim2, Vector3D& xim1, Vector3D& xi, Vector3D& xip1, Vector3D& xip2, bool debug){
+    Vector3D vec0 = xim1 - xim2;
+    Vector3D vec1 = xi - xim1;
+    Vector3D vec2 = xip1 - xi;
+    Vector3D vec3 = xip2 - xip1;
+
+    double cosT0 = vec0.dot(vec1) / (vec0.length() * vec1.length());
+    double loss0 = 1.0 - cosT0;
+
+    double cosT1 = vec1.dot(vec2) / (vec1.length() * vec2.length());
+    double loss1 = 1.0 - cosT1;
+
+    double cosT2 = vec2.dot(vec3) / (vec2.length() * vec3.length());
+    double loss2 = 1.0 - cosT2;
+    
+    double loss = loss0 + loss1 + loss2;
+
+    if (debug)
+    {
+        std::cout << "Loss:" << loss << " ->" << loss0 << " + " << loss1 << " + " << loss << std::endl;
+        std::cout << "Angel:" << acos(cosT0) / M_PI * 180.0 << " + " << acos(cosT1) / M_PI * 180.0 << " + " << acos(cosT2) / M_PI * 180.0 << std::endl;
+    }
+
+    return loss;
 }
 
 void Smoother::updateGradient(){
@@ -105,8 +179,11 @@ void Smoother::updateGradient(){
 
     double x, y, z, bound;
     std::vector<KDTreeRes*> resList;
-    KDTreeRes* res;    
+    KDTreeRes* res;
     Vector3D obs;
+    Vector3D smooth_grad, curvature_grad, obs_grad;
+    double total_weight = wSmoothness + wCurvature + wObstacle;
+    double smoothLoss, curvatureLoss;
 
     for (auto iter : agentMap)
     {
@@ -131,18 +208,20 @@ void Smoother::updateGradient(){
 
             if (wSmoothness != 0.0)
             {
-                Vector3D smooth_grad = getSmoothessGradent(xim2, xim1, xi, xip1, xip2);
-                // std::cout << "idx:" << i << " Smooth grad:" << smooth_grad << std::endl;
+                smooth_grad = getSmoothessGradent(xim2, xim1, xi, xip1, xip2);
+                smooth_grad = smooth_grad * -1.0;
 
-                grad = grad - wSmoothness * smooth_grad;
+                smoothLoss = getSmoothessLoss(xim2, xim1, xi, xip1, xip2);
+                std::cout << "  Point Idx:" << i << " Smooth grad:" << smooth_grad << " Loss:" << smoothLoss << std::endl;
             }
             
             if (wCurvature != 0.0)
             {
-                Vector3D curvature_grad = getCurvatureGradent(xim1, xi, xip1);
-                // std::cout << "idx:" << i << " Curvature grad:" << curvature_grad << std::endl;
+                curvature_grad = getCurvatureGradent(xim2, xim1, xi, xip1, xip2);
+                curvature_grad = curvature_grad * -1.0;
 
-                grad = grad - wCurvature * curvature_grad;
+                curvatureLoss = getCurvatureLoss(xim2, xim1, xi, xip1, xip2, true);
+                std::cout << "  Point Idx:" << i << " Curvature grad:" << curvature_grad << " Loss:" << curvatureLoss << std::endl;
             }
             
             if (wObstacle != 0.0)
@@ -152,7 +231,6 @@ void Smoother::updateGradient(){
                 z = xi.getZ();
                 resList.clear();
 
-                Vector3D obs_grad;
                 double conflict_num = 0.0;
 
                 for (auto iter2 : agentMap)
@@ -180,8 +258,20 @@ void Smoother::updateGradient(){
                 }
 
                 obs_grad = obs_grad / conflict_num;
-                grad = grad - wObstacle * obs_grad;
+                obs_grad = obs_grad * -1.0;
             }
+            
+            // -----------------------------------------
+            grad = grad + wSmoothness * smooth_grad / (smooth_grad.length() + 0.00001);
+            grad = grad + wCurvature * curvature_grad / (curvature_grad.length() + 0.00001);
+            grad = grad + wObstacle * obs_grad / (obs_grad.length() + 0.00001);
+            
+            // grad = grad / total_weight;
+            grad = grad / grad.length();
+            // ------------------------------------------
+
+            std::cout << "  xim2" << xim2 << "xim1:" << xim1 << " xi:" << xi << " xip1:" << xip1 << " xip2:" << xip2 << std::endl;
+            std::cout << "  Point Idx:" << i << " grad:" << grad << " loss:" << smoothLoss + curvatureLoss << std::endl;
 
             agent->grads[i] = grad;
         }
