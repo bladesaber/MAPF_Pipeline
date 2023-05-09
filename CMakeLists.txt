@@ -31,8 +31,11 @@ message("PCL_LIBRARY_DIR: " ${PCL_LIBRARIES})
 # set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_2)
 # set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_2)
 
-set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_3)
-set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_3)
+# set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_3)
+# set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_3)
+
+set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_4)
+set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_4)
 
 message("Include_DIR: " ${Include_DIR})
 message("Src_DIR: " ${Src_DIR})
@@ -103,6 +106,7 @@ pybind11_add_module(mapf_pipeline ${Src_DIR}/driver.cpp
         ${Src_DIR}/kdtreeWrapper.cpp
         ${Src_DIR}/smoother.cpp
         ${Src_DIR}/smoother_random.cpp
+        ${Src_DIR}/groupPath.cpp
         )
 target_link_libraries(mapf_pipeline PRIVATE
         pybind11::module
