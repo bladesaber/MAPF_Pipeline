@@ -98,6 +98,8 @@ public:
             Vector3D(-stepReso, stepReso, -stepReso),
             Vector3D(-stepReso, -stepReso, -stepReso)
         };
+
+        staticObs_tree = new KDTreeWrapper();
     };
     ~RandomStep_Smoother(){
         release();
@@ -114,7 +116,8 @@ public:
     double getObscaleLoss(Vector3D& x, Vector3D& y, double bound);
     double getNodeLoss(
         GroupPath* groupPath, size_ut xi_nodeIdx, Vector3D& xi,
-        std::vector<ObsType>& groupPairObsList, bool debug=false
+        std::vector<ObsType>& groupPairObsList, std::vector<ObsType>& staticObsList,
+        bool debug=false
     );
 
     void addDetailPath(size_ut groupIdx, size_ut pathIdx, DetailPath& detailPath, double radius){
@@ -176,6 +179,7 @@ private:
             delete iter.second;
         }
         groupMap.clear();
+        delete staticObs_tree;
     }
 
 };

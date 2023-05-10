@@ -57,6 +57,10 @@ public:
     void nearest(double x, double y, double z, KDTreeRes& res);
     void nearest_range(double x, double y, double z, double bound, std::vector<KDTreeRes*>& resList);
 
+    int getTreeCount(){
+        return dataStore.size();
+    };
+
     void debug_insert();
     void debug_search();
 

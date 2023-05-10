@@ -216,6 +216,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             "detailPath"_a, "startPadding"_a, "endPadding"_a,
             "x_shift"_a, "y_shift"_a, "z_shift"_a
         )
+        .def("insertStaticObs", &RandomStep_Smoother::insertStaticObs, "x"_a, "y"_a, "z"_a, "radius"_a)
         .def("detailSamplePath", &RandomStep_Smoother::detailSamplePath, "path"_a, "stepLength"_a)
         .def_readonly("groupMap", &RandomStep_Smoother::groupMap)
         .def_readwrite("wSmoothness", &RandomStep_Smoother::wSmoothness)

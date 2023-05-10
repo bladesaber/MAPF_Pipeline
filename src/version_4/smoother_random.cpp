@@ -72,11 +72,13 @@ double RandomStep_Smoother::getObscaleLoss(Vector3D& x, Vector3D& y, double boun
 
 double RandomStep_Smoother::getNodeLoss(
     GroupPath* groupPath, size_ut xi_nodeIdx, Vector3D& xi,
-    std::vector<ObsType>& groupPairObsList, bool debug
+    std::vector<ObsType>& groupPairObsList, std::vector<ObsType>& staticObsList, 
+    bool debug
 ){
     double smoothLoss = 0.0;
     double curvatureLoss = 0.0;
     double groupPairLoss = 0.0;
+    double staticObsLoss = 0.0;
 
     Vector3D xim1, xip1;
 
@@ -128,11 +130,34 @@ double RandomStep_Smoother::getNodeLoss(
 
             if (debug){
                 std::cout << "PathIdx: " << pathIdx << " groupPairLoss:" << single_groupPairLoss << std::endl;
-            }        
+            }
         }
+
+        if (wStaticObs != 0.0)
+        {
+            double obs_x, obs_y, obs_z, obs_radius;
+            size_ut obs_groupIdx;
+            double single_StaticObsLoss = 0.0;
+
+            for (size_t i = 0; i < staticObsList.size(); i++){
+                std::tie(obs_x, obs_y, obs_z, obs_radius, obs_groupIdx) = staticObsList[i];
+
+                Vector3D y = Vector3D(obs_x, obs_y, obs_z);
+                single_StaticObsLoss += single_StaticObsLoss + getObscaleLoss(xi, y, obs_radius + xi_node->radius) * wStaticObs;
+            }
+
+            single_StaticObsLoss = single_StaticObsLoss / (double)(staticObsList.size() + 0.00001);
+            staticObsLoss += single_StaticObsLoss;
+
+            if (debug){
+                std::cout << "PathIdx: " << pathIdx << " StaticObsLoss:" << single_StaticObsLoss << std::endl;
+            }  
+        }
+        
+
     }
 
-    return (smoothLoss + curvatureLoss + groupPairLoss) / (double)xi_node->pathIdx_set.size();
+    return (smoothLoss + curvatureLoss + groupPairLoss + staticObsLoss) / (double)xi_node->pathIdx_set.size();
 }
 
 void RandomStep_Smoother::updateGradient(){
@@ -143,6 +168,8 @@ void RandomStep_Smoother::updateGradient(){
     GroupPathNode* xi_node;
 
     std::vector<ObsType> groupPairObsList;
+    std::vector<ObsType> staticObsList;
+
     Vector3D xi, xi_tem;
     double best_loss, step_loss;
 
@@ -170,8 +197,13 @@ void RandomStep_Smoother::updateGradient(){
                 groupPairObsList.clear();
                 findGroupPairObs(groupInfo->groupIdx, xi_node->x, xi_node->y, xi_node->z, xi_node->radius, groupPairObsList);
             }
+            if (wStaticObs != 0.0)
+            {
+                staticObsList.clear();
+                findStaticObs(xi_node->x, xi_node->y, xi_node->z, xi_node->radius, staticObsList);
+            }
 
-            best_loss = getNodeLoss(groupPath, xi_nodeIdx, xi, groupPairObsList, false);
+            best_loss = getNodeLoss(groupPath, xi_nodeIdx, xi, groupPairObsList, staticObsList, false);
 
             for (Vector3D step: this->steps)
             {
@@ -181,7 +213,7 @@ void RandomStep_Smoother::updateGradient(){
                     continue;
                 }
 
-                step_loss = getNodeLoss(groupPath, xi_nodeIdx, xi_tem, groupPairObsList, false);
+                step_loss = getNodeLoss(groupPath, xi_nodeIdx, xi_tem, groupPairObsList, staticObsList, false);
 
                 if (step_loss < best_loss)
                 {

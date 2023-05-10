@@ -13,7 +13,7 @@ cond_params = {
     'y': 15,
     'x': 15,
     'z': 15,
-    'num_of_groups': 3,
+    'num_of_groups': 5,
     'radius_choices': [
         0.45, 
         0.85, 
@@ -77,18 +77,23 @@ def smoothPath():
         xmin = 0.0, xmax = cond_params['x'] + 2.0,
         ymin = 0.0, ymax = cond_params['y'] + 2.0,
         zmin = 0.0, zmax = cond_params['z'] + 2.0,
-        stepReso = 0.01
+        stepReso = 0.025
     )
-    smoother.wSmoothness = 1.0
-    smoother.wCurvature = 0.0
-    smoother.wGoupPairObs = 0.0
+    smoother.wSmoothness = 1.5
+    smoother.wCurvature = 0.15
+    smoother.wGoupPairObs = 1.0
     smoother.wStaticObs = 0.0
+
+    if cond_params['use_obs']:
+        smoother.wStaticObs = 1.0
+
+        obs_df:pd.DataFrame = pd.read_csv(cond_params['csv_file'], index_col=0)
+        for idx, row in obs_df.iterrows():
+            smoother.insertStaticObs(row.x, row.y, row.z, row.radius)
 
     agentInfos = np.load(
         os.path.join(cond_params['save_dir'], 'agentInfo')+'.npy', allow_pickle=True
     ).item()
-
-    # agentInfos = {0: agentInfos[0]}
 
     oldPaths = {}
     for agentIdx in agentInfos.keys():
@@ -178,8 +183,12 @@ def smoothPath():
             radius=agentInfos[agentIdx]['radius']
         )
         vis.plot(tube_mesh, color=tuple(random_colors[agentInfos[agentIdx]['groupIdx']]))
+    
+    if cond_params['use_obs']:
+        vis.plot(vis.read_file(cond_params['stl_file']), (0.0, 1.0, 0.0))
+
     vis.show()
 
 if __name__ == '__main__':
-    # planner_find_Path()
+    planner_find_Path()
     smoothPath()
