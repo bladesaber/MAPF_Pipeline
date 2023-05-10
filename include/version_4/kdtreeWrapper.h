@@ -46,6 +46,11 @@ public:
         dataStore.emplace_back(m);
         insertPoint3D(x, y, z, m);
     };
+    void insertObs(double x, double y, double z, double radius){
+        KDTreeData* m = new KDTreeData(radius, 0.0, 999);
+        dataStore.emplace_back(m);
+        insertPoint3D(x, y, z, m);
+    };
 
     void insertPath3D(const DetailPath& path, double radius);
 

@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from typing import Dict
 
 from build import mapf_pipeline
@@ -30,7 +31,7 @@ class CBSSolver(object):
 
         print('num_of_agents: %d num_of_group:%d' % (self.num_of_agents, self.num_of_groups))
 
-    def solve(self):
+    def solve(self, staticObs_df:pd.DataFrame):
         print("Starting Solving ...")
 
         ### 1. init root cbsNode
@@ -69,6 +70,11 @@ class CBSSolver(object):
                         self.agentInfos[a2]['radius'],
                     ))
             
+            for idx, row in staticObs_df.iterrows():
+                constrains.append((
+                    row.x, row.y, row.z, row.radius
+                ))
+
             root.update_Constrains(a1, constrains)
         # self.print_NodeInfo(root, print_constrains=True)
 
@@ -236,7 +242,7 @@ class CBSSolver(object):
                 else:
                     print("   Fail")
 
-    def print_NodeGraph(self, node, select_agentIdx=None):
+    def print_NodeGraph(self, node, select_agentIdx=None, obs_file=None):
         vis = VisulizerVista()
 
         random_colors = np.random.uniform(0.0, 1.0, size=(self.num_of_groups, 3))
@@ -297,5 +303,8 @@ class CBSSolver(object):
             for constrain in constrains:
                 obs = vis.create_sphere(np.array([constrain[0], constrain[1], constrain[2]]), radius=constrain[3] + 0.1)
                 vis.plot(obs, color=(0.0, 1.0, 0.0))
+
+        if obs_file is not None:
+            vis.plot(vis.read_file(obs_file), (0.0, 1.0, 0.0))
 
         vis.show()

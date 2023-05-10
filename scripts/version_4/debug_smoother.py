@@ -117,7 +117,8 @@ smoother.addDetailPath(groupIdx=0, pathIdx=1, detailPath=detailPath1, radius=0.5
 ## ------ 4st smooth path
 smoother.wSmoothness = 1.0
 smoother.wCurvature = 0.25
-smoother.wObstacle = 0.0
+smoother.wGoupPairObs = 0.0
+smoother.wStaticObs = 0.0
 
 oldPaths = {}
 for groupIdx in smoother.groupMap.keys():

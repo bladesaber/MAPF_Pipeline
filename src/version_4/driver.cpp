@@ -219,8 +219,9 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("detailSamplePath", &RandomStep_Smoother::detailSamplePath, "path"_a, "stepLength"_a)
         .def_readonly("groupMap", &RandomStep_Smoother::groupMap)
         .def_readwrite("wSmoothness", &RandomStep_Smoother::wSmoothness)
-        .def_readwrite("wObstacle", &RandomStep_Smoother::wObstacle)
-        .def_readwrite("wCurvature", &RandomStep_Smoother::wCurvature);
+        .def_readwrite("wGoupPairObs", &RandomStep_Smoother::wGoupPairObs)
+        .def_readwrite("wCurvature", &RandomStep_Smoother::wCurvature)
+        .def_readwrite("wStaticObs", &RandomStep_Smoother::wStaticObs);
 
     // it don't work, I don't know why
     // m.def("printPointer", &printPointer<KDTreeData>, "a"_a, "tag"_a);

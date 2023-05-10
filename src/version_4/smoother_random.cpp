@@ -1,6 +1,6 @@
 #include "smoother_random.h"
 
-void RandomStep_Smoother::findAgentObs(
+void RandomStep_Smoother::findGroupPairObs(
     size_ut groupIdx, double x, double y, double z, double radius, std::vector<ObsType>& obsList
 ){
     double bound, distance;
@@ -34,6 +34,20 @@ void RandomStep_Smoother::findAgentObs(
     }
 }
 
+void RandomStep_Smoother::findStaticObs(double x, double y, double z, double radius, std::vector<ObsType>& obsList){
+    std::vector<KDTreeRes*> resList;
+
+    staticObs_tree->nearest_range(x, y, z, radius + staticObsRadius, resList);
+    for (size_t i = 0; i < resList.size(); i++){
+        obsList.emplace_back(std::make_tuple(
+            resList[i]->x, resList[i]->y, resList[i]->z, staticObsRadius, 999
+        ));
+
+        delete resList[i];
+    }
+    resList.clear();
+}
+
 double RandomStep_Smoother::getSmoothessLoss(Vector3D& xim1, Vector3D& xi, Vector3D& xip1){
     return (xip1 - xi).sqlength() + (xi -xim1).sqlength();
 }
@@ -58,11 +72,11 @@ double RandomStep_Smoother::getObscaleLoss(Vector3D& x, Vector3D& y, double boun
 
 double RandomStep_Smoother::getNodeLoss(
     GroupPath* groupPath, size_ut xi_nodeIdx, Vector3D& xi,
-    std::vector<ObsType>& obsList, bool debug
+    std::vector<ObsType>& groupPairObsList, bool debug
 ){
     double smoothLoss = 0.0;
     double curvatureLoss = 0.0;
-    double obsLoss = 0.0;
+    double groupPairLoss = 0.0;
 
     Vector3D xim1, xip1;
 
@@ -96,24 +110,29 @@ double RandomStep_Smoother::getNodeLoss(
             }
         }
 
-        if (wObstacle != 0.0){
+        if (wGoupPairObs != 0.0){
             double rhs_x, rhs_y, rhs_z, rhs_radius;
             size_ut rhs_groupIdx;
-            for (size_t i = 0; i < obsList.size(); i++)
+            double single_groupPairLoss = 0.0;
+
+            for (size_t i = 0; i < groupPairObsList.size(); i++)
             {
-                std::tie(rhs_x, rhs_y, rhs_z, rhs_radius, rhs_groupIdx) = obsList[i];
+                std::tie(rhs_x, rhs_y, rhs_z, rhs_radius, rhs_groupIdx) = groupPairObsList[i];
                 
                 Vector3D y = Vector3D(rhs_x, rhs_y, rhs_z);
-                obsLoss += obsLoss + getObscaleLoss(xi, y, rhs_radius + xi_node->radius) * wObstacle;
+                single_groupPairLoss += single_groupPairLoss + getObscaleLoss(xi, y, rhs_radius + xi_node->radius) * wGoupPairObs;
             }
+            
+            single_groupPairLoss = single_groupPairLoss / (double)(groupPairObsList.size() + 0.00001);
+            groupPairLoss += single_groupPairLoss;
 
             if (debug){
-                std::cout << "PathIdx: " << pathIdx << " ObsLoss:" << obsLoss << std::endl;
+                std::cout << "PathIdx: " << pathIdx << " groupPairLoss:" << single_groupPairLoss << std::endl;
             }        
         }
     }
 
-    return (smoothLoss + curvatureLoss + obsLoss) / (double)xi_node->pathIdx_set.size();
+    return (smoothLoss + curvatureLoss + groupPairLoss) / (double)xi_node->pathIdx_set.size();
 }
 
 void RandomStep_Smoother::updateGradient(){
@@ -123,7 +142,7 @@ void RandomStep_Smoother::updateGradient(){
     size_ut xi_nodeIdx;
     GroupPathNode* xi_node;
 
-    std::vector<ObsType> obsList;
+    std::vector<ObsType> groupPairObsList;
     Vector3D xi, xi_tem;
     double best_loss, step_loss;
 
@@ -147,12 +166,12 @@ void RandomStep_Smoother::updateGradient(){
             xi_node = groupPath->nodeMap[xi_nodeIdx];
             xi = Vector3D(xi_node->x, xi_node->y, xi_node->z);
 
-            if (wObstacle != 0.0){
-                obsList.clear();
-                findAgentObs(groupInfo->groupIdx, xi_node->x, xi_node->y, xi_node->z, xi_node->radius, obsList);
+            if (wGoupPairObs != 0.0){
+                groupPairObsList.clear();
+                findGroupPairObs(groupInfo->groupIdx, xi_node->x, xi_node->y, xi_node->z, xi_node->radius, groupPairObsList);
             }
 
-            best_loss = getNodeLoss(groupPath, xi_nodeIdx, xi, obsList, false);
+            best_loss = getNodeLoss(groupPath, xi_nodeIdx, xi, groupPairObsList, false);
 
             for (Vector3D step: this->steps)
             {
@@ -162,7 +181,7 @@ void RandomStep_Smoother::updateGradient(){
                     continue;
                 }
 
-                step_loss = getNodeLoss(groupPath, xi_nodeIdx, xi_tem, obsList, false);
+                step_loss = getNodeLoss(groupPath, xi_nodeIdx, xi_tem, groupPairObsList, false);
 
                 if (step_loss < best_loss)
                 {

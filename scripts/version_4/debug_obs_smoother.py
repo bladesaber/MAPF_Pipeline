@@ -74,7 +74,7 @@ smoother = mapf_pipeline.RandomStep_Smoother(
     0.0, cond_params['x'] + 2.0, 
     0.0, cond_params['y'] + 2.0,
     0.0, cond_params['z'],
-    stepReso = 0.035
+    stepReso = 0.03
 )
 
 ### ------ 1st padding path
@@ -95,15 +95,15 @@ detailPath3 = smoother.paddingPath(
     x_shift=1.0, y_shift=1.0, z_shift=0
 )
 
-detailPath0_np = np.array(detailPath0)
-detailPath1_np = np.array(detailPath1)
-detailPath2_np = np.array(detailPath2)
-detailPath3_np = np.array(detailPath3)
-plt.scatter(detailPath0_np[:, 0], detailPath0_np[:, 1])
-plt.scatter(detailPath1_np[:, 0], detailPath1_np[:, 1])
-plt.scatter(detailPath2_np[:, 0], detailPath2_np[:, 1])
-plt.scatter(detailPath3_np[:, 0], detailPath3_np[:, 1])
-plt.show()
+# detailPath0_np = np.array(detailPath0)
+# detailPath1_np = np.array(detailPath1)
+# detailPath2_np = np.array(detailPath2)
+# detailPath3_np = np.array(detailPath3)
+# plt.scatter(detailPath0_np[:, 0], detailPath0_np[:, 1])
+# plt.scatter(detailPath1_np[:, 0], detailPath1_np[:, 1])
+# plt.scatter(detailPath2_np[:, 0], detailPath2_np[:, 1])
+# plt.scatter(detailPath3_np[:, 0], detailPath3_np[:, 1])
+# plt.show()
 ### --------------------------------
 
 ### ------ 2st debug
@@ -155,7 +155,8 @@ smoother.addDetailPath(groupIdx=1, pathIdx=1, detailPath=detailPath3, radius=0.6
 ## ------ 4st smooth path
 smoother.wSmoothness = 1.0
 smoother.wCurvature = 0.0
-smoother.wObstacle = 1.0
+smoother.wGoupPairObs = 3.0
+smoother.wStaticObs = 0.0
 
 oldPaths = {}
 for groupIdx in smoother.groupMap.keys():

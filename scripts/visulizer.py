@@ -62,6 +62,10 @@ class VisulizerVista(object):
     def add_KeyPressEvent(self, key: str, callback: Callable):
         self.ploter.add_key_event(key, callback)
 
+    @staticmethod
+    def read_file(path):
+        return pyvista.read_meshio(path)
+
 class InterativeVista(VisulizerVista):
     def __init__(self):
         super(InterativeVista, self).__init__()

@@ -44,9 +44,11 @@ public:
 class RandomStep_Smoother{
 public:
     double wSmoothness = 0.0;
-    double wObstacle = 0.0;
+    double wGoupPairObs = 0.0;
     double wCurvature = 0.0;
+    double wStaticObs = 0.0;
 
+    double staticObsRadius = 0.1;
     double stepReso;
     double xmin, xmax;
     double ymin, ymax;
@@ -101,7 +103,8 @@ public:
         release();
     }
 
-    void findAgentObs(size_ut groupIdx, double x, double y, double z, double radius, std::vector<ObsType>& obsList);
+    void findGroupPairObs(size_ut groupIdx, double x, double y, double z, double radius, std::vector<ObsType>& obsList);
+    void findStaticObs(double x, double y, double z, double radius, std::vector<ObsType>& obsList);
 
     void updateGradient();
     void smoothPath(size_t updateTimes);
@@ -111,7 +114,7 @@ public:
     double getObscaleLoss(Vector3D& x, Vector3D& y, double bound);
     double getNodeLoss(
         GroupPath* groupPath, size_ut xi_nodeIdx, Vector3D& xi,
-        std::vector<ObsType>& obsList, bool debug=false
+        std::vector<ObsType>& groupPairObsList, bool debug=false
     );
 
     void addDetailPath(size_ut groupIdx, size_ut pathIdx, DetailPath& detailPath, double radius){
@@ -160,7 +163,13 @@ public:
         return true;
     };
 
+    void insertStaticObs(double x, double y, double z, double radius){
+        staticObs_tree->insertObs(x, y, z, radius);
+    }
+
 private:
+    KDTreeWrapper* staticObs_tree;
+
     void release(){
         for (auto iter : groupMap)
         {

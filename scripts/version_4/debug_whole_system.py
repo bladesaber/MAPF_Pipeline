@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import os
 
 from scripts.version_4.map_creator import MapGen
@@ -9,10 +10,10 @@ from scripts import vis_utils
 import matplotlib.pyplot as plt
 
 cond_params = {
-    'y': 10,
-    'x': 10,
-    'z': 10,
-    'num_of_groups': 8,
+    'y': 15,
+    'x': 15,
+    'z': 15,
+    'num_of_groups': 3,
     'radius_choices': [
         0.45, 
         0.85, 
@@ -28,6 +29,10 @@ cond_params = {
     "load": True,
 
     'save_dir': '/home/quan/Desktop/MAPF_Pipeline/scripts/version_4/',
+
+    'stl_file': '/home/quan/Desktop/MAPF_Pipeline/scripts/version_4/obs.stl',
+    'csv_file': '/home/quan/Desktop/MAPF_Pipeline/scripts/version_4/obs.csv',
+    'use_obs': True,
 }
 
 def planner_find_Path():
@@ -45,10 +50,19 @@ def planner_find_Path():
         print(agentInfo)
 
     planner = CBSSolver(cond_params, agentInfos)
-    success_node = planner.solve()
+
+    if cond_params['use_obs']:
+        staticObs_df = pd.read_csv(cond_params['csv_file'], index_col=0)
+    else:
+        staticObs_df = pd.DataFrame()
+
+    success_node = planner.solve(staticObs_df=staticObs_df)
 
     if success_node is not None:
-        # planner.print_NodeGraph(success_node)
+        if cond_params['use_obs']:
+            planner.print_NodeGraph(success_node, obs_file=cond_params['stl_file'])
+        else:
+            planner.print_NodeGraph(success_node)
 
         for agentIdx in success_node.agentMap.keys():
             agent = success_node.agentMap[agentIdx]
@@ -63,11 +77,12 @@ def smoothPath():
         xmin = 0.0, xmax = cond_params['x'] + 2.0,
         ymin = 0.0, ymax = cond_params['y'] + 2.0,
         zmin = 0.0, zmax = cond_params['z'] + 2.0,
-        stepReso = 0.02
+        stepReso = 0.01
     )
     smoother.wSmoothness = 1.0
     smoother.wCurvature = 0.0
-    smoother.wObstacle = 3.0
+    smoother.wGoupPairObs = 0.0
+    smoother.wStaticObs = 0.0
 
     agentInfos = np.load(
         os.path.join(cond_params['save_dir'], 'agentInfo')+'.npy', allow_pickle=True
@@ -83,7 +98,7 @@ def smoothPath():
             agentInfos[agentIdx]['end_paddingDire'],
             x_shift=1.0, y_shift=1.0, z_shift=1.0
         )
-        paddingPath = smoother.detailSamplePath(paddingPath, 0.25)
+        paddingPath = smoother.detailSamplePath(paddingPath, 0.35)
 
         agentInfos[agentIdx]['paddingPath'] = paddingPath
             
@@ -166,5 +181,5 @@ def smoothPath():
     vis.show()
 
 if __name__ == '__main__':
-    planner_find_Path()
+    # planner_find_Path()
     smoothPath()
