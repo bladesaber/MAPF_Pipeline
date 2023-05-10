@@ -123,7 +123,6 @@ void RandomStep_Smoother::updateGradient(){
     size_ut xi_nodeIdx;
     GroupPathNode* xi_node;
 
-    std::set<size_ut> fixNodeIdxs;
     std::vector<ObsType> obsList;
     Vector3D xi, xi_tem;
     double best_loss, step_loss;
@@ -133,23 +132,13 @@ void RandomStep_Smoother::updateGradient(){
         groupInfo = iter_map.second;
         groupPath = groupInfo->path;
 
-        fixNodeIdxs.clear();
-        for (auto iter : groupPath->startPathIdxMap)
-        {
-            fixNodeIdxs.insert(iter.second);
-        }
-        for (auto iter : groupPath->endPathIdxMap)
-        {
-            fixNodeIdxs.insert(iter.second);
-        }
-
         for (auto iter_path : groupPath->nodeMap)
         {
             Vector3D best_step;
             xi_nodeIdx = iter_path.first;
 
             // The First And Last Point Are Fixed
-            if (fixNodeIdxs.find(xi_nodeIdx) != fixNodeIdxs.end())
+            if (groupPath->fixedNodes.find(xi_nodeIdx) != groupPath->fixedNodes.end())
             {
                 groupInfo->grads[xi_nodeIdx] = best_step;
                 continue;
@@ -183,7 +172,6 @@ void RandomStep_Smoother::updateGradient(){
             }
 
             groupInfo->grads[xi_nodeIdx] = best_step;
-            
         }
     }
 }

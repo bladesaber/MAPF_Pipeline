@@ -196,6 +196,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("endPathIdxMap", &GroupPath::endPathIdxMap)
         .def_readonly("nodeMap", &GroupPath::nodeMap)
         .def_readonly("pathIdxs_set", &GroupPath::pathIdxs_set)
+        .def_readonly("fixedNodes", &GroupPath::fixedNodes)
         .def("insertPath", &GroupPath::insertPath, "pathIdx"_a, "detailPath"_a, "radius"_a)
         .def("extractPath", &GroupPath::extractPath, "pathIdx"_a);
 

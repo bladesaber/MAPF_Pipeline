@@ -259,8 +259,8 @@ class CBSSolver(object):
                 endDire = np.array(self.agentInfos[agentIdx]['end_paddingDire'])
                 padding_end = np.array([
                     path_xyz[-1] + endDire * 1.,
-                    path_xyz[0-1] + endDire * 2.,
-                    path_xyz[0-1] + endDire * 3.,
+                    path_xyz[-1] + endDire * 2.,
+                    path_xyz[-1] + endDire * 3.,
                 ])
 
                 path_xyz = np.concatenate([

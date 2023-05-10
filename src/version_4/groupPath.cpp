@@ -71,6 +71,10 @@ void GroupPath::insertPath(size_ut pathIdx, DetailPath& detailPath, double radiu
             {
                 endPathIdxMap[pathIdx] = cur_nodeIdx;
             }
+
+            if (i <= 1 || i >= detailPath.size() - 2){
+                fixedNodes.insert(cur_nodeIdx);
+            }
         
         }
 
@@ -91,6 +95,10 @@ void GroupPath::insertPath(size_ut pathIdx, DetailPath& detailPath, double radiu
             }else if (i == detailPath.size()-1)
             {
                 endPathIdxMap[pathIdx] = cur_node->nodeIdx;
+            }
+
+            if (i <= 1 || i >= detailPath.size() - 2){
+                fixedNodes.insert(cur_node->nodeIdx);
             }
             
             if (lastNodeIdx < 300){

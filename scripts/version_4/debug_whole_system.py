@@ -12,7 +12,7 @@ cond_params = {
     'y': 10,
     'x': 10,
     'z': 10,
-    'num_of_groups': 5,
+    'num_of_groups': 8,
     'radius_choices': [
         0.45, 
         0.85, 
@@ -137,13 +137,34 @@ def smoothPath():
     random_colors = np.random.uniform(0.0, 1.0, size=(cond_params['num_of_groups'], 3))
     vis = VisulizerVista()
     for agentIdx in agentInfos.keys():
+        mainXYZ = agentInfos[agentIdx]['smoothXYZR'][:, :3]
+
+        startDire = np.array(agentInfos[agentIdx]['start_paddingDire'])
+        startXYZ = np.array([
+            mainXYZ[0] + startDire * 5.,
+            mainXYZ[0] + startDire * 4.,
+            mainXYZ[0] + startDire * 3.,
+            mainXYZ[0] + startDire * 2.,
+            mainXYZ[0] + startDire * 1.,
+        ])
+        endDire = np.array(agentInfos[agentIdx]['end_paddingDire'])
+        endXYZ = np.array([
+            mainXYZ[-1] + endDire * 1.,
+            mainXYZ[-1] + endDire * 2.,
+            mainXYZ[-1] + endDire * 3.,
+            mainXYZ[-1] + endDire * 4.,
+            mainXYZ[-1] + endDire * 5.,
+        ])
+
+        mainXYZ = np.concatenate([startXYZ, mainXYZ, endXYZ], axis=0)
+
         tube_mesh = vis.create_tube(
-            agentInfos[agentIdx]['smoothXYZR'][:, :3], 
+            mainXYZ, 
             radius=agentInfos[agentIdx]['radius']
         )
         vis.plot(tube_mesh, color=tuple(random_colors[agentInfos[agentIdx]['groupIdx']]))
     vis.show()
 
 if __name__ == '__main__':
-    # planner_find_Path()
+    planner_find_Path()
     smoothPath()

@@ -55,6 +55,7 @@ public:
     std::map<size_ut, size_ut> startPathIdxMap; // pathIdx, nodeIdx
     std::map<size_ut, size_ut> endPathIdxMap;   // pathIdx, nodeIdx
     std::map<size_ut, GroupPathNode*> nodeMap;  // nodeIdx, Node
+    std::set<size_ut> fixedNodes;
 
     KDTreeWrapper* nodeTree;
 
