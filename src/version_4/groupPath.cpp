@@ -2,7 +2,9 @@
 
 void GroupPath::insertPath(size_ut pathIdx, DetailPath& detailPath, double radius){
     // forbide too long path
+
     assert(detailPath.size()<300);
+    size_ut max_node_num = 99999;
 
     max_radius = std::max(max_radius, radius);
     pathIdxs_set.insert(pathIdx);
@@ -20,7 +22,7 @@ void GroupPath::insertPath(size_ut pathIdx, DetailPath& detailPath, double radiu
         double x, y, z, length, distance;
         KDTreeRes res;
         int nodeIdx = nodeMap.size();
-        size_ut lastNodeIdx = 400;
+        size_ut lastNodeIdx = max_node_num;
         size_ut cur_nodeIdx;
         
         for (size_t i = 0; i < detailPath.size(); i++)
@@ -42,7 +44,7 @@ void GroupPath::insertPath(size_ut pathIdx, DetailPath& detailPath, double radiu
                 nodeMap[cloestIdx]->radius = std::max(radius, res.data->radius);
                 nodeMap[cloestIdx]->pathIdx_set.insert(pathIdx);
         
-                if (lastNodeIdx < 300){
+                if (lastNodeIdx < max_node_num){
                     nodeMap[cloestIdx]->parentIdxsMap[pathIdx] = lastNodeIdx;
                     nodeMap[lastNodeIdx]->childIdxsMap[pathIdx] = cloestIdx;
                 }
@@ -54,7 +56,7 @@ void GroupPath::insertPath(size_ut pathIdx, DetailPath& detailPath, double radiu
                 GroupPathNode* cur_node = new GroupPathNode(nodeIdx, pathIdx, x, y, z, radius);
                 nodeMap[cur_node->nodeIdx] = cur_node;
         
-                if (lastNodeIdx < 300){
+                if (lastNodeIdx < max_node_num){
                     cur_node->parentIdxsMap[pathIdx] = lastNodeIdx;
                     nodeMap[lastNodeIdx]->childIdxsMap[pathIdx] = cur_node->nodeIdx;
                 }
@@ -83,7 +85,7 @@ void GroupPath::insertPath(size_ut pathIdx, DetailPath& detailPath, double radiu
     }else{
         int nodeIdx = nodeMap.size();
         double x, y, z, length;
-        size_ut lastNodeIdx = 400;
+        size_ut lastNodeIdx = max_node_num;
 
         for (size_t i = 0; i < detailPath.size(); i++){
             std::tie(x, y, z, length) = detailPath[i];
@@ -101,7 +103,7 @@ void GroupPath::insertPath(size_ut pathIdx, DetailPath& detailPath, double radiu
                 fixedNodes.insert(cur_node->nodeIdx);
             }
             
-            if (lastNodeIdx < 300){
+            if (lastNodeIdx < max_node_num){
                 cur_node->parentIdxsMap[pathIdx] = lastNodeIdx;
                 nodeMap[lastNodeIdx]->childIdxsMap[pathIdx] = cur_node->nodeIdx;
             }

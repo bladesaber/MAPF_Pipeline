@@ -15,8 +15,8 @@ config = {
     'sample_num': 2000,
     'resolution': 0.25,
 
-    'stl_file': '/home/quan/Desktop/MAPF_Pipeline/scripts/version_4/obs.stl',
-    'csv_file': '/home/quan/Desktop/MAPF_Pipeline/scripts/version_4/obs.csv',
+    'stl_file': '/home/quan/Desktop/MAPF_Pipeline/scripts/application/replace.STL',
+    'csv_file': '/home/quan/Desktop/MAPF_Pipeline/scripts/application/obs.csv',
 }
 
 mesh = o3d.io.read_triangle_mesh(config['stl_file'])

@@ -10,7 +10,8 @@ class VisulizerVista(object):
     def __init__(self):
         self.ploter = pyvista.Plotter()
 
-    def create_pointCloud(self, xyzs:np.array):
+    @staticmethod
+    def create_pointCloud(xyzs:np.array):
         pointCloud_mesh = pyvista.PolyData(xyzs)
         return pointCloud_mesh
 

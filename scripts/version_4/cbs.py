@@ -242,7 +242,7 @@ class CBSSolver(object):
                 else:
                     print("   Fail")
 
-    def print_NodeGraph(self, node, select_agentIdx=None, obs_file=None):
+    def print_NodeGraph(self, node, select_agentIdx=None, obs_mesh=None):
         vis = VisulizerVista()
 
         random_colors = np.random.uniform(0.0, 1.0, size=(self.num_of_groups, 3))
@@ -304,7 +304,7 @@ class CBSSolver(object):
                 obs = vis.create_sphere(np.array([constrain[0], constrain[1], constrain[2]]), radius=constrain[3] + 0.1)
                 vis.plot(obs, color=(0.0, 1.0, 0.0))
 
-        if obs_file is not None:
-            vis.plot(vis.read_file(obs_file), (0.0, 1.0, 0.0))
+        if obs_mesh is not None:
+            vis.plot(obs_mesh, (0.0, 1.0, 0.0))
 
         vis.show()

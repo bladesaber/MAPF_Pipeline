@@ -190,5 +190,5 @@ def smoothPath():
     vis.show()
 
 if __name__ == '__main__':
-    planner_find_Path()
+    # planner_find_Path()
     smoothPath()
