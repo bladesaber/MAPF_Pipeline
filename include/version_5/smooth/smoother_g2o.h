@@ -17,7 +17,7 @@
 #include "g2o/core/optimization_algorithm_dogleg.h"
 
 #include "edge_elastic_band.h"
-#include "edge_curvature.h"
+#include "edge_kinematics.h"
 #include "edge_obstacle.h"
 #include "edge_pipe_conflict.h"
 
@@ -93,11 +93,15 @@ public:
 
     bool add_vertexs();
     bool add_elasticBand(double weight);
+    bool add_kinematicEdge(
+        double crossPlane_weight, double curvature_weight
+    );
     void add_obstacleEdge(double weight);
     void add_pipeConflictEdge(double weight);
-    void add_curvatureEdge(double weight);
     void build_graph(
-        double elasticBand_weight, double obstacle_weight, double pipeConflict_weight, double curvature_weight
+        double elasticBand_weight, 
+        double crossPlane_weight, double curvature_weight,
+        double obstacle_weight, double pipeConflict_weight
     );
 
     void optimizeGraph(int no_iterations, bool verbose){

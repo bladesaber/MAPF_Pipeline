@@ -41,7 +41,9 @@ bool SmootherG2O::add_vertexs(){
 }
 
 void SmootherG2O::build_graph(
-    double elasticBand_weight, double obstacle_weight, double pipeConflict_weight, double curvature_weight
+    double elasticBand_weight,
+    double crossPlane_weight, double curvature_weight,
+    double obstacle_weight, double pipeConflict_weight
 ){
     if (!optimizer->edges().empty() || !optimizer->vertices().empty())
     {
@@ -57,7 +59,19 @@ void SmootherG2O::build_graph(
     }
     
     if (elasticBand_weight>0){
-        add_elasticBand(elasticBand_weight);
+        status = add_elasticBand(elasticBand_weight);
+        if (!status){
+            std::cout << "[Error]: Adding Elastic Band Edge Fail" << std::endl;
+            return;
+        }
+    }
+
+    if ( crossPlane_weight>0 && curvature_weight>0){
+        status = add_kinematicEdge(crossPlane_weight, curvature_weight);
+        if (!status){
+            std::cout << "[Error]: Adding Kinematics Edge Fail" << std::endl;
+            return;
+        }
     }
 
     if (obstacle_weight>0){
@@ -66,10 +80,6 @@ void SmootherG2O::build_graph(
 
     if (pipeConflict_weight>0){
         add_pipeConflictEdge(pipeConflict_weight);
-    }
-
-    if (curvature_weight>0){
-        add_curvatureEdge(curvature_weight);
     }
 }
 
@@ -217,7 +227,9 @@ void SmootherG2O::add_pipeConflictEdge(double weight){
     }
 }
 
-void SmootherG2O::add_curvatureEdge(double weight){
+bool SmootherG2O::add_kinematicEdge(
+    double crossPlane_weight, double curvature_weight
+){
     for (auto group_iter : groupMap)
     {
         GroupPath* groupPath = group_iter.second;
@@ -243,18 +255,25 @@ void SmootherG2O::add_curvatureEdge(double weight){
                 explored_set.insert(tag);
 
                 double radius = std::max(node0->radius, node1->radius);
-                EdgeCurvature* edge = new EdgeCurvature(1.0 / (3.0 * radius));
+                EdgeKinematics* edge = new EdgeKinematics(1.0 / (3.0 * radius));
                 edge->setVertex(0, node0->vertex);
                 edge->setVertex(1, node1->vertex);
 
-                Eigen::Matrix<double,1,1> information;
-                information.fill(weight);
+                Eigen::Matrix<double,2,2> information;
+                information.fill(0.0);
+                information(0, 0) = crossPlane_weight;
+                information(1, 1) = curvature_weight;
                 edge->setInformation(information);
 
-                optimizer->addEdge(edge);
+                bool success = optimizer->addEdge(edge);
+                if (!success)
+                {
+                    return false;
+                }   
             }
         }
     }
+    return true;
 }
 
 }

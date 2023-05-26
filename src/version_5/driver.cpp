@@ -214,7 +214,9 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         )
         .def("insertStaticObs", &SmootherNameSpace::SmootherG2O::insertStaticObs, "x"_a, "y"_a, "z"_a, "radius"_a, "alpha"_a, "theta"_a)
         .def("build_graph", &SmootherNameSpace::SmootherG2O::build_graph, 
-            "elasticBand_weight"_a, "obstacle_weight"_a, "pipeConflict_weight"_a, "curvature_weight"_a
+            "elasticBand_weight"_a, 
+            "crossPlane_weight"_a, "curvature_weight"_a,
+            "obstacle_weight"_a, "pipeConflict_weight"_a
         )
         .def("optimizeGraph", &SmootherNameSpace::SmootherG2O::optimizeGraph, "no_iterations"_a, "verbose"_a)
         .def("clear_graph", &SmootherNameSpace::SmootherG2O::clear_graph)

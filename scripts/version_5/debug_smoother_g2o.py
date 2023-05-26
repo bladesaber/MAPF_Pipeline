@@ -38,9 +38,9 @@ model = mapf_pipeline.SmootherG2O()
 model.addPath(
     groupIdx=0, pathIdx=0, path_xyzr=path0, startDire=startDire0, endDire=endDire0
 )
-model.addPath(
-    groupIdx=0, pathIdx=1, path_xyzr=path1, startDire=startDire1, endDire=endDire1
-)
+# model.addPath(
+#     groupIdx=0, pathIdx=1, path_xyzr=path1, startDire=startDire1, endDire=endDire1
+# )
 
 ### Step 2 Update Direction
 for group_key in model.groupMap.keys():
@@ -70,12 +70,13 @@ for outer_i in range(3):
     ### Step 3.1 Build Graph 
     model.build_graph(
         elasticBand_weight=1.0,
+        crossPlane_weight=1.0,
+        curvature_weight=1.0,
         obstacle_weight=0.0,
         pipeConflict_weight=0.0,
-        curvature_weight=0.0
     )
 
-    # model.info()
+    model.info()
     
     ### Step 3.2 Optimize
     model.optimizeGraph(10, False)
@@ -117,8 +118,8 @@ for outer_i in range(3):
             path_xy = np.array(path_xy)
             plt.plot(path_xy[:, 0], path_xy[:, 1], '-*')
             # plt.scatter(path_xy[:, 0], path_xy[:, 1], s=10.0)
-            # for (x, y), alpha in zip(path_xy, alphas):
-            #     plt.arrow(x, y, 0.3 * np.cos(alpha), 0.3 * np.sin(alpha))
+            for (x, y), alpha in zip(path_xy, alphas):
+                plt.arrow(x, y, 0.3 * np.cos(alpha), 0.3 * np.sin(alpha))
     plt.show()
 
 print('Finish')
