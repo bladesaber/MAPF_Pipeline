@@ -1,10 +1,10 @@
 /reference_project
 /.idea
 /Company Record
-/Thirdparty/*
 /build
 .vscode
 __pycache__
 *.npy
 *.csv
 *.stl
+*.STL

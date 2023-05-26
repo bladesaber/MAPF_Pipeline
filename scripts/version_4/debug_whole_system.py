@@ -17,13 +17,13 @@ cond_params = {
     'radius_choices': [
         0.45, 
         0.85, 
-        # 1.25
+        1.25
     ],
     'pipe_type': [
         'one2one', 
         'more2one'
     ],
-    'pipe_choice': [2, 3],
+    'pipe_choice': [2, ],
 
     'save_path': '/home/quan/Desktop/MAPF_Pipeline/scripts/version_4/map',
     "load": True,
@@ -60,7 +60,8 @@ def planner_find_Path():
 
     if success_node is not None:
         if cond_params['use_obs']:
-            planner.print_NodeGraph(success_node, obs_file=cond_params['stl_file'])
+            obs_mesh = VisulizerVista.read_file(cond_params['stl_file'])
+            planner.print_NodeGraph(success_node, obs_mesh=obs_mesh)
         else:
             planner.print_NodeGraph(success_node)
 
@@ -185,7 +186,9 @@ def smoothPath():
         vis.plot(tube_mesh, color=tuple(random_colors[agentInfos[agentIdx]['groupIdx']]))
     
     if cond_params['use_obs']:
-        vis.plot(vis.read_file(cond_params['stl_file']), (0.0, 1.0, 0.0))
+        # vis.plot(vis.read_file(cond_params['stl_file']), (0.0, 1.0, 0.0))
+        obs_pcd_mesh = vis.create_pointCloud(obs_df[['x', 'y', 'z']].values)
+        vis.plot(obs_pcd_mesh, color=(0.0, 1.0, 0.0))
 
     vis.show()
 

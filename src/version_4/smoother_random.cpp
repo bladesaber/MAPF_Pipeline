@@ -59,6 +59,10 @@ double RandomStep_Smoother::getCurvatureLoss(Vector3D& xim1, Vector3D& xi, Vecto
     double cosT1 = vec1.dot(vec2) / (vec1.length() * vec2.length());
     double loss = 1.0 - cosT1;
     
+    /* TODO
+    这里尝试使用前后5个点，3个连接角中的最大角作为损失来处理
+    */
+
     if (debug){
         std::cout << "Loss:" << loss << " Angel:" << acos(cosT1) / M_PI * 180.0 << std::endl;
     }
