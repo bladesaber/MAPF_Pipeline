@@ -1,5 +1,5 @@
-#ifndef MAPF_PIPELINE_VERTEX_POSE_H
-#define MAPF_PIPELINE_VERTEX_POSE_H
+#ifndef MAPF_PIPELINE_VERTEX_SE3_H
+#define MAPF_PIPELINE_VERTEX_SE3_H
 
 #include "eigen3/Eigen/Core"
 #include "g2o/config.h"
@@ -8,6 +8,7 @@
 #include <g2o/stuff/misc.h>
 #include "math.h"
 
+/*
 namespace SmootherNameSpace{
 
 class PoseSE3
@@ -183,7 +184,7 @@ public:
 
 };
 
-class VertexSE3: public g2o::BaseVertex<3, PoseSE3>
+class VertexSE3: public g2o::BaseVertex<5, PoseSE3>
 {
 public:
   VertexSE3(bool fixed = false)
@@ -305,5 +306,7 @@ public:
 };
 
 }
+
+*/
 
 #endif

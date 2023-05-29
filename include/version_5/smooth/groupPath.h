@@ -4,7 +4,9 @@
 #include "assert.h"
 #include "kdtree_xyzra.h"
 #include "utils.h"
-#include "vertex_pose.h"
+
+// #include "vertex_pose.h"
+#include "vertex_XYZ.h"
 
 namespace SmootherNameSpace{
 
@@ -22,12 +24,13 @@ public:
     size_t nodeIdx;
     size_t groupIdx;
     double x, y, z, radius;
-    double alpha, theta;
+    double alpha = -999;
+    double theta = -999;
     
     std::map<size_t, size_t> parentIdxsMap;
     std::map<size_t, size_t> childIdxsMap;
 
-    VertexSE3* vertex;
+    VertexXYZ* vertex;
 
     double vertex_x(){
         return vertex->x();
@@ -41,20 +44,20 @@ public:
         return vertex->z();
     }
 
-    double vertex_alpha(){
-        return vertex->alpha();
-    }
+    // double vertex_alpha(){
+    //     return vertex->alpha();
+    // }
 
-    double vertex_theta(){
-        return vertex->theta();
-    }
+    // double vertex_theta(){
+    //     return vertex->theta();
+    // }
 
     void updateVertex(){
         x = vertex_x();
         y = vertex_y();
         z = vertex_z();
-        alpha = vertex_alpha();
-        theta = vertex_theta();
+        // alpha = vertex_alpha();
+        // theta = vertex_theta();
     }
 
 };

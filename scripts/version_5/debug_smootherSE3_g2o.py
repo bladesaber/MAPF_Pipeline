@@ -71,7 +71,7 @@ for outer_i in range(3):
     model.build_graph(
         elasticBand_weight=1.0,
         crossPlane_weight=1.0,
-        curvature_weight=1.0,
+        curvature_weight=5.0,
         obstacle_weight=0.0,
         pipeConflict_weight=0.0,
     )

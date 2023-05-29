@@ -1,6 +1,7 @@
 #ifndef MAPF_PIPELINE_SMOOTHER_XYZ_H
 #define MAPF_PIPELINE_SMOOTHER_XYZ_H
 
+#include "string"
 #include "assert.h"
 #include "eigen3/Eigen/Core"
 
@@ -16,6 +17,7 @@
 #include "g2o/core/optimization_algorithm_gauss_newton.h"
 #include "g2o/core/optimization_algorithm_dogleg.h"
 
+#include "vertex_XYZ.h"
 #include "edge_elastic_band.h"
 #include "edge_kinematics.h"
 #include "edge_obstacle.h"
@@ -32,13 +34,12 @@ typedef g2o::BlockSolver<g2o::BlockSolverTraits<-1, -1>>  BlockSolver;
 
 typedef g2o::LinearSolverCSparse<BlockSolver::PoseMatrixType> LinearSolver;
 
-class SmootherG2O
-{
-public:
-    SmootherG2O(){
+class SmootherXYZG2O{
+    public:
+    SmootherXYZG2O(){
         obsTree = new KDTree_XYZRA();
     };
-    ~SmootherG2O(){
+    ~SmootherXYZG2O(){
         release();
     };
 
@@ -71,9 +72,6 @@ public:
         optimizer->setComputeBatchStatistics(true);
     }
 
-    KDTree_XYZRA* obsTree;
-    void insertStaticObs(double x, double y, double z, double radius, double alpha, double theta);
-
     void addPath(
         size_t groupIdx, size_t pathIdx, 
         Path_XYZR& path_xyzr, 
@@ -92,16 +90,27 @@ public:
     }
 
     bool add_vertexs();
-    bool add_elasticBand(double weight);
-    bool add_kinematicEdge(
-        double crossPlane_weight, double curvature_weight
-    );
-    void add_obstacleEdge(double weight);
-    void add_pipeConflictEdge(double weight);
+    bool add_elasticBand(double elasticBand_weight);
+    bool add_kinematicEdge(double kinematic_weight);
+
+    void insertStaticObs(double x, double y, double z, double radius, double alpha, double theta){
+        obsTree->insertNode(0, x, y, z, radius, alpha, theta);
+    }
+    bool add_obstacleEdge(double obstacle_weight);
+
+    bool add_pipeConflictEdge(double pipeConflict_weight);
+
     void build_graph(
+        double elasticBand_weight = 0.02, 
+        double kinematic_weight = 1.0,
+        double obstacle_weight=5.0,
+        double pipeConflict_weight=5.0
+    );
+    void loss_info(
         double elasticBand_weight, 
-        double crossPlane_weight, double curvature_weight,
-        double obstacle_weight, double pipeConflict_weight
+        double kinematic_weight,
+        double obstacle_weight,
+        double pipeConflict_weight
     );
 
     void optimizeGraph(int no_iterations, bool verbose){
@@ -144,10 +153,13 @@ public:
     void info(){
         std::cout << "Graph Vertex Size:" << optimizer->vertices().size();
         std::cout << " Edge Size:" << optimizer->edges().size() << std::endl;
-        
     }
 
+    Path_XYZR detailSamplePath(Path_XYZR& path_xyzr, double stepLength);
+
 private:
+    KDTree_XYZRA* obsTree;
+
     std::shared_ptr<g2o::SparseOptimizer> optimizer;
 
     void release(){

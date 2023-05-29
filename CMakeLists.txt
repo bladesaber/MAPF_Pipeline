@@ -125,7 +125,8 @@ pybind11_add_module(mapf_pipeline ${Src_DIR}/driver.cpp
 
         ${Src_DIR}/smooth/groupPath.cpp
         ${Src_DIR}/smooth/kdtree_xyzra.cpp
-        ${Src_DIR}/smooth/smoother_g2o.cpp
+        # ${Src_DIR}/smooth/smootherSE3_g2o.cpp
+        ${Src_DIR}/smooth/smootherXYZ_g2o.cpp
         )
 target_link_libraries(mapf_pipeline PRIVATE
         pybind11::module

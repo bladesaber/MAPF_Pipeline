@@ -1,8 +1,9 @@
-#include "smoother_g2o.h"
+#include "smootherSE3_g2o.h"
 
+/*
 namespace SmootherNameSpace{
 
-bool SmootherG2O::add_vertexs(){
+bool SmootherSE3G2O::add_vertexs(){
     unsigned int id_counter = 0;
     for (auto group_iter : groupMap)
     {
@@ -40,7 +41,7 @@ bool SmootherG2O::add_vertexs(){
     return true;
 }
 
-void SmootherG2O::build_graph(
+void SmootherSE3G2O::build_graph(
     double elasticBand_weight,
     double crossPlane_weight, double curvature_weight,
     double obstacle_weight, double pipeConflict_weight
@@ -83,7 +84,7 @@ void SmootherG2O::build_graph(
     }
 }
 
-bool SmootherG2O::add_elasticBand(double weight){
+bool SmootherSE3G2O::add_elasticBand(double weight){
     for (auto group_iter : groupMap)
     {
         GroupPath* groupPath = group_iter.second;
@@ -131,11 +132,11 @@ bool SmootherG2O::add_elasticBand(double weight){
     return true;
 }
 
-void SmootherG2O::insertStaticObs(double x, double y, double z, double radius, double alpha, double theta){
+void SmootherSE3G2O::insertStaticObs(double x, double y, double z, double radius, double alpha, double theta){
     obsTree->insertNode(0, x, y, z, radius, alpha, theta);
 }
 
-void SmootherG2O::add_obstacleEdge(double weight){
+void SmootherSE3G2O::add_obstacleEdge(double weight){
     if (obsTree->getTreeCount() == 0){
         return;
     }
@@ -178,7 +179,7 @@ void SmootherG2O::add_obstacleEdge(double weight){
     }
 }
 
-void SmootherG2O::add_pipeConflictEdge(double weight){
+void SmootherSE3G2O::add_pipeConflictEdge(double weight){
     if (groupMap.size() <= 1){
         return;
     }
@@ -227,7 +228,7 @@ void SmootherG2O::add_pipeConflictEdge(double weight){
     }
 }
 
-bool SmootherG2O::add_kinematicEdge(
+bool SmootherSE3G2O::add_kinematicEdge(
     double crossPlane_weight, double curvature_weight
 ){
     for (auto group_iter : groupMap)
@@ -260,9 +261,17 @@ bool SmootherG2O::add_kinematicEdge(
                 edge->setVertex(1, node1->vertex);
 
                 Eigen::Matrix<double,2,2> information;
-                information.fill(0.0);
-                information(0, 0) = crossPlane_weight;
-                information(1, 1) = curvature_weight;
+                if ( (i == 0) || (i == nodeIdxs_path.size() - 2) )
+                {
+                    information.fill(0.0);
+                    information(0, 0) = crossPlane_weight;
+                    information(1, 1) = curvature_weight * 30.0;
+                }else{
+                    information.fill(0.0);
+                    information(0, 0) = crossPlane_weight;
+                    information(1, 1) = curvature_weight;
+                }
+
                 edge->setInformation(information);
 
                 bool success = optimizer->addEdge(edge);
@@ -277,3 +286,5 @@ bool SmootherG2O::add_kinematicEdge(
 }
 
 }
+
+*/

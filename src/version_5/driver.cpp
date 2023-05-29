@@ -11,24 +11,25 @@
 #include "angleAstar.h"
 #include "cbs.h"
 
-#include "vertex_pose.h"
 #include "groupPath.h"
-#include "vertex_pose.h"
-#include "smoother_g2o.h"
+// #include "vertex_SE3.h"
+// #include "smootherSE3_g2o.h"
+#include "vertex_XYZ.h"
+#include "smootherXYZ_g2o.h"
 
 // #include "test.h"
 
 namespace py = pybind11;
 using namespace pybind11::literals;
 
-void test(){
-    SmootherNameSpace::VertexSE3 vertex;
-}
+// void test(){
+//     SmootherNameSpace::VertexSE3 vertex;
+// }
 
 PYBIND11_MODULE(mapf_pipeline, m) {
     m.doc() = "mapf pipeline"; // optional module docstring
 
-    m.def("debug", &test);
+    // m.def("debug", &test);
 
     m.def("mod2pi", &mod2pi, "theta"_a);
     m.def("mod2singlePi", &mod2singlePi, "theta"_a);
@@ -190,9 +191,9 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("radius", &SmootherNameSpace::GroupPathNode::radius)
         .def("vertex_x", &SmootherNameSpace::GroupPathNode::vertex_x)
         .def("vertex_y", &SmootherNameSpace::GroupPathNode::vertex_y)
-        .def("vertex_z", &SmootherNameSpace::GroupPathNode::vertex_z)
-        .def("vertex_alpha", &SmootherNameSpace::GroupPathNode::vertex_alpha)
-        .def("vertex_theta", &SmootherNameSpace::GroupPathNode::vertex_theta);
+        .def("vertex_z", &SmootherNameSpace::GroupPathNode::vertex_z);
+        // .def("vertex_alpha", &SmootherNameSpace::GroupPathNode::vertex_alpha)
+        // .def("vertex_theta", &SmootherNameSpace::GroupPathNode::vertex_theta);
     
     py::class_<SmootherNameSpace::GroupPath>(m, "GroupPath")
         .def(py::init<size_t>())
@@ -205,6 +206,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("updatePathDirection", &SmootherNameSpace::GroupPath::updatePathDirection)
         .def("create_pathTree", &SmootherNameSpace::GroupPath::create_pathTree);
     
+    /*
     py::class_<SmootherNameSpace::SmootherG2O>(m, "SmootherG2O")
         .def(py::init<>())
         .def_readonly("groupMap", &SmootherNameSpace::SmootherG2O::groupMap)
@@ -222,6 +224,35 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("clear_graph", &SmootherNameSpace::SmootherG2O::clear_graph)
         .def("update2groupVertex", &SmootherNameSpace::SmootherG2O::update2groupVertex)
         .def("info", &SmootherNameSpace::SmootherG2O::info);
+    */
+
+   py::class_<SmootherNameSpace::SmootherXYZG2O>(m, "SmootherXYZG2O")
+        .def(py::init<>())
+        .def_readonly("groupMap", &SmootherNameSpace::SmootherXYZG2O::groupMap)
+        .def("initOptimizer", &SmootherNameSpace::SmootherXYZG2O::initOptimizer)
+        .def("addPath", &SmootherNameSpace::SmootherXYZG2O::addPath, 
+            "groupIdx"_a, "pathIdx"_a, "path_xyzr"_a, "startDire"_a, "endDire"_a
+        )
+        .def("insertStaticObs", &SmootherNameSpace::SmootherXYZG2O::insertStaticObs,
+            "x"_a, "y"_a, "z"_a, "radius"_a, "alpha"_a, "theta"_a
+        )
+        .def("build_graph", &SmootherNameSpace::SmootherXYZG2O::build_graph, 
+            "elasticBand_weight"_a, 
+            "kinematic_weight"_a,
+            "obstacle_weight"_a,
+            "pipeConflict_weight"_a
+        )
+        .def("loss_info", &SmootherNameSpace::SmootherXYZG2O::loss_info,
+            "elasticBand_weight"_a, 
+            "kinematic_weight"_a,
+            "obstacle_weight"_a,
+            "pipeConflict_weight"_a
+        )
+        .def("optimizeGraph", &SmootherNameSpace::SmootherXYZG2O::optimizeGraph, "no_iterations"_a, "verbose"_a)
+        .def("clear_graph", &SmootherNameSpace::SmootherXYZG2O::clear_graph)
+        .def("update2groupVertex", &SmootherNameSpace::SmootherXYZG2O::update2groupVertex)
+        .def("detailSamplePath", &SmootherNameSpace::SmootherXYZG2O::detailSamplePath, "path_xyzr"_a, "stepLength"_a)
+        .def("info", &SmootherNameSpace::SmootherXYZG2O::info);
 
     // it don't work, I don't know why
     // m.def("printPointer", &printPointer<KDTreeData>, "a"_a, "tag"_a);
