@@ -26,40 +26,40 @@ agentsInfo = {
         'end_paddingDire': (0.0, -1.0, 0.0),
         'radius': 2.5,
     },
-    1:{
-        'groupIdx': 0,
-        'agentIdx': 1,
-        'startPos': np.array([
-            -35 + x_shift, 
-            30.0 + y_shift, 
-            15.0 + z_shift
-        ]),
-        'endPos': np.array([
-            -35 + x_shift, 
-            -30.0 + y_shift, 
-            15.0 + z_shift
-        ]),
-        'start_paddingDire': (-1., 0., 0.),
-        'end_paddingDire': (0.0, -1.0, 0.0),
-        'radius': 2.5,
-    },
-    2:{
-        'groupIdx': 0,
-        'agentIdx': 2,
-        'startPos': np.array([
-            -15 + x_shift, 
-            5.0 + y_shift, 
-            30.0 + z_shift
-        ]),
-        'endPos': np.array([
-            -35 + x_shift, 
-            -30.0 + y_shift, 
-            15.0 + z_shift
-        ]),
-        'start_paddingDire': (0., 0., 1.),
-        'end_paddingDire': (0.0, -1.0, 0.0),
-        'radius': 2.5,
-    },
+    # 1:{
+    #     'groupIdx': 0,
+    #     'agentIdx': 1,
+    #     'startPos': np.array([
+    #         -35 + x_shift, 
+    #         30.0 + y_shift, 
+    #         15.0 + z_shift
+    #     ]),
+    #     'endPos': np.array([
+    #         -35 + x_shift, 
+    #         -30.0 + y_shift, 
+    #         15.0 + z_shift
+    #     ]),
+    #     'start_paddingDire': (-1., 0., 0.),
+    #     'end_paddingDire': (0.0, -1.0, 0.0),
+    #     'radius': 2.5,
+    # },
+    # 2:{
+    #     'groupIdx': 0,
+    #     'agentIdx': 2,
+    #     'startPos': np.array([
+    #         -15 + x_shift, 
+    #         5.0 + y_shift, 
+    #         30.0 + z_shift
+    #     ]),
+    #     'endPos': np.array([
+    #         -35 + x_shift, 
+    #         -30.0 + y_shift, 
+    #         15.0 + z_shift
+    #     ]),
+    #     'start_paddingDire': (0., 0., 1.),
+    #     'end_paddingDire': (0.0, -1.0, 0.0),
+    #     'radius': 2.5,
+    # },
 }
 
 ## ------ create fake obstacle mesh
@@ -89,7 +89,7 @@ agentsInfo = {
 # vis.show()
 
 ### ------ make grid
-# resolution = 2.5
+resolution = 2.5
 
 # for agentIdx in agentsInfo.keys():
 #     agentInfo = agentsInfo[agentIdx]
@@ -121,7 +121,7 @@ agentsInfo = {
 # pcd_df['z'] = np.round(pcd_df['z'] / reso, decimals=0) * reso
 # pcd_df['tag'] = pcd_df['x'].astype(str) + pcd_df['y'].astype(str) + pcd_df['z'].astype(str)
 # pcd_df.drop_duplicates(subset=['tag'], inplace=True)
-# pcd_df['radius'] = 0.1
+# pcd_df['radius'] = 0.0
 
 # pcd_df['x'] = np.round(pcd_df['x'] / resolution, decimals=0)
 # pcd_df['y'] = np.round(pcd_df['y'] / resolution, decimals=0)
@@ -162,7 +162,7 @@ agentsInfo = {
 
 # vis.show()
 
-# ### ----------------  Auto Compute
+### ----------------  Auto Compute
 from scripts.version_4.cbs import CBSSolver
 from build import mapf_pipeline
 

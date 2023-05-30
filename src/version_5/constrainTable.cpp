@@ -126,8 +126,7 @@ bool ConstraintTable::islineOnSight(Instance& instance, int parent_loc, int chil
         // std::cout << std::endl;
         // // ---------------------------------
 
-        if (distance < (bound + radius) * scale )
-        {
+        if (distance < (bound + radius) * scale ){
             return false;
         }
     }

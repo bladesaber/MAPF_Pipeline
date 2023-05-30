@@ -103,8 +103,8 @@ class SmootherXYZG2O{
     void build_graph(
         double elasticBand_weight = 0.02, 
         double kinematic_weight = 1.0,
-        double obstacle_weight=5.0,
-        double pipeConflict_weight=5.0
+        double obstacle_weight=1.0,
+        double pipeConflict_weight=1.0
     );
     void loss_info(
         double elasticBand_weight, 
