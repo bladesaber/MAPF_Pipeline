@@ -45,8 +45,11 @@ message("PCL_LIBRARY_DIR: " ${PCL_LIBRARIES})
 # set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_4)
 # set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_4)
 
-set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_5)
-set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_5)
+# set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_5)
+# set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_5)
+
+set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_6)
+set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_6)
 
 message("Include_DIR: " ${Include_DIR})
 message("Src_DIR: " ${Src_DIR})
@@ -67,6 +70,9 @@ include_directories(
         ${G2O_INCLUDE_DIR}
 
         ${Include_DIR}/smooth
+        ${Include_DIR}/planner
+        ${Include_DIR}/pather
+        ${Include_DIR}/cbs
 )
 
 link_directories(
@@ -123,10 +129,14 @@ pybind11_add_module(mapf_pipeline ${Src_DIR}/driver.cpp
         # ${Src_DIR}/smoother.cpp
         # ${Src_DIR}/smoother_random.cpp
 
-        ${Src_DIR}/smooth/groupPath.cpp
-        ${Src_DIR}/smooth/kdtree_xyzra.cpp
+        ${Src_DIR}/pather/groupPath.cpp
+        ${Src_DIR}/pather/kdtree_xyzra.cpp
+
         # ${Src_DIR}/smooth/smootherSE3_g2o.cpp
         ${Src_DIR}/smooth/smootherXYZ_g2o.cpp
+
+        ${Src_DIR}/planner/AstarSolver.cpp
+        ${Src_DIR}/planner/groupObjSolver.cpp
         )
 target_link_libraries(mapf_pipeline PRIVATE
         pybind11::module
