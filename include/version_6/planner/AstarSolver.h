@@ -9,6 +9,7 @@ namespace PlannerNameSpace{
 
 typedef std::vector<size_t> Path;
 typedef std::vector<std::tuple<double, double, double, double>> Path_XYZR;
+typedef std::vector<std::tuple<double, double, double, double, double>> Path_XYZRL;
 
 class AStarNode
 {
@@ -34,7 +35,6 @@ public:
     ):location(loc), g_val(g_val), h_val(h_val), parent(parent), timestep(timestep), 
       num_of_conflicts(num_of_conflicts), in_openlist(in_openlist)
     {};
-    
     ~AStarNode(){};
 
     struct compare_node{
@@ -56,10 +56,9 @@ public:
 	{
 		size_t operator()(const AStarNode* n) const
 		{
-			size_t loc_hash = std::hash<int>()(n->location);
-			// size_t timestep_hash = std::hash<int>()(n->timestep);
-			// return (loc_hash ^ (timestep_hash << 1));
-            return loc_hash;
+			// size_t loc_hash = std::hash<int>()(n->location);
+            // return loc_hash;
+            return n->location;
 		}
 	};
 
@@ -97,9 +96,7 @@ public:
 
 class AStarSolver{
 public:
-    AStarSolver(bool with_AnyAngle, bool with_OrientCost):
-        with_AnyAngle(with_AnyAngle), with_OrientCost(with_OrientCost)
-        {};
+    AStarSolver(bool with_AnyAngle, bool with_OrientCost):with_AnyAngle(with_AnyAngle), with_OrientCost(with_OrientCost){};
     ~AStarSolver(){};
 
     int num_expanded = 0;
@@ -129,10 +126,8 @@ public:
     );
 
     Path findPath(
-        double radius,
-        std::vector<ConstrainType> constraints, Instance& instance,
-        size_t start_loc, 
-        std::vector<size_t>& goal_locs
+        double radius, std::vector<ConstrainType> constraints, Instance& instance,
+        size_t start_loc, std::vector<size_t>& goal_locs
     );
 
     bool validMove(Instance& instance, ConstraintTable& constrain_table, int curr, int next) const;
@@ -157,6 +152,29 @@ public:
         return false;
     }
 
+    void releaseNodes(){
+        open_list.clear();
+        for (auto node: allNodes_table){
+            delete node;
+        }
+        allNodes_table.clear();
+    }
+
+    void debugPrint(const AStarNode* next_node, Instance& instance, std::string tag){
+        std::tuple<int, int, int> coodr = instance.getCoordinate(next_node->location);
+
+        std::cout << tag;
+        std::cout << next_node->location << ":(x:" << std::get<0>(coodr) << ", y:" << std::get<1>(coodr) << ", z:" << std::get<2>(coodr);
+        std::cout << ", f:" << next_node->getFVal() << ", h:" << next_node->h_val << ", g:" << next_node->g_val << ")";
+        std::cout << "<-";
+
+        coodr = instance.getCoordinate(next_node->parent->location);
+        std::cout << next_node->parent->location << ":(x:" << std::get<0>(coodr) << ", y:" << std::get<1>(coodr) << ", z:" << std::get<2>(coodr);
+        std::cout << ", f:" << next_node->parent->getFVal() << ", h:" << next_node->parent->h_val << ", g:" << next_node->parent->g_val << ")";
+        
+        std::cout << std::endl;
+    };
+
 private:
     // temporary Params
     double radius;
@@ -177,18 +195,10 @@ private:
     AStarNode* popNode(){
         AStarNode* node = open_list.top();
         open_list.pop();
-
         node->in_openlist = false;
         return node;
     }
 
-    void releaseNodes(){
-        open_list.clear();
-        for (auto node: allNodes_table){
-            delete node;
-        }
-        allNodes_table.clear();
-    }
 };
 
 }

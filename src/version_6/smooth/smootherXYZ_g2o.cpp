@@ -3,7 +3,6 @@
 namespace SmootherNameSpace{
 
 bool SmootherXYZG2O::add_vertexs(){
-    unsigned int id_counter = 0;
     for (auto group_iter : groupMap)
     {
         GroupPath* groupPath = group_iter.second;
@@ -13,14 +12,12 @@ bool SmootherXYZG2O::add_vertexs(){
             GroupPathNode* node = node_iter.second;
             
             node->vertex = new VertexXYZ(node->x, node->y, node->z, node->fixed);
-            node->vertex->setId(id_counter);
+            node->vertex->setId(node->nodeIdx);
 
             bool success = optimizer->addVertex(node->vertex);
             if (!success){
                 return false;
-            }
-            
-            id_counter += 1;
+            }            
         }
     }
 
@@ -78,6 +75,7 @@ void SmootherXYZG2O::loss_info(
     double obstacle_weight,
     double pipeConflict_weight
 ){
+    /*
     GroupPathNode* node0;
     GroupPathNode* node1;
     GroupPathNode* node2;
@@ -166,6 +164,7 @@ void SmootherXYZG2O::loss_info(
             }
         }
     }
+    */
 }
 
 bool SmootherXYZG2O::add_elasticBand(double elasticBand_weight){
@@ -224,7 +223,7 @@ bool SmootherXYZG2O::add_kinematicEdge(double kinematic_weight){
 
         std::set<size_t> explored_set;
         int nodeSize = groupPath->nodeMap.size();
-        assert(nodeSize < 1000);
+        assert(nodeSize < 3000 && nodeSize>2);
 
         for (size_t pathIdx : groupPath->pathIdxs_set)
         {
@@ -343,7 +342,7 @@ bool SmootherXYZG2O::add_obstacleEdge(double obstacle_weight){
             for (KDTree_XYZRA_Res* res : resList)
             {
                 EdgeXYZ_Obstacle* edge = new EdgeXYZ_Obstacle(
-                    Eigen::Vector3d(res->x, res->y, res->z), node->radius * 1.025
+                    Eigen::Vector3d(res->x, res->y, res->z), (node->radius + res->data->radius) * 1.025
                 );
                 edge->setVertex(0, node->vertex);
 
@@ -386,13 +385,10 @@ bool SmootherXYZG2O::add_pipeConflictEdge(double pipeConflict_weight){
 
                 for (KDTree_XYZRA_Res* res : resList)
                 {
-                    double dist = norm2_distance(
-                        node->x, node->y, node->z,
-                        res->x, res->y, res->z
-                    );
+                    double dist = norm2_distance(node->x, node->y, node->z, res->x, res->y, res->z);
                     if (dist <= ( node->radius + res->data->radius) * pipeConflict_detection_scale )
                     {
-                        EdgeXYZ_PipeConflict* edge = new EdgeXYZ_PipeConflict( (node->radius + res->data->radius)*1.025 );
+                        EdgeXYZ_PipeConflict* edge = new EdgeXYZ_PipeConflict( (node->radius + res->data->radius)*1.01 );
                         edge->setVertex(0, node->vertex);
                         edge->setVertex(1, (group_j->nodeMap[res->data->idx])->vertex);
 

@@ -20,7 +20,6 @@ public:
 
     // 要设置成能被步长整除
     const double conflict_precision = 0.1;
-    const double sample_precision = 0.25;
 
     // 由于计算精度无法调整好，为保证不出现自循环，这里的约束要比CBS的 sampleDetailPath 与 CBSNode的 findAllAgentConflict 更为严格
     const double scale = 1.05;
@@ -30,9 +29,17 @@ public:
     void insert2CT(ConstrainType constrain);
 
     bool isConstrained(double x, double y, double z, double radius);
-    bool isConstrained(Instance& instance, int parent_loc, int child_loc, double radius);
+    bool isConstrained(
+        double lineStart_x, double lineStart_y, double lineStart_z,
+        double lineEnd_x, double lineEnd_y, double lineEnd_z,
+        double radius
+    );
 
-    bool islineOnSight(Instance& instance, int parent_loc, int child_loc, double bound);
+    bool islineOnSight(
+        double lineStart_x, double lineStart_y, double lineStart_z,
+        double lineEnd_x, double lineEnd_y, double lineEnd_z,
+        double radius
+    );
 
 private:
     KDTree_XYZRA* constrainTree;

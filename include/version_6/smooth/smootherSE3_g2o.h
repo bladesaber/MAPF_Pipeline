@@ -1,3 +1,4 @@
+/*
 #ifndef MAPF_PIPELINE_SMOOTHER_SE3_H
 #define MAPF_PIPELINE_SMOOTHER_SE3_H
 
@@ -23,7 +24,6 @@
 
 #include "groupPath.h"
 
-/*
 namespace SmootherNameSpace{
 
 // 5 指 pose 是5纬度，-1指观测纬度未确认
@@ -159,6 +159,6 @@ private:
 
 }
 
-*/
-
 #endif
+
+*/

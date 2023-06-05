@@ -27,7 +27,17 @@ AStarNode* AStarSolver::getNextNode(
         AStarNode* oldParent = lastNode->parent;
         if (oldParent != nullptr)
         {
-            bool validOnSight = constrain_table.islineOnSight(instance, oldParent->location, neighbour_loc, radius);
+            double lineStart_x, lineStart_y, lineStart_z;
+            double lineEnd_x, lineEnd_y, lineEnd_z;
+
+            std::tie(lineStart_x, lineStart_y, lineStart_z) = instance.getCoordinate(oldParent->location);
+            std::tie(lineEnd_x, lineEnd_y, lineEnd_z) = instance.getCoordinate(neighbour_loc);
+
+            bool validOnSight = constrain_table.islineOnSight(
+                lineStart_x, lineStart_y, lineStart_z,
+                lineEnd_x, lineEnd_y, lineEnd_z,
+                radius
+            );
             if (validOnSight)
             {
                 double g_val_onSight = oldParent->g_val + instance.getEulerDistance(neighbour_loc, oldParent->location);
@@ -97,20 +107,29 @@ bool AStarSolver::validMove(Instance& instance, ConstraintTable& constrain_table
     double x, y, z;
     std::tie(x, y, z) = instance.getCoordinate(next);
 
-    if(constrain_table.isConstrained(x, y, z, radius)){
-        return false;
-    }
-    // if(constrain_table.isConstrained(instance, curr, next, radius)){
+    // 离散检测
+    // if(constrain_table.isConstrained(x, y, z, radius)){
     //     return false;
     // }
+
+    // 连续检测
+    double lineStart_x, lineStart_y, lineStart_z;
+    double lineEnd_x, lineEnd_y, lineEnd_z;
+    std::tie(lineStart_x, lineStart_y, lineStart_z) = instance.getCoordinate(curr);
+    std::tie(lineEnd_x, lineEnd_y, lineEnd_z) = instance.getCoordinate(next);
+
+    if(constrain_table.isConstrained(
+        lineStart_x, lineStart_y, lineStart_z,
+        lineEnd_x, lineEnd_y, lineEnd_z, radius
+    )){
+        return false;
+    }
     return true;
 }
 
 Path AStarSolver::findPath(
-    double radius,
-    std::vector<ConstrainType> constraints, Instance& instance,
-    size_t start_loc, 
-    std::vector<size_t>& goal_locs
+    double radius, std::vector<ConstrainType> constraints, Instance& instance,
+    size_t start_loc, std::vector<size_t>& goal_locs
 ){
     // temporary Params Setting
     this->radius = radius;
@@ -128,6 +147,7 @@ Path AStarSolver::findPath(
     }
     runtime_build_CT = (double) (clock() - start_time) / CLOCKS_PER_SEC;
 
+    // ------ Init Searching Setting
     Path path;
 
     AStarNode* start_node = new AStarNode(
@@ -143,7 +163,7 @@ Path AStarSolver::findPath(
 	allNodes_table.insert(start_node);
 
     start_time = clock();
-    while (!open_list.empty()){
+    while ( !open_list.empty() ){
         AStarNode* cur_node = popNode();
 
         if ( isGoal(cur_node->location) )

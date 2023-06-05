@@ -57,7 +57,6 @@ void GroupPath::insertPath(
         nodeTree = new KDTree_XYZRA();
         for (auto iter : nodeMap)
         {
-            size_t nodeIdx = iter.first;
             GroupPathNode* node = iter.second;
             nodeTree->insertNode(node->nodeIdx, node->x, node->y, node->z, node->radius, 0.0, 0.0);
         }
@@ -72,18 +71,20 @@ void GroupPath::insertPath(
             std::tie(x, y, z, radius) = path_xyzr[i];
             max_radius = std::max(max_radius, radius);
 
-            nodeTree->nearest(x, y, z, res);
-            dist = norm2_distance(
-                x, y, z, res.x, res.y, res.z
-            );
+            bool need_merge = false;
+            if ( merge_path || (i==0) || (i==path_xyzr.size()-1) )
+            {
+                nodeTree->nearest(x, y, z, res);
+                dist = norm2_distance(x, y, z, res.x, res.y, res.z);
+
+                if (dist < std::min(radius, res.data->radius) * 0.5){
+                    need_merge = true;
+                }
+            }
             
             size_t curNode_idx;
-            if (
-                (dist < std::min(radius, res.data->radius) * 0.5 && merge_path) || 
-                ( i == 0 || i == path_xyzr.size()-1 )
-            ){
+            if (need_merge){
                 curNode_idx = res.data->idx;
-                
                 nodeMap[curNode_idx]->x = (x + res.x) / 2.0;
                 nodeMap[curNode_idx]->y = (y + res.y) / 2.0;
                 nodeMap[curNode_idx]->z = (z + res.z) / 2.0;
@@ -92,16 +93,9 @@ void GroupPath::insertPath(
             }else{
                 GroupPathNode* cur_node = new GroupPathNode(nodeIdx, groupIdx, pathIdx, x, y, z, radius);
                 nodeIdx += 1;
-
                 nodeMap[cur_node->nodeIdx] = cur_node;
                 curNode_idx = cur_node->nodeIdx;
             }
-
-            if (lastNodeIdx >= 0){
-                nodeMap[curNode_idx]->parentIdxsMap[pathIdx] = lastNodeIdx;
-                nodeMap[lastNodeIdx]->childIdxsMap[pathIdx] = curNode_idx;
-            }
-            lastNodeIdx = curNode_idx;
 
             if (i == 0){
                 startPathIdxMap[pathIdx] = curNode_idx;
@@ -120,6 +114,11 @@ void GroupPath::insertPath(
                 }
             }
 
+            if (lastNodeIdx >= 0){
+                nodeMap[curNode_idx]->parentIdxsMap[pathIdx] = lastNodeIdx;
+                nodeMap[lastNodeIdx]->childIdxsMap[pathIdx] = curNode_idx;
+            }
+            lastNodeIdx = curNode_idx;
         }
         delete nodeTree;
     }
@@ -154,10 +153,10 @@ void GroupPath::create_pathTree(){
     pathTree = new KDTree_XYZRA();
     for (auto iter : nodeMap)
     {
-        size_t nodeIdx = iter.first;
         GroupPathNode* node = iter.second;
         pathTree->insertNode(node->nodeIdx, node->x, node->y, node->z, node->radius, 0.0, 0.0);
     }
+    setuped_pathTree = true;
 }
 
 }

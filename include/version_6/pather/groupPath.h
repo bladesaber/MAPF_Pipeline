@@ -70,6 +70,7 @@ public:
     std::map<size_t, size_t> endPathIdxMap;   // pathIdx, nodeIdx
     std::map<size_t, GroupPathNode*> nodeMap;  // nodeIdx, Node
 
+    // Just For Tempotary
     KDTree_XYZRA* nodeTree;
 
     void insertPath(

@@ -1,3 +1,5 @@
+/*
+
 #ifndef MAPF_PIPELINE_VERTEX_SE3_H
 #define MAPF_PIPELINE_VERTEX_SE3_H
 
@@ -8,7 +10,6 @@
 #include <g2o/stuff/misc.h>
 #include "math.h"
 
-/*
 namespace SmootherNameSpace{
 
 class PoseSE3
@@ -307,6 +308,6 @@ public:
 
 }
 
-*/
-
 #endif
+
+*/

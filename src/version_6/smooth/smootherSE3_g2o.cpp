@@ -1,6 +1,6 @@
+/*
 #include "smootherSE3_g2o.h"
 
-/*
 namespace SmootherNameSpace{
 
 bool SmootherSE3G2O::add_vertexs(){

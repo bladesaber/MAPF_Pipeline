@@ -2,8 +2,8 @@
 
 namespace PlannerNameSpace{
 
-Path_XYZR sampleDetailPath(Instance& instance, Path_XYZR& path_xyzr, double radius, double stepLength){
-    Path_XYZR new_detail_path;
+Path_XYZRL sampleDetailPath(Instance& instance, Path_XYZR& path_xyzr, double stepLength){
+    Path_XYZRL new_detail_path;
 
     double lastX, lastY, lastZ, lastRadius;
     double curX, curY, curZ, curRadius;
@@ -18,11 +18,7 @@ Path_XYZR sampleDetailPath(Instance& instance, Path_XYZR& path_xyzr, double radi
     for (size_t i = 1; i < path_xyzr.size(); i++){
         std::tie(curX, curY, curZ, curRadius) = path_xyzr[i];
 
-        distance = norm2_distance(
-            lastX, lastY, lastZ,
-            curX, curY, curZ
-        );
-
+        distance = norm2_distance(lastX, lastY, lastZ, curX, curY, curZ);
         if (distance < stepLength){
             continue;
         }
@@ -45,8 +41,10 @@ Path_XYZR sampleDetailPath(Instance& instance, Path_XYZR& path_xyzr, double radi
                 lastX + vecX * (j * real_stepLength),
                 lastY + vecY * (j * real_stepLength),
                 lastZ + vecZ * (j * real_stepLength),
-                curRadius + vecRaiuds * j
+                curRadius + vecRaiuds * j,
+                cur_length
             ));
+            cur_length += real_stepLength;
         }
 
         lastX = curX;
@@ -57,14 +55,12 @@ Path_XYZR sampleDetailPath(Instance& instance, Path_XYZR& path_xyzr, double radi
     return new_detail_path;
 }
 
-std::vector<std::pair<size_t, size_t>> MultiObjs_GroupSet::getSequence_miniumSpanningTree(
-    Instance& instance, std::vector<size_t> locs
-){
+std::vector<std::pair<size_t, size_t>> MultiObjs_GroupSolver::getSequence_miniumSpanningTree(Instance& instance, std::vector<size_t> locs){
     // TODO 这里只使用了启发式作为度量，其实并不完备
 
     int obj_num = locs.size();
     Eigen::MatrixXd heruristicCost_m(obj_num, obj_num);
-    heruristicCost_m.setOnes() * 999999.0;
+    heruristicCost_m.setOnes() * DBL_MAX;
 
     for (size_t i = 0; i < obj_num; i++){
         for (size_t j = i + 1; j < obj_num; j++){
@@ -86,9 +82,9 @@ std::vector<std::pair<size_t, size_t>> MultiObjs_GroupSet::getSequence_miniumSpa
 
     for (size_t i = 0; i < obj_num-2; i++){
         
-        int select_row = 0;
-        int select_col = 0;
-	    double min_cost = 999999.0;
+        int select_row = -1;
+        int select_col = -1;
+	    double min_cost = DBL_MAX;
 
         for (size_t j = 0; j < obj_num; j++){
             if (isExplored[j] == 1){
@@ -104,6 +100,7 @@ std::vector<std::pair<size_t, size_t>> MultiObjs_GroupSet::getSequence_miniumSpa
                 select_col = minCol;
             }
         }
+        assert(select_col>=0);
 
         isExplored[select_col] = 1;
         treeLinks.emplace_back(std::make_pair(select_row, select_col));
