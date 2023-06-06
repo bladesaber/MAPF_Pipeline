@@ -1,6 +1,8 @@
 #ifndef MAPF_PIPELINE_ASTARSOLVER_H
 #define MAPF_PIPELINE_ASTARSOLVER_H
 
+#include "assert.h"
+
 #include "common.h"
 #include "instance.h"
 #include "constrainTable.h"
@@ -96,7 +98,9 @@ public:
 
 class AStarSolver{
 public:
-    AStarSolver(bool with_AnyAngle, bool with_OrientCost):with_AnyAngle(with_AnyAngle), with_OrientCost(with_OrientCost){};
+    AStarSolver(bool with_AnyAngle, bool with_OrientCost):with_AnyAngle(with_AnyAngle), with_OrientCost(with_OrientCost){
+        assert( (with_AnyAngle && !with_OrientCost) || (!with_AnyAngle && with_OrientCost) || (!with_AnyAngle && !with_OrientCost) );
+    };
     ~AStarSolver(){};
 
     int num_expanded = 0;

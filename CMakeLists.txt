@@ -121,10 +121,10 @@ pybind11_add_module(mapf_pipeline ${Src_DIR}/driver.cpp
         ${Src_DIR}/utils.cpp
         ${Src_DIR}/instance.cpp
         ${Src_DIR}/constrainTable.cpp
-        ${Src_DIR}/angleAstar.cpp
-        ${Src_DIR}/cbs.cpp
+        # ${Src_DIR}/angleAstar.cpp
+        # ${Src_DIR}/cbs.cpp
         ${Src_DIR}/kdtree.c
-        ${Src_DIR}/kdtreeWrapper.cpp
+        # ${Src_DIR}/kdtreeWrapper.cpp
         
         # ${Src_DIR}/smoother.cpp
         # ${Src_DIR}/smoother_random.cpp
@@ -137,6 +137,9 @@ pybind11_add_module(mapf_pipeline ${Src_DIR}/driver.cpp
 
         ${Src_DIR}/planner/AstarSolver.cpp
         ${Src_DIR}/planner/groupObjSolver.cpp
+        
+        ${Src_DIR}/cbs/cbs_node.cpp
+        ${Src_DIR}/cbs/cbs_solver.cpp
         )
 target_link_libraries(mapf_pipeline PRIVATE
         pybind11::module

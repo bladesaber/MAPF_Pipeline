@@ -52,10 +52,10 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             "lineStart_x"_a, "lineStart_y"_a, "lineStart_z"_a, "lineEnd_x"_a, "lineEnd_y"_a, "lineEnd_z"_a, "radius"_a
         );
 
-    m.def("sampleDetailPath", &PlannerNameSpace::sampleDetailPath, "instance"_a, "path_xyzr"_a, "stepLength"_a);
+    m.def("sampleDetailPath", &PlannerNameSpace::sampleDetailPath, "path_xyzr"_a, "stepLength"_a);
 
     py::class_<PlannerNameSpace::AStarSolver>(m, "AStarSolver")
-        .def(py::init<bool, bool>())
+        .def(py::init<bool, bool>(), "with_AnyAngle"_a, "with_OrientCost"_a)
         .def_readonly("num_expanded", &PlannerNameSpace::AStarSolver::num_expanded)
         .def_readonly("num_generated", &PlannerNameSpace::AStarSolver::num_generated)
         .def_readonly("runtime_search", &PlannerNameSpace::AStarSolver::runtime_search)

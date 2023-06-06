@@ -9,7 +9,7 @@
 
 namespace PlannerNameSpace{
 
-Path_XYZRL sampleDetailPath(Instance& instance, Path_XYZR& path_xyzr, double stepLength);
+Path_XYZRL sampleDetailPath(Path_XYZR& path_xyzr, double stepLength);
 
 class PathObjectInfo{
 public:
@@ -48,17 +48,17 @@ public:
     void insert_objs(std::vector<size_t> locs, std::vector<double> radius_list, Instance& instance){
         std::vector<std::pair<size_t, size_t>> res = getSequence_miniumSpanningTree(instance, locs);
 
-        int from_loc, to_loc;
+        int from_idx, to_idx;
         for (size_t pathIdx=0; pathIdx<res.size(); pathIdx++){
-            std::tie(from_loc, to_loc) = res[pathIdx];
+            std::tie(from_idx, to_idx) = res[pathIdx];
 
             PathObjectInfo* obj = new PathObjectInfo(pathIdx);
-            obj->start_loc = from_loc;
-            obj->radius = radius_list[from_loc];
+            obj->start_loc = locs[from_idx];
+            obj->radius = radius_list[from_idx];
 
             if (pathIdx==0){
                 std::vector<size_t> goal_locs;
-                goal_locs.emplace_back(to_loc);
+                goal_locs.emplace_back(locs[to_idx]);
                 obj->goal_locs = goal_locs;
                 obj->fixed_end = true;
             }
@@ -102,7 +102,7 @@ public:
                 std::tie(x, y, z) = instance.getCoordinate(loc);
                 path_xyzr.emplace_back(std::make_tuple(x, y, z, obj->radius));
             }
-            obj->res_path = sampleDetailPath(instance, path_xyzr, stepLength);
+            obj->res_path = sampleDetailPath(path_xyzr, stepLength);
         }
 
         updateLocTree();

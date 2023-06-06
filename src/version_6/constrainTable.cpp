@@ -111,7 +111,7 @@ bool ConstraintTable::islineOnSight(
     }
 
     if (isConstrain){
-        return true;
+        return false;
     }
     
     resList.clear();
@@ -131,5 +131,5 @@ bool ConstraintTable::islineOnSight(
         delete res;
     }
     
-    return isConstrain;
+    return !isConstrain;
 }

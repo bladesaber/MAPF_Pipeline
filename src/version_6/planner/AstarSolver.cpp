@@ -11,6 +11,8 @@ AStarNode* AStarSolver::getNextNode(
     double next_g_val = getCost(instance, lastNode, neighbour_loc);
     double next_h_val = getHeuristic(instance, neighbour_loc, goal_locs);
 
+    // std::cout << "DEBUG next_g_val:" << next_g_val << " next_h_val:" << next_h_val << std::endl;
+
     AStarNode* next_node = new AStarNode(
         neighbour_loc, // location
         next_g_val, // g val
@@ -38,9 +40,12 @@ AStarNode* AStarSolver::getNextNode(
                 lineEnd_x, lineEnd_y, lineEnd_z,
                 radius
             );
+
             if (validOnSight)
             {
                 double g_val_onSight = oldParent->g_val + instance.getEulerDistance(neighbour_loc, oldParent->location);
+
+                // std::cout << "DEBUG validOnSight g_val_onSight:" << g_val_onSight << " next_g_val:" << next_g_val << std::endl;
                 
                 // please use (less) here rather than (less or equal)
                 if (g_val_onSight < next_g_val)
@@ -68,24 +73,23 @@ AStarNode* AStarSolver::getNextNode(
 }
 
 double AStarSolver::getCost(Instance& instance, AStarNode* cur_node, size_t next_loc){
-    if (cur_node->parent == nullptr){
-        return 0.0;
-    }
+    double cost = cur_node->g_val;
 
-    size_t parent_x, parent_y, parent_z;
-    std::tie(parent_x, parent_y, parent_z) = instance.getCoordinate(cur_node->parent->location);
+    // Trip Cost
+    cost += 1.0;
 
-    size_t cur_x, cur_y, cur_z;
-    std::tie(cur_x, cur_y, cur_z) = instance.getCoordinate(cur_node->location);
-
-    size_t next_x, next_y, next_z;
-    std::tie(next_x, next_y, next_z) = instance.getCoordinate(next_loc);
-    
-    double cost = 0.0;
-    
     // Angle Cost
-    if (with_OrientCost)
+    if (cur_node->parent != nullptr && with_OrientCost )
     {
+        size_t parent_x, parent_y, parent_z;
+        std::tie(parent_x, parent_y, parent_z) = instance.getCoordinate(cur_node->parent->location);
+
+        size_t cur_x, cur_y, cur_z;
+        std::tie(cur_x, cur_y, cur_z) = instance.getCoordinate(cur_node->location);
+
+        size_t next_x, next_y, next_z;
+        std::tie(next_x, next_y, next_z) = instance.getCoordinate(next_loc);
+        
         if (cur_x - parent_x != next_x - cur_x){
             cost += 1.0;
         }
@@ -96,9 +100,6 @@ double AStarSolver::getCost(Instance& instance, AStarNode* cur_node, size_t next
             cost += 1.0;
         }
     }
-
-    // Trip Cost
-    cost += 1.0;
 
     return cost;
 }
@@ -222,6 +223,7 @@ Path AStarSolver::findPath(
                     // ------ debug
                     // debugPrint(next_node, instance, "Reopen node:");
                     // ------
+
                 }else{
                     open_list.increase(existing_next->open_handle);
                 }
