@@ -131,8 +131,15 @@ public:
 
     Path findPath(
         double radius, std::vector<ConstrainType> constraints, Instance& instance,
-        size_t start_loc, std::vector<size_t>& goal_locs
+        size_t start_loc, std::vector<size_t>& goal_locs, bool check_EndPosValid
     );
+
+    Path findPath(
+        double radius, ConstraintTable& constrain_table, Instance& instance,
+        size_t start_loc, std::vector<size_t>& goal_locs, bool check_EndPosValid
+    );
+
+    bool isValidSetting(Instance& instance, ConstraintTable& constrain_table, size_t loc);
 
     bool validMove(Instance& instance, ConstraintTable& constrain_table, int curr, int next) const;
 

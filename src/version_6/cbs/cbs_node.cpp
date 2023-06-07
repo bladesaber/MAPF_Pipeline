@@ -43,9 +43,13 @@ void CBSNode::findFirstPipeConflict(){
                     if (min_length < first_conflictDist){
                         first_conflictDist = min_length;
                         firstConflict = Conflict(
-                            i, x, y, z, radius, 
-                            j, res.x, res.y, res.z, res.data->radius
+                            i, res.x, res.y, res.z, res.data->radius,
+                            j, x, y, z, radius
                         );
+
+                        std::cout << "Conflict:" << std::endl;
+                        std::cout << "  GroupIdx:" << i << " x:" << x << " y:" << y << " z:" << z << " radius:" << radius << std::endl;
+                        std::cout << "  GroupIdx:" << j << " x:" << res.x << " y:" << res.y << " z:" << res.z << " radius:" << res.data->radius << std::endl;
                     }
 
                     conflict_length += stepLength;

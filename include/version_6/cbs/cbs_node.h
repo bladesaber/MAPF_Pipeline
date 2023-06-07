@@ -38,6 +38,7 @@ public:
     bool update_GroupAgentPath(size_t groupIdx, AStarSolver* solver, Instance& instance){
         std::shared_ptr<MultiObjs_GroupSolver> groupAgent = std::make_shared<MultiObjs_GroupSolver>();
         groupAgent->copy(groupAgentMap[groupIdx]);
+        groupAgentMap[groupIdx] = nullptr;
 
         bool success = groupAgent->findPath(
             solver, 
@@ -49,8 +50,8 @@ public:
             return false;
         }
 
-        groupAgentMap[groupIdx] = nullptr;
         groupAgentMap[groupIdx] = groupAgent;
+        return true;
     }
 
     void add_GroupAgent(size_t groupIdx, std::vector<size_t> locs, std::vector<double> radius_list, Instance& instance){
@@ -82,9 +83,45 @@ public:
     std::vector<ConstrainType> getConstrains(size_t groupIdx){
         int useCount = constrainsMap[groupIdx].use_count();
         assert(("Constrain Must Be Exist", useCount > 0));
-        return *(constrainsMap[groupIdx]);
+
+        return std::vector<ConstrainType>(*(constrainsMap[groupIdx]));
+        // return *(constrainsMap[groupIdx]);
     }
 
+    std::vector<PathObjectInfo> getGroupAgent(size_t groupIdx){
+        std::vector<PathObjectInfo> resList;
+        for (PathObjectInfo* path : groupAgentMap[groupIdx]->objectiveMap){
+            PathObjectInfo obj = PathObjectInfo(path->pathIdx);
+            obj.start_loc = path->start_loc;
+            obj.fixed_end = path->fixed_end;
+            obj.goal_locs = path->goal_locs;
+            obj.radius = path->radius;
+            obj.res_path = Path_XYZRL(path->res_path);
+            resList.emplace_back(obj);
+        }
+        return resList;
+    }
+
+    void info(bool with_constrainInfo=false, bool with_pathInfo=false){
+        for (auto groupAgent_iter: groupAgentMap){
+            std::cout << "GroupIdx:" << groupAgent_iter.first << std::endl;
+            
+            if (with_constrainInfo){
+                std::cout << "  constrain size:" << constrainsMap[groupAgent_iter.first]->size() << std::endl;
+            }
+            
+            if (with_pathInfo){
+                for (auto obj: groupAgent_iter.second->objectiveMap){
+                    std::cout << "  PathIdx:" << obj->pathIdx << std::endl;
+                    std::cout << "    start_loc:" << obj->start_loc << std::endl;
+                    std::cout << "    radius:" << obj->radius << std::endl;
+                    std::cout << "    fixed_end:" << obj->fixed_end << std::endl;
+                    std::cout << "    goal_locs size:" << obj->goal_locs.size() << std::endl;
+                    std::cout << "    res_path size:" << obj->res_path.size() << std::endl;
+                }
+            }
+        }
+    }
 
     struct compare_node 
     {

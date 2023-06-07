@@ -3,7 +3,7 @@
 namespace CBSNameSpace{
 
 bool CBSSolver::isGoal(CBSNode* node){
-    return node->isConflict;
+    return !node->isConflict;
 }
 
 }

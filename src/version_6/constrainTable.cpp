@@ -1,6 +1,8 @@
 #include "constrainTable.h"
 
 void ConstraintTable::insert2CT(double x, double y, double z, double radius){
+    max_constrain_radius = std::max(radius, max_constrain_radius);
+
     x_round = roundInterval(x, conflict_precision);
     y_round = roundInterval(y, conflict_precision);
     z_round = roundInterval(z, conflict_precision);
@@ -26,7 +28,7 @@ bool ConstraintTable::isConstrained(double x, double y, double z, double radius)
     constrainTree->nearest(x, y, z, res);
 
     double dist = norm2_distance(x, y, z, res.x, res.y, res.z);
-    if (dist <= radius + res.data->radius + eplision){
+    if (dist + eplision <= radius + res.data->radius){
         return true;
     }
     return false;
@@ -38,8 +40,15 @@ bool ConstraintTable::isConstrained(
     double radius
 ){
     double line_dist = norm2_distance(lineStart_x, lineStart_y, lineStart_z, lineEnd_x, lineEnd_y, lineEnd_z);
-    double search_radius = std::sqrt(std::pow(line_dist/2.0, 2.0) + std::pow(radius * 1.05, 2.0));
+    double search_radius = std::sqrt(
+        std::pow( line_dist/2.0, 2.0 ) + 
+        std::pow( (radius + max_constrain_radius) * 1.05, 2.0 )
+    );
 
+    // std::cout << "lineStart_x:" << lineStart_x << " lineStart_y:" << lineStart_y << " lineStart_z:" << lineStart_z << std::endl;
+    // std::cout << "lineEnd_x:" << lineEnd_x << " lineEnd_y:" << lineEnd_y << " lineEnd_z:" << lineEnd_z << std::endl;
+    // std::cout << "radius:" << radius << " line_dist:" << line_dist << " search_radius:" << search_radius << std::endl;
+    
     std::vector<KDTree_XYZRA_Res*> resList;
     bool isConstrain = false;
 
@@ -52,7 +61,10 @@ bool ConstraintTable::isConstrained(
                 lineEnd_x, lineEnd_y, lineEnd_z,
                 res->x, res->y, res->z
             );
-            if (dist < radius + res->data->radius + eplision ){
+
+            if (dist + eplision < radius + res->data->radius ){
+                // std::cout << "near_x:" << res->x << " near_y:" << res->y << " near_z:" << res->z << std::endl;
+                // std::cout << "point2LineSegmentDistance: " << dist << " obs_radius:" << res->data->radius << " bound:" << radius + res->data->radius << std::endl;
                 isConstrain = true;
             }
         }        
@@ -73,7 +85,7 @@ bool ConstraintTable::isConstrained(
                 lineEnd_x, lineEnd_y, lineEnd_z,
                 res->x, res->y, res->z
             );
-            if ( dist < radius + res->data->radius + eplision ){
+            if ( dist + eplision < radius + res->data->radius ){
                 isConstrain = true;
             }
         }
@@ -89,7 +101,10 @@ bool ConstraintTable::islineOnSight(
     double radius
 ){
     double line_dist = norm2_distance(lineStart_x, lineStart_y, lineStart_z, lineEnd_x, lineEnd_y, lineEnd_z);
-    double search_radius = std::sqrt(std::pow(line_dist/2.0, 2.0) + std::pow(radius * 1.05, 2.0));
+    double search_radius = std::sqrt(
+        std::pow( line_dist/2.0, 2.0 ) + 
+        std::pow( (radius + max_constrain_radius) * 1.05, 2.0 )
+    );
 
     std::vector<KDTree_XYZRA_Res*> resList;
     bool isConstrain = false;
@@ -103,7 +118,7 @@ bool ConstraintTable::islineOnSight(
                 lineEnd_x, lineEnd_y, lineEnd_z,
                 res->x, res->y, res->z
             );
-            if (dist < (radius + res->data->radius + eplision) ){
+            if (dist + eplision < (radius + res->data->radius ) ){
                 isConstrain = true;
             }
         }        
@@ -124,7 +139,7 @@ bool ConstraintTable::islineOnSight(
                 lineEnd_x, lineEnd_y, lineEnd_z,
                 res->x, res->y, res->z
             );
-            if (dist < (radius + res->data->radius + eplision) ){
+            if (dist + eplision < (radius + res->data->radius ) ){
                 isConstrain = true;
             }
         }

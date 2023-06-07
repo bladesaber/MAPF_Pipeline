@@ -35,11 +35,11 @@ def debug_conflict():
 def debug_astar():
     instance = mapf_pipeline.Instance(5, 5, 1)
     start_loc = instance.linearizeCoordinate(x=3, y=0, z=0)
-    # goal_locs = [instance.linearizeCoordinate(x=0, y=4, z=0)]
-    goal_locs = [
-        instance.linearizeCoordinate(x=1, y=1, z=0),
-        instance.linearizeCoordinate(x=2, y=4, z=0)
-    ]
+    goal_locs = [instance.linearizeCoordinate(x=0, y=4, z=0)]
+    # goal_locs = [
+    #     instance.linearizeCoordinate(x=1, y=1, z=0),
+    #     instance.linearizeCoordinate(x=2, y=4, z=0)
+    # ]
     goal_xy = []
     for goal_loc in goal_locs:
         (x, y, z) = instance.getCoordinate(goal_loc)
@@ -53,7 +53,12 @@ def debug_astar():
 
     astar_solver = mapf_pipeline.AStarSolver(False, True)
     pathIdxs = astar_solver.findPath(
-        radius=0.5, constraints=[], instance=instance, start_loc=start_loc, goal_locs=goal_locs
+        radius=0.5, 
+        constraints=[
+            (3, 1, 0, 0.0),
+            (2, 0, 0, 0.0)
+        ], 
+        instance=instance, start_loc=start_loc, goal_locs=goal_locs
     )
     path_xy = []
     for idx in pathIdxs:
@@ -82,7 +87,7 @@ def debug_multiSolver():
 
     # links = multiSolver.getSequence_miniumSpanningTree(instance, locs)
     multiSolver.insert_objs(locs, radius_list=[0.5, 0.5, 0.5, 0.5], instance=instance)
-    success = multiSolver.findPath(astarSolver, constraints=[], instance=instance, stepLength=0.5)
+    success = multiSolver.findPath(astarSolver, constraints=[], instance=instance, stepLength=1.0)
     print(success)
 
     for obj in multiSolver.objectiveMap:
@@ -92,7 +97,7 @@ def debug_multiSolver():
         print('  goal_locs:', obj.goal_locs)
         print('  radius:', obj.radius)
         print('  fixed_end:', obj.fixed_end)
-        print('  res_path:', obj.res_path)
+        # print('  res_path:', obj.res_path)
 
     xs, ys = np.meshgrid(np.arange(0, 10, 1), np.arange(0, 10, 1))
     map_xys = np.concatenate((xs[..., np.newaxis], ys[..., np.newaxis]), axis=-1).reshape((-1, 2))
@@ -102,10 +107,15 @@ def debug_multiSolver():
         res_path = np.array(obj.res_path)
 
         if res_path.shape[0] > 0:
-            plt.plot(res_path[:, 0], res_path[:, 1], '*-', c='r')
+            if obj.fixed_end:
+                plt.plot(res_path[:, 0], res_path[:, 1], '*-', c='g')
+            else:
+                plt.plot(res_path[:-1, 0], res_path[:-1, 1], '*-', c='r')
 
     plt.scatter(locs_xyz[:, 0], locs_xyz[:, 1], s=20.0, c='g')
 
     plt.show()
+
+debug_multiSolver()
 
 print('Finish')

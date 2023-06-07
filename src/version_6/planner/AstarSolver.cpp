@@ -105,10 +105,9 @@ double AStarSolver::getCost(Instance& instance, AStarNode* cur_node, size_t next
 }
 
 bool AStarSolver::validMove(Instance& instance, ConstraintTable& constrain_table, int curr, int next) const {
-    double x, y, z;
-    std::tie(x, y, z) = instance.getCoordinate(next);
-
     // 离散检测
+    // double x, y, z;
+    // std::tie(x, y, z) = instance.getCoordinate(next);
     // if(constrain_table.isConstrained(x, y, z, radius)){
     //     return false;
     // }
@@ -128,9 +127,18 @@ bool AStarSolver::validMove(Instance& instance, ConstraintTable& constrain_table
     return true;
 }
 
+bool AStarSolver::isValidSetting(Instance& instance, ConstraintTable& constrain_table, size_t loc){
+    double x, y, z;
+    std::tie(x, y, z) = instance.getCoordinate(loc);
+    if(constrain_table.isConstrained(x, y, z, radius)){
+         return false;
+    }
+    return true;
+}
+
 Path AStarSolver::findPath(
     double radius, std::vector<ConstrainType> constraints, Instance& instance,
-    size_t start_loc, std::vector<size_t>& goal_locs
+    size_t start_loc, std::vector<size_t>& goal_locs, bool check_EndPosValid
 ){
     // temporary Params Setting
     this->radius = radius;
@@ -148,9 +156,24 @@ Path AStarSolver::findPath(
     }
     runtime_build_CT = (double) (clock() - start_time) / CLOCKS_PER_SEC;
 
-    // ------ Init Searching Setting
+    // ------ Init Path
     Path path;
 
+    // ------ Check startPos or endPos Valid
+    if (!isValidSetting(instance, constrain_table, start_loc)){
+        std::cout << "[DEBUG]: StartPos is not Valid" << std::endl;
+        return path;
+    }
+    if (check_EndPosValid){
+        for (size_t goal_loc: goal_locs){
+            if (!isValidSetting(instance, constrain_table, goal_loc)){
+                std::cout << "[DEBUG]: EndPos is not Valid" << std::endl;
+                return path;
+            }
+        }
+    }
+    
+    // ------ Init Searching Setting
     AStarNode* start_node = new AStarNode(
         start_loc,  // location
 		0,  // g val
@@ -239,5 +262,126 @@ Path AStarSolver::findPath(
 
     return path;
 }
+
+Path AStarSolver::findPath(
+    double radius, ConstraintTable& constrain_table, Instance& instance,
+    size_t start_loc, std::vector<size_t>& goal_locs, bool check_EndPosValid
+){
+    // temporary Params Setting
+    this->radius = radius;
+    this->start_loc = start_loc;
+    this->goal_locs = goal_locs;
+
+    num_expanded = 0;
+	num_generated = 0;
+    auto start_time = clock(); 
+
+    // ------ Init Path
+    Path path;
+
+    // ------ Check startPos or endPos Valid
+    if (!isValidSetting(instance, constrain_table, start_loc)){
+        std::cout << "[DEBUG]: StartPos is not Valid" << std::endl;
+        return path;
+    }
+    if (check_EndPosValid){
+        for (size_t goal_loc: goal_locs){
+            if (!isValidSetting(instance, constrain_table, goal_loc)){
+                std::cout << "[DEBUG]: EndPos is not Valid" << std::endl;
+                return path;
+            }
+        }
+    }
+    
+    // ------ Init Searching Setting
+    AStarNode* start_node = new AStarNode(
+        start_loc,  // location
+		0,  // g val
+		getHeuristic(instance, start_loc, goal_locs),  // h val
+		nullptr,  // parent
+		0,  // timestep
+		0, // num_of_conflicts
+	    false // in_openlist
+    );
+    pushNode(start_node);
+	allNodes_table.insert(start_node);
+
+    start_time = clock();
+    while ( !open_list.empty() ){
+        AStarNode* cur_node = popNode();
+
+        if ( isGoal(cur_node->location) )
+        {
+            updatePath(cur_node, path);
+            break;
+        }
+
+        num_expanded++;
+        for (int neighbour_loc : instance.getNeighbors(cur_node->location)){
+            if (cur_node->parent != nullptr){
+                if (neighbour_loc == cur_node->parent->location){
+                    continue;
+                }
+            }
+
+            bool valid_move = this->validMove(instance, constrain_table, cur_node->location, neighbour_loc);
+            if (!valid_move){
+                continue;
+            }
+
+            AStarNode* next_node = getNextNode(
+                neighbour_loc, 
+                cur_node,
+                constrain_table,
+                instance
+            );
+
+            auto it = allNodes_table.find(next_node);
+            if (it == allNodes_table.end()){
+                pushNode(next_node);
+                allNodes_table.insert(next_node);
+
+                // ------ debug
+                // debugPrint(next_node, instance, "New Next node:");
+                // --------
+
+                continue;
+            }
+
+            AStarNode* existing_next = *it;
+            if (
+                next_node->getFVal() < existing_next->getFVal() 
+                // || 
+                // (
+                //     next_node->getFVal() <= existing_next->getFVal() + bandwith && 
+                //     next_node->num_of_conflicts < existing_next->num_of_conflicts
+                // )
+            ){
+                existing_next->copy(*next_node);
+
+                if (!existing_next->in_openlist) // if its in the closed list (reopen)
+                {
+                    pushNode(existing_next);
+
+                    // ------ debug
+                    // debugPrint(next_node, instance, "Reopen node:");
+                    // ------
+
+                }else{
+                    open_list.increase(existing_next->open_handle);
+                }
+            }
+
+            delete next_node;
+        }
+    }
+
+    releaseNodes();
+
+    runtime_search = (double) (clock() - start_time) / CLOCKS_PER_SEC;
+
+    return path;
+}
+
 
 }

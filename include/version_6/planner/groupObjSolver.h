@@ -54,6 +54,7 @@ public:
 
             PathObjectInfo* obj = new PathObjectInfo(pathIdx);
             obj->start_loc = locs[from_idx];
+            // obj->radius = std::min(radius_list[from_idx], radius_list[to_idx]);
             obj->radius = radius_list[from_idx];
 
             if (pathIdx==0){
@@ -79,6 +80,12 @@ public:
 
         std::vector<size_t> locs_set;
 
+        // ------ Create Constrain Table
+        ConstraintTable constrain_table = ConstraintTable();
+        for (auto constraint : constraints){
+            constrain_table.insert2CT(constraint);
+        }
+
         for (size_t i=0; i<objectiveMap.size(); i++){
             PathObjectInfo* obj = objectiveMap[i];
             
@@ -86,11 +93,12 @@ public:
             if (i>0){
                 obj->goal_locs = std::vector<size_t>(locs_set);
             }
-            path = solver->findPath(
-                obj->radius, constraints, instance,
-                obj->start_loc, obj->goal_locs
-            );
 
+            path = solver->findPath(
+                obj->radius, constrain_table, instance,
+                obj->start_loc, obj->goal_locs, obj->fixed_end
+            );
+            
             if (path.size() == 0){
                 return false;
             }
@@ -104,7 +112,7 @@ public:
             }
             obj->res_path = sampleDetailPath(path_xyzr, stepLength);
         }
-
+        
         updateLocTree();
 
         return true;
@@ -130,17 +138,21 @@ public:
         setup_tree = true;
     }
 
-    void copy(std::shared_ptr<MultiObjs_GroupSolver> rhs){
+    void copy(std::shared_ptr<MultiObjs_GroupSolver> rhs, bool with_path=false){
         for (PathObjectInfo* path : rhs->objectiveMap){
             PathObjectInfo* obj = new PathObjectInfo(path->pathIdx);
             obj->start_loc = path->start_loc;
-
+            obj->fixed_end = path->fixed_end;
             if (path->fixed_end){
                 obj->goal_locs = path->goal_locs;
             }
-
             obj->radius = path->radius;
-            // obj->res_path = Path_XYZRL(path->res_path);
+
+            if (with_path){
+                obj->res_path = Path_XYZRL(path->res_path);
+            }
+            
+            this->objectiveMap.emplace_back(obj);
         }
     }
 

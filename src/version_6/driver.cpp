@@ -60,8 +60,16 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("num_generated", &PlannerNameSpace::AStarSolver::num_generated)
         .def_readonly("runtime_search", &PlannerNameSpace::AStarSolver::runtime_search)
         .def_readonly("runtime_build_CT", &PlannerNameSpace::AStarSolver::runtime_build_CT)
-        .def("findPath", &PlannerNameSpace::AStarSolver::findPath, 
-            "radius"_a, "constraints"_a, "instance"_a, "start_loc"_a, "goal_locs"_a
+        // .def("findPath", &PlannerNameSpace::AStarSolver::findPath, 
+        //     "radius"_a, "constraints"_a, "instance"_a, "start_loc"_a, "goal_locs"_a, "check_EndPosValid"_a
+        // )
+        .def("findPath", 
+            py::overload_cast<double, std::vector<ConstrainType>, Instance&, size_t, std::vector<size_t>&, bool>(&PlannerNameSpace::AStarSolver::findPath),
+            "radius"_a, "constraints"_a, "instance"_a, "start_loc"_a, "goal_locs"_a, "check_EndPosValid"_a
+        )
+        .def("findPath", 
+            py::overload_cast<double, ConstraintTable&, Instance&, size_t, std::vector<size_t>&, bool>(&PlannerNameSpace::AStarSolver::findPath),
+            "radius"_a, "constrain_table"_a, "instance"_a, "start_loc"_a, "goal_locs"_a, "check_EndPosValid"_a
         );
 
     py::class_<Conflict>(m, "Conflict")
@@ -108,15 +116,15 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def_readonly("h_val", &CBSNameSpace::CBSNode::h_val)
         .def_readonly("firstConflict", &CBSNameSpace::CBSNode::firstConflict)
         .def_readonly("isConflict", &CBSNameSpace::CBSNode::isConflict)
-        // .def_readonly("groupAgentMap", &CBSNameSpace::CBSNode::groupAgentMap)
         .def("update_Constrains", &CBSNameSpace::CBSNode::update_Constrains, "groupIdx"_a, "new_constrains"_a)
-        // .def("update_GroupAgentPath", &CBSNameSpace::CBSNode::update_GroupAgentPath)
         .def("findFirstPipeConflict", &CBSNameSpace::CBSNode::findFirstPipeConflict)
         .def("compute_Heuristics", &CBSNameSpace::CBSNode::compute_Heuristics)
         .def("compute_Gval", &CBSNameSpace::CBSNode::compute_Gval)
         .def("copy", &CBSNameSpace::CBSNode::copy, "rhs"_a)
         .def("add_GroupAgent", &CBSNameSpace::CBSNode::add_GroupAgent, "groupIdx"_a, "locs"_a, "radius_list"_a, "instance"_a)
-        .def("getConstrains", &CBSNameSpace::CBSNode::getConstrains, "groupIdx");
+        .def("getConstrains", &CBSNameSpace::CBSNode::getConstrains, "groupIdx"_a)
+        .def("info", &CBSNameSpace::CBSNode::info, "with_constrainInfo"_a=false, "with_pathInfo"_a=false)
+        .def("getGroupAgent", &CBSNameSpace::CBSNode::getGroupAgent, "groupIdx"_a);
 
     py::class_<CBSNameSpace::CBSSolver>(m, "CBSSolver")
         .def(py::init<>())
