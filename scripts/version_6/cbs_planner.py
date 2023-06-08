@@ -10,6 +10,7 @@ class CBS_Planner(object):
         self.config = config
         self.instance = instance
         self.staticObs_df = staticObs_df
+        self.stepLength = self.config['stepLength']
 
         self.cbs_planner = mapf_pipeline.CBSSolver()
 
@@ -17,8 +18,13 @@ class CBS_Planner(object):
         self.allNodes = {}
         self.node_id = 0
 
-        self.groupConfig = self.config['group']
-        self.group_keys = list(self.groupConfig.keys())
+        self.groupConfig = {}
+        self.group_keys = []
+        self.group_radius = {}
+        for groupPipe in self.config['pipeConfig']:
+            self.group_keys.append(groupPipe['groupIdx'])
+            self.groupConfig[groupPipe['groupIdx']] = groupPipe['pipe']
+            self.group_radius[groupPipe['groupIdx']] = groupPipe['grid_radius']
 
         self.record_cfg = {}
     
@@ -27,8 +33,10 @@ class CBS_Planner(object):
         for groupIdx in self.group_keys:
             print('groupIdx: %d' % groupIdx)
             for objInfo in self.groupConfig[groupIdx]:
-                print(objInfo)
-            print('\n')
+                print('  x:%d y:%d z:%d radius:%f' % (
+                    objInfo['grid_position'][0], objInfo['grid_position'][1], objInfo['grid_position'][2], 
+                    self.group_radius[groupIdx]
+                ))
 
         print("Starting Solving ...")
 
@@ -37,14 +45,16 @@ class CBS_Planner(object):
         
         ### 1.1 init agents of root
         for groupIdx in self.group_keys:
-            locs, radius_list = [], []
+            pipeMap = {}
             for objInfo in self.groupConfig[groupIdx]:
-                locs.append(self.instance.linearizeCoordinate(
-                    objInfo['position'][0], objInfo['position'][1], objInfo['position'][2]
-                ))
-                radius_list.append(objInfo['radius'])
-            
-            root.add_GroupAgent(groupIdx, locs, radius_list, self.instance)
+                pipeMap[
+                    self.instance.linearizeCoordinate(
+                        objInfo['grid_position'][0], 
+                        objInfo['grid_position'][1], 
+                        objInfo['grid_position'][2]
+                    )] = self.group_radius[groupIdx] # replace objInfo['grid_radius']
+            root.add_GroupAgent(groupIdx, pipeMap, self.instance)
+
             self.cbs_planner.addSearchEngine(groupIdx, with_AnyAngle=False, with_OrientCost=True)
         # root.info()
 
@@ -57,9 +67,12 @@ class CBS_Planner(object):
                     continue
                 
                 for objInfo in self.groupConfig[groupIdx_j]:
-                    constrains.append(
-                        (objInfo['position'][0], objInfo['position'][1], objInfo['position'][2], objInfo['radius'])
-                    )
+                    constrains.append((
+                        objInfo['grid_position'][0], 
+                        objInfo['grid_position'][1], 
+                        objInfo['grid_position'][2], 
+                        self.group_radius[groupIdx_j] # replace objInfo['grid_radius']
+                    ))
             
             for _, row in self.staticObs_df.iterrows():
                 constrains.append((row.x, row.y, row.z, row.radius))
@@ -84,7 +97,7 @@ class CBS_Planner(object):
         root.compute_Gval()
         # self.print_pathGraph(root, groupIdx=2)
 
-        # ### 1.5 push node into list
+        ### 1.5 push node into list
         self.pushNode(root)
 
         run_times = 1
@@ -100,19 +113,26 @@ class CBS_Planner(object):
             for child_node in childNodes:
                 self.pushNode(child_node)
 
-            # run_times += 1
-            # if run_times > 300:
-            #     print("[DEBUG]: Out of Resource !!!")
-            #     break
+            run_times += 1
+            if run_times > 100:
+                print("[DEBUG]: Out of Resource !!!")
+                break
 
-            # print("Running ... %d" % run_times)
-
-            break
+            print("Running ... %d" % run_times)
 
         if success_node is not None:
             self.print_pathGraph(success_node)
+
+            return {
+                'status': True,
+                'res': self.extractPath(success_node)
+            }
+
         else:
             print('[DEBUG]: Fail Find Any Solution')
+            return {
+                'status': False
+            }
         
     def pushNode(self, node):
         node.node_id = self.node_id
@@ -160,10 +180,6 @@ class CBS_Planner(object):
         childNode = mapf_pipeline.CBSNode(self.config['stepLength'])
         childNode.copy(node)
 
-        print('Fuck you Constrain: groupIdx:%d x:%.1f y:%.1f z:%.1f radius:%.1f' % (
-            groupIdx, new_constrain[0], new_constrain[1], new_constrain[2], new_constrain[3]
-        ))
-
         childNode.update_Constrains(groupIdx, constrains)
 
         success = self.cbs_planner.update_GroupAgentPath(groupIdx, childNode, self.instance)
@@ -191,7 +207,7 @@ class CBS_Planner(object):
             for obj in obj_list:
                 path_xyzrl = np.array(obj.res_path)
                 if path_xyzrl.shape[0] > 0:
-                    tube_mesh = vis.create_tube(path_xyzrl[:, :3], radius=obj.radius)
+                    tube_mesh = vis.create_tube(path_xyzrl[:, :3], radius=self.group_radius[groupIdx])
                     vis.plot(tube_mesh, color=tuple(random_colors[groupIdx]))
 
         obstacle_mesh = vis.create_pointCloud(self.staticObs_df[['x', 'y', 'z']].values)
@@ -218,31 +234,6 @@ class CBS_Planner(object):
 
         vis.show()
 
-    def print_vertexGraph(self, node, groupIdx=None):
-        vis = VisulizerVista()
-
-        random_colors = np.random.uniform(0.0, 1.0, size=(len(self.group_keys), 3))
-        if groupIdx is not None:
-            random_colors[groupIdx] = [1.0, 0.0, 0.0]
-        
-        for groupIdx in self.group_keys:
-            obj_list = node.getGroupAgent(groupIdx)
-            for obj in obj_list:
-                (x, y, z) = self.instance.getCoordinate(obj.start_loc)
-                mesh = vis.create_sphere(np.array([x, y, z]), obj.radius)
-                vis.plot(mesh, color=tuple(random_colors[groupIdx]))
-
-                if obj.fixed_end:
-                    for goal_loc in obj.goal_locs:
-                        (x, y, z) = self.instance.getCoordinate(goal_loc)
-                        mesh = vis.create_sphere(np.array([x, y, z]), obj.radius)
-                        vis.plot(mesh, color=tuple(random_colors[groupIdx]))
-
-        obstacle_mesh = vis.create_pointCloud(self.staticObs_df[['x', 'y', 'z']].values)
-        vis.plot(obstacle_mesh, (0.0, 1.0, 0.0))
-
-        vis.show()
-
     def print_nodeGraph(self, node, groupIdx):
         vis = VisulizerVista()
 
@@ -250,7 +241,7 @@ class CBS_Planner(object):
         for obj in obj_list:
             path_xyzrl = np.array(obj.res_path)
             if path_xyzrl.shape[0] > 0:
-                tube_mesh = vis.create_tube(path_xyzrl[:, :3], radius=obj.radius)
+                tube_mesh = vis.create_tube(path_xyzrl[:, :3], radius=self.group_radius[groupIdx])
                 vis.plot(tube_mesh, color=(1.0, 0.0, 0.0))
         
         constrains = node.getConstrains(groupIdx)
@@ -267,3 +258,16 @@ class CBS_Planner(object):
             vis.plot(mesh, (0.0, 1.0, 0.0))
 
         vis.show()
+    
+    def extractPath(self, node):
+        groupAgent = {}
+        for groupIdx in self.group_keys:
+            obj_list = node.getGroupAgent(groupIdx)
+
+            groupAgent[groupIdx] = []
+            for obj in obj_list:
+                path_xyzrl = np.array(obj.res_path)
+                if path_xyzrl.shape[0] > 0:
+                    groupAgent[groupIdx].append(path_xyzrl)
+        return groupAgent
+    

@@ -1,9 +1,9 @@
 #ifndef MAPF_PIPELINE_CBS_NODE_H
 #define MAPF_PIPELINE_CBS_NODE_H
 
-#include "groupObjSolver.h"
 #include "kdtree_xyzrl.h"
 #include "conflict.h"
+#include "spanningTree_groupSolver.h"
 
 using namespace PlannerNameSpace;
 
@@ -16,7 +16,7 @@ public:
         release();
     }
 
-    std::map<size_t, std::shared_ptr<MultiObjs_GroupSolver>> groupAgentMap;
+    std::map<size_t, std::shared_ptr<SpanningTree_GroupSolver>> groupAgentMap;
     std::map<size_t, std::shared_ptr<std::vector<ConstrainType>>> constrainsMap;
     std::map<size_t, double> pipe_conflictLength;
     
@@ -36,7 +36,7 @@ public:
     }
 
     bool update_GroupAgentPath(size_t groupIdx, AStarSolver* solver, Instance& instance){
-        std::shared_ptr<MultiObjs_GroupSolver> groupAgent = std::make_shared<MultiObjs_GroupSolver>();
+        std::shared_ptr<SpanningTree_GroupSolver> groupAgent = std::make_shared<SpanningTree_GroupSolver>();
         groupAgent->copy(groupAgentMap[groupIdx]);
         groupAgentMap[groupIdx] = nullptr;
 
@@ -54,9 +54,9 @@ public:
         return true;
     }
 
-    void add_GroupAgent(size_t groupIdx, std::vector<size_t> locs, std::vector<double> radius_list, Instance& instance){
-        std::shared_ptr<MultiObjs_GroupSolver> groupAgent = std::make_shared<MultiObjs_GroupSolver>();
-        groupAgent->insert_objs(locs, radius_list, instance);
+    void add_GroupAgent(size_t groupIdx, std::map<size_t, double>& pipeMap, Instance& instance){
+        std::shared_ptr<SpanningTree_GroupSolver> groupAgent = std::make_shared<SpanningTree_GroupSolver>();
+        groupAgent->insertPipe(pipeMap, instance);
 
         groupAgentMap[groupIdx] = nullptr;
         groupAgentMap[groupIdx] = groupAgent;
@@ -64,7 +64,7 @@ public:
 
     void copy(CBSNode* rhs){
         for (auto iter : rhs->groupAgentMap){
-            groupAgentMap[iter.first] = std::shared_ptr<MultiObjs_GroupSolver>(iter.second);
+            groupAgentMap[iter.first] = std::shared_ptr<SpanningTree_GroupSolver>(iter.second);
         }
         for (auto iter : rhs->constrainsMap){
             constrainsMap[iter.first] = std::shared_ptr<std::vector<ConstrainType>>(iter.second);
@@ -88,16 +88,16 @@ public:
         // return *(constrainsMap[groupIdx]);
     }
 
-    std::vector<PathObjectInfo> getGroupAgent(size_t groupIdx){
-        std::vector<PathObjectInfo> resList;
-        for (PathObjectInfo* path : groupAgentMap[groupIdx]->objectiveMap){
-            PathObjectInfo obj = PathObjectInfo(path->pathIdx);
-            obj.start_loc = path->start_loc;
-            obj.fixed_end = path->fixed_end;
-            obj.goal_locs = path->goal_locs;
-            obj.radius = path->radius;
-            obj.res_path = Path_XYZRL(path->res_path);
-            resList.emplace_back(obj);
+    std::vector<TaskInfo> getGroupAgent(size_t groupIdx){
+        std::vector<TaskInfo> resList;
+        for (TaskInfo* task : groupAgentMap[groupIdx]->task_seq){
+            TaskInfo new_obj = TaskInfo();
+            // new_obj.link_sign0 = task->link_sign0;
+            // new_obj.link_sign1 = task->link_sign1;
+            new_obj.radius0 = task->radius0;
+            new_obj.radius1 = task->radius1;
+            new_obj.res_path = Path_XYZRL(task->res_path);
+            resList.emplace_back(new_obj);
         }
         return resList;
     }
@@ -111,13 +111,10 @@ public:
             }
             
             if (with_pathInfo){
-                for (auto obj: groupAgent_iter.second->objectiveMap){
-                    std::cout << "  PathIdx:" << obj->pathIdx << std::endl;
-                    std::cout << "    start_loc:" << obj->start_loc << std::endl;
-                    std::cout << "    radius:" << obj->radius << std::endl;
-                    std::cout << "    fixed_end:" << obj->fixed_end << std::endl;
-                    std::cout << "    goal_locs size:" << obj->goal_locs.size() << std::endl;
-                    std::cout << "    res_path size:" << obj->res_path.size() << std::endl;
+                for (auto task: groupAgent_iter.second->task_seq){
+                    std::cout << "    radius0:" << task->radius0 << std::endl;
+                    std::cout << "    radius1:" << task->radius1 << std::endl;
+                    std::cout << "    res_path size:" << task->res_path.size() << std::endl;
                 }
             }
         }

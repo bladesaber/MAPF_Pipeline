@@ -131,12 +131,12 @@ public:
 
     Path findPath(
         double radius, std::vector<ConstrainType> constraints, Instance& instance,
-        size_t start_loc, std::vector<size_t>& goal_locs, bool check_EndPosValid
+        std::vector<size_t>& start_locs, std::vector<size_t>& goal_locs
     );
 
     Path findPath(
         double radius, ConstraintTable& constrain_table, Instance& instance,
-        size_t start_loc, std::vector<size_t>& goal_locs, bool check_EndPosValid
+        std::vector<size_t>& start_locs, std::vector<size_t>& goal_locs
     );
 
     bool isValidSetting(Instance& instance, ConstraintTable& constrain_table, size_t loc);
@@ -189,7 +189,7 @@ public:
 private:
     // temporary Params
     double radius;
-    size_t start_loc;
+    std::vector<size_t> start_locs;
     std::vector<size_t> goal_locs;
 
     typedef boost::heap::pairing_heap<AStarNode*, boost::heap::compare<AStarNode::compare_node>> Heap_open_t;

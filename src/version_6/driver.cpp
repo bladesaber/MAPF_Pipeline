@@ -15,7 +15,7 @@
 
 #include "cbs_node.h"
 #include "cbs_solver.h"
-#include "groupObjSolver.h"
+#include "spanningTree_groupSolver.h"
 
 namespace py = pybind11;
 using namespace pybind11::literals;
@@ -64,12 +64,14 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         //     "radius"_a, "constraints"_a, "instance"_a, "start_loc"_a, "goal_locs"_a, "check_EndPosValid"_a
         // )
         .def("findPath", 
-            py::overload_cast<double, std::vector<ConstrainType>, Instance&, size_t, std::vector<size_t>&, bool>(&PlannerNameSpace::AStarSolver::findPath),
-            "radius"_a, "constraints"_a, "instance"_a, "start_loc"_a, "goal_locs"_a, "check_EndPosValid"_a
+            py::overload_cast<double, std::vector<ConstrainType>, Instance&, std::vector<size_t>&, std::vector<size_t>&>(
+                &PlannerNameSpace::AStarSolver::findPath
+            ), "radius"_a, "constraints"_a, "instance"_a, "start_locs"_a, "goal_locs"_a
         )
         .def("findPath", 
-            py::overload_cast<double, ConstraintTable&, Instance&, size_t, std::vector<size_t>&, bool>(&PlannerNameSpace::AStarSolver::findPath),
-            "radius"_a, "constrain_table"_a, "instance"_a, "start_loc"_a, "goal_locs"_a, "check_EndPosValid"_a
+            py::overload_cast<double, ConstraintTable&, Instance&, std::vector<size_t>&, std::vector<size_t>&>(
+                &PlannerNameSpace::AStarSolver::findPath
+            ), "radius"_a, "constrain_table"_a, "instance"_a, "start_locs"_a, "goal_locs"_a
         );
 
     py::class_<Conflict>(m, "Conflict")
@@ -92,21 +94,20 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("conflictExtend", &Conflict::conflictExtend)
         .def("info", &Conflict::info);
 
-    py::class_<PlannerNameSpace::PathObjectInfo>(m, "PathObjectInfo")
-        .def(py::init<size_t, bool>(), "pathIdx"_a, "fixed_end"_a)
-        .def_readonly("pathIdx", &PlannerNameSpace::PathObjectInfo::pathIdx)
-        .def_readonly("start_loc", &PlannerNameSpace::PathObjectInfo::start_loc)
-        .def_readonly("goal_locs", &PlannerNameSpace::PathObjectInfo::goal_locs)
-        .def_readonly("radius", &PlannerNameSpace::PathObjectInfo::radius)
-        .def_readonly("fixed_end", &PlannerNameSpace::PathObjectInfo::fixed_end)
-        .def_readonly("res_path", &PlannerNameSpace::PathObjectInfo::res_path);
-
-    py::class_<PlannerNameSpace::MultiObjs_GroupSolver>(m, "MultiObjs_GroupSolver")
+    py::class_<PlannerNameSpace::TaskInfo>(m, "TaskInfo")
         .def(py::init<>())
-        .def_readonly("objectiveMap", &PlannerNameSpace::MultiObjs_GroupSolver::objectiveMap)
-        .def("insert_objs", &PlannerNameSpace::MultiObjs_GroupSolver::insert_objs, "locs"_a, "radius_list"_a, "instance"_a)
-        .def("getSequence_miniumSpanningTree", &PlannerNameSpace::MultiObjs_GroupSolver::getSequence_miniumSpanningTree, "instance"_a, "locs"_a)
-        .def("findPath", &PlannerNameSpace::MultiObjs_GroupSolver::findPath, "solver"_a, "constraints"_a, "instance"_a, "stepLength"_a);
+        .def_readonly("link_sign0", &PlannerNameSpace::TaskInfo::link_sign0)
+        .def_readonly("link_sign1", &PlannerNameSpace::TaskInfo::link_sign1)
+        .def_readonly("radius0", &PlannerNameSpace::TaskInfo::radius0)
+        .def_readonly("radius1", &PlannerNameSpace::TaskInfo::radius1)
+        .def_readonly("res_path", &PlannerNameSpace::TaskInfo::res_path);
+
+    py::class_<PlannerNameSpace::SpanningTree_GroupSolver>(m, "SpanningTree_GroupSolver")
+        .def(py::init<>())
+        .def_readonly("task_seq", &PlannerNameSpace::SpanningTree_GroupSolver::task_seq)
+        .def("getSequence_miniumSpanningTree", &PlannerNameSpace::SpanningTree_GroupSolver::getSequence_miniumSpanningTree, "instance"_a, "locs"_a)
+        .def("insertPipe", &PlannerNameSpace::SpanningTree_GroupSolver::insertPipe, "pipeMap"_a, "instance"_a)
+        .def("findPath", &PlannerNameSpace::SpanningTree_GroupSolver::findPath, "solver"_a, "constraints"_a, "instance"_a, "stepLength"_a);
 
     py::class_<CBSNameSpace::CBSNode>(m, "CBSNode")
         .def(py::init<double>(), "stepLength"_a)
@@ -121,7 +122,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("compute_Heuristics", &CBSNameSpace::CBSNode::compute_Heuristics)
         .def("compute_Gval", &CBSNameSpace::CBSNode::compute_Gval)
         .def("copy", &CBSNameSpace::CBSNode::copy, "rhs"_a)
-        .def("add_GroupAgent", &CBSNameSpace::CBSNode::add_GroupAgent, "groupIdx"_a, "locs"_a, "radius_list"_a, "instance"_a)
+        .def("add_GroupAgent", &CBSNameSpace::CBSNode::add_GroupAgent, "groupIdx"_a, "pipeMap"_a, "instance"_a)
         .def("getConstrains", &CBSNameSpace::CBSNode::getConstrains, "groupIdx"_a)
         .def("info", &CBSNameSpace::CBSNode::info, "with_constrainInfo"_a=false, "with_pathInfo"_a=false)
         .def("getGroupAgent", &CBSNameSpace::CBSNode::getGroupAgent, "groupIdx"_a);
@@ -135,6 +136,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("addSearchEngine", &CBSNameSpace::CBSSolver::addSearchEngine, "groupIdx"_a, "with_AnyAngle"_a, "with_OrientCost"_a)
         .def("update_GroupAgentPath", &CBSNameSpace::CBSSolver::update_GroupAgentPath, "groupIdx"_a, "node"_a, "instance"_a);
 
+    /*
     py::class_<PathNameSpace::GroupPathNode>(m, "GroupPathNode")
         .def(py::init<size_t, size_t, size_t, double, double, double, double>())
         .def_readonly("nodeIdx", &PathNameSpace::GroupPathNode::nodeIdx)
@@ -185,6 +187,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("clear_graph", &SmootherNameSpace::SmootherXYZG2O::clear_graph)
         .def("update2groupVertex", &SmootherNameSpace::SmootherXYZG2O::update2groupVertex)
         .def("info", &SmootherNameSpace::SmootherXYZG2O::info);
+    */
 
     // it don't work, I don't know why
     // m.def("printPointer", &printPointer<KDTreeData>, "a"_a, "tag"_a);

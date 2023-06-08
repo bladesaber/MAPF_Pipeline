@@ -1,5 +1,6 @@
 #include "cbs_node.h"
 
+
 namespace CBSNameSpace{
 
 void CBSNode::findFirstPipeConflict(){
@@ -13,8 +14,8 @@ void CBSNode::findFirstPipeConflict(){
     }
 
     // Starting ......
-    std::shared_ptr<MultiObjs_GroupSolver> groupAgent_i;
-    std::shared_ptr<MultiObjs_GroupSolver> groupAgent_j;
+    std::shared_ptr<SpanningTree_GroupSolver> groupAgent_i;
+    std::shared_ptr<SpanningTree_GroupSolver> groupAgent_j;
 
     double x, y, z, radius, length, dist;
     KDTree_XYZRL_Res res;
@@ -27,10 +28,10 @@ void CBSNode::findFirstPipeConflict(){
             groupAgent_j = groupAgentMap[j];
 
             conflict_length = 0.0;
-            for (PathObjectInfo* obj : groupAgent_i->objectiveMap)
+            for (TaskInfo* task : groupAgent_i->task_seq)
             {
-                for (size_t k=0; k < obj->getPathSize(); k++){
-                    std::tie(x, y, z, radius, length) = obj->res_path[k];
+                for (size_t k=0; k < task->res_path.size(); k++){
+                    std::tie(x, y, z, radius, length) = task->res_path[k];
                     groupAgent_j->locTree->nearest(x, y, z, res);
 
                     dist = norm2_distance(x, y, z, res.x, res.y, res.z);
@@ -47,9 +48,9 @@ void CBSNode::findFirstPipeConflict(){
                             j, x, y, z, radius
                         );
 
-                        std::cout << "Conflict:" << std::endl;
-                        std::cout << "  GroupIdx:" << i << " x:" << x << " y:" << y << " z:" << z << " radius:" << radius << std::endl;
-                        std::cout << "  GroupIdx:" << j << " x:" << res.x << " y:" << res.y << " z:" << res.z << " radius:" << res.data->radius << std::endl;
+                        // std::cout << "Conflict:" << std::endl;
+                        // std::cout << "  GroupIdx:" << i << " x:" << x << " y:" << y << " z:" << z << " radius:" << radius << std::endl;
+                        // std::cout << "  GroupIdx:" << j << " x:" << res.x << " y:" << res.y << " z:" << res.z << " radius:" << res.data->radius << std::endl;
                     }
 
                     conflict_length += stepLength;
@@ -73,8 +74,8 @@ void CBSNode::compute_Gval(){
 
     double x, y ,z, radius, length;
     for (auto agentGroup_iter : groupAgentMap){
-        for (auto obj : agentGroup_iter.second->objectiveMap){
-            std::tie(x, y, z, radius, length) = obj->res_path.back();
+        for (auto task : agentGroup_iter.second->task_seq){
+            std::tie(x, y, z, radius, length) = task->res_path.back();
             g_val += length;
         }
     }

@@ -136,7 +136,7 @@ pybind11_add_module(mapf_pipeline ${Src_DIR}/driver.cpp
         ${Src_DIR}/smooth/smootherXYZ_g2o.cpp
 
         ${Src_DIR}/planner/AstarSolver.cpp
-        ${Src_DIR}/planner/groupObjSolver.cpp
+        ${Src_DIR}/planner/spanningTree_groupSolver.cpp
         
         ${Src_DIR}/cbs/cbs_node.cpp
         ${Src_DIR}/cbs/cbs_solver.cpp

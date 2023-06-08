@@ -34,18 +34,29 @@ def debug_conflict():
 
 def debug_astar():
     instance = mapf_pipeline.Instance(5, 5, 1)
-    start_loc = instance.linearizeCoordinate(x=3, y=0, z=0)
-    goal_locs = [instance.linearizeCoordinate(x=0, y=4, z=0)]
-    # goal_locs = [
-    #     instance.linearizeCoordinate(x=1, y=1, z=0),
-    #     instance.linearizeCoordinate(x=2, y=4, z=0)
-    # ]
-    goal_xy = []
-    for goal_loc in goal_locs:
-        (x, y, z) = instance.getCoordinate(goal_loc)
-        goal_xy.append([x, y])
-    goal_xy = np.array(goal_xy)
-    print(goal_xy)
+    start_locs = [
+        instance.linearizeCoordinate(x=3, y=0, z=0),
+        instance.linearizeCoordinate(x=1, y=0, z=0)
+    ]
+    goal_locs = [
+        instance.linearizeCoordinate(x=0, y=4, z=0),
+        instance.linearizeCoordinate(x=3, y=3, z=0),
+    ]
+
+    ### --------------------------------
+    goal_xys = []
+    for loc in goal_locs:
+        (x, y, z) = instance.getCoordinate(loc)
+        goal_xys.append([x, y])
+    goal_xys = np.array(goal_xys)
+
+    start_xys = []
+    for loc in start_locs:
+        (x, y, z) = instance.getCoordinate(loc)
+        start_xys.append([x, y])
+    start_xys = np.array(start_xys)
+    ### -------------------------------
+
 
     xs, ys = np.meshgrid(np.arange(0, 5, 1), np.arange(0, 5, 1))
     map_xys = np.concatenate((xs[..., np.newaxis], ys[..., np.newaxis]), axis=-1).reshape((-1, 2))
@@ -55,25 +66,28 @@ def debug_astar():
     pathIdxs = astar_solver.findPath(
         radius=0.5, 
         constraints=[
-            (3, 1, 0, 0.0),
-            (2, 0, 0, 0.0)
+            # (3, 1, 0, 0.0),
+            # (2, 0, 0, 0.0)
         ], 
-        instance=instance, start_loc=start_loc, goal_locs=goal_locs
+        instance=instance, start_locs=start_locs, goal_locs=goal_locs
     )
+    print('Time Cost: ', astar_solver.runtime_search)
+
     path_xy = []
     for idx in pathIdxs:
         (x, y, z) = instance.getCoordinate(idx)
         path_xy.append([x, y])
     path_xy = np.array(path_xy)
 
-    plt.plot(path_xy[:, 0], path_xy[:, 1], '*-', c='r')
-    plt.scatter(goal_xy[:, 0], goal_xy[:, 1], s=30.0, c='g')
+    plt.plot(path_xy[:, 0], path_xy[:, 1], '*-', c='b')
+    plt.scatter(goal_xys[:, 0], goal_xys[:, 1], s=30.0, c='g')
+    plt.scatter(start_xys[:, 0], start_xys[:, 1], s=30.0, c='r')
     plt.show()
 
-def debug_multiSolver():
+def debug_groupSolver():
     instance = mapf_pipeline.Instance(10, 10, 1)
     astarSolver = mapf_pipeline.AStarSolver(False, True)
-    multiSolver = mapf_pipeline.MultiObjs_GroupSolver()
+    groupSolver = mapf_pipeline.SpanningTree_GroupSolver()
 
     locs_xyz = np.array([
         [np.random.randint(0, 10, 1)[0], np.random.randint(0, 10, 1)[0], 0],
@@ -81,41 +95,65 @@ def debug_multiSolver():
         [np.random.randint(0, 10, 1)[0], np.random.randint(0, 10, 1)[0], 0],
         [np.random.randint(0, 10, 1)[0], np.random.randint(0, 10, 1)[0], 0]
     ])
-    locs = []
+    print(locs_xyz)
+    pipeMap = {}
     for (x, y, z) in locs_xyz:
-        locs.append(instance.linearizeCoordinate(x, y, z))
+        loc = instance.linearizeCoordinate(x, y, z)
+        pipeMap[loc] = 0.5
 
-    # links = multiSolver.getSequence_miniumSpanningTree(instance, locs)
-    multiSolver.insert_objs(locs, radius_list=[0.5, 0.5, 0.5, 0.5], instance=instance)
-    success = multiSolver.findPath(astarSolver, constraints=[], instance=instance, stepLength=1.0)
+    ### ------------------------------------------------
+    groupSolver.insertPipe(pipeMap, instance=instance)
+    # for task in groupSolver.task_seq:
+    #     print(task.link_sign0, task.link_sign1)
+    #     # print(task.radius0, task.radius1)
+
+    success = groupSolver.findPath(
+        astarSolver, 
+        constraints=[], 
+        instance=instance, 
+        stepLength=1.0
+    )
     print(success)
-
-    for obj in multiSolver.objectiveMap:
-        print('PathIdx: ',obj.pathIdx)
-        print('  start_loc:', obj.start_loc)
-        print('  start_xyz:', instance.getCoordinate(obj.start_loc))
-        print('  goal_locs:', obj.goal_locs)
-        print('  radius:', obj.radius)
-        print('  fixed_end:', obj.fixed_end)
-        # print('  res_path:', obj.res_path)
 
     xs, ys = np.meshgrid(np.arange(0, 10, 1), np.arange(0, 10, 1))
     map_xys = np.concatenate((xs[..., np.newaxis], ys[..., np.newaxis]), axis=-1).reshape((-1, 2))
     plt.scatter(map_xys[:, 0], map_xys[:, 1], s=3.0, c='b')
 
-    for obj in multiSolver.objectiveMap:
-        res_path = np.array(obj.res_path)
+    for task in groupSolver.task_seq:
+        res_path = np.array(task.res_path)
 
         if res_path.shape[0] > 0:
-            if obj.fixed_end:
-                plt.plot(res_path[:, 0], res_path[:, 1], '*-', c='g')
-            else:
-                plt.plot(res_path[:-1, 0], res_path[:-1, 1], '*-', c='r')
+            plt.plot(res_path[:, 0], res_path[:, 1], '*-', c='g')
 
-    plt.scatter(locs_xyz[:, 0], locs_xyz[:, 1], s=20.0, c='g')
+    plt.scatter(locs_xyz[:, 0], locs_xyz[:, 1], s=60.0, c='r')
 
     plt.show()
 
-debug_multiSolver()
+def debug_spanningTree():
+    instance = mapf_pipeline.Instance(10, 10, 1)
+    multiSolver = mapf_pipeline.SpanningTree_GroupSolver()
+
+    locs_xyz = np.array([
+        [np.random.randint(0, 10, 1)[0], np.random.randint(0, 10, 1)[0], 0],
+        [np.random.randint(0, 10, 1)[0], np.random.randint(0, 10, 1)[0], 0],
+        [np.random.randint(0, 10, 1)[0], np.random.randint(0, 10, 1)[0], 0],
+        [np.random.randint(0, 10, 1)[0], np.random.randint(0, 10, 1)[0], 0]
+    ])
+    # locs_xyz = np.array([
+    #     [8, 7, 0],
+    #     [0, 5, 0],
+    #     [5, 5, 0],
+    #     [0, 6, 0]
+    # ])
+    locs = []
+    for (x, y, z) in locs_xyz:
+        locs.append(instance.linearizeCoordinate(x, y, z))
+
+    links = multiSolver.getSequence_miniumSpanningTree(instance, locs)
+    print(locs)
+    print(locs_xyz)
+    print(links)
+
+debug_groupSolver()
 
 print('Finish')

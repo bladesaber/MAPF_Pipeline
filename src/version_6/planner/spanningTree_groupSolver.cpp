@@ -1,4 +1,4 @@
-#include "groupObjSolver.h"
+#include "spanningTree_groupSolver.h"
 
 namespace PlannerNameSpace{
 
@@ -62,10 +62,7 @@ Path_XYZRL sampleDetailPath(Path_XYZR& path_xyzr, double stepLength){
     return new_detail_path;
 }
 
-std::vector<std::pair<size_t, size_t>> MultiObjs_GroupSolver::getSequence_miniumSpanningTree(Instance& instance, std::vector<size_t> locs){
-    // TODO 这里只使用了启发式作为度量，其实并不完备
-    // 这里也不是标准意义上的最小生成树，主要是因为我考虑了实际路径生成中有新的信息，所以没使用最小生成树
-
+std::vector<std::pair<size_t, size_t>> SpanningTree_GroupSolver::getSequence_miniumSpanningTree(Instance& instance, std::vector<size_t> locs){
     int obj_num = locs.size();
     Eigen::MatrixXd heruristicCost_m(obj_num, obj_num);
     heruristicCost_m = heruristicCost_m.setOnes() * DBL_MAX;
@@ -80,50 +77,51 @@ std::vector<std::pair<size_t, size_t>> MultiObjs_GroupSolver::getSequence_minium
 
     // std::cout << heruristicCost_m << std::endl;
 
-    Eigen::VectorXi isExplored(obj_num);
-    isExplored.setZero();
+    std::map<size_t, TreeLeaf*> branchMap;
+    for (size_t i=0; i<locs.size(); i++ ){
+        branchMap[i] = new TreeLeaf(i);
+    }
 
     Eigen::MatrixXd::Index minRow, minCol;
-    heruristicCost_m.minCoeff(&minRow, &minCol);
-    isExplored[minRow] = 1;
-    isExplored[minCol] = 1;
-
-    std::vector<std::pair<size_t, size_t>> treeLinks;
-    treeLinks.emplace_back(std::make_pair(minRow, minCol));
-
-    for (size_t i = 0; i < obj_num-2; i++){
+    int found_valid_num = 0;
         
-        int select_row = -1;
-        int select_col = -1;
-	    double min_cost = DBL_MAX;
+    std::vector<std::pair<size_t, size_t>> treeLinks;
+    while (true) {
+        heruristicCost_m.minCoeff(&minRow, &minCol);
 
-        for (size_t j = 0; j < obj_num; j++){
-            if (isExplored[j] == 1){
-                continue;
-            }
-            
-            // double row_cost = heruristicCost_m.block(j, 0, j, obj_num).minCoeff(&minRow, &minCol);
-            // double row_cost = heruristicCost_m.row(j).minCoeff(&minRow, &minCol);
-            for (size_t k=0; k < obj_num; k++){
-                if (isExplored[k] == 0){
-                    continue;
-                }
+        heruristicCost_m(minRow, minCol) = DBL_MAX;
+        heruristicCost_m(minCol, minRow) = DBL_MAX;
 
-                double row_cost = heruristicCost_m(j, k);
-                // std::cout << " j:" << j << " k:" << k << " row_cost:" << row_cost << std::endl;
-                if (row_cost < min_cost){
-                    min_cost = row_cost;
-                    select_row = j;
-                    select_col = k;
-                }
-            }
+        // std::cout << "minRow:" << minRow << " minCol:" << minCol << std::endl;
+
+        if ( branchMap[minRow]->isSameSet( branchMap[minCol] ) ) {
+            continue;
+        }
+        
+        TreeLeaf* treeLeaf = new TreeLeaf();
+        treeLeaf->mergeBranch(branchMap[minRow], branchMap[minCol]);
+
+        delete branchMap[minRow];
+        delete branchMap[minCol];
+        for (size_t sign: treeLeaf->relative_set){
+            branchMap[sign] = treeLeaf;   
         }
 
-        isExplored[select_row] = 1;
-        treeLinks.emplace_back(std::make_pair(select_row, select_col));
+        treeLinks.emplace_back(std::make_pair(minRow, minCol));
+
+        found_valid_num += 1;
+        if ( found_valid_num >= obj_num - 1 ) {
+            delete treeLeaf;
+            break;
+        }
     }
-    
-    return treeLinks;
+
+    std::vector<std::pair<size_t, size_t>> locLinks;
+    for (auto iter: treeLinks){
+        locLinks.emplace_back(std::make_pair(locs[iter.first], locs[iter.second]));
+    }
+
+    return locLinks;
 }
 
 }

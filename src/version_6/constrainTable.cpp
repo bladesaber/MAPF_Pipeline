@@ -29,6 +29,11 @@ bool ConstraintTable::isConstrained(double x, double y, double z, double radius)
 
     double dist = norm2_distance(x, y, z, res.x, res.y, res.z);
     if (dist + eplision <= radius + res.data->radius){
+        
+        // std::cout << "(x:" << x << " y:" << y << " z:" << z << ")";
+        // std::cout << " -> (res_x:" << res.x << " res_y:" << res.y << " res_z:" << res.z << ") dist:" << dist;
+        // std::cout << " radius:" << radius << " res_radius:" << res.data->radius << std::endl;
+
         return true;
     }
     return false;
@@ -47,8 +52,18 @@ bool ConstraintTable::isConstrained(
 
     // std::cout << "lineStart_x:" << lineStart_x << " lineStart_y:" << lineStart_y << " lineStart_z:" << lineStart_z << std::endl;
     // std::cout << "lineEnd_x:" << lineEnd_x << " lineEnd_y:" << lineEnd_y << " lineEnd_z:" << lineEnd_z << std::endl;
-    // std::cout << "radius:" << radius << " line_dist:" << line_dist << " search_radius:" << search_radius << std::endl;
-    
+    // std::cout << "radius:" << radius << " max_radius:" << max_constrain_radius;
+    // std::cout << " line_dist:" << line_dist << " search_radius:" << search_radius << std::endl;
+
+    // bool sign0 = lineStart_x==27 && lineStart_y==40 && lineStart_z==83;
+    // bool sign1 = lineEnd_x==27 && lineEnd_y==40 && lineEnd_z==83;
+    // if (sign0 || sign1){
+    //     std::cout << "lineStart_x:" << lineStart_x << " lineStart_y:" << lineStart_y << " lineStart_z:" << lineStart_z << std::endl;
+    //     std::cout << "lineEnd_x:" << lineEnd_x << " lineEnd_y:" << lineEnd_y << " lineEnd_z:" << lineEnd_z << std::endl;
+    //     std::cout << "radius:" << radius << " max_radius:" << max_constrain_radius;
+    //     std::cout << " line_dist:" << line_dist << " search_radius:" << search_radius << std::endl;
+    // }
+
     std::vector<KDTree_XYZRA_Res*> resList;
     bool isConstrain = false;
 
@@ -62,6 +77,12 @@ bool ConstraintTable::isConstrained(
                 res->x, res->y, res->z
             );
 
+            // if ( sign0 ){
+            //     std::cout << "near_x:" << res->x << " near_y:" << res->y << " near_z:" << res->z << std::endl;
+            //     std::cout << "point2LineSegmentDistance: " << dist << " radius:" << radius << " obs_radius:" << res->data->radius;
+            //     std::cout << " bound:" << radius + res->data->radius << std::endl;
+            // }
+
             if (dist + eplision < radius + res->data->radius ){
                 // std::cout << "near_x:" << res->x << " near_y:" << res->y << " near_z:" << res->z << std::endl;
                 // std::cout << "point2LineSegmentDistance: " << dist << " obs_radius:" << res->data->radius << " bound:" << radius + res->data->radius << std::endl;
@@ -70,6 +91,10 @@ bool ConstraintTable::isConstrained(
         }        
         delete res;
     }
+
+    // if (sign0){
+    //     std::cout << "Sign0 Find Conflict Num:" << resList.size() << " isConstrain:" << isConstrain << std::endl;
+    // }
 
     if (isConstrain){
         return true;
@@ -91,6 +116,10 @@ bool ConstraintTable::isConstrained(
         }
         delete res;
     }
+
+    // if (sign1){
+    //     std::cout << "Sign1 Find Conflict Num:" << resList.size() << " isConstrain:" << isConstrain << std::endl;
+    // }
     
     return isConstrain;
 }

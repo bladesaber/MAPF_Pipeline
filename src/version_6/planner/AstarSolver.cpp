@@ -138,11 +138,11 @@ bool AStarSolver::isValidSetting(Instance& instance, ConstraintTable& constrain_
 
 Path AStarSolver::findPath(
     double radius, std::vector<ConstrainType> constraints, Instance& instance,
-    size_t start_loc, std::vector<size_t>& goal_locs, bool check_EndPosValid
+    std::vector<size_t>& start_locs, std::vector<size_t>& goal_locs
 ){
     // temporary Params Setting
     this->radius = radius;
-    this->start_loc = start_loc;
+    this->start_locs = start_locs;
     this->goal_locs = goal_locs;
 
     num_expanded = 0;
@@ -160,32 +160,35 @@ Path AStarSolver::findPath(
     Path path;
 
     // ------ Check startPos or endPos Valid
-    if (!isValidSetting(instance, constrain_table, start_loc)){
-        std::cout << "[DEBUG]: StartPos is not Valid" << std::endl;
-        return path;
+    for (size_t start_loc: start_locs){
+        if (!isValidSetting(instance, constrain_table, start_loc)){
+            std::cout << "[DEBUG]: StartPos is not Valid" << std::endl;
+            return path;
+        }
     }
-    if (check_EndPosValid){
-        for (size_t goal_loc: goal_locs){
-            if (!isValidSetting(instance, constrain_table, goal_loc)){
-                std::cout << "[DEBUG]: EndPos is not Valid" << std::endl;
-                return path;
-            }
+    for (size_t goal_loc: goal_locs){
+        if (!isValidSetting(instance, constrain_table, goal_loc)){
+            std::cout << "[DEBUG]: EndPos is not Valid" << std::endl;
+            return path;
         }
     }
     
-    // ------ Init Searching Setting
-    AStarNode* start_node = new AStarNode(
-        start_loc,  // location
-		0,  // g val
-		getHeuristic(instance, start_loc, goal_locs),  // h val
-		nullptr,  // parent
-		0,  // timestep
-		0, // num_of_conflicts
-	    false // in_openlist
-    );
-    pushNode(start_node);
-	allNodes_table.insert(start_node);
+    // ------ Init Starting Nodes
+    for (size_t start_loc: start_locs){
+        AStarNode* start_node = new AStarNode(
+            start_loc,  // location
+            0,  // g val
+            getHeuristic(instance, start_loc, goal_locs),  // h val
+            nullptr,  // parent
+            0,  // timestep
+            0, // num_of_conflicts
+            false // in_openlist
+        );
+        pushNode(start_node);
+        allNodes_table.insert(start_node);
+    }
 
+    // ------ Start Searching
     start_time = clock();
     while ( !open_list.empty() ){
         AStarNode* cur_node = popNode();
@@ -265,11 +268,11 @@ Path AStarSolver::findPath(
 
 Path AStarSolver::findPath(
     double radius, ConstraintTable& constrain_table, Instance& instance,
-    size_t start_loc, std::vector<size_t>& goal_locs, bool check_EndPosValid
+    std::vector<size_t>& start_locs, std::vector<size_t>& goal_locs
 ){
     // temporary Params Setting
     this->radius = radius;
-    this->start_loc = start_loc;
+    this->start_locs = start_locs;
     this->goal_locs = goal_locs;
 
     num_expanded = 0;
@@ -280,32 +283,35 @@ Path AStarSolver::findPath(
     Path path;
 
     // ------ Check startPos or endPos Valid
-    if (!isValidSetting(instance, constrain_table, start_loc)){
-        std::cout << "[DEBUG]: StartPos is not Valid" << std::endl;
-        return path;
+    for (size_t start_loc: start_locs){
+        if (!isValidSetting(instance, constrain_table, start_loc)){
+            std::cout << "[DEBUG]: StartPos is not Valid" << std::endl;
+            return path;
+        }
     }
-    if (check_EndPosValid){
-        for (size_t goal_loc: goal_locs){
-            if (!isValidSetting(instance, constrain_table, goal_loc)){
-                std::cout << "[DEBUG]: EndPos is not Valid" << std::endl;
-                return path;
-            }
+    for (size_t goal_loc: goal_locs){
+        if (!isValidSetting(instance, constrain_table, goal_loc)){
+            std::cout << "[DEBUG]: EndPos is not Valid" << std::endl;
+            return path;
         }
     }
     
-    // ------ Init Searching Setting
-    AStarNode* start_node = new AStarNode(
-        start_loc,  // location
-		0,  // g val
-		getHeuristic(instance, start_loc, goal_locs),  // h val
-		nullptr,  // parent
-		0,  // timestep
-		0, // num_of_conflicts
-	    false // in_openlist
-    );
-    pushNode(start_node);
-	allNodes_table.insert(start_node);
+    // ------ Init Starting Nodes
+    for (size_t start_loc: start_locs){
+        AStarNode* start_node = new AStarNode(
+            start_loc,  // location
+            0,  // g val
+            getHeuristic(instance, start_loc, goal_locs),  // h val
+            nullptr,  // parent
+            0,  // timestep
+            0, // num_of_conflicts
+            false // in_openlist
+        );
+        pushNode(start_node);
+        allNodes_table.insert(start_node);
+    }
 
+    // ------ Start Searching
     start_time = clock();
     while ( !open_list.empty() ){
         AStarNode* cur_node = popNode();
