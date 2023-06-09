@@ -124,4 +124,38 @@ std::vector<std::pair<size_t, size_t>> SpanningTree_GroupSolver::getSequence_min
     return locLinks;
 }
 
+void SpanningTree_GroupSolver::copy(std::shared_ptr<SpanningTree_GroupSolver> rhs, bool with_path){
+    for (TaskInfo* task : rhs->task_seq){
+        TaskInfo* new_obj = new TaskInfo();
+        new_obj->link_sign0 = task->link_sign0;
+        new_obj->link_sign1 = task->link_sign1;
+        new_obj->radius0 = task->radius0;
+        new_obj->radius1 = task->radius1;
+
+        if (with_path){
+            new_obj->res_path = Path_XYZRL(task->res_path);
+        }
+            
+        this->task_seq.emplace_back(new_obj);
+    }
+    this->locations = std::vector<size_t>(rhs->locations);
+}
+
+void SpanningTree_GroupSolver::updateLocTree(){
+    if (setup_tree){
+        delete locTree;
+    }
+
+    locTree = new KDTree_XYZRL();
+    double x, y, z, radius, length;
+    for (TaskInfo* task : task_seq)
+    {           
+        for (size_t i = 0; i < task->res_path.size(); i++){
+            std::tie(x, y, z, radius, length) = task->res_path[i];
+            locTree->insertNode(0, x, y, z, radius, length);
+        }
+    }
+    setup_tree = true;
+}
+
 }

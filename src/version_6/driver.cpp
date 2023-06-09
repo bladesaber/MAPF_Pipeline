@@ -136,37 +136,52 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("addSearchEngine", &CBSNameSpace::CBSSolver::addSearchEngine, "groupIdx"_a, "with_AnyAngle"_a, "with_OrientCost"_a)
         .def("update_GroupAgentPath", &CBSNameSpace::CBSSolver::update_GroupAgentPath, "groupIdx"_a, "node"_a, "instance"_a);
 
-    /*
-    py::class_<PathNameSpace::GroupPathNode>(m, "GroupPathNode")
-        .def(py::init<size_t, size_t, size_t, double, double, double, double>())
-        .def_readonly("nodeIdx", &PathNameSpace::GroupPathNode::nodeIdx)
-        .def_readonly("groupIdx", &PathNameSpace::GroupPathNode::groupIdx)
-        .def_readonly("x", &PathNameSpace::GroupPathNode::x)
-        .def_readonly("y", &PathNameSpace::GroupPathNode::y)
-        .def_readonly("z", &PathNameSpace::GroupPathNode::z)
-        .def_readonly("alpha", &PathNameSpace::GroupPathNode::alpha)
-        .def_readonly("theta", &PathNameSpace::GroupPathNode::theta)
-        .def_readonly("radius", &PathNameSpace::GroupPathNode::radius)
-        .def("vertex_x", &PathNameSpace::GroupPathNode::vertex_x)
-        .def("vertex_y", &PathNameSpace::GroupPathNode::vertex_y)
-        .def("vertex_z", &PathNameSpace::GroupPathNode::vertex_z);
+    py::class_<PathNameSpace::PathNode>(m , "PathNode")
+        .def(py::init<size_t, size_t, double, double, double, double>())
+        .def_readonly("nodeIdx", &PathNameSpace::PathNode::nodeIdx)
+        .def_readonly("groupIdx", &PathNameSpace::PathNode::groupIdx)
+        .def_readonly("x", &PathNameSpace::PathNode::x)
+        .def_readonly("y", &PathNameSpace::PathNode::y)
+        .def_readonly("z", &PathNameSpace::PathNode::z)
+        .def_readonly("radius", &PathNameSpace::PathNode::radius);
+
+    py::class_<PathNameSpace::FlexGraphNode>(m, "FlexGraphNode")
+        .def(py::init<size_t, double, double, double, double>())
+        .def_readonly("nodeIdx", &PathNameSpace::FlexGraphNode::nodeIdx)
+        .def_readonly("x", &PathNameSpace::FlexGraphNode::x)
+        .def_readonly("y", &PathNameSpace::FlexGraphNode::y)
+        .def_readonly("z", &PathNameSpace::FlexGraphNode::z)
+        .def_readonly("alpha", &PathNameSpace::FlexGraphNode::alpha)
+        .def_readonly("theta", &PathNameSpace::FlexGraphNode::theta)
+        .def_readonly("radius", &PathNameSpace::FlexGraphNode::radius)
+        .def_readonly("fixed", &PathNameSpace::FlexGraphNode::fixed)
+        .def("vertex_x", &PathNameSpace::FlexGraphNode::vertex_x)
+        .def("vertex_y", &PathNameSpace::FlexGraphNode::vertex_y)
+        .def("vertex_z", &PathNameSpace::FlexGraphNode::vertex_z);
     
     py::class_<PathNameSpace::GroupPath>(m, "GroupPath")
         .def(py::init<size_t>())
-        .def_readonly("pathIdxs_set", &PathNameSpace::GroupPath::pathIdxs_set)
-        .def_readonly("nodeMap", &PathNameSpace::GroupPath::nodeMap)
-        .def("insertPath", &PathNameSpace::GroupPath::insertPath, 
-            "pathIdx"_a, "path_xyzr"_a, "fixed_start"_a, "fixed_end"_a, "startDire"_a, "endDire"_a, "merge_path"_a
-        )
-        .def("extractPath", &PathNameSpace::GroupPath::extractPath, "pathIdx"_a)
-        .def("create_pathTree", &PathNameSpace::GroupPath::create_pathTree);
+        .def_readonly("pathNodeMap", &PathNameSpace::GroupPath::pathNodeMap)
+        .def_readonly("graphPathMap", &PathNameSpace::GroupPath::graphPathMap)
+        .def_readonly("graphNodeMap", &PathNameSpace::GroupPath::graphNodeMap)
+        .def("insertPath", &PathNameSpace::GroupPath::insertPath, "path_xyzr"_a)
+        // .def("setMaxRadius", &PathNameSpace::GroupPath::setMaxRadius, "radius"_a)
+        .def("extractPath", py::overload_cast<size_t, size_t>(&PathNameSpace::GroupPath::extractPath), "start_nodeIdx"_a, "goal_nodeIdx"_a)
+        .def("extractPath", py::overload_cast<double, double, double, double, double, double>(&PathNameSpace::GroupPath::extractPath), 
+            "start_x"_a, "start_y"_a, "start_z"_a, "end_x"_a, "end_y"_a, "end_z"_a
+        );
+        // .def("findNodeIdx", &PathNameSpace::GroupPath::findNodeIdx, "x"_a, "y"_a, "z"_a);
 
     py::class_<SmootherNameSpace::SmootherXYZG2O>(m, "SmootherXYZG2O")
         .def(py::init<>())
         .def_readonly("groupMap", &SmootherNameSpace::SmootherXYZG2O::groupMap)
         .def("initOptimizer", &SmootherNameSpace::SmootherXYZG2O::initOptimizer)
-        .def("addPath", &SmootherNameSpace::SmootherXYZG2O::addPath, 
-            "groupIdx"_a, "pathIdx"_a, "path_xyzr"_a, "fixed_start"_a, "fixed_end"_a, "startDire"_a, "endDire"_a, "merge_path"_a
+        .def("add_Path", &SmootherNameSpace::SmootherXYZG2O::add_Path, "groupIdx"_a, "path_xyzr"_a)
+        .def("add_OptimizePath", &SmootherNameSpace::SmootherXYZG2O::add_OptimizePath,
+            "groupIdx"_a, "pathIdx"_a, 
+            "start_x"_a, "start_y"_a, "start_z"_a,
+            "end_x"_a, "end_y"_a, "end_z"_a,
+            "startDire"_a, "endDire"_a
         )
         .def("insertStaticObs", &SmootherNameSpace::SmootherXYZG2O::insertStaticObs,
             "x"_a, "y"_a, "z"_a, "radius"_a, "alpha"_a, "theta"_a
@@ -175,19 +190,23 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             "elasticBand_weight"_a, 
             "kinematic_weight"_a,
             "obstacle_weight"_a,
-            "pipeConflict_weight"_a
+            "pipeConflict_weight"_a,
+            "boundary_weight"_a
         )
-        .def("loss_info", &SmootherNameSpace::SmootherXYZG2O::loss_info,
-            "elasticBand_weight"_a, 
-            "kinematic_weight"_a,
-            "obstacle_weight"_a,
-            "pipeConflict_weight"_a
+        // .def("loss_info", &SmootherNameSpace::SmootherXYZG2O::loss_info,
+        //     "elasticBand_weight"_a, 
+        //     "kinematic_weight"_a,
+        //     "obstacle_weight"_a,
+        //     "pipeConflict_weight"_a
+        // )
+        .def("setMaxRadius", &SmootherNameSpace::SmootherXYZG2O::setMaxRadius, "groupIdx"_a, "radius"_a)
+        .def("setBoundary", &SmootherNameSpace::SmootherXYZG2O::setBoundary, 
+            "xmin"_a, "ymin"_a, "zmin"_a, "xmax"_a, "ymax"_a, "zmax"_a
         )
         .def("optimizeGraph", &SmootherNameSpace::SmootherXYZG2O::optimizeGraph, "no_iterations"_a, "verbose"_a)
         .def("clear_graph", &SmootherNameSpace::SmootherXYZG2O::clear_graph)
         .def("update2groupVertex", &SmootherNameSpace::SmootherXYZG2O::update2groupVertex)
         .def("info", &SmootherNameSpace::SmootherXYZG2O::info);
-    */
 
     // it don't work, I don't know why
     // m.def("printPointer", &printPointer<KDTreeData>, "a"_a, "tag"_a);

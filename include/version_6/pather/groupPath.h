@@ -2,10 +2,11 @@
 #define MAPF_PIPELINE_GROUPPATH_H
 
 #include "assert.h"
+#include "math.h"
+
 #include "kdtree_xyzra.h"
 #include "utils.h"
 
-// #include "vertex_pose.h"
 #include "vertex_XYZ.h"
 
 namespace PathNameSpace{
@@ -13,24 +14,20 @@ namespace PathNameSpace{
 // x, y, z, radius
 typedef std::vector<std::tuple<double, double, double, double>> Path_XYZR;
 
-class GroupPathNode
+class FlexGraphNode
 {
 public:
-    GroupPathNode(size_t nodeIdx, size_t groupIdx, size_t pathIdx, double x, double y, double z, double radius):
-        nodeIdx(nodeIdx), groupIdx(groupIdx), x(x), y(y), z(z), radius(radius){};
+    FlexGraphNode(size_t nodeIdx, double x, double y, double z, double radius):
+        nodeIdx(nodeIdx), x(x), y(y), z(z), radius(radius){};
+    ~FlexGraphNode(){};
     
-    ~GroupPathNode(){};
-    
-    size_t nodeIdx;
-    size_t groupIdx;
     double x, y, z, radius;
-
     double alpha = -999;
     double theta = -999;
+
+    size_t nodeIdx;
     bool fixed = false;
-    
-    std::map<size_t, size_t> parentIdxsMap;
-    std::map<size_t, size_t> childIdxsMap;
+    // bool isIndependt;
 
     SmootherNameSpace::VertexXYZ* vertex;
 
@@ -51,55 +48,106 @@ public:
         y = vertex_y();
         z = vertex_z();
     }
+};
 
+class PathNode{
+public:
+    PathNode(size_t nodeIdx, size_t groupIdx, double x, double y, double z, double radius):
+        nodeIdx(nodeIdx), groupIdx(groupIdx), x(x), y(y), z(z), radius(radius){};
+    ~PathNode(){};
+
+    size_t nodeIdx;
+    size_t groupIdx;
+    double x, y, z, radius;
+    std::set<size_t> linkIdxs;
 };
 
 class GroupPath
 {
 public:
-    GroupPath(size_t groupIdx):groupIdx(groupIdx){};
+    GroupPath(size_t groupIdx):groupIdx(groupIdx){
+        graphTree = new KDTree_XYZRA();
+    };
     ~GroupPath(){
         release();
     };
 
     size_t groupIdx;
-    std::set<size_t> pathIdxs_set;
     double max_radius = 0.0;
+    double flexible_percentage = 0.15;
 
-    std::map<size_t, size_t> startPathIdxMap; // pathIdx, nodeIdx
-    std::map<size_t, size_t> endPathIdxMap;   // pathIdx, nodeIdx
-    std::map<size_t, GroupPathNode*> nodeMap;  // nodeIdx, Node
+    // std::vector<size_t> terminalIdxs;
+    std::map<size_t, PathNode*> pathNodeMap;  // nodeIdx, Node
 
     // Just For Tempotary
     KDTree_XYZRA* nodeTree;
 
-    void insertPath(
-        size_t pathIdx, Path_XYZR& path_xyzr, 
-        bool fixed_start, bool fixed_end,
-        std::pair<double, double> startDire, 
-        std::pair<double, double> endDire,
-        bool merge_path
-    );
-    std::vector<size_t> extractPath(size_t pathIdx);
+    void insertPath(Path_XYZR& path_xyzr);
+    void setMaxRadius(double radius){
+        max_radius = radius;
+    }
 
-    KDTree_XYZRA* pathTree;
-    bool setuped_pathTree = false;
-    void create_pathTree();
+    bool deepFirstSearch(size_t nodeIdx, size_t parent_nodeIdx, size_t& goal_nodeIdx, std::vector<size_t>& pathIdxs, int& count);
+    std::vector<size_t> extractPath(size_t start_nodeIdx, size_t goal_nodeIdx);
+    std::vector<size_t> extractPath(
+        double start_x, double start_y, double start_z,
+        double end_x, double end_y, double end_z
+    ){
+        std::vector<size_t> pathIdxs;
+
+        int start_nodeIdx = findNodeIdx(start_x, start_y, start_z);
+        if (start_nodeIdx<0){
+            return pathIdxs;
+        }
+
+        int goal_nodeIdx = findNodeIdx(end_x, end_y, end_z);
+        if (goal_nodeIdx<0){
+            return pathIdxs;
+        }
+
+        return extractPath(start_nodeIdx, goal_nodeIdx);
+    }
+
+    int findNodeIdx(double x, double y, double z){
+        for (auto iter: pathNodeMap){
+            PathNode* node = iter.second;
+            if (
+                node->x == x &&
+                node->y == y &&
+                node->z == z
+            ){
+                return node->nodeIdx;
+            }
+        }
+        return -1; 
+    };
+
+    KDTree_XYZRA* graphTree;
+    std::map<size_t, FlexGraphNode*> graphNodeMap; // nodeIdx, GraphNode
+    std::map<size_t, std::vector<size_t>> graphPathMap; // pathIdx, graphNodeIdxs
+
+    bool insert_OptimizePath(
+        size_t pathIdx, 
+        double start_x, double start_y, double start_z,
+        double end_x, double end_y, double end_z,
+        std::pair<double, double> startDire, std::pair<double, double> endDire
+    );
 
 private:
     void release(){
-        for (auto iter : nodeMap)
+        for (auto iter : pathNodeMap)
         {
             delete iter.second;
         }
-        nodeMap.clear();
-        startPathIdxMap.clear();
-        endPathIdxMap.clear();
-        pathIdxs_set.clear();
-
-        if (setuped_pathTree){
-            delete pathTree;
+        pathNodeMap.clear();
+        
+        for (auto iter : graphNodeMap)
+        {
+            delete iter.second;
         }
+        graphNodeMap.clear();
+
+        delete graphTree;
     }
 };
 

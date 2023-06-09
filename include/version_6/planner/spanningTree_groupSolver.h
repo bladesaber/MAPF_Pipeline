@@ -2,6 +2,7 @@
 #define MAPF_PIPELINE_SPANTree_GROUPSOLVER_H
 
 #include "eigen3/Eigen/Core"
+#include "math.h"
 
 #include "common.h"
 #include "AstarSolver.h"
@@ -55,15 +56,6 @@ struct TreeLeaf {
             relative_set.insert(sign);
         }
     }
-    
-    void mergePath(std::set<size_t>& path0, std::set<size_t>& path1){
-        for (size_t loc: path0){
-            path.insert(loc);
-        }
-        for (size_t loc: path1){
-            path.insert(loc);
-        }
-    }
 
     void mergePath(std::vector<size_t>& path0){
         for (size_t loc: path0){
@@ -71,6 +63,11 @@ struct TreeLeaf {
         }
     }
 
+    void mergePath(std::set<size_t>& path0){
+        for (size_t loc: path0){
+            path.insert(loc);
+        }
+    }
 };
 
 public:
@@ -161,9 +158,31 @@ public:
 
             TreeLeaf* treeLeaf = new TreeLeaf();
             treeLeaf->mergeBranch(branchMap[sign0], branchMap[sign1]);
-            treeLeaf->mergePath(branchMap[sign0]->path, branchMap[sign1]->path);
+            // ---------------  Method 1  --------------------
+            // 这里可以尝试使用中间截断作为临时方法，这里没任何完备或近似最优保证，希望其能保持近似最优拓扑结构
+            // if (branchMap[sign0]->path.size()>1){
+            //     treeLeaf->mergePath(branchMap[sign0]->path);
+            // }
+            // if (branchMap[sign1]->path.size()>1){
+            //     treeLeaf->mergePath(branchMap[sign1]->path);
+            // }
+            // int clip_num = ceil(path.size() * 0.1);
+            // if ( path.size() - 2 * clip_num>0 ){
+            //     std::vector<size_t> clip_path;
+            //     for (size_t kk=clip_num; kk<path.size()-clip_num; kk++){
+            //         clip_path.emplace_back(path[kk]);
+            //     }
+            //     treeLeaf->mergePath(clip_path);
+            // }else{
+            //     treeLeaf->mergePath(path);
+            // }
+            // ---------------  Method 2  --------------------
+            // 我还是尝试使用 自由段 的方法来优化路经
+            treeLeaf->mergePath(branchMap[sign0]->path);
+            treeLeaf->mergePath(branchMap[sign1]->path);
             treeLeaf->mergePath(path);
-
+            // -----------------------------------------------
+            
             delete branchMap[sign0];
             delete branchMap[sign1];
             for (size_t sign: treeLeaf->relative_set){
@@ -201,39 +220,9 @@ public:
     KDTree_XYZRL* locTree;
     bool setup_tree = false;
 
-    void updateLocTree(){
-        if (setup_tree){
-            delete locTree;
-        }
+    void updateLocTree();
 
-        locTree = new KDTree_XYZRL();
-        double x, y, z, radius, length;
-        for (TaskInfo* task : task_seq)
-        {           
-            for (size_t i = 0; i < task->res_path.size(); i++){
-                std::tie(x, y, z, radius, length) = task->res_path[i];
-                locTree->insertNode(0, x, y, z, radius, length);
-            }
-        }
-        setup_tree = true;
-    }
-
-    void copy(std::shared_ptr<SpanningTree_GroupSolver> rhs, bool with_path=false){
-        for (TaskInfo* task : rhs->task_seq){
-            TaskInfo* new_obj = new TaskInfo();
-            new_obj->link_sign0 = task->link_sign0;
-            new_obj->link_sign1 = task->link_sign1;
-            new_obj->radius0 = task->radius0;
-            new_obj->radius1 = task->radius1;
-
-            if (with_path){
-                new_obj->res_path = Path_XYZRL(task->res_path);
-            }
-            
-            this->task_seq.emplace_back(new_obj);
-        }
-        this->locations = std::vector<size_t>(rhs->locations);
-    }
+    void copy(std::shared_ptr<SpanningTree_GroupSolver> rhs, bool with_path=false);
 
 private:
     void release(){
@@ -246,7 +235,6 @@ private:
             delete locTree;
         }
     }
-
 };
 
 }

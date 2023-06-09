@@ -22,6 +22,7 @@
 #include "edge_kinematics.h"
 #include "edge_obstacle.h"
 #include "edge_pipe_conflict.h"
+#include "edge_boundary.h"
 
 #include "groupPath.h"
 
@@ -37,7 +38,7 @@ typedef g2o::BlockSolver<g2o::BlockSolverTraits<-1, -1>>  BlockSolver;
 typedef g2o::LinearSolverCSparse<BlockSolver::PoseMatrixType> LinearSolver;
 
 class SmootherXYZG2O{
-    public:
+public:
     SmootherXYZG2O(){
         obsTree = new KDTree_XYZRA();
     };
@@ -45,7 +46,7 @@ class SmootherXYZG2O{
         release();
     };
 
-    std::map<size_ut, GroupPath*> groupMap;
+    std::map<size_t, GroupPath*> groupMap;
     double obstacle_detection_scale = 3.0;
     double pipeConflict_detection_scale = 1.5;
 
@@ -76,34 +77,42 @@ class SmootherXYZG2O{
         optimizer->setComputeBatchStatistics(true);
     }
 
-    void addPath(
-        size_t groupIdx, size_t pathIdx, 
-        Path_XYZR& path_xyzr, 
-        bool fixed_start, bool fixed_end,
-        std::pair<double, double> startDire, 
-        std::pair<double, double> endDire,
-        bool merge_path
-    ){
+    void add_Path(size_t groupIdx, Path_XYZR& path_xyzr){
         auto iter = groupMap.find(groupIdx);
         if (iter == groupMap.end()){
             GroupPath* new_groupPath = new GroupPath(groupIdx);
-            new_groupPath->insertPath(
-                pathIdx, path_xyzr, 
-                fixed_start, fixed_end,
-                startDire, endDire,
-                merge_path
-            );
+            new_groupPath->insertPath(path_xyzr);
             groupMap[new_groupPath->groupIdx] = new_groupPath;
-
         }
         else{
-            groupMap[groupIdx]->insertPath(
-                pathIdx, path_xyzr, 
-                fixed_start, fixed_end,
-                startDire, endDire,
-                merge_path
-            );
+            groupMap[groupIdx]->insertPath(path_xyzr);
         }
+    }
+
+    bool add_OptimizePath(
+        size_t groupIdx, size_t pathIdx, 
+        double start_x, double start_y, double start_z,
+        double end_x, double end_y, double end_z,
+        std::pair<double, double> startDire, std::pair<double, double> endDire
+    ){
+        return groupMap[groupIdx]->insert_OptimizePath(
+            pathIdx, 
+            start_x, start_y, start_z,
+            end_x, end_y, end_z,
+            startDire, endDire
+        );
+    }
+
+    void setMaxRadius(size_t groupIdx, double radius){
+        groupMap[groupIdx]->setMaxRadius(radius);
+    }
+    void setBoundary(double xmin, double ymin, double zmin, double xmax, double ymax, double zmax){
+        min_x = xmin;
+        min_y = ymin;
+        min_z = zmin;
+        max_x = xmax;
+        max_y = ymax;
+        max_z = zmax;
     }
 
     bool add_vertexs();
@@ -117,18 +126,21 @@ class SmootherXYZG2O{
 
     bool add_pipeConflictEdge(double pipeConflict_weight);
 
-    void build_graph(
+    bool add_boundaryEdge(double boundary_weight);
+
+    bool build_graph(
         double elasticBand_weight = 0.02, 
         double kinematic_weight = 1.0,
         double obstacle_weight=1.0,
-        double pipeConflict_weight=1.0
+        double pipeConflict_weight=1.0,
+        double boundary_weight=5.0
     );
-    void loss_info(
-        double elasticBand_weight, 
-        double kinematic_weight,
-        double obstacle_weight,
-        double pipeConflict_weight
-    );
+    // void loss_info(
+    //     double elasticBand_weight, 
+    //     double kinematic_weight,
+    //     double obstacle_weight,
+    //     double pipeConflict_weight
+    // );
 
     void optimizeGraph(int no_iterations, bool verbose){
         optimizer->setVerbose(verbose);
@@ -161,7 +173,7 @@ class SmootherXYZG2O{
         for (auto group_iter : groupMap)
         {
             GroupPath* group = group_iter.second;
-            for (auto node_iter : group->nodeMap){
+            for (auto node_iter : group->graphNodeMap){
                 (node_iter.second)->updateVertex();
             }
         }
@@ -173,6 +185,9 @@ class SmootherXYZG2O{
     }
 
 private:
+  double min_x, min_y, min_z;
+  double max_x, max_y, max_z;
+
     KDTree_XYZRA* obsTree;
 
     std::shared_ptr<g2o::SparseOptimizer> optimizer;

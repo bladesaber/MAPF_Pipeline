@@ -1,8 +1,11 @@
 import numpy as np
 import pandas as pd
+import json
 import matplotlib.pyplot as plt
 
 from build import mapf_pipeline
+
+from scripts.visulizer import VisulizerVista
 
 def debug_constrainTable():
     constrainTable = mapf_pipeline.ConstraintTable()
@@ -154,6 +157,139 @@ def debug_spanningTree():
     print(locs_xyz)
     print(links)
 
-debug_groupSolver()
+def debug_groupPath():
+    grid_json_file = '/home/quan/Desktop/MAPF_Pipeline/scripts/version_6/app_dir/grid_env_cfg.json'
+    with open(grid_json_file, 'r') as f:
+        env_config = json.load(f)
+
+    obs_df = pd.read_csv(env_config['static_grid_obs_pcd'], index_col=0)
+
+    group_res = np.load('/home/quan/Desktop/MAPF_Pipeline/scripts/version_6/app_dir/res.npy', allow_pickle=True).item()
+
+    group_keys = []
+    group_config = {}
+    for pipeConfig in env_config['pipeConfig']:
+        groupIdx = pipeConfig['groupIdx']
+        group_keys.append(groupIdx)
+
+        group_config[groupIdx] = {}
+        for pipe in pipeConfig['pipe']:
+            group_config[groupIdx].update({
+                pipe['name']: pipe
+            })
+
+    linkPaths = {
+        0: [
+            {
+                "start": 'p',
+                'end': 'p1'
+            },
+            {
+                "start": 'p',
+                'end': 'M1'
+            },
+            {
+                "start": 'p',
+                'end': 'p_valve'
+            }
+        ],
+        1: [
+            {
+                "start": 'B_valve',
+                'end': 'M3'
+            },
+            {
+                "start": 'B_valve',
+                'end': 'B'
+            }
+        ],
+        2: [
+            {
+                "start": 'T_valve',
+                'end': 'T'
+            },
+            {
+                "start": 'A2T',
+                'end': 'T'
+            }
+        ],
+        3: [
+            {
+                "start": 'A_valve',
+                'end': 'A2valve_01'
+            },
+            {
+                "start": 'A_valve',
+                'end': 'A2valve_02'
+            }
+        ],
+        4: [
+            {
+                "start": 'valve_01',
+                'end': 'A'
+            },
+            {
+                "start": 'valve_02',
+                'end': 'A'
+            },
+            {
+                "start": 'valve_03',
+                'end': 'A'
+            },
+            {
+                "start": 'valve_03',
+                'end': 'M2'
+            }
+        ]
+    }
+
+    for groupIdx in group_keys:
+        path_xyzrls = group_res[groupIdx]
+
+        groupPath = mapf_pipeline.GroupPath(groupIdx)
+        for path_xyzrl in path_xyzrls:
+            path_xyzr = []
+            for xyzrl in path_xyzrl:
+                path_xyzr.append((xyzrl[0], xyzrl[1], xyzrl[2], xyzrl[3]))
+
+            #     print(xyzrl)
+            # print()
+
+            groupPath.insertPath(path_xyzr)
+
+        pipeConfig = group_config[groupIdx]
+        for link in linkPaths[groupIdx]:
+            start_info = pipeConfig[link['start']]
+            end_info = pipeConfig[link['end']]
+
+            pathIdxs = groupPath.extractPath(
+                start_info['grid_position'][0], start_info['grid_position'][1], start_info['grid_position'][2],
+                end_info['grid_position'][0], end_info['grid_position'][1], end_info['grid_position'][2]
+            )
+            radius = min(start_info['grid_radius'], end_info['grid_radius'])
+
+            ### ------ vis
+            print(link)
+
+            vis = VisulizerVista()
+
+            path_xyz = []
+            for idx in pathIdxs:
+                node = groupPath.pathNodeMap[idx]
+                path_xyz.append([node.x, node.y, node.z])
+            path_xyz = np.array(path_xyz)
+
+            obs_mesh = vis.create_pointCloud(obs_df[['x', 'y', 'z']].values)
+            vis.plot(obs_mesh, (0.0, 1.0, 0.0))
+
+            print(path_xyz)
+            mesh = vis.create_tube(path_xyz, radius=radius)
+            vis.plot(mesh, (1.0, 0.0, 0.0))
+
+            vis.show()
+
+        break
+
+debug_groupPath()
 
 print('Finish')
