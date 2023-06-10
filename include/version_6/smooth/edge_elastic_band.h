@@ -78,10 +78,12 @@ public:
     const VertexXYZ* pose2 = static_cast<const VertexXYZ*>(_vertices[1]);
 
     _error[0] = (pose2->position() - pose1->position()).squaredNorm();
+    // _error[0] = (pose2->position() - pose1->position()).norm();
   }
 
   static double lost_calc(VertexXYZ* pose1, VertexXYZ* pose2, bool debug=false){
     return (pose2->position() - pose1->position()).squaredNorm();
+    // return (pose2->position() - pose1->position()).norm();
   }
 
 protected:

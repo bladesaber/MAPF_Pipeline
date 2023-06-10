@@ -26,7 +26,7 @@ Path_XYZRL sampleDetailPath(Path_XYZR& path_xyzr, double stepLength){
         std::tie(curX, curY, curZ, curRadius) = path_xyzr[i];
 
         distance = norm2_distance(lastX, lastY, lastZ, curX, curY, curZ);
-        if (distance < stepLength){
+        if (distance < stepLength && (i<path_xyzr.size()-1) ){
             continue;
         }
         

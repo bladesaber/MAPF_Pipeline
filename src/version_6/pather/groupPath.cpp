@@ -46,7 +46,8 @@ void GroupPath::insertPath(Path_XYZR& path_xyzr)
             bool need_merge = false;
             nodeTree->nearest(x, y, z, res);
             dist = norm2_distance(x, y, z, res.x, res.y, res.z);
-            // if ( dist < std::min(radius, res.data->radius) ){
+
+            // if ( dist < std::min(radius, res.data->radius) * 0.5 ){
             //     need_merge = true;
             // }
             if ( dist == 0.0 ){
@@ -177,6 +178,7 @@ bool GroupPath::insert_OptimizePath(
                 ){
                     isNewNode = false;
                 }
+
             }
 
             if (isNewNode){
@@ -184,6 +186,16 @@ bool GroupPath::insert_OptimizePath(
                 graphNodeMap[node->nodeIdx] = node;
                 graphTree->insertNode(node->nodeIdx, node->x, node->y, node->z, node->radius, 0.0, 0.0);
                 nodeIdx += 1;
+
+                if ( i==0 ){
+                    node->fixed = true;
+                    node->alpha = std::get<0>(startDire);
+                    node->theta = std::get<1>(startDire);
+                }else if (i==pathIdxs.size() - 1){
+                    node->fixed = true;
+                    node->alpha = std::get<0>(endDire);
+                    node->theta = std::get<1>(endDire);
+                }
 
                 graphNodePath.emplace_back(node->nodeIdx);
                 

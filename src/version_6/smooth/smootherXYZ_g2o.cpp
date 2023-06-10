@@ -41,20 +41,25 @@ bool SmootherXYZG2O::build_graph(
 
     bool status;
     status = add_vertexs();
+    // std::cout << "[Info]: Adding Vertexs ......" << std::endl;
     if (!status){
         std::cout << "[Error]: Adding Vertexs Fail" << std::endl;
         return false;
     }
 
-    if (boundary_weight>0){
+    if (boundary_weight>0)
+    {
+        // std::cout << "[Info]: Adding Boundary Edge ......" << std::endl;
         status = add_boundaryEdge(boundary_weight);
         if (!status){
-            std::cout << "[Error]: Adding Boundaey Band Edge Fail" << std::endl;
+            std::cout << "[Error]: Adding Boundary Edge Fail" << std::endl;
             return false;
         }
     }
     
-    if (elasticBand_weight>0){
+    if (elasticBand_weight>0)
+    {
+        // std::cout << "[Info]: Adding Elastic Band Edge ......" << std::endl;
         status = add_elasticBand(elasticBand_weight);
         if (!status){
             std::cout << "[Error]: Adding Elastic Band Edge Fail" << std::endl;
@@ -62,7 +67,9 @@ bool SmootherXYZG2O::build_graph(
         }
     }
 
-    if (kinematic_weight>0){
+    if (kinematic_weight>0)
+    {
+        // std::cout << "[Info]: Adding Kinematics Edge ......" << std::endl;
         status = add_kinematicEdge(kinematic_weight);
         if (!status){
             std::cout << "[Error]: Adding Kinematics Edge Fail" << std::endl;
@@ -72,6 +79,7 @@ bool SmootherXYZG2O::build_graph(
 
     if (obstacle_weight>0)
     {
+        // std::cout << "[Info]: Adding Obstacle Edge ......" << std::endl;
         status = add_obstacleEdge(obstacle_weight);
         if (!status){
             std::cout << "[Error]: Adding Obstacle Edge Fail" << std::endl;
@@ -79,10 +87,12 @@ bool SmootherXYZG2O::build_graph(
         }
     }
 
-    if (pipeConflict_weight>0){
+    if (pipeConflict_weight>0)
+    {
+        // std::cout << "[Info]: Adding PipeConflict Edge ......" << std::endl;
         status = add_pipeConflictEdge(pipeConflict_weight);
         if (!status){
-            std::cout << "[Error]: Adding Obstacle Edge Fail" << std::endl;
+            std::cout << "[Error]: Adding PipeConflict Edge Fail" << std::endl;
             return false;
         }
     }
@@ -90,76 +100,75 @@ bool SmootherXYZG2O::build_graph(
     return true;
 }
 
-/*
 void SmootherXYZG2O::loss_info(
     double elasticBand_weight, 
     double kinematic_weight,
     double obstacle_weight,
-    double pipeConflict_weight
+    double pipeConflict_weight,
+    double boundary_weight
 ){
-    // GroupPathNode* node0;
-    // GroupPathNode* node1;
-    // GroupPathNode* node2;
+    FlexGraphNode* node0;
+    FlexGraphNode* node1;
+    FlexGraphNode* node2;
 
-    // for (auto group_iter : groupMap)
-    // {
-    //     GroupPath* groupPath = group_iter.second;
+    for (auto group_iter : groupMap)
+    {
+        GroupPath* groupPath = group_iter.second;
+        for (auto graphPath_iter : groupPath->graphPathMap)
+        {
+            std::vector<size_t> nodeIdxs_path = graphPath_iter.second;
 
-    //     for (size_t pathIdx : groupPath->pathIdxs_set)
-    //     {
-    //         std::vector<size_t> nodeIdxs_path = groupPath->extractPath(pathIdx);
+            // std::cout << "GroupIdx:" << groupPath->groupIdx << std::endl;
+            for (size_t i = 0; i < nodeIdxs_path.size(); i++)
+            {
+                std::cout << "[DEBUG] Idx:" << i << std::endl;
+                double loss;
 
-    //         std::cout << "GroupIdx:" << groupPath->groupIdx << " PathIdx:" << pathIdx << std::endl;
-    //         for (size_t i = 0; i < nodeIdxs_path.size(); i++)
-    //         {
-    //             std::cout << "[DEBUG] Idx:" << i << std::endl;
-    //             double loss;
+                if (kinematic_weight>0)
+                {
+                    if ( i>0 && i<nodeIdxs_path.size() - 1){
 
-    //             if (kinematic_weight>0)
-    //             {
-    //                 if ( i>0 && i<nodeIdxs_path.size() - 1){
+                        node0 = groupPath->graphNodeMap[nodeIdxs_path[i - 1]];
+                        node1 = groupPath->graphNodeMap[nodeIdxs_path[i]];
+                        node2 = groupPath->graphNodeMap[nodeIdxs_path[i + 1]];
 
-    //                     node0 = groupPath->nodeMap[nodeIdxs_path[i - 1]];
-    //                     node1 = groupPath->nodeMap[nodeIdxs_path[i]];
-    //                     node2 = groupPath->nodeMap[nodeIdxs_path[i + 1]];
+                        if (i == 1)
+                        {
+                            double dz = std::sin(node0->theta);
+                            double dx = std::cos(node0->theta) * std::cos(node0->alpha);
+                            double dy = std::cos(node0->theta) * std::sin(node0->alpha);
+                            std::cout << "  orientation ( dx:" << dx << " dy:" << dy << " dz:" << dz << ")" << std::endl;
 
-    //                     if (i == 1)
-    //                     {
-    //                         double dz = std::sin(node0->theta);
-    //                         double dx = std::cos(node0->theta) * std::cos(node0->alpha);
-    //                         double dy = std::cos(node0->theta) * std::sin(node0->alpha);
-    //                         std::cout << "  orientation ( dx:" << dx << " dy:" << dy << " dz:" << dz << ")" << std::endl;
+                            Eigen::Vector3d orientation = Eigen::Vector3d(dx, dy, dz);
+                            loss = EdgeXYZ_VertexKinematics::lost_calc(node0->vertex, node1->vertex, orientation, true);
+                            std::cout << "  Kinematic Vertex Loss:" << loss << " Infomation:" << kinematic_weight << std::endl;
 
-    //                         Eigen::Vector3d orientation = Eigen::Vector3d(dx, dy, dz);
-    //                         loss = EdgeXYZ_VertexKinematics::lost_calc(node0->vertex, node1->vertex, orientation, true);
-    //                         std::cout << "  Kinematic Vertex Loss:" << loss << " Infomation:" << kinematic_weight << std::endl;
+                        }else if ( i == nodeIdxs_path.size() - 2){
+                            double dz = std::sin(node2->theta);
+                            double dx = std::cos(node2->theta) * std::cos(node2->alpha);
+                            double dy = std::cos(node2->theta) * std::sin(node2->alpha);
+                            std::cout << "  orientation ( dx:" << dx << " dy:" << dy << " dz:" << dz << ")" << std::endl;
 
-    //                     }else if ( i == nodeIdxs_path.size() - 2){
-    //                         double dz = std::sin(node2->theta);
-    //                         double dx = std::cos(node2->theta) * std::cos(node2->alpha);
-    //                         double dy = std::cos(node2->theta) * std::sin(node2->alpha);
-    //                         std::cout << "  orientation ( dx:" << dx << " dy:" << dy << " dz:" << dz << ")" << std::endl;
+                            Eigen::Vector3d orientation = Eigen::Vector3d(dx, dy, dz);
+                            loss = EdgeXYZ_VertexKinematics::lost_calc(node1->vertex, node2->vertex, orientation, true);
+                            std::cout << "  Kinematic Vertex Loss:" << loss  << " Infomation:" << kinematic_weight << std::endl;
 
-    //                         Eigen::Vector3d orientation = Eigen::Vector3d(dx, dy, dz);
-    //                         loss = EdgeXYZ_VertexKinematics::lost_calc(node1->vertex, node2->vertex, orientation, true);
-    //                         std::cout << "  Kinematic Vertex Loss:" << loss  << " Infomation:" << kinematic_weight << std::endl;
+                        }
 
-    //                     }
+                        loss = EdgeXYZ_Kinematics::lost_calc(node0->vertex, node1->vertex, node2->vertex, true);
+                        std::cout << "  Kinematic Edge Loss:" << loss  << " Infomation:" << kinematic_weight << std::endl;
+                    }
+                }
 
-    //                     loss = EdgeXYZ_Kinematics::lost_calc(node0->vertex, node1->vertex, node2->vertex, true);
-    //                     std::cout << "  Kinematic Edge Loss:" << loss  << " Infomation:" << kinematic_weight << std::endl;
-    //                 }
-    //             }
-
-    //             if (elasticBand_weight>0)
-    //             {
-    //                 if ( i<nodeIdxs_path.size() - 1){
-    //                     node0 = groupPath->nodeMap[nodeIdxs_path[i]];
-    //                     node1 = groupPath->nodeMap[nodeIdxs_path[i + 1]];
-    //                     loss = EdgeXYZ_ElasticBand::lost_calc(node0->vertex, node1->vertex);
-    //                     std::cout << "  ElasticBand Edge Loss:" << loss  << " Infomation:" << elasticBand_weight << std::endl;
-    //                 }
-    //             }
+                if (elasticBand_weight>0)
+                {
+                    if ( i<nodeIdxs_path.size() - 1){
+                        node0 = groupPath->graphNodeMap[nodeIdxs_path[i]];
+                        node1 = groupPath->graphNodeMap[nodeIdxs_path[i + 1]];
+                        loss = EdgeXYZ_ElasticBand::lost_calc(node0->vertex, node1->vertex);
+                        std::cout << "  ElasticBand Edge Loss:" << loss  << " Infomation:" << elasticBand_weight << std::endl;
+                    }
+                }
 
     //             if (obstacle_weight>0)
     //             {
@@ -182,17 +191,26 @@ void SmootherXYZG2O::loss_info(
     //                 }
     //             }
 
-    //         }
-    //     }
-    // }
+                if (boundary_weight>0){
+                    node0 = groupPath->graphNodeMap[nodeIdxs_path[i]];
+                    if (!node0->fixed){
+                        loss = EdgeXYZ_Boundary::lost_calc(
+                            node0->vertex, node0->radius, min_x, min_y, min_z, max_x, max_y, max_z
+                        );
+                        std::cout << "  Boundary Edge Loss:" << loss  << " Infomation:" << boundary_weight << std::endl;
+                    }
+                }
+            }
+        }
+    }
 }
-*/
 
 bool SmootherXYZG2O::add_elasticBand(double elasticBand_weight){
     for (auto group_iter : groupMap){
         GroupPath* groupPath = group_iter.second;
 
         std::set<size_t> explored_set;
+        explored_set.clear();
         int nodeSize = groupPath->graphNodeMap.size();
         assert(nodeSize < 3000);
 
@@ -439,7 +457,8 @@ bool SmootherXYZG2O::add_boundaryEdge(double boundary_weight){
                 continue;
             }
 
-            EdgeXYZ_Boundary* edge = new EdgeXYZ_Boundary(min_x, min_y, min_z, max_x, max_y, max_z);
+            // EdgeXYZ_Boundary* edge = new EdgeXYZ_Boundary(min_x, min_y, min_z, max_x, max_y, max_z, node->radius);
+            EdgeXYZ_Boundary* edge = new EdgeXYZ_Boundary(min_x, min_y, min_z, max_x, max_y, max_z, 0.0);
             edge->setVertex(0, node->vertex);
 
             Eigen::Matrix<double,1,1> information;

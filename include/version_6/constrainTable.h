@@ -23,7 +23,7 @@ public:
 
     // 由于计算精度无法调整好，为保证不出现自循环，这里的约束要比CBS的 sampleDetailPath 与 CBSNode的 findAllAgentConflict 更为严格
     const double scale = 1.05;
-    const double eplision = 0.1;
+    const double eplision = 0.0;
     double max_constrain_radius;
 
     void insert2CT(double x, double y, double z, double radius);

@@ -1,11 +1,11 @@
 {
     "warning": "这里的所有管道半径都必须加上管道壁厚",
 
-    "x": 84,
-    "y": 84,
-    "z": 84,
+    "x": 63,
+    "y": 63,
+    "z": 63,
 
-    "resolution": 1.5,
+    "resolution": 2.0,
     "stepLength": 1.0,
 
     "pipeConfig":[

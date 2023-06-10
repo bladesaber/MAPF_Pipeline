@@ -114,6 +114,16 @@ public:
         max_y = ymax;
         max_z = zmax;
     }
+    std::vector<size_t> extractPath(
+        size_t groupIdx,
+        double start_x, double start_y, double start_z,
+        double end_x, double end_y, double end_z
+    ){
+        return groupMap[groupIdx]->extractPath(start_x, start_y, start_z, end_x, end_y, end_z);
+    }
+    void setFlexible_percentage(size_t groupIdx, double flexible_percentage){
+        groupMap[groupIdx]->flexible_percentage = flexible_percentage;
+    } 
 
     bool add_vertexs();
     bool add_elasticBand(double elasticBand_weight);
@@ -135,12 +145,13 @@ public:
         double pipeConflict_weight=1.0,
         double boundary_weight=5.0
     );
-    // void loss_info(
-    //     double elasticBand_weight, 
-    //     double kinematic_weight,
-    //     double obstacle_weight,
-    //     double pipeConflict_weight
-    // );
+    void loss_info(
+        double elasticBand_weight, 
+        double kinematic_weight,
+        double obstacle_weight,
+        double pipeConflict_weight,
+        double boundary_weight
+    );
 
     void optimizeGraph(int no_iterations, bool verbose){
         optimizer->setVerbose(verbose);

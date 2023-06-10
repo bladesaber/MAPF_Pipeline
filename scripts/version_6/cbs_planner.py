@@ -96,6 +96,7 @@ class CBS_Planner(object):
         root.compute_Heuristics()
         root.compute_Gval()
         # self.print_pathGraph(root, groupIdx=2)
+        # self.print_pathGraph(root)
 
         ### 1.5 push node into list
         self.pushNode(root)
@@ -114,7 +115,7 @@ class CBS_Planner(object):
                 self.pushNode(child_node)
 
             run_times += 1
-            if run_times > 100:
+            if run_times > 1000:
                 print("[DEBUG]: Out of Resource !!!")
                 break
 
@@ -216,9 +217,9 @@ class CBS_Planner(object):
         if node.isConflict:
             conflict = node.firstConflict
 
-            print('[DEBUG]: Insert Conflict1 groupIdx:%d x:%.1f y:%.1f z:%.1f radius:%.1f' % (
-                conflict.groupIdx1, conflict.conflict1_x, conflict.conflict1_y, conflict.conflict1_z, conflict.conflict1_radius
-            ))
+            # print('[DEBUG]: Insert Conflict1 groupIdx:%d x:%.1f y:%.1f z:%.1f radius:%.1f' % (
+            #     conflict.groupIdx1, conflict.conflict1_x, conflict.conflict1_y, conflict.conflict1_z, conflict.conflict1_radius
+            # ))
             conflict1_mesh = vis.create_sphere(
                 np.array([conflict.conflict1_x, conflict.conflict1_y, conflict.conflict1_z]), conflict.conflict1_radius
             )

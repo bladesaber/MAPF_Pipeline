@@ -193,15 +193,20 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             "pipeConflict_weight"_a,
             "boundary_weight"_a
         )
-        // .def("loss_info", &SmootherNameSpace::SmootherXYZG2O::loss_info,
-        //     "elasticBand_weight"_a, 
-        //     "kinematic_weight"_a,
-        //     "obstacle_weight"_a,
-        //     "pipeConflict_weight"_a
-        // )
+        .def("loss_info", &SmootherNameSpace::SmootherXYZG2O::loss_info,
+            "elasticBand_weight"_a, 
+            "kinematic_weight"_a,
+            "obstacle_weight"_a,
+            "pipeConflict_weight"_a,
+            "boundary_weight"_a
+        )
         .def("setMaxRadius", &SmootherNameSpace::SmootherXYZG2O::setMaxRadius, "groupIdx"_a, "radius"_a)
         .def("setBoundary", &SmootherNameSpace::SmootherXYZG2O::setBoundary, 
             "xmin"_a, "ymin"_a, "zmin"_a, "xmax"_a, "ymax"_a, "zmax"_a
+        )
+        .def("setFlexible_percentage", &SmootherNameSpace::SmootherXYZG2O::setFlexible_percentage, "groupIdx"_a, "flexible_percentage"_a)
+        .def("extractPath", &SmootherNameSpace::SmootherXYZG2O::extractPath, 
+            "groupIdx"_a, "start_x"_a, "start_y"_a, "start_z"_a, "end_x"_a, "end_y"_a, "end_z"_a
         )
         .def("optimizeGraph", &SmootherNameSpace::SmootherXYZG2O::optimizeGraph, "no_iterations"_a, "verbose"_a)
         .def("clear_graph", &SmootherNameSpace::SmootherXYZG2O::clear_graph)

@@ -74,7 +74,7 @@ public:
 
     size_t groupIdx;
     double max_radius = 0.0;
-    double flexible_percentage = 0.15;
+    double flexible_percentage = 0.0;
 
     // std::vector<size_t> terminalIdxs;
     std::map<size_t, PathNode*> pathNodeMap;  // nodeIdx, Node
@@ -97,11 +97,13 @@ public:
 
         int start_nodeIdx = findNodeIdx(start_x, start_y, start_z);
         if (start_nodeIdx<0){
+            std::cout << "[INFO]: Can't Find StartPoint." << std::endl;
             return pathIdxs;
         }
 
         int goal_nodeIdx = findNodeIdx(end_x, end_y, end_z);
         if (goal_nodeIdx<0){
+            std::cout << "[INFO]: Can't Find EndPoint." << std::endl;
             return pathIdxs;
         }
 
