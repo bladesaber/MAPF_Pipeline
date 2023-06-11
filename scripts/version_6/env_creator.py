@@ -83,6 +83,7 @@ def create_Grid_WallObstacle(env_cfg, save_dir):
     wall_resolution = np.inf
     for pipeConfig in env_cfg['pipeConfig']:
         wall_resolution = min(wall_resolution, pipeConfig['grid_radius'])
+    wall_resolution = wall_resolution * 0.55
 
     xmax = env_cfg['x'] - 1
     ymax = env_cfg['y'] - 1
@@ -137,6 +138,8 @@ def create_Grid_WallObstacle(env_cfg, save_dir):
     obs_df = pd.DataFrame(wall_np, columns=['x', 'y', 'z'])
     obs_df['radius'] = 0.0
     obs_df['tag'] = 'wall'
+
+    print("Shape:", obs_df.shape, ' WallResol:', wall_resolution)
 
     save_file = os.path.join(save_dir, 'wall_obs_df.csv')
     obs_df.to_csv(save_file)
@@ -198,13 +201,13 @@ def main():
 
     # env_config = create_GridEnv(env_config, save_dir='/home/quan/Desktop/MAPF_Pipeline/scripts/version_6/app_dir')
 
-    # with open(grid_json_file, 'r') as f:
-    #     env_config = json.load(f)
+    with open(grid_json_file, 'r') as f:
+        env_config = json.load(f)
 
-    # env_config = create_Grid_WallObstacle(env_cfg=env_config, save_dir='/home/quan/Desktop/MAPF_Pipeline/scripts/version_6/app_dir')
+    env_config = create_Grid_WallObstacle(env_cfg=env_config, save_dir='/home/quan/Desktop/MAPF_Pipeline/scripts/version_6/app_dir')
 
-    # with open(grid_json_file, 'w') as f:
-    #     env_config = json.dump(env_config, f)
+    with open(grid_json_file, 'w') as f:
+        env_config = json.dump(env_config, f)
 
     with open(grid_json_file, 'r') as f:
         env_config = json.load(f)

@@ -33,27 +33,32 @@ for pipeConfig in env_config['pipeConfig']:
 
 groupAgentLinks = {
     0: [
-        {"start": 'p', 'end': 'p1'},
-        {"start": 'p', 'end': 'M1'},
-        {"start": 'p', 'end': 'p_valve'}
+        ### elasticBand_weight=0.1 kinematic_weight=10.0,
+        {"start": 'p', 'end': 'p1', 'startFlexRatio': 0.0, 'endFlexRatio': 0.2},
+        {"start": 'p', 'end': 'M1', 'startFlexRatio': 0.0, 'endFlexRatio': 0.4},
+        {"start": 'p', 'end': 'p_valve', 'startFlexRatio': 0.0, 'endFlexRatio': 0.2}
     ],
     1: [
-        {"start": 'B_valve', 'end': 'M3'},
-        {"start": 'B_valve', 'end': 'B'}
+        {"start": 'B_valve', 'end': 'M3', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0},
+        {"start": 'B_valve', 'end': 'B', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
     ],
     2: [
-        {"start": 'T_valve', 'end': 'T'},
-        {"start": 'A2T', 'end': 'T'}
+        {"start": 'T_valve', 'end': 'T', 'startFlexRatio': 0.2, 'endFlexRatio': 0.0},
+        {"start": 'A2T', 'end': 'T', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
     ],
     3: [
-        {"start": 'A_valve', 'end': 'A2valve_01'},
-        {"start": 'A_valve', 'end': 'A2valve_02'}
+        {"start": 'A_valve', 'end': 'A2valve_01', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0},
+        {"start": 'A_valve', 'end': 'A2valve_02', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
     ],
     4: [
-        {"start": 'valve_01', 'end': 'A'},
-        {"start": 'valve_02', 'end': 'A'},
-        {"start": 'valve_03','end': 'A'},
-        {"start": 'valve_03','end': 'M2'}
+        # {"start": 'valve_01', 'end': 'A', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0},
+        # {"start": 'valve_02', 'end': 'A', 'startFlexRatio': 0.25, 'endFlexRatio': 0.0},
+        # {"start": 'valve_03','end': 'A', 'startFlexRatio': 0.45, 'endFlexRatio': 0.0},
+        # {"start": 'valve_03','end': 'M2', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
+        {"start": 'valve_01', 'end': 'valve_02', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0},
+        {"start": 'valve_02', 'end': 'A', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0},
+        {"start": 'valve_03','end': 'A', 'startFlexRatio': 0.45, 'endFlexRatio': 0.0},
+        {"start": 'valve_03','end': 'M2', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
     ]
 }
 
@@ -84,21 +89,39 @@ for groupIdx in group_keys:
         # for (x, y, z, r, l) in mapf_pipeline.sampleDetailPath(path_xyzr, 0.5):
         #     path_xyzr_resample.append((x, y, z, r))
         # smoother.add_Path(groupIdx, path_xyzr_resample)
-        
+
+res_config = {}
+
 for groupIdx in group_keys:
     pipeConfig = groupAgentConfig[groupIdx]
+
+    res_config[groupIdx] = {}
+
     for pathIdx, link in enumerate(groupAgentLinks[groupIdx]):
         start_info = pipeConfig[link['start']]
         end_info = pipeConfig[link['end']]
 
         success = smoother.add_OptimizePath(
-            groupIdx, pathIdx,
-            start_info['grid_position'][0], start_info['grid_position'][1], start_info['grid_position'][2],
-            end_info['grid_position'][0], end_info['grid_position'][1], end_info['grid_position'][2],
-            (start_info['alpha'], start_info['theta']),
-            (end_info['alpha'], end_info['theta'])
+            groupIdx=groupIdx, pathIdx=pathIdx,
+            start_x=start_info['grid_position'][0], 
+            start_y=start_info['grid_position'][1], 
+            start_z=start_info['grid_position'][2],
+            end_x=end_info['grid_position'][0], 
+            end_y=end_info['grid_position'][1], 
+            end_z=end_info['grid_position'][2],
+            startDire=(start_info['alpha'], start_info['theta']),
+            endDire=(end_info['alpha'], end_info['theta']),
+            startFlexRatio=link['startFlexRatio'], 
+            endFlexRatio=link['endFlexRatio']
         )
         print(link, success)
+
+        res_config[groupIdx][pathIdx] = {
+            'grid_radius': groupAgentConfig[groupIdx]['grid_radius'],
+            'startDire': (start_info['alpha'], start_info['theta']),
+            'endDire':(end_info['alpha'], end_info['theta'])
+        }
+        res_config[groupIdx][pathIdx].update(link)
 
 ### Show PathIdxs
 # for groupIdx in group_keys:
@@ -113,12 +136,12 @@ for pipeConfig in env_config['pipeConfig']:
 
 def run_smooth(
     smoother,
-    elasticBand_weight,
-    kinematic_weight,
-    obstacle_weight,
-    pipeConflict_weight,
-    boundary_weight,
-    run_times
+    elasticBand_weight=0.0,
+    kinematic_weight=0.0,
+    obstacle_weight=0.0,
+    pipeConflict_weight=0.0,
+    boundary_weight=0.0,
+    run_times=10
 ):
     ### Step 2.1 Build Graph 
     success = smoother.build_graph(
@@ -129,28 +152,18 @@ def run_smooth(
         boundary_weight=boundary_weight
     )
     # print("build Graph:", success)
-
-    # if outer_i == 0:
-    #     smoother.info()
-    #     smoother.loss_info(
-    #         elasticBand_weight=0.0,
-    #         kinematic_weight=0.0,
-    #         obstacle_weight=0.0,
-    #         pipeConflict_weight=0.0,
-    #         boundary_weight=1.0
-    #     )
-    #     print()
+    smoother.info()
+    # smoother.loss_info(
+    #     elasticBand_weight=elasticBand_weight,
+    #     kinematic_weight=kinematic_weight,
+    #     obstacle_weight=obstacle_weight,
+    #     pipeConflict_weight=pipeConflict_weight,
+    #     boundary_weight=boundary_weight
+    # )
+    # print()
 
     ### Step 2.2 Optimize
     smoother.optimizeGraph(run_times, False)
-
-    # smoother.loss_info(
-    #     elasticBand_weight=0.0,
-    #     kinematic_weight=0.0,
-    #     obstacle_weight=0.0,
-    #     pipeConflict_weight=0.0,
-    #     boundary_weight=1.0
-    # )
 
     ### Step 3.3 Update Vertex to Node
     smoother.update2groupVertex()
@@ -160,108 +173,82 @@ def run_smooth(
 
 for outer_i in range(100):
 
-    # for _ in range(1):
-    #     run_smooth(
-    #         smoother=smoother,
-    #         elasticBand_weight=1.0,
-    #         kinematic_weight=0.0,
-    #         obstacle_weight=1.0,
-    #         pipeConflict_weight=0.0,
-    #         boundary_weight=0.1,
-    #         run_times=100
-    #     )
-    #     run_smooth(
-    #         smoother=smoother,
-    #         elasticBand_weight=0.1,
-    #         kinematic_weight=5.0,
-    #         obstacle_weight=1.0,
-    #         pipeConflict_weight=0.0,
-    #         boundary_weight=0.1,
-    #         run_times=20
-    #     )
-    # run_smooth(
-    #     smoother=smoother,
-    #     elasticBand_weight=1.0,
-    #     kinematic_weight=10.0,
-    #     obstacle_weight=1.0,
-    #     pipeConflict_weight=0.0,
-    #     boundary_weight=0.1,
-    #     run_times=2000
-    # )
-    # run_smooth(
-    #     smoother=smoother,
-    #     elasticBand_weight=1.0,
-    #     kinematic_weight=0.0,
-    #     obstacle_weight=1.0,
-    #     pipeConflict_weight=0.0,
-    #     boundary_weight=0.1,
-    #     run_times=500
-    # )
     run_smooth(
         smoother=smoother,
-        elasticBand_weight=1.0,
-        kinematic_weight=8.0,
+        elasticBand_weight=0.1,
+        kinematic_weight=10.0,
         obstacle_weight=1.0,
         pipeConflict_weight=1.0,
-        boundary_weight=1.0,
-        run_times=500
+        boundary_weight=0.0,
+        run_times=10
     )
 
     ### ------ Debug Vis path
-    fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')
-    ax.set_xlim3d(-1, 63)
-    ax.set_ylim3d(-1, 63)
-    ax.set_zlim3d(-1, 63)
+    if outer_i % 99 == 0:
+        fig = plt.figure()
+        ax = fig.add_subplot(projection='3d')
+        ax.set_xlim3d(-1, 63)
+        ax.set_ylim3d(-1, 63)
+        ax.set_zlim3d(-1, 63)
 
-    colors = np.random.uniform(0.0, 1.0, (5, 3))
-    for groupIdx in group_keys:
-        groupPath = smoother.groupMap[groupIdx]
+        colors = np.random.uniform(0.0, 1.0, (5, 3))
+        for groupIdx in group_keys:
+            groupPath = smoother.groupMap[groupIdx]
 
-        for pathIdx in groupPath.graphPathMap.keys():
-            nodeIdxs_path = groupPath.graphPathMap[pathIdx]
+            for pathIdx in groupPath.graphPathMap.keys():
+                nodeIdxs_path = groupPath.graphPathMap[pathIdx]
 
-            path_xyz = []
-            for idx, nodeIdx in enumerate(nodeIdxs_path):
-                node = groupPath.graphNodeMap[nodeIdx]
-                path_xyz.append([node.x, node.y, node.z])
-                
-                if (node.fixed):
-                    dz = math.sin(node.theta)
-                    dl = math.cos(node.theta)
-                    dx = dl * math.cos(node.alpha)
-                    dy = dl * math.sin(node.alpha)
-                    ax.quiver(
-                        node.x, node.y, node.z, 
-                        dx, dy, dz, 
-                        length=5.0, normalize=True, color='r'
-                    )
+                path_xyz = []
+                for idx, nodeIdx in enumerate(nodeIdxs_path):
+                    node = groupPath.graphNodeMap[nodeIdx]
+                    path_xyz.append([node.x, node.y, node.z])
+                    
+                    if (node.fixed):
+                        dz = math.sin(node.theta)
+                        dl = math.cos(node.theta)
+                        dx = dl * math.cos(node.alpha)
+                        dy = dl * math.sin(node.alpha)
+                        ax.quiver(
+                            node.x, node.y, node.z, 
+                            dx, dy, dz, 
+                            length=5.0, normalize=True, color='r'
+                        )
 
-            path_xyz = np.array(path_xyz)
-            ax.plot(path_xyz[:, 0], path_xyz[:, 1], path_xyz[:, 2], '*-', c=colors[groupIdx])
-    
-    plt.show()
-
-    ### ------ Debug Vis 
-    vis = VisulizerVista()
-    obstacle_mesh = vis.create_pointCloud(obs_df[['x', 'y', 'z']].values)
-    vis.plot(obstacle_mesh, (0.0, 1.0, 0.0))
-
-    colors = np.random.uniform(0.0, 1.0, (5, 3))
-    for groupIdx in group_keys:
-        groupPath = smoother.groupMap[groupIdx]
+                path_xyz = np.array(path_xyz)
+                ax.plot(path_xyz[:, 0], path_xyz[:, 1], path_xyz[:, 2], '*-', c=colors[groupIdx])
         
-        for pathIdx in groupPath.graphPathMap.keys():
-            nodeIdxs_path = groupPath.graphPathMap[pathIdx]
+        plt.show()
 
-            path_xyz = []
-            for idx, nodeIdx in enumerate(nodeIdxs_path):
-                node = groupPath.graphNodeMap[nodeIdx]
-                path_xyz.append([node.x, node.y, node.z])
-            
-            path_xyz = np.array(path_xyz)
-            tube_mesh = vis.create_tube(path_xyz[:, :3], radius=groupAgentConfig[groupIdx]['grid_radius'])
-            vis.plot(tube_mesh, color=tuple(colors[groupIdx]))
+### ------ Save Result
+for groupIdx in group_keys:
+    groupPath = smoother.groupMap[groupIdx]
 
-    vis.show()
+    for pathIdx in groupPath.graphPathMap.keys():
+        nodeIdxs_path = groupPath.graphPathMap[pathIdx]
+
+        path_xyzr = []
+        for idx, nodeIdx in enumerate(nodeIdxs_path):
+            node = groupPath.graphNodeMap[nodeIdx]
+            path_xyzr.append([node.x, node.y, node.z, node.radius])
+        path_xyzr = np.array(path_xyzr)
+
+        res_config[groupIdx][pathIdx]['path_xyzr'] = path_xyzr
+np.save('/home/quan/Desktop/MAPF_Pipeline/scripts/version_6/app_dir/resPath_config.npy', res_config)
+
+# ### ------ Debug Vis 
+# vis = VisulizerVista()
+# obstacle_mesh = vis.create_pointCloud(obs_df[['x', 'y', 'z']].values)
+# vis.plot(obstacle_mesh, (0.0, 1.0, 0.0))
+
+# colors = np.random.uniform(0.0, 1.0, (5, 3))
+# for groupIdx in group_keys:
+#     res_info = res_config[groupIdx]
+        
+#     for pathIdx in res_info.keys():
+#         path_info = res_info[pathIdx]
+#         path_xyzr = path_info['path_xyzr']
+#         tube_mesh = vis.create_tube(path_xyzr[:, :3], radius=path_info['grid_radius'])
+#         vis.plot(tube_mesh, color=tuple(colors[groupIdx]))
+
+# vis.show()
 

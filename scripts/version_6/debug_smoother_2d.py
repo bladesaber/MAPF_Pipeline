@@ -71,6 +71,55 @@ path_xyzr_2_np = np.array(path_xyzr_2)
 startDire2 = (0.0, 0.0)
 endDire2 = (3.14, 0.0)
 
+path_xyzr_3 = [
+    (0.0, 10.0, 1.0, 0.5),
+    (1.0, 10.0, 1.0, 0.5),
+    (2.0, 10.0, 1.0, 0.5),
+    (3.0, 10.0, 1.0, 0.5),
+    (4.0, 10.0, 1.0, 0.5),
+    (5.0, 10.0, 1.0, 0.5),
+    (6.0, 10.0, 1.0, 0.5),
+    (7.0, 10.0, 1.0, 0.5),
+    (8.0, 10.0, 1.0, 0.5),
+    (9.0, 10.0, 1.0, 0.5),
+    (10.0, 10.0, 1.0, 0.5),
+    (10.0, 9.0, 1.0, 0.5),
+    (10.0, 8.0, 1.0, 0.5),
+    (10.0, 7.0, 1.0, 0.5),
+    (10.0, 6.0, 1.0, 0.5),
+    (10.0, 5.0, 1.0, 0.5),
+    (10.0, 4.0, 1.0, 0.5),
+    (10.0, 3.0, 1.0, 0.5),
+    (10.0, 2.0, 1.0, 0.5),
+    (10.0, 1.0, 1.0, 0.5),
+    (10.0, 0.0, 1.0, 0.5),
+]
+# path_xyzr_3 = [
+#     (0.0, 10.0, 1.0, 0.5),
+#     (0.0, 9.0, 1.0, 0.5),
+#     (0.0, 8.0, 1.0, 0.5),
+#     (0.0, 7.0, 1.0, 0.5),
+#     (1.0, 7.0, 1.0, 0.5),
+#     (2.0, 7.0, 1.0, 0.5),
+#     (3.0, 7.0, 1.0, 0.5),
+#     (4.0, 7.0, 1.0, 0.5),
+#     (5.0, 7.0, 1.0, 0.5),
+#     (6.0, 7.0, 1.0, 0.5),
+#     (7.0, 7.0, 1.0, 0.5),
+#     (8.0, 7.0, 1.0, 0.5),
+#     (9.0, 7.0, 1.0, 0.5),
+#     (10.0, 7.0, 1.0, 0.5),
+#     (10.0, 6.0, 1.0, 0.5),
+#     (10.0, 5.0, 1.0, 0.5),
+#     (10.0, 4.0, 1.0, 0.5),
+#     (10.0, 3.0, 1.0, 0.5),
+#     (10.0, 2.0, 1.0, 0.5),
+#     (10.0, 1.0, 1.0, 0.5),
+#     (10.0, 0.0, 1.0, 0.5),
+# ]
+startDire3 = (-1.57, 0.0)
+endDire3 = (-1.57, 0.0)
+
 # ### --------- debug extractPath
 # groupPath = mapf_pipeline.GroupPath(0)
 # groupPath.insertPath(path_xyzr_0)
@@ -114,43 +163,50 @@ smoother.setBoundary(xmin=xmin, ymin=ymin, zmin=zmin, xmax=xmax, ymax=ymax, zmax
 #     endDire=endDire2
 # )
 
-path_xyzr_0_tem = path_xyzr_0.copy()
-path_xyzr_0 = []
-for (x, y, z, r, l) in mapf_pipeline.sampleDetailPath(path_xyzr_0_tem, 0.5):
-    path_xyzr_0.append((x, y, z, r))
+# path_xyzr_0_tem = path_xyzr_0.copy()
+# path_xyzr_0 = []
+# for (x, y, z, r, l) in mapf_pipeline.sampleDetailPath(path_xyzr_0_tem, 0.5):
+#     path_xyzr_0.append((x, y, z, r))
 
-path_xyzr_1_tem = path_xyzr_1.copy()
-path_xyzr_1 = []
-for (x, y, z, r, l) in mapf_pipeline.sampleDetailPath(path_xyzr_1_tem, 0.5):
-    path_xyzr_1.append((x, y, z, r))
+# path_xyzr_1_tem = path_xyzr_1.copy()
+# path_xyzr_1 = []
+# for (x, y, z, r, l) in mapf_pipeline.sampleDetailPath(path_xyzr_1_tem, 0.5):
+#     path_xyzr_1.append((x, y, z, r))
 
-smoother.add_Path(0, path_xyzr_0)
-smoother.add_Path(0, path_xyzr_1)
+# smoother.add_Path(0, path_xyzr_0)
+# smoother.add_Path(0, path_xyzr_1)
+
+# path_xyzr_3_tem = path_xyzr_3.copy()
+# path_xyzr_3 = []
+# for (x, y, z, r, l) in mapf_pipeline.sampleDetailPath(path_xyzr_3_tem, 0.5):
+#     path_xyzr_3.append((x, y, z, r))
+smoother.add_Path(0, path_xyzr_3)
 
 success = smoother.add_OptimizePath(
     groupIdx=0, 
     pathIdx=0,
-    start_x=path_xyzr_0[0][0], 
-    start_y=path_xyzr_0[0][1], 
-    start_z=path_xyzr_0[0][2],
-    end_x=path_xyzr_0[-1][0], 
-    end_y=path_xyzr_0[-1][1], 
-    end_z=path_xyzr_0[-1][2],
-    startDire=startDire0,
-    endDire=endDire0
+    start_x=path_xyzr_3[0][0], 
+    start_y=path_xyzr_3[0][1], 
+    start_z=path_xyzr_3[0][2],
+    end_x=path_xyzr_3[-1][0], 
+    end_y=path_xyzr_3[-1][1], 
+    end_z=path_xyzr_3[-1][2],
+    startDire=startDire3,
+    endDire=endDire3,
+    startFlexRatio=0.0, endFlexRatio=0.0
 )
-success = smoother.add_OptimizePath(
-    groupIdx=0, 
-    pathIdx=1,
-    start_x=path_xyzr_1[0][0], 
-    start_y=path_xyzr_1[0][1], 
-    start_z=path_xyzr_1[0][2],
-    end_x=path_xyzr_1[-1][0], 
-    end_y=path_xyzr_1[-1][1], 
-    end_z=path_xyzr_1[-1][2],
-    startDire=startDire1,
-    endDire=endDire1
-)
+# success = smoother.add_OptimizePath(
+#     groupIdx=0, 
+#     pathIdx=1,
+#     start_x=path_xyzr_1[0][0], 
+#     start_y=path_xyzr_1[0][1], 
+#     start_z=path_xyzr_1[0][2],
+#     end_x=path_xyzr_1[-1][0], 
+#     end_y=path_xyzr_1[-1][1], 
+#     end_z=path_xyzr_1[-1][2],
+#     startDire=startDire1,
+#     endDire=endDire1
+# )
 
 smoother.setMaxRadius(0, 0.5)
 
@@ -164,10 +220,10 @@ for outer_i in range(100):
     ### Step 2.1 Build Graph 
     success = smoother.build_graph(
         elasticBand_weight=0.1,
-        kinematic_weight=1.5,
+        kinematic_weight=10.0,
         obstacle_weight=0.0,
         pipeConflict_weight=0.0,
-        boundary_weight=0.1
+        boundary_weight=0.0
     )
     # print("build Graph:", success)
 

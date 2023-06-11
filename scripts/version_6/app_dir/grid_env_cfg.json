@@ -4,7 +4,7 @@
     "y": 63,
     "z": 63,
     "resolution": 2,
-    "stepLength": 1.0,
+    "stepLength": 1,
     "pipeConfig": [
         {
             "groupIdx": 0,
@@ -109,7 +109,7 @@
                     ],
                     "radius": 3,
                     "alpha": 0,
-                    "theta": 1.57,
+                    "theta": -1.57,
                     "grid_position": [
                         26,
                         25,
@@ -126,7 +126,7 @@
                     ],
                     "radius": 5,
                     "alpha": 0,
-                    "theta": 1.57,
+                    "theta": -1.57,
                     "grid_position": [
                         27,
                         8,
@@ -262,8 +262,8 @@
                         89
                     ],
                     "radius": 5,
-                    "alpha": 0,
-                    "theta": -1.57,
+                    "alpha": 3.14,
+                    "theta": 0,
                     "grid_position": [
                         50,
                         25,
@@ -279,8 +279,8 @@
                         98.65
                     ],
                     "radius": 5,
-                    "alpha": 0,
-                    "theta": -1.57,
+                    "alpha": 1.57,
+                    "theta": 0,
                     "grid_position": [
                         36,
                         49,
@@ -331,7 +331,7 @@
                     ],
                     "radius": 2.5,
                     "alpha": 3.14,
-                    "theta": 0.0,
+                    "theta": 0,
                     "grid_position": [
                         0,
                         16,

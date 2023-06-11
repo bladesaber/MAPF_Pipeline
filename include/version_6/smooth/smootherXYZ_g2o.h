@@ -93,13 +93,16 @@ public:
         size_t groupIdx, size_t pathIdx, 
         double start_x, double start_y, double start_z,
         double end_x, double end_y, double end_z,
-        std::pair<double, double> startDire, std::pair<double, double> endDire
+        std::pair<double, double> startDire, 
+        std::pair<double, double> endDire,
+        double startFlexRatio, double endFlexRatio
     ){
         return groupMap[groupIdx]->insert_OptimizePath(
             pathIdx, 
             start_x, start_y, start_z,
             end_x, end_y, end_z,
-            startDire, endDire
+            startDire, endDire,
+            startFlexRatio, endFlexRatio
         );
     }
 
@@ -121,9 +124,6 @@ public:
     ){
         return groupMap[groupIdx]->extractPath(start_x, start_y, start_z, end_x, end_y, end_z);
     }
-    void setFlexible_percentage(size_t groupIdx, double flexible_percentage){
-        groupMap[groupIdx]->flexible_percentage = flexible_percentage;
-    } 
 
     bool add_vertexs();
     bool add_elasticBand(double elasticBand_weight);

@@ -181,7 +181,8 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             "groupIdx"_a, "pathIdx"_a, 
             "start_x"_a, "start_y"_a, "start_z"_a,
             "end_x"_a, "end_y"_a, "end_z"_a,
-            "startDire"_a, "endDire"_a
+            "startDire"_a, "endDire"_a,
+            "startFlexRatio"_a, "endFlexRatio"_a
         )
         .def("insertStaticObs", &SmootherNameSpace::SmootherXYZG2O::insertStaticObs,
             "x"_a, "y"_a, "z"_a, "radius"_a, "alpha"_a, "theta"_a
@@ -204,7 +205,6 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("setBoundary", &SmootherNameSpace::SmootherXYZG2O::setBoundary, 
             "xmin"_a, "ymin"_a, "zmin"_a, "xmax"_a, "ymax"_a, "zmax"_a
         )
-        .def("setFlexible_percentage", &SmootherNameSpace::SmootherXYZG2O::setFlexible_percentage, "groupIdx"_a, "flexible_percentage"_a)
         .def("extractPath", &SmootherNameSpace::SmootherXYZG2O::extractPath, 
             "groupIdx"_a, "start_x"_a, "start_y"_a, "start_z"_a, "end_x"_a, "end_y"_a, "end_z"_a
         )

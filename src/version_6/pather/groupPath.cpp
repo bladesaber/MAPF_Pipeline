@@ -122,7 +122,9 @@ bool GroupPath::insert_OptimizePath(
     size_t pathIdx, 
     double start_x, double start_y, double start_z,
     double end_x, double end_y, double end_z,
-    std::pair<double, double> startDire, std::pair<double, double> endDire
+    std::pair<double, double> startDire, 
+    std::pair<double, double> endDire,
+    double startFlexRatio, double endFlexRatio
 ){
     std::vector<size_t> pathIdxs = extractPath(
         start_x, start_y, start_z,
@@ -138,14 +140,15 @@ bool GroupPath::insert_OptimizePath(
 
     size_t nodeIdx = graphNodeMap.size();
     int path_size = pathIdxs.size();
-    int clip_num = ceil(pathIdxs.size() * flexible_percentage);
-    // std::cout << "[DEBUG] clip_num:" << clip_num << std::endl;
+    int startFlexNum = ceil(pathIdxs.size() * startFlexRatio);
+    int endFlexNum = path_size - ceil(pathIdxs.size() * endFlexRatio);
+    // std::cout << "[DEBUG] startFlexNum:" << startFlexNum << " endFlexNum:" << endFlexNum << std::endl;
     
     for (size_t i = 0; i < pathIdxs.size(); i++)
     {
         path_node = pathNodeMap[pathIdxs[i]];
 
-        if (i < clip_num || i >= path_size - clip_num)
+        if (i < startFlexNum || i >= endFlexNum)
         {
             FlexGraphNode* node = new FlexGraphNode(nodeIdx, path_node->x, path_node->y, path_node->z, path_node->radius);
             graphNodeMap[node->nodeIdx] = node;

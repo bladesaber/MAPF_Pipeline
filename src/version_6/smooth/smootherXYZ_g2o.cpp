@@ -375,8 +375,14 @@ bool SmootherXYZG2O::add_obstacleEdge(double obstacle_weight){
 
             for (KDTree_XYZRA_Res* res : resList)
             {
+                double dist = norm2_distance(node->x, node->y, node->z, res->x, res->y, res->z);
+                if ( dist > (node->radius + res->data->radius) * 1.5 ){
+                    delete res;
+                    continue;
+                }
+
                 EdgeXYZ_Obstacle* edge = new EdgeXYZ_Obstacle(
-                    Eigen::Vector3d(res->x, res->y, res->z), (node->radius + res->data->radius) * 1.025
+                    Eigen::Vector3d(res->x, res->y, res->z), (node->radius + res->data->radius) * 1.01
                 );
                 edge->setVertex(0, node->vertex);
 

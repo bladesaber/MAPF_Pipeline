@@ -129,6 +129,9 @@ public:
     Eigen::Vector3d deltaS2 = conf3->position() - conf2->position();
 
     _error[0] = 1.0 - ( deltaS1 / deltaS1.norm() ).dot( deltaS2 / deltaS2.norm() );
+
+    // double loss = 1.0 - ( deltaS1 / deltaS1.norm() ).dot( deltaS2 / deltaS2.norm() );
+    // _error[0] = std::pow(loss*10.0, 2.0);
   }
 
   static double lost_calc(VertexXYZ* conf1, VertexXYZ* conf2, VertexXYZ* conf3, bool debug=false){
@@ -191,6 +194,9 @@ public:
     // std::cout << "[DEBUG]" << tag << " theta: " << theta << std::endl;
 
     _error[0] = 1.0 - ( deltaS1 / deltaS1.norm() ).dot( orientation / orientation.norm() );
+
+    // double loss = 1.0 - ( deltaS1 / deltaS1.norm() ).dot( orientation / orientation.norm() );
+    // _error[0] = std::pow(loss*10.0, 2.0);
   }
 
   static double lost_calc(VertexXYZ* conf1, VertexXYZ* conf2, Eigen::Vector3d orientation, bool debug=false){

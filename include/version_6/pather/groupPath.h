@@ -74,7 +74,6 @@ public:
 
     size_t groupIdx;
     double max_radius = 0.0;
-    double flexible_percentage = 0.0;
 
     // std::vector<size_t> terminalIdxs;
     std::map<size_t, PathNode*> pathNodeMap;  // nodeIdx, Node
@@ -132,7 +131,9 @@ public:
         size_t pathIdx, 
         double start_x, double start_y, double start_z,
         double end_x, double end_y, double end_z,
-        std::pair<double, double> startDire, std::pair<double, double> endDire
+        std::pair<double, double> startDire, 
+        std::pair<double, double> endDire,
+        double startFlexRatio, double endFlexRatio
     );
 
 private:
