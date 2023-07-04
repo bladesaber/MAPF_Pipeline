@@ -8,12 +8,12 @@ import matplotlib.pyplot as plt
 from scripts.visulizer import VisulizerVista
 from scripts.version_6 import o3d_helper
 
-grid_json_file = '/home/quan/Desktop/MAPF_Pipeline/scripts/version_6/app_dir/grid_env_cfg.json'
+grid_json_file = '/home/quan/Desktop/MAPF_Pipeline/scripts/version_7/app_dir/grid_env_cfg.json'
 with open(grid_json_file, 'r') as f:
     env_config = json.load(f)
 
 res_config = np.load(
-    '/home/quan/Desktop/MAPF_Pipeline/scripts/version_6/app_dir/resPath_config.npy', 
+    '/home/quan/Desktop/MAPF_Pipeline/scripts/version_7/app_dir/resPath_config.npy', 
     allow_pickle=True
 ).item()
 

@@ -9,6 +9,8 @@ from scripts.utils import polar2RotMatrix
 class VisulizerVista(object):
     def __init__(self):
         self.ploter = pyvista.Plotter()
+        # self.ploter.set_background('white', top='black')
+        self.ploter.set_background('white')
 
     @staticmethod
     def create_pointCloud(xyzs:np.array):
@@ -38,7 +40,8 @@ class VisulizerVista(object):
         sphere = pyvista.Sphere(radius, center=xyz)
         return sphere
 
-    def create_many_boxs(self, xyzs:np.array, length=1.0):
+    @staticmethod
+    def create_many_boxs(xyzs:np.array, length=1.0):
         semi_length = length / 2.0
 
         boxs_mesh = []
@@ -54,8 +57,8 @@ class VisulizerVista(object):
         boxs_mesh = pyvista.MultiBlock(boxs_mesh)
         return boxs_mesh
 
-    def plot(self, mesh, color=(0.5, 0.1, 0.8)):
-        self.ploter.add_mesh(mesh, color=color)
+    def plot(self, mesh, color=(0.5, 0.1, 0.8), opacity=1.0):
+        self.ploter.add_mesh(mesh, color=color, opacity=opacity)
 
     def show(self):
         self.ploter.show()
