@@ -48,8 +48,11 @@ message("PCL_LIBRARY_DIR: " ${PCL_LIBRARIES})
 # set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_5)
 # set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_5)
 
-set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_6)
-set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_6)
+# set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_6)
+# set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_6)
+
+set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_7)
+set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_7)
 
 message("Include_DIR: " ${Include_DIR})
 message("Src_DIR: " ${Src_DIR})
