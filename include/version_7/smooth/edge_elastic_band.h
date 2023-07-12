@@ -70,8 +70,7 @@ public:
     return _error;
   }
 
-  EdgeXYZ_ElasticBand(double minLength=0.1, double kSpring=1.0, double targetLength=-1, std::string tag="None"):
-    minLength(minLength), targetLength(targetLength), kSpring(kSpring), tag(tag) {
+  EdgeXYZ_ElasticBand(double kSpring=1.0, std::string tag="None"):kSpring(kSpring), tag(tag) {
     this->setMeasurement(0.);
   }
 
@@ -79,52 +78,23 @@ public:
     const VertexXYZ* pose1 = static_cast<const VertexXYZ*>(_vertices[0]);
     const VertexXYZ* pose2 = static_cast<const VertexXYZ*>(_vertices[1]);
 
-    // _error[0] = (pose2->position() - pose1->position()).squaredNorm();
+    _error[0] = (pose2->position() - pose1->position()).squaredNorm();
 
-    // _error[0] = (pose2->position() - pose1->position()).norm();
-
-    // _error[0] = std::abs(1.0 - (pose2->position() - pose1->position()).norm()) * kSpring;
+    // _error[0] = (pose2->position() - pose1->position()).norm() * kSpring;
 
     // _error[0] = std::pow(length - (pose2->position() - pose1->position()).norm(), 2.0) * kSpring;
-
-    if (targetLength>0){
-      _error[0] = std::pow(targetLength - (pose2->position() - pose1->position()).norm(), 2.0) * kSpring;
-
-    }else{
-      double length = (pose2->position() - pose1->position()).norm();
-      if (length>minLength){
-        _error[0] = (pose2->position() - pose1->position()).squaredNorm() * kSpring;
-      }else{
-        _error[0] = std::pow(minLength - (pose2->position() - pose1->position()).norm(), 2.0) * kSpring;
-      }
-    }
   }
 
-  static double lost_calc(VertexXYZ* pose1, VertexXYZ* pose2, double minLength=1.0, double targetLength=-1.0, double kSpring=1.0){
+  static double lost_calc(VertexXYZ* pose1, VertexXYZ* pose2, double kSpring=1.0){
     double loss;
 
-    // loss = (pose2->position() - pose1->position()).squaredNorm();
+    loss = (pose2->position() - pose1->position()).squaredNorm();
 
-    // loss = (pose2->position() - pose1->position()).norm();
+    // loss = (pose2->position() - pose1->position()).norm() * kSpring;
 
     // loss std::abs(1.0 - (pose2->position() - pose1->position()).norm()) * kSpring;
 
-    // loss = std::pow(length - (pose2->position() - pose1->position()).norm(), 2.0) * kSpring;
-
-    if (targetLength>0){
-      loss = std::pow(targetLength - (pose2->position() - pose1->position()).norm(), 2.0) * kSpring;
-
-    }else{
-      double length = (pose2->position() - pose1->position()).norm();
-      if (length > minLength){
-        loss = (pose2->position() - pose1->position()).squaredNorm() * kSpring;
-
-      }else{
-        loss = std::pow(minLength - (pose2->position() - pose1->position()).norm(), 2.0) * kSpring;
-      }
-    }
-
-    std::cout << "  ElasticBand EdgeLoss:" << loss << " Dist:" << (pose2->position() - pose1->position()).norm() << std::endl;
+    std::cout << "  ElasticBand EdgeLoss:" << loss << std::endl;
 
     return loss;
   }
@@ -136,8 +106,6 @@ protected:
 private:
   std::string tag;
   double kSpring;
-  double minLength;
-  double targetLength;
 
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW   

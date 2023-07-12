@@ -47,11 +47,9 @@ public:
     };
 
     // ------ G2O Edge Param
-    double elasticBand_minLength = 0.3;
-    double elasticBand_targetLength = -1.0;
     double elasticBand_kSpring = 1.0;
-    double vertexKinematic_kSpring = 3.0;
-    double edgeKinematic_kSpring = 10.0;
+    double vertexKinematic_kSpring = 5.0;
+    double edgeKinematic_kSpring = 2.0;
     // ---------------------
 
     std::map<size_t, GroupPath*> groupMap;
@@ -201,9 +199,24 @@ public:
         }
     }
 
+    void updateGroupTrees(){
+        for (auto group_iter : groupMap)
+        {
+            GroupPath* group = group_iter.second;
+            group->updateGraphTree();
+        }
+    }
+
     void info(){
         std::cout << "Graph Vertex Size:" << optimizer->vertices().size();
         std::cout << " Edge Size:" << optimizer->edges().size() << std::endl;
+    }
+
+    std::tuple<double, double, double> polar2Vec(double alpha, double theta){
+        double dz = std::sin(theta);
+        double dx = std::cos(theta) * std::cos(alpha);
+        double dy = std::cos(theta) * std::sin(alpha);
+        return std::make_tuple(dx, dy, dz);
     }
 
 private:

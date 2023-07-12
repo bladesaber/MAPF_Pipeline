@@ -1,12 +1,15 @@
-{
+env_config = {
     "warning": "这里的所有管道半径都必须加上管道壁厚",
 
-    "x": 63,
-    "y": 63,
-    "z": 63,
+    "projectDir": "/home/quan/Desktop/tempary/application_pipe",
 
-    "resolution": 2.0,
+    "x": 125,
+    "y": 125,
+    "z": 125,
+
+    "scale": 0.35,
     "stepLength": 1.0,
+    "obstacle_resolution": 1.0,
 
     "pipeConfig":[
         {
@@ -87,7 +90,8 @@
                 },
                 {
                     "name": "A2T",
-                    "position": [35.0, 95.0, 110.0],
+                    # "position": [35.0, 95.0, 115.25],
+                    "position": [35.0, 98.5, 110.0],
                     "radius": 3.0,
                     "alpha": -1.57, 
                     "theta": 0.0
@@ -106,14 +110,14 @@
                 },
                 {
                     "name": "A2valve_01",
-                    "position": [85.0, 50.0, 102.0],
+                    "position": [102, 50.0, 102.0],
                     "radius": 5.0,
                     "alpha": 0.0, 
                     "theta": 0.0
                 },
                 {
                     "name": "A2valve_02",
-                    "position": [72.0, 82.0, 110.0],
+                    "position": [72.0, 87.5, 110.0],
                     "radius": 5.0,
                     "alpha": 1.57, 
                     "theta": 0.0
@@ -125,21 +129,21 @@
             "pipe": [
                 {
                     "name": "valve_01",
-                    "position": [100.0, 50.0, 89.0],
+                    "position": [113.5, 50.0, 95.65],
                     "radius": 5.0,
                     "alpha": 0.0, 
                     "theta": -1.57
                 },
                 {
                     "name": "valve_02",
-                    "position": [72.0, 98.0, 98.65],
+                    "position": [72.0, 98.0, 105.5],
                     "radius": 5.0,
                     "alpha": 0.0, 
                     "theta": -1.57
                 },
                 {
                     "name": "valve_03",
-                    "position": [35.0, 109.0, 98.65],
+                    "position": [35.0, 109.0, 105.5],
                     "radius": 5.0,
                     "alpha": 0.0, 
                     "theta": -1.57
@@ -160,53 +164,5 @@
                 }
             ]
         }
-    ],
-
-    "mesh_dir": "/home/quan/Desktop/MAPF_Pipeline/scripts/version_7/app_dir/mesh",
-    "static_obstacle":[
-        {
-            "file": "support1.stl",
-            "sample_num": 500
-        },
-        {
-            "file": "support2.stl",
-            "sample_num": 500
-        },
-        {
-            "file": "support3.stl",
-            "sample_num": 500
-        },
-        {
-            "file": "support4.stl",
-            "sample_num": 500
-        },
-        {
-            "file": "screw1.stl",
-            "sample_num": 50
-        },
-        {
-            "file": "screw2.stl",
-            "sample_num": 50
-        },
-        {
-            "file": "screw3.stl",
-            "sample_num": 50
-        },
-        {
-            "file": "screw4.stl",
-            "sample_num": 50
-        },
-        {
-            "file": "valve1.stl",
-            "sample_num": 200
-        },
-        {
-            "file": "valve2.stl",
-            "sample_num": 200
-        },
-        {
-            "file": "valve3.stl",
-            "sample_num": 200
-        }
-    ]
+    ],   
 }

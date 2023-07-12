@@ -17,7 +17,8 @@ class VisulizerVista(object):
         pointCloud_mesh = pyvista.PolyData(xyzs)
         return pointCloud_mesh
 
-    def create_tube(self, xyzs:np.array, radius=0.5):
+    @staticmethod
+    def create_tube(xyzs:np.array, radius=0.5):
         pointCloud_mesh = pyvista.PolyData(xyzs)
         the_cell = np.arange(0, xyzs.shape[0], 1)
         the_cell = np.insert(the_cell, 0, xyzs.shape[0])
@@ -25,8 +26,9 @@ class VisulizerVista(object):
         # pointCloud_mesh["scalars"] = np.arange(pointCloud_mesh.n_points)
         tube_mesh = pointCloud_mesh.tube(radius=radius)
         return tube_mesh
-
-    def create_box(self, xyz, length=1.0):
+    
+    @staticmethod
+    def create_box(xyz, length=1.0):
         semi_length = length / 2.0
         box = pyvista.Box(bounds=(
             -semi_length, semi_length,
@@ -36,7 +38,8 @@ class VisulizerVista(object):
         box.translate(xyz, inplace=True)
         return box
 
-    def create_sphere(self, xyz, radius):
+    @staticmethod
+    def create_sphere(xyz, radius):
         sphere = pyvista.Sphere(radius, center=xyz)
         return sphere
 
@@ -57,8 +60,25 @@ class VisulizerVista(object):
         boxs_mesh = pyvista.MultiBlock(boxs_mesh)
         return boxs_mesh
 
-    def plot(self, mesh, color=(0.5, 0.1, 0.8), opacity=1.0):
-        self.ploter.add_mesh(mesh, color=color, opacity=opacity)
+    @staticmethod
+    def create_complex_tube(xyzs:np.array, capping, radius, scalars=None):
+        pointCloud_mesh = pyvista.PolyData(xyzs)
+        the_cell = np.arange(0, xyzs.shape[0], 1)
+        the_cell = np.insert(the_cell, 0, xyzs.shape[0])
+        pointCloud_mesh.lines = the_cell
+        if scalars is not None:
+            pointCloud_mesh["scalars"] = scalars
+            tube_mesh = pointCloud_mesh.tube(
+                radius=radius, capping=capping, scalars='scalars', 
+                # radius_factor=2.0,
+                absolute=True
+            )
+        else:
+            tube_mesh = pointCloud_mesh.tube(radius=radius, capping=capping)
+        return tube_mesh
+
+    def plot(self, mesh, color=(0.5, 0.1, 0.8), opacity=1.0, style=None):
+        self.ploter.add_mesh(mesh, color=color, opacity=opacity, style=style)
 
     def show(self):
         self.ploter.show()

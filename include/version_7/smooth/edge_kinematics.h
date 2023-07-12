@@ -133,7 +133,7 @@ public:
     // _error[0] = 1.0 - ( deltaS1 / deltaS1.norm() ).dot( deltaS2 / deltaS2.norm() );
 
     double cosTheta_anti = 1.0 - ( deltaS1 / deltaS1.norm() ).dot( deltaS2 / deltaS2.norm() );
-    _error[0] = std::max( cosTheta_anti - (1.0 - targetValue), 0.0 ) * kSpring;
+    _error[0] = std::max( cosTheta_anti - targetValue, 0.0 ) * kSpring;
 
     // Try to Solve Cos Gradient Problem, But it's too unstable (Fail)
     // double cosTheta_anti = 1.0 - ( deltaS1 / deltaS1.norm() ).dot( deltaS2 / deltaS2.norm() );
@@ -152,7 +152,7 @@ public:
 
     double cosTheta = ( deltaS1 / deltaS1.norm() ).dot( deltaS2 / deltaS2.norm() );
     double cosTheta_anti = 1.0 - cosTheta;
-    double loss = std::max( cosTheta_anti - (1.0 - targetValue), 0.0 ) * kSpring;
+    double loss = std::max( cosTheta_anti - targetValue, 0.0 ) * kSpring;
     double theta = std::acos(cosTheta);
 
     // double theta = std::acos( ( deltaS1 / deltaS1.norm() ).dot( deltaS2 / deltaS2.norm() ) );
@@ -219,14 +219,14 @@ public:
 
     Eigen::Vector3d deltaS1 = conf2->position() - conf1->position();
 
-    // _error[0] = 1.0 - ( deltaS1 / deltaS1.norm() ).dot( orientation / orientation.norm() );
+    _error[0] = 1.0 - ( deltaS1 / deltaS1.norm() ).dot( orientation / orientation.norm() );
 
-    double cosTheta_anti = 1.0 - ( deltaS1 / deltaS1.norm() ).dot( orientation / orientation.norm() );
-    _error[0] = std::max( cosTheta_anti - (1.0 - targetValue), 0.0 ) * kSpring;
+    // double cosTheta = 1.0 - ( deltaS1 / deltaS1.norm() ).dot( orientation / orientation.norm() );
+    // _error[0] = std::max( cosTheta - targetValue, 0.0 ) * kSpring;
 
     // Try to Solve Cos Gradient Problem, But it's too unstable, only Using it at First
     // double cosTheta_anti = 1.0 - ( deltaS1 / deltaS1.norm() ).dot( orientation / orientation.norm() );
-    // _error[0] = std::max( cosTheta_anti / (1.0 - targetValue) - 1.0, 0.0 ) * kSpring;
+    // _error[0] = std::max( cosTheta_anti / targetValue - 1.0, 0.0 ) * kSpring;
 
     // Very Teriable Cause Using Acos 
     // double theta = std::acos( ( deltaS1 / deltaS1.norm() ).dot( orientation / orientation.norm() ) );
@@ -240,7 +240,7 @@ public:
 
     double cosTheta = ( deltaS1 / deltaS1.norm() ).dot( orientation / orientation.norm() );
     double cosTheta_anti = 1.0 - cosTheta;
-    double loss = std::max( cosTheta_anti - (1.0 - targetValue), 0.0 ) * kSpring;
+    double loss = std::max( cosTheta_anti - targetValue, 0.0 ) * kSpring;
     double theta = std::acos(cosTheta);
 
     // double theta = std::acos( ( deltaS1 / deltaS1.norm() ).dot( orientation / orientation.norm() ) );

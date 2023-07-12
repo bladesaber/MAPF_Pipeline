@@ -3,23 +3,22 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import math
 import json
+import os
 
 from scripts.visulizer import VisulizerVista
 
 from build import mapf_pipeline
 
-grid_json_file = '/home/quan/Desktop/MAPF_Pipeline/scripts/version_7/app_dir/grid_env_cfg.json'
+grid_json_file = '/home/quan/Desktop/tempary/application_pipe/cond.json'
 with open(grid_json_file, 'r') as f:
     env_config = json.load(f)
 
-obs_df = pd.read_csv(env_config['static_grid_obs_pcd'], index_col=0)
-wall_obs_df = pd.read_csv(env_config['wall_obs_pcd'], index_col=0)
-obs_df = pd.concat([obs_df, wall_obs_df], axis=0, ignore_index=True)
+obs_df = pd.read_csv(env_config['obstacleSavePath'], index_col=0)
 
-pathRes = np.load('/home/quan/Desktop/MAPF_Pipeline/scripts/version_7/app_dir/res.npy', allow_pickle=True).item()
+pathRes = np.load(os.path.join(env_config['projectDir'], 'res.npy'), allow_pickle=True).item()
 
 group_keys = [0, 1, 2, 3, 4]
-# group_keys = [4]
+# group_keys = [0, 1, 2]
 
 groupAgentConfig = {}
 for pipeConfig in env_config['pipeConfig']:
@@ -35,16 +34,16 @@ for pipeConfig in env_config['pipeConfig']:
 groupAgentLinks = {
     0: [
         ### elasticBand_weight=0.1 kinematic_weight=10.0,
-        {"start": 'p', 'end': 'p1', 'startFlexRatio': 0.0, 'endFlexRatio': 0.2},
-        {"start": 'p', 'end': 'M1', 'startFlexRatio': 0.0, 'endFlexRatio': 0.4},
-        {"start": 'p', 'end': 'p_valve', 'startFlexRatio': 0.0, 'endFlexRatio': 0.2}
+        {"start": 'p', 'end': 'p1', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0},
+        {"start": 'p', 'end': 'M1', 'startFlexRatio': 0.0, 'endFlexRatio': 0.5},
+        {"start": 'p', 'end': 'p_valve', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
     ],
     1: [
-        {"start": 'B_valve', 'end': 'M3', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0},
-        {"start": 'B_valve', 'end': 'B', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
+        {"start": 'B', 'end': 'M3', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0},
+        {"start": 'B', 'end': 'B_valve', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
     ],
     2: [
-        {"start": 'T_valve', 'end': 'T', 'startFlexRatio': 0.2, 'endFlexRatio': 0.0},
+        {"start": 'T_valve', 'end': 'T', 'startFlexRatio': 0.4, 'endFlexRatio': 0.0},
         {"start": 'A2T', 'end': 'T', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
     ],
     3: [
@@ -52,15 +51,13 @@ groupAgentLinks = {
         {"start": 'A_valve', 'end': 'A2valve_02', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
     ],
     4: [
-        # {"start": 'valve_01', 'end': 'A', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0},
-        # {"start": 'valve_02', 'end': 'A', 'startFlexRatio': 0.25, 'endFlexRatio': 0.0},
-        # {"start": 'valve_03','end': 'A', 'startFlexRatio': 0.45, 'endFlexRatio': 0.0},
-        # {"start": 'valve_03','end': 'M2', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
+        ### TODO 这里出现问题的原因在于使用了 多进口多出口情景
+        {"start": 'valve_01', 'end': 'A', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0},
+        {"start": 'valve_02', 'end': 'A', 'startFlexRatio': 0.35, 'endFlexRatio': 0.0},
+        {"start": 'valve_03','end': 'A', 'startFlexRatio': 0.35, 'endFlexRatio': 0.0},
+        {"start": 'M2','end': 'A', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
 
-        {"start": 'valve_01', 'end': 'valve_02', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0},
-        {"start": 'valve_02', 'end': 'A', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0},
-        {"start": 'valve_03','end': 'A', 'startFlexRatio': 0.45, 'endFlexRatio': 0.0},
-        {"start": 'valve_03','end': 'M2', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
+        # {"start": 'valve_03','end': 'M2', 'startFlexRatio': 0.0, 'endFlexRatio': 0.0}
     ]
 }
 
@@ -70,9 +67,9 @@ smoother.initOptimizer()
 xmin=0.0
 ymin=0.0
 zmin=0.0
-xmax=63.0
-ymax=63.0
-zmax=63.0
+xmax=env_config['grid_x']
+ymax=env_config['grid_y']
+zmax=env_config['grid_z']
 smoother.setBoundary(xmin=xmin, ymin=ymin, zmin=zmin, xmax=xmax, ymax=ymax, zmax=zmax)
 
 for idx, row in obs_df.iterrows():
@@ -161,6 +158,7 @@ def run_smooth(
 
     ### Step 3.3 Update Vertex to Node
     smoother.update2groupVertex()
+    smoother.updateGroupTrees()
 
     # ### Step 2.4 Clear Graph
     smoother.clear_graph()
@@ -176,27 +174,27 @@ def run_smooth(
     # )
     # print()
 
-for outer_i in range(50):
-    # smoother.elasticBand_targetLength = 0.1
-    smoother.elasticBand_minLength = 0.5
-
+### ------------------------------------------
+smoother.updateGroupTrees()
+for outer_i in range(500):
     run_smooth(
         smoother=smoother,
         elasticBand_weight=1.0,
-        kinematic_weight=5.0,
-        obstacle_weight=0.0,
-        pipeConflict_weight=0.0,
+        kinematic_weight=10.0,
+        obstacle_weight=30.0,
+        pipeConflict_weight=30.0,
         boundary_weight=0.0,
         run_times=10
     )
 
     ### ------ Debug Vis path
-    if outer_i % 100 == 0:
+    if outer_i % 500 == 0:
+        '''
         fig = plt.figure()
         ax = fig.add_subplot(projection='3d')
-        ax.set_xlim3d(-1, 63)
-        ax.set_ylim3d(-1, 63)
-        ax.set_zlim3d(-1, 63)
+        ax.set_xlim3d(-1, xmax+1)
+        ax.set_ylim3d(-1, ymax+1)
+        ax.set_zlim3d(-1, zmax+1)
 
         colors = np.random.uniform(0.0, 1.0, (5, 3))
         for groupIdx in group_keys:
@@ -225,10 +223,43 @@ for outer_i in range(50):
                 ax.plot(path_xyz[:, 0], path_xyz[:, 1], path_xyz[:, 2], '*-', c=colors[groupIdx])
         
         plt.show()
-    
+        '''
+
+        vis = VisulizerVista()
+        obstacls_df = obs_df[obs_df['tag'] == 'Obstacle']
+        obstacle_mesh = vis.create_pointCloud(obstacls_df[['x', 'y', 'z']].values)
+        vis.plot(obstacle_mesh, (0.0, 1.0, 0.0))
+
+        colors = np.random.uniform(0.0, 1.0, (5, 3))
+        for groupIdx in group_keys:
+            groupPath = smoother.groupMap[groupIdx]
+
+            for pathIdx in groupPath.graphPathMap.keys():
+                nodeIdxs_path = groupPath.graphPathMap[pathIdx]
+
+                path_xyz = []
+                for idx, nodeIdx in enumerate(nodeIdxs_path):
+                    node = groupPath.graphNodeMap[nodeIdx]
+                    path_xyz.append([node.x, node.y, node.z])
+                path_xyz = np.array(path_xyz)
+                
+                resInfo = res_config[groupIdx][pathIdx]
+                tube_mesh = vis.create_tube(path_xyz, radius=resInfo['grid_radius'])
+                vis.plot(tube_mesh, color=tuple(colors[groupIdx]))
+
+        vis.ploter.add_axes(line_width=5)
+        vis.show()
+
     print("Runing Iteration %d ......" % outer_i)
 
 ### ------ Save Result
+def polar2vec(polarVec, length=1.0):
+    dz = length * math.sin(polarVec[1])
+    dl = length * math.cos(polarVec[1])
+    dx = dl * math.cos(polarVec[0])
+    dy = dl * math.sin(polarVec[0])
+    return np.array([dx, dy, dz])
+
 for groupIdx in group_keys:
     groupPath = smoother.groupMap[groupIdx]
 
@@ -240,24 +271,78 @@ for groupIdx in group_keys:
             node = groupPath.graphNodeMap[nodeIdx]
             path_xyzr.append([node.x, node.y, node.z, node.radius])
         path_xyzr = np.array(path_xyzr)
+        
+        resInfo = res_config[groupIdx][pathIdx]
 
-        res_config[groupIdx][pathIdx]['path_xyzr'] = path_xyzr
-np.save('/home/quan/Desktop/MAPF_Pipeline/scripts/version_7/app_dir/resPath_config.npy', res_config)
+        # start_vec = polar2vec(resInfo['startDire'])
+        # interplot_xyz = path_xyzr[0, :3] + start_vec * 0.2
+        # start_interplot_xyzr = np.array([interplot_xyz[0], interplot_xyz[1], interplot_xyz[2], path_xyzr[0, 3]])
+
+        # end_vec = polar2vec(resInfo['endDire'])
+        # interplot_xyz = path_xyzr[-1, :3] - end_vec * 0.2
+        # end_interplot_xyzr = np.array([interplot_xyz[0], interplot_xyz[1], interplot_xyz[2], path_xyzr[-1, 3]])
+
+        # path_xyzr = np.concatenate([
+        #     path_xyzr[0, :].reshape((1, -1)),
+        #     start_interplot_xyzr.reshape((1, -1)),
+        #     path_xyzr[1:-1, :],
+        #     end_interplot_xyzr.reshape((1, -1)),
+        #     path_xyzr[-1, :].reshape((1, -1)),
+        # ])
+
+        resInfo['path_xyzr'] = path_xyzr
+
+np.save(os.path.join(env_config['projectDir'], 'resPath_config.npy'), res_config)
 
 ### ------ Debug Vis 
-# vis = VisulizerVista()
-# obstacle_mesh = vis.create_pointCloud(obs_df[['x', 'y', 'z']].values)
-# vis.plot(obstacle_mesh, (0.0, 1.0, 0.0))
+vis = VisulizerVista()
+obstacle_mesh = vis.create_pointCloud(obs_df[['x', 'y', 'z']].values)
+vis.plot(obstacle_mesh, (0.0, 1.0, 0.0))
 
-# colors = np.random.uniform(0.0, 1.0, (5, 3))
-# for groupIdx in group_keys:
-#     res_info = res_config[groupIdx]
+colors = np.random.uniform(0.0, 1.0, (5, 3))
+for groupIdx in group_keys:
+    res_info = res_config[groupIdx]
         
+    for pathIdx in res_info.keys():
+        path_info = res_info[pathIdx]
+        path_xyzr = path_info['path_xyzr']
+        tube_mesh = vis.create_tube(path_xyzr[:, :3], radius=path_info['grid_radius'])
+        vis.plot(tube_mesh, color=tuple(colors[groupIdx]))
+
+vis.show()
+
+# fig = plt.figure()
+# ax = fig.add_subplot(projection='3d')
+# ax.set_xlim3d(-1, env_config['grid_x'] + 1)
+# ax.set_ylim3d(-1, env_config['grid_y'] + 1)
+# ax.set_zlim3d(-1, env_config['grid_z'] + 1)
+
+# for groupIdx in res_config.keys():
+#     res_info = res_config[groupIdx]
+
 #     for pathIdx in res_info.keys():
 #         path_info = res_info[pathIdx]
 #         path_xyzr = path_info['path_xyzr']
-#         tube_mesh = vis.create_tube(path_xyzr[:, :3], radius=path_info['grid_radius'])
-#         vis.plot(tube_mesh, color=tuple(colors[groupIdx]))
+#         ax.plot(path_xyzr[:, 0], path_xyzr[:, 1], path_xyzr[:, 2], '*-', c=colors[groupIdx])
+        
+#         alpha0, theta0 = path_info['startDire']
+#         dz = math.sin(theta0)
+#         dx = math.cos(theta0) * math.cos(alpha0)
+#         dy = math.cos(theta0) * math.sin(alpha0)
+#         ax.quiver(
+#             path_xyzr[0, 0], path_xyzr[0, 1], path_xyzr[0, 2], 
+#             dx, dy, dz, 
+#             length=5.0, normalize=True, color='r'
+#         )
 
-# vis.show()
+#         alpha0, theta0 = path_info['endDire']
+#         dz = math.sin(theta0)
+#         dx = math.cos(theta0) * math.cos(alpha0)
+#         dy = math.cos(theta0) * math.sin(alpha0)
+#         ax.quiver(
+#             path_xyzr[-1, 0], path_xyzr[-1, 1], path_xyzr[-1, 2], 
+#             dx, dy, dz, 
+#             length=5.0, normalize=True, color='r'
+#         )
 
+# plt.show()

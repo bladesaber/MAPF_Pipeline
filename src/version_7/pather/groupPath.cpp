@@ -212,4 +212,14 @@ bool GroupPath::insert_OptimizePath(
     graphPathMap[pathIdx] = graphNodePath;
 }
 
+void GroupPath::updateGraphTree(){
+    delete graphTree;
+    graphTree = new KDTree_XYZRA();
+
+    for (auto iter : graphNodeMap){
+        FlexGraphNode* node = iter.second;
+        graphTree->insertNode(node->nodeIdx, node->x, node->y, node->z, node->radius, 0.0, 0.0);
+    }
+}
+
 }

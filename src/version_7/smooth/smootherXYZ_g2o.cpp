@@ -124,9 +124,7 @@ bool SmootherXYZG2O::add_elasticBand(double elasticBand_weight){
                 }
                 explored_set.insert(tag);
                 
-                EdgeXYZ_ElasticBand* edge = new EdgeXYZ_ElasticBand(
-                    elasticBand_minLength, elasticBand_kSpring, elasticBand_targetLength
-                );
+                EdgeXYZ_ElasticBand* edge = new EdgeXYZ_ElasticBand(elasticBand_kSpring);
                 edge->setVertex(0, node0->vertex);
                 edge->setVertex(1, node1->vertex);
 
@@ -178,25 +176,19 @@ bool SmootherXYZG2O::add_kinematicEdge(double kinematic_weight){
                 // double current_loss;
                 if ( node0->fixed )
                 {
-                    double dz = std::sin(node0->theta);
-                    double dx = std::cos(node0->theta) * std::cos(node0->alpha);
-                    double dy = std::cos(node0->theta) * std::sin(node0->alpha);
+                    double dx, dy, dz; 
+                    std::tie(dx, dy, dz) = polar2Vec(node0->alpha, node0->theta);
                     Eigen::Vector3d orientation = Eigen::Vector3d(dx, dy, dz);
                     // std::cout << "[DEBGUG]: BeginOrientation ( dx:" << dx << " dy:" << dy << " dz:" << dz << ")" << std::endl;
 
                     double length = norm2_distance(node0->x, node0->y, node0->z, node1->x, node1->y, node1->z);
-                    double cosTheta_target = std::cos( 1.0 / (3.0 * node1->radius) * length);
-                    // double theta_target = 1.0 / (3.0 * node1->radius) * length;
-                    // double cosTheta_target = std::cos( 1.0 / (3.0 * node1->radius) );
+                    double cosTheta_target = 1.0 - std::cos( 1.0 / (3.0 * node1->radius) * length);
 
-                    EdgeXYZ_VertexKinematics* edge = new EdgeXYZ_VertexKinematics(
-                        orientation, cosTheta_target, vertexKinematic_kSpring
-                    );
+                    EdgeXYZ_VertexKinematics* edge = new EdgeXYZ_VertexKinematics(orientation, cosTheta_target, vertexKinematic_kSpring);
                     edge->setVertex(0, node0->vertex);
                     edge->setVertex(1, node1->vertex);
 
                     Eigen::Matrix<double,1,1> information;
-                    // information.fill( kinematic_weight * current_loss );
                     information.fill( kinematic_weight );
                     edge->setInformation(information);
 
@@ -206,27 +198,19 @@ bool SmootherXYZG2O::add_kinematicEdge(double kinematic_weight){
                     }  
                     
                 }else if ( node2->fixed ){
-                    double dz = std::sin(node2->theta);
-                    double dx = std::cos(node2->theta) * std::cos(node2->alpha);
-                    double dy = std::cos(node2->theta) * std::sin(node2->alpha);
+                    double dx, dy, dz; 
+                    std::tie(dx, dy, dz) = polar2Vec(node2->alpha, node2->theta);
                     Eigen::Vector3d orientation = Eigen::Vector3d(dx, dy, dz);
                     // std::cout << "[DEBGUG]: EndOrientation ( dx:" << dx << " dy:" << dy << " dz:" << dz << ")" << std::endl;
 
                     double length = norm2_distance(node1->x, node1->y, node1->z, node2->x, node2->y, node2->z);
-                    double cosTheta_target = std::cos( 1.0 / (3.0 * node1->radius) * length);
-                    // double theta_target = 1.0 / (3.0 * node1->radius) * length;
-                    // double cosTheta_target = std::cos( 1.0 / (3.0 * node1->radius) );
+                    double cosTheta_target = 1.0 - std::cos( 1.0 / (3.0 * node1->radius) * length);
 
-                    EdgeXYZ_VertexKinematics* edge = new EdgeXYZ_VertexKinematics(
-                        orientation, cosTheta_target, vertexKinematic_kSpring
-                    );
+                    EdgeXYZ_VertexKinematics* edge = new EdgeXYZ_VertexKinematics(orientation, cosTheta_target, vertexKinematic_kSpring);
                     edge->setVertex(0, node1->vertex);
                     edge->setVertex(1, node2->vertex);
 
-                    // current_loss = EdgeXYZ_VertexKinematics::lost_calc(node1->vertex, node2->vertex, orientation);
-
                     Eigen::Matrix<double,1,1> information;
-                    // information.fill( kinematic_weight * current_loss );
                     information.fill( kinematic_weight );
                     edge->setInformation(information); 
 
@@ -240,19 +224,14 @@ bool SmootherXYZG2O::add_kinematicEdge(double kinematic_weight){
                     norm2_distance(node0->x, node0->y, node0->z, node1->x, node1->y, node1->z),
                     norm2_distance(node1->x, node1->y, node1->z, node2->x, node2->y, node2->z)
                 );
-                double cosTheta_target = std::cos( 1.0 / (3.0 * std::min(node1->radius, node2->radius)) * length);
-                // double theta_target = 1.0 / (3.0 * std::min(node1->radius, node2->radius)) * length;
-                // double cosTheta_target = std::cos( 1.0 / (3.0 * std::min(node1->radius, node2->radius)) );
+                double cosTheta_target = 1.0 - std::cos( 1.0 / (3.0 * std::min(node1->radius, node2->radius)) * length);
 
                 EdgeXYZ_Kinematics* edge = new EdgeXYZ_Kinematics(cosTheta_target, edgeKinematic_kSpring);
                 edge->setVertex(0, node0->vertex);
                 edge->setVertex(1, node1->vertex);
                 edge->setVertex(2, node2->vertex);
 
-                // current_loss = EdgeXYZ_Kinematics::lost_calc(node0->vertex, node1->vertex, node2->vertex);
-
                 Eigen::Matrix<double,1,1> information;
-                // information.fill( kinematic_weight * current_loss );
                 information.fill( kinematic_weight );
                 edge->setInformation(information); 
 
@@ -284,6 +263,7 @@ bool SmootherXYZG2O::add_obstacleEdge(double obstacle_weight){
                 continue;
             }
             
+            // 膨胀搜索主要是为了可以执行多步优化
             resList.clear();
             obsTree->nearest_range(node->x, node->y, node->z, node->radius * obstacle_detection_scale, resList);
 
@@ -296,7 +276,7 @@ bool SmootherXYZG2O::add_obstacleEdge(double obstacle_weight){
                 }
 
                 EdgeXYZ_Obstacle* edge = new EdgeXYZ_Obstacle(
-                    Eigen::Vector3d(res->x, res->y, res->z), (node->radius + res->data->radius) * 1.01
+                    Eigen::Vector3d(res->x, res->y, res->z), (node->radius + res->data->radius) * 1.5
                 );
                 edge->setVertex(0, node->vertex);
 
@@ -428,36 +408,26 @@ void SmootherXYZG2O::loss_report(
 
                 if (i == 1)
                 {
-                    dz = std::sin(node0->theta);
-                    dx = std::cos(node0->theta) * std::cos(node0->alpha);
-                    dy = std::cos(node0->theta) * std::sin(node0->alpha);
+                    double dx, dy, dz; 
+                    std::tie(dx, dy, dz) = polar2Vec(node0->alpha, node0->theta);
                     Eigen::Vector3d orientation = Eigen::Vector3d(dx, dy, dz);
                     // std::cout << "  NormOrient ( dx:" << dx << " dy:" << dy << " dz:" << dz << ")" << std::endl;
 
                     double length = norm2_distance(node0->x, node0->y, node0->z, node1->x, node1->y, node1->z);
-                    double cosTheta_target = std::cos( 1.0 / (3.0 * node1->radius) * length);
-                    // double cosTheta_target = std::cos( 1.0 / (3.0 * node1->radius) );
-
-                    loss = EdgeXYZ_VertexKinematics::lost_calc(
-                        node0->vertex, node1->vertex, orientation, cosTheta_target, vertexKinematic_kSpring
-                    );
+                    double cosTheta_target = 1.0 - std::cos( 1.0 / (3.0 * node1->radius) * length);
+                    loss = EdgeXYZ_VertexKinematics::lost_calc(node0->vertex, node1->vertex, orientation, cosTheta_target, vertexKinematic_kSpring);
                     
                     kinematic_cost += loss;
 
                 }else if ( i == nodeIdxs_path.size() - 2){
-                    dz = std::sin(node2->theta);
-                    dx = std::cos(node2->theta) * std::cos(node2->alpha);
-                    dy = std::cos(node2->theta) * std::sin(node2->alpha);
+                    double dx, dy, dz; 
+                    std::tie(dx, dy, dz) = polar2Vec(node2->alpha, node2->theta);
                     Eigen::Vector3d orientation = Eigen::Vector3d(dx, dy, dz);
                     // std::cout << "  NormOrient ( dx:" << dx << " dy:" << dy << " dz:" << dz << ")" << std::endl;
 
                     double length = norm2_distance(node1->x, node1->y, node1->z, node2->x, node2->y, node2->z);
-                    double cosTheta_target = std::cos( 1.0 / (3.0 * node1->radius) * length);
-                    // double cosTheta_target = std::cos( 1.0 / (3.0 * node1->radius) );
-
-                    loss = EdgeXYZ_VertexKinematics::lost_calc(
-                        node1->vertex, node2->vertex, orientation, cosTheta_target, vertexKinematic_kSpring
-                    );
+                    double cosTheta_target = 1.0 - std::cos( 1.0 / (3.0 * node1->radius) * length);
+                    loss = EdgeXYZ_VertexKinematics::lost_calc(node1->vertex, node2->vertex, orientation, cosTheta_target, vertexKinematic_kSpring);
                     
                     kinematic_cost += loss;
                 }
@@ -482,9 +452,7 @@ void SmootherXYZG2O::loss_report(
             if ( i < nodeIdxs_path.size() - 1){
                 node0 = groupPath->graphNodeMap[nodeIdxs_path[i]];
                 node1 = groupPath->graphNodeMap[nodeIdxs_path[i + 1]];
-                loss = EdgeXYZ_ElasticBand::lost_calc(
-                    node0->vertex, node1->vertex, elasticBand_minLength, elasticBand_targetLength, elasticBand_kSpring
-                );
+                loss = EdgeXYZ_ElasticBand::lost_calc(node0->vertex, node1->vertex, elasticBand_kSpring);
                 elasticBand_cost += loss;
             }
         }

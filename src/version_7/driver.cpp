@@ -175,8 +175,6 @@ PYBIND11_MODULE(mapf_pipeline, m) {
 
     py::class_<SmootherNameSpace::SmootherXYZG2O>(m, "SmootherXYZG2O")
         .def(py::init<>())
-        .def_readwrite("elasticBand_minLength", &SmootherNameSpace::SmootherXYZG2O::elasticBand_minLength)
-        .def_readwrite("elasticBand_targetLength", &SmootherNameSpace::SmootherXYZG2O::elasticBand_targetLength)
         .def_readwrite("elasticBand_kSpring", &SmootherNameSpace::SmootherXYZG2O::elasticBand_kSpring)
         .def_readwrite("vertexKinematic_kSpring", &SmootherNameSpace::SmootherXYZG2O::vertexKinematic_kSpring)
         .def_readwrite("edgeKinematic_kSpring", &SmootherNameSpace::SmootherXYZG2O::edgeKinematic_kSpring)
@@ -219,6 +217,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
         .def("optimizeGraph", &SmootherNameSpace::SmootherXYZG2O::optimizeGraph, "no_iterations"_a, "verbose"_a)
         .def("clear_graph", &SmootherNameSpace::SmootherXYZG2O::clear_graph)
         .def("update2groupVertex", &SmootherNameSpace::SmootherXYZG2O::update2groupVertex)
+        .def("updateGroupTrees", &SmootherNameSpace::SmootherXYZG2O::updateGroupTrees)
         .def("info", &SmootherNameSpace::SmootherXYZG2O::info);
 
     // it don't work, I don't know why

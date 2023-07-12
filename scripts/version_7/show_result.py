@@ -8,24 +8,20 @@ import matplotlib.pyplot as plt
 from scripts.visulizer import VisulizerVista
 from scripts.version_6 import o3d_helper
 
-grid_json_file = '/home/quan/Desktop/MAPF_Pipeline/scripts/version_7/app_dir/grid_env_cfg.json'
+grid_json_file = '/home/quan/Desktop/tempary/application_pipe/cond.json'
 with open(grid_json_file, 'r') as f:
     env_config = json.load(f)
 
-res_config = np.load(
-    '/home/quan/Desktop/MAPF_Pipeline/scripts/version_7/app_dir/resPath_config.npy', 
-    allow_pickle=True
-).item()
+res_config = np.load(os.path.join(env_config['projectDir'], 'resPath_config.npy'), allow_pickle=True).item()
 
 vis = VisulizerVista()
 
-obs_df = pd.read_csv(env_config['static_grid_obs_pcd'], index_col=0)
-obstacle_mesh = vis.create_pointCloud(obs_df[['x', 'y', 'z']].values)
-vis.plot(obstacle_mesh, (1.0, 0.5, 0.25), opacity=1.0)
+obs_df = pd.read_csv(env_config['obstacleSavePath'], index_col=0)
+wall_mesh = vis.create_pointCloud(obs_df[obs_df['tag'] == 'Wall'][['x', 'y', 'z']].values)
+vis.plot(wall_mesh, color=(0.5, 0.5, 0.5), opacity=1.0)
 
-wall_obs_df = pd.read_csv(env_config['wall_obs_pcd'], index_col=0)
-obstacle_mesh = vis.create_pointCloud(wall_obs_df[['x', 'y', 'z']].values)
-vis.plot(obstacle_mesh, (0.5, 0.5, 0.5), opacity=0.5)
+obstacle_mesh = vis.create_pointCloud(obs_df[obs_df['tag'] == 'Obstacle'][['x', 'y', 'z']].values)
+vis.plot(obstacle_mesh, color=(1.0, 0.5, 0.25), opacity=0.5)
 
 # for file in os.listdir(env_config['mesh_dir']):
 #     path = os.path.join(env_config['mesh_dir'], file)

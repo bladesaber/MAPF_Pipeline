@@ -3,20 +3,20 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import json
 import math
+import os
 
 from build import mapf_pipeline
 from scripts.version_6.cbs_planner import CBS_Planner
 
-grid_json_file = '/home/quan/Desktop/MAPF_Pipeline/scripts/version_7/app_dir/grid_env_cfg.json'
-with open(grid_json_file, 'r') as f:
+cond_json_file = '/home/quan/Desktop/tempary/application_pipe/cond.json'
+with open(cond_json_file, 'r') as f:
     env_config = json.load(f)
 
-obs_df = pd.read_csv(env_config['static_grid_obs_pcd'], index_col=0)
-wall_obs_df = pd.read_csv(env_config['wall_obs_pcd'], index_col=0)
-obs_df = pd.concat([obs_df, wall_obs_df], axis=0, ignore_index=True)
+obs_df = pd.read_csv(env_config['obstacleSavePath'], index_col=0)
+print('[DEBUG]: Obstacle Num:', obs_df.shape[0])
 
 ### Step1 ------ auto compute path
-instance = mapf_pipeline.Instance(env_config['x'], env_config['y'], env_config['z'])
+instance = mapf_pipeline.Instance(env_config['grid_x'], env_config['grid_y'], env_config['grid_z'])
 cbs_planner = CBS_Planner(
     config=env_config, 
     instance=instance, 
@@ -25,6 +25,6 @@ cbs_planner = CBS_Planner(
 res = cbs_planner.solve()
 if res['status']:
     result = res['res']
-    np.save(
-        '/home/quan/Desktop/MAPF_Pipeline/scripts/version_7/app_dir/res.npy', result
-    )
+    np.save(os.path.join(env_config['projectDir'], 'res.npy'), result)
+else:
+    print("Not Found")

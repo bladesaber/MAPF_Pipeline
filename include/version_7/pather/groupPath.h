@@ -136,6 +136,8 @@ public:
         double startFlexRatio, double endFlexRatio
     );
 
+    void updateGraphTree();
+
 private:
     void release(){
         for (auto iter : pathNodeMap)

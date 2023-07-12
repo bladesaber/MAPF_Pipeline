@@ -3,8 +3,10 @@ import pandas as pd
 import math
 
 import pyvista
+import pymeshfix
+import trimesh
 
-class MeshHelper(object):
+class MeshHelper_Vista(object):
     def create_cylinder(self, center_xyz, direction, radius, height):
         mesh = pyvista.Cylinder(center=center_xyz, direction=direction, radius=radius, height=height)
         return mesh
@@ -307,3 +309,50 @@ class MeshHelper(object):
 
         pcd_mesh = pyvista.PolyData(pointCloud)
         pcd_mesh.plot(style=style, opacity=opacity)
+
+    @staticmethod
+    def unstructedGird2polyData(unstructGrid):
+        mesh = pyvista.PolyData(
+            unstructGrid.points, np.array(unstructGrid.cells).reshape((-1, 4))
+        )
+        return mesh
+
+    @staticmethod
+    def polyData2PyTMesh(mesh:pyvista.PolyData):
+        tin_mesh = pymeshfix.PyTMesh()
+        tin_mesh.load_array(
+            mesh.points,
+            mesh.faces.reshape((-1, 4))[:, 1:]
+        )
+        return tin_mesh
+
+    @staticmethod
+    def pyTMesh2Polydata(tin_mesh:pymeshfix.PyTMesh):
+        vert, faces = tin_mesh.return_arrays()
+        triangles = np.empty((faces.shape[0], 4), dtype=faces.dtype)
+        triangles[:, -3:] = faces
+        triangles[:, 0] = 3
+        mesh = pyvista.PolyData(vert, triangles)
+        return mesh
+
+    @staticmethod
+    def find_InOutSide(mesh_split, mesh1_boundary):
+        select_mesh = mesh_split.select_enclosed_points(mesh1_boundary)
+        inside_mesh = select_mesh.threshold(0.9)
+        outside_mesh = select_mesh.threshold(0.9, invert=True)
+        return MeshHelper_Vista.unstructedGird2polyData(inside_mesh), MeshHelper_Vista.unstructedGird2polyData(outside_mesh)
+    
+    @staticmethod
+    def create_Tube(xyzs:np.array, radius=0.5):
+        pointCloud_mesh = pyvista.PolyData(xyzs)
+        the_cell = np.arange(0, xyzs.shape[0], 1)
+        the_cell = np.insert(the_cell, 0, xyzs.shape[0])
+        pointCloud_mesh.lines = the_cell
+        # pointCloud_mesh["scalars"] = np.arange(pointCloud_mesh.n_points)
+        pointCloud_mesh["scalars"] = np.ones((pointCloud_mesh.n_points, )) * radius
+        mesh = pointCloud_mesh.tube(
+            radius=None, capping=True, scalars='scalars', 
+            # radius_factor=2.0,
+            absolute=True
+        )
+        return mesh
