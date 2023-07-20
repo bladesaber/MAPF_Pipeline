@@ -70,9 +70,9 @@ def create_obstacleXYZs(env_cfg, obstacle_config, obstacleReso, scale=1.0):
         semi_yLength = y_length / 2.0
         semi_zLength = z_length / 2.0
 
-        xSteps = math.ceil(x_length / obstacleReso)
-        ySteps = math.ceil(y_length / obstacleReso)
-        zSteps = math.ceil(z_length / obstacleReso)
+        xSteps = max(math.ceil(x_length / obstacleReso), 2)
+        ySteps = max(math.ceil(y_length / obstacleReso), 2)
+        zSteps = max(math.ceil(z_length / obstacleReso), 2)
 
         if cfg['type'] == 'Wall':
             xyzs = createBoxWall(
@@ -192,6 +192,8 @@ def show_env(env_cfg):
 
     obstacle_mesh = vis.create_pointCloud(obs_df[obs_df['tag'] == 'Obstacle'][['x', 'y', 'z']].values)
     vis.plot(obstacle_mesh, color=(1.0, 0.5, 0.25), opacity=1.0)
+
+    vis.ploter.add_axes()
 
     vis.show()
 

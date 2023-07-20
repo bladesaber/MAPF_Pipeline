@@ -77,8 +77,8 @@ class VisulizerVista(object):
             tube_mesh = pointCloud_mesh.tube(radius=radius, capping=capping)
         return tube_mesh
 
-    def plot(self, mesh, color=(0.5, 0.1, 0.8), opacity=1.0, style=None):
-        self.ploter.add_mesh(mesh, color=color, opacity=opacity, style=style)
+    def plot(self, mesh, color=(0.5, 0.1, 0.8), opacity=1.0, style=None, show_edges=False):
+        self.ploter.add_mesh(mesh, color=color, opacity=opacity, style=style, show_edges=show_edges)
 
     def show(self):
         self.ploter.show()

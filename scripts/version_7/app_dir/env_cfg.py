@@ -9,7 +9,7 @@ env_config = {
 
     "scale": 0.35,
     "stepLength": 1.0,
-    "obstacle_resolution": 1.0,
+    "obstacle_resolution": 0.75,
 
     "pipeConfig":[
         {
@@ -110,14 +110,14 @@ env_config = {
                 },
                 {
                     "name": "A2valve_01",
-                    "position": [102, 50.0, 102.0],
+                    "position": [125.0 - 23.0, 50.0, 102.0],
                     "radius": 5.0,
                     "alpha": 0.0, 
                     "theta": 0.0
                 },
                 {
                     "name": "A2valve_02",
-                    "position": [72.0, 87.5, 110.0],
+                    "position": [72.0, 98.0 - 10.5, 125.0 - 19.5/2.0],
                     "radius": 5.0,
                     "alpha": 1.57, 
                     "theta": 0.0
@@ -129,21 +129,21 @@ env_config = {
             "pipe": [
                 {
                     "name": "valve_01",
-                    "position": [113.5, 50.0, 95.65],
+                    "position": [125.0 - 23.0/2.0, 50.0, 102.0 - 6.35],
                     "radius": 5.0,
                     "alpha": 0.0, 
                     "theta": -1.57
                 },
                 {
                     "name": "valve_02",
-                    "position": [72.0, 98.0, 105.5],
+                    "position": [72.0, 98.0, 125.0 - 19.5],
                     "radius": 5.0,
                     "alpha": 0.0, 
                     "theta": -1.57
                 },
                 {
                     "name": "valve_03",
-                    "position": [35.0, 109.0, 105.5],
+                    "position": [35.0, 109.0, 125.0 - 19.5],
                     "radius": 5.0,
                     "alpha": 0.0, 
                     "theta": -1.57
@@ -160,7 +160,7 @@ env_config = {
                     "position": [0.0, 33.0, 45.0],
                     "radius": 2.5,
                     "alpha": 0.0, 
-                    "theta": -1.57
+                    "theta": 0.0
                 }
             ]
         }

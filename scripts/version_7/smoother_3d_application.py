@@ -18,7 +18,7 @@ obs_df = pd.read_csv(env_config['obstacleSavePath'], index_col=0)
 pathRes = np.load(os.path.join(env_config['projectDir'], 'res.npy'), allow_pickle=True).item()
 
 group_keys = [0, 1, 2, 3, 4]
-# group_keys = [0, 1, 2]
+# group_keys = [4]
 
 groupAgentConfig = {}
 for pipeConfig in env_config['pipeConfig']:
@@ -176,7 +176,7 @@ def run_smooth(
 
 ### ------------------------------------------
 smoother.updateGroupTrees()
-for outer_i in range(500):
+for outer_i in range(400):
     run_smooth(
         smoother=smoother,
         elasticBand_weight=1.0,
