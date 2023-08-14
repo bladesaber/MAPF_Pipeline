@@ -8,11 +8,21 @@ import matplotlib.pyplot as plt
 from scripts.visulizer import VisulizerVista
 from scripts.version_6 import o3d_helper
 
-grid_json_file = '/home/quan/Desktop/tempary/application_pipe/cond.json'
+grid_json_file = '/home/admin123456/Desktop/temptory/application_pipe/cond.json'
 with open(grid_json_file, 'r') as f:
     env_config = json.load(f)
 
-res_config = np.load(os.path.join(env_config['projectDir'], 'resPath_config.npy'), allow_pickle=True).item()
+# res_config = np.load(os.path.join(env_config['projectDir'], 'resPath_config.npy'), allow_pickle=True).item()
+res_config = np.load('/home/admin123456/Desktop/temptory/application_pipe/resPath_config.npy', allow_pickle=True).item()
+
+# colors = np.random.uniform(0.0, 1.0, (10, 3))
+colors = np.array([
+    [1.0, 0.0, 0.0], # P
+    [0.0, 0.0, 1.0], # B
+    [1.0, 1.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [0.0, 1.0, 0.0]
+])
 
 vis = VisulizerVista()
 
@@ -27,15 +37,6 @@ vis.plot(obstacle_mesh, color=(1.0, 0.5, 0.25), opacity=0.5)
 #     path = os.path.join(env_config['mesh_dir'], file)
 #     mesh = vis.read_file(path)
 #     vis.plot(mesh, (0.5, 0.5, 0.5), opacity=0.5)
-
-# colors = np.random.uniform(0.0, 1.0, (10, 3))
-colors = np.array([
-    [1.0, 0.0, 0.0], # P
-    [0.0, 0.0, 1.0], # B
-    [1.0, 1.0, 0.0],
-    [0.0, 1.0, 0.0],
-    [0.0, 1.0, 0.0]
-])
 
 for groupIdx in res_config.keys():
     res_info = res_config[groupIdx]

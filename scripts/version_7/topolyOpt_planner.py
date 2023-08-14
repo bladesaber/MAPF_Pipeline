@@ -36,12 +36,12 @@ class TopolyOpt_Helper(object):
         #     outputDir=outputDir
         # )
         
-        for groupTag in os.listdir(outputDir):
-            groupDir = os.path.join(outputDir, groupTag)
-            self.adjustDesignSpaceInOutlet(env_config, groupDir)
+        # for groupTag in os.listdir(outputDir):
+        #     groupDir = os.path.join(outputDir, groupTag)
+        #     self.adjustDesignSpaceInOutlet(env_config, groupDir)
 
         # self.debugSearchPathTubeField(groupKeys=resPaths.keys(), saveDir=outputDir)
-        # self.vis_DesignSpace(groupKeys=resPaths.keys(), saveDir=outputDir, obs_config=self.obs_config)
+        self.vis_DesignSpace(groupKeys=resPaths.keys(), saveDir=outputDir, obs_config=self.obs_config)
 
     def compute_groupBoxStl(self, env_config, resPaths, obs_xyzs, expansionDist, xlims, ylims, zlims, outputDir):
         groupIdxs = resPaths.keys()
@@ -180,7 +180,8 @@ class TopolyOpt_Helper(object):
                         center = (pose0 + pose1) * 0.5,
                         direction = vec,
                         radius = pathInfo['grid_radius'],
-                        height = 0.6
+                        height = 0.6,
+                        resolution=25
                     )
 
                     inlet_idx = len(concat_InOutlets)
@@ -207,7 +208,8 @@ class TopolyOpt_Helper(object):
                         center = (pose0 + pose1) * 0.5,
                         direction = vec,
                         radius = pathInfo['grid_radius'],
-                        height = 0.6
+                        height = 0.6,
+                        resolution = 25
                     )
 
                     outlet_idx = len(concat_InOutlets)
@@ -696,7 +698,7 @@ class TopolyOpt_Helper(object):
         vis.show()
 
     def vis_DesignSpace(self, groupKeys, saveDir, obs_config=None):
-        # groupKeys = [4]
+        groupKeys = [0]
 
         vis = VisulizerVista()
 
@@ -715,9 +717,9 @@ class TopolyOpt_Helper(object):
             for path_stl_file in os.listdir(group_dir):
                 path = os.path.join(group_dir, path_stl_file)
 
-                # if path_stl_file.endswith('.stl') and ('path_' in path_stl_file):
-                #     mesh = pyvista.STLReader(path).read()
-                #     vis.plot(mesh, color=random_colors[idx], opacity=1.0, style='surface')
+                if path_stl_file.endswith('.stl') and ('path_' in path_stl_file):
+                    mesh = pyvista.STLReader(path).read()
+                    vis.plot(mesh, color=random_colors[idx], opacity=1.0, style='surface')
                 
                 # if path_stl_file == 'designSpace.stl':
                 #     mesh = pyvista.STLReader(path).read()
@@ -725,7 +727,7 @@ class TopolyOpt_Helper(object):
                 
                 if path_stl_file == 'designMesh.stl':
                     mesh = pyvista.STLReader(path).read()
-                    vis.plot(mesh, color=random_colors[idx], opacity=1.0, style='surface', show_edges=True)
+                    vis.plot(mesh, color=random_colors[idx], opacity=0.75, style='surface', show_edges=True)
 
         obs_xyzs = self.obs_df[self.obs_df['tag'] == 'Obstacle'][['x', 'y', 'z']].values
         obs_mesh = pyvista.PointSet(obs_xyzs)

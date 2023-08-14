@@ -11,48 +11,30 @@ set(Thirdparty_DIR ${PACKAGE_TOP_DIR}/Thirdparty)
 message("Thirdparty_DIR: " ${Thirdparty_DIR})
 
 ### I don't know why it can not work
-# find_package(PCL 1.8 REQUIRED)
-set(PCL_INCLUDE_DIRS "/usr/include/pcl-1.8")
+## find_package(PCL 1.8 REQUIRED)
+#set(PCL_INCLUDE_DIRS "/usr/include/pcl-1.8")
 ### please don't use this
-# file(GLOB PCL_LIBRARIES "/usr/lib/libpcl*.so*")
-file(GLOB PCL_LIBRARIES "/usr/lib/x86_64-linux-gnu/libpcl*.so*")
+## file(GLOB PCL_LIBRARIES "/usr/lib/libpcl*.so*")
+#file(GLOB PCL_LIBRARIES "/usr/lib/x86_64-linux-gnu/libpcl*.so*")
 
 # find_package(VTK 6.3 REQUIRED)
-set(VTK_INCLUDE_DIRS "/usr/include/vtk-6.3")
-file(GLOB VTK_LIBRARY_DIRS "/usr/lib/libvtk*.so*")
+# set(VTK_INCLUDE_DIRS "/usr/include/vtk-6.3")
+# file(GLOB VTK_LIBRARY_DIRS "/usr/lib/libvtk*.so*")
 
 find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
 
 LIST( APPEND CMAKE_MODULE_PATH ${PACKAGE_TOP_DIR}/Thirdparty/g2o/cmake_modules)
-set(G2O_ROOT /usr/local/include/g2o)
+#set(G2O_ROOT /usr/local/include/g2o)
 find_package(G2O REQUIRED)
 
 message("Boost_INCLUDE_DIRS: " ${Boost_INCLUDE_DIRS})
-message("PCL_INCLUDE_DIR: " ${PCL_INCLUDE_DIRS})
-message("PCL_LIBRARY_DIR: " ${PCL_LIBRARIES})
+# message("PCL_INCLUDE_DIR: " ${PCL_INCLUDE_DIRS})
+# message("PCL_LIBRARY_DIR: " ${PCL_LIBRARIES})
 
 ### ---------------------- Version Setting
-# set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_1)
-# set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_1)
-
-# set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_2)
-# set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_2)
-
-# set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_3)
-# set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_3)
-
-# set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_4)
-# set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_4)
-
-# set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_5)
-# set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_5)
-
-# set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_6)
-# set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_6)
-
-set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_7)
-set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_7)
+set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_8)
+set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_8)
 
 message("Include_DIR: " ${Include_DIR})
 message("Src_DIR: " ${Src_DIR})
@@ -68,8 +50,8 @@ include_directories(
         ${Include_DIR}
         ${Boost_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
-        ${PCL_INCLUDE_DIRS}
-        ${VTK_INCLUDE_DIRS}
+        # ${PCL_INCLUDE_DIRS}
+        # ${VTK_INCLUDE_DIRS}
         ${G2O_INCLUDE_DIR}
 
         ${Include_DIR}/smooth
@@ -79,12 +61,12 @@ include_directories(
 )
 
 link_directories(
-        ${PCL_LIBRARY_DIRS}
-        ${VTK_LIBRARIES}
+        # ${PCL_LIBRARY_DIRS}
+        # ${VTK_LIBRARIES}
         ${G2O_LIBRARIES}
 )
 
-add_definitions(${PCL_DEFINITIONS})
+# add_definitions(${PCL_DEFINITIONS})
 
 ### Just For Debug
 #add_executable(mapf_pipeline src/main.cpp)
@@ -128,29 +110,30 @@ pybind11_add_module(mapf_pipeline ${Src_DIR}/driver.cpp
         # ${Src_DIR}/cbs.cpp
         ${Src_DIR}/kdtree.c
         # ${Src_DIR}/kdtreeWrapper.cpp
-        
+
         # ${Src_DIR}/smoother.cpp
         # ${Src_DIR}/smoother_random.cpp
 
-        ${Src_DIR}/pather/groupPath.cpp
+#        ${Src_DIR}/pather/groupPath.cpp
         ${Src_DIR}/pather/kdtree_xyzra.cpp
 
-        # ${Src_DIR}/smooth/smootherSE3_g2o.cpp
-        ${Src_DIR}/smooth/smootherXYZ_g2o.cpp
+#        ${Src_DIR}/smooth/smootherSE3_g2o.cpp
+#        ${Src_DIR}/smooth/smootherXYZ_g2o.cpp
 
         ${Src_DIR}/planner/AstarSolver.cpp
-        ${Src_DIR}/planner/spanningTree_groupSolver.cpp
-        
+#        ${Src_DIR}/planner/spanningTree_groupSolver.cpp
+        ${Src_DIR}/planner/groupAstarSolver.cpp
+
         ${Src_DIR}/cbs/cbs_node.cpp
-        ${Src_DIR}/cbs/cbs_solver.cpp
+#        ${Src_DIR}/cbs/cbs_solver.cpp
         )
 target_link_libraries(mapf_pipeline PRIVATE
         pybind11::module
         Eigen3::Eigen
         ${Boost_LIBRARIES}
-        ${PCL_LIBRARIES}
-        ${VTK_LIBRARIES}
-        
+        # ${PCL_LIBRARIES}
+        # ${VTK_LIBRARIES}
+
         ${G2O_LIBRARIES} # it do not work, it cause pybind undefine symbol error??
         g2o_core
         g2o_stuff

@@ -77,6 +77,14 @@ class VisulizerVista(object):
             tube_mesh = pointCloud_mesh.tube(radius=radius, capping=capping)
         return tube_mesh
 
+    @staticmethod
+    def create_line(xyzs):
+        line_mesh = pyvista.PolyData(xyzs)
+        the_cell = np.arange(0, xyzs.shape[0], 1)
+        the_cell = np.insert(the_cell, 0, xyzs.shape[0])
+        line_mesh.lines = the_cell
+        return line_mesh
+
     def plot(self, mesh, color=(0.5, 0.1, 0.8), opacity=1.0, style=None, show_edges=False):
         self.ploter.add_mesh(mesh, color=color, opacity=opacity, style=style, show_edges=show_edges)
 
@@ -89,14 +97,6 @@ class VisulizerVista(object):
     @staticmethod
     def read_file(path):
         return pyvista.read_meshio(path)
-
-class InterativeVista(VisulizerVista):
-    def __init__(self):
-        super(InterativeVista, self).__init__()
-        self.add_KeyPressEvent('p', self.update_tube)
-
-    def update_tube(self):
-        xyzs = np.array(np.random.randint(0, 4, size=(10, 3)))
 
 class VisulizerO3D(object):
     def __init__(self):
@@ -171,23 +171,4 @@ class VisulizerO3D(object):
         self.vis.destroy_window()
 
 if __name__ == '__main__':
-    vis = InterativeVista()
-    xyzs = np.array([
-        [0., 0., 0.],
-        [0., 0., 1.],
-        [0., 0., 2.],
-        [0., 0., 3.],
-        [0., 1., 3.],
-        [0., 2., 3.],
-        [0., 3., 3.],
-        [1., 3., 3.],
-        [2., 3., 3.],
-        [3., 3., 3.],
-    ])
-    tube_mesh = vis.create_tube(xyzs)
-    print(tube_mesh)
-
-    # xyzs = np.array(np.random.randint(0, 4, size=(10, 3))).astype(np.float)
-
-    # vis.plot(tube_mesh)
-    # vis.show()
+    pass

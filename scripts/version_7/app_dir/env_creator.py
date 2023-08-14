@@ -198,9 +198,9 @@ def show_env(env_cfg):
     vis.show()
 
 def main():
-    createCondition(env_config, obstacle_config)
+    # createCondition(env_config, obstacle_config)
 
-    cond_json_file = '/home/quan/Desktop/tempary/application_pipe/cond.json'
+    cond_json_file = '/home/admin123456/Desktop/temptory/application_pipe/cond.json'
     with open(cond_json_file, 'r') as f:
         new_config = json.load(f)
     show_env(new_config)

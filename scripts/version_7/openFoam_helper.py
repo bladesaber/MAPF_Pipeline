@@ -148,7 +148,7 @@ class OpenFoamSimHelper(object):
         self.output_snappyHexMeshDict(
             objectName=objectName, stl_baseName=stl_name,
             inside_pose=config['inside_pose'],
-            nSurfaceLayers=2,
+            nSurfaceLayers=3,
             output_file=os.path.join(system_dir, 'snappyHexMeshDict')
         )
 
@@ -279,7 +279,10 @@ includedAngle       150;
         with open(output_file, 'w') as f:
             f.write(contant)
 
-    def output_snappyHexMeshDict(self, objectName, stl_baseName:str, inside_pose, nSurfaceLayers, output_file):
+    def output_snappyHexMeshDict(
+        self, objectName, stl_baseName:str, inside_pose, nSurfaceLayers, output_file,
+        maxGlobalCells=1000000, 
+    ):
         contant = f'''/*--------------------------------*- C++ -*----------------------------------*\\
   =========                 |
   \\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
@@ -343,7 +346,7 @@ castellatedMeshControls
     // Note that this is the number of cells before removing the part which
     // is not 'visible' from the keepPoint. The final number of cells might
     // actually be a lot less.
-    maxGlobalCells 200000;
+    maxGlobalCells {maxGlobalCells};
 
     // The surface refinement loop might spend lots of iterations refining just a
     // few cells. This setting will cause refinement to stop if <= minimumRefine
@@ -383,7 +386,7 @@ castellatedMeshControls
         {objectName}
         {{
             // Surface-wise min and max refinement level
-            level (1 1);
+            level (2 2);
         }}
     }}
 
@@ -391,7 +394,7 @@ castellatedMeshControls
     (
         {{
             file "{objectName}.eMesh";
-            level 1;
+            level 2;
         }}
     );
 
@@ -611,9 +614,15 @@ mergeTolerance 1e-6;
             pose = np.array(info['pose'])
             vec = np.array(info['vec'])
 
-            cylinderPose0 = pose - vec * 0.05
-            cylinderPose1 = pose + vec * 0.05
-            
+            if info['type'] == 'inlet':
+                cylinderPose0 = pose - vec * 0.45
+                cylinderPose1 = pose + vec * 0.05
+            elif info['type'] == 'outlet':
+                cylinderPose0 = pose - vec * 0.05
+                cylinderPose1 = pose + vec * 0.45
+            else:
+                raise ValueError
+
             cylinderCellName = 'CylinderCell_%d' % inOutletIdx
             newCylinderCell_action = TopoSetDictFun.cellSetFun_cylinderToCell(
                 cylinderPose0[0], cylinderPose0[1], cylinderPose0[2],
