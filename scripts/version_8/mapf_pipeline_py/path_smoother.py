@@ -4,6 +4,9 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from typing import Dict
 import math
+import os, argparse, shutil
+import json
+from tqdm import tqdm
 
 from build import mapf_pipeline
 from scripts.visulizer import VisulizerVista
@@ -143,11 +146,14 @@ class FlexPathSmoother(object):
                 self.pathInfos[pathIdx] = {
                     "groupIdx": groupIdx,
                     "nx_pathIdxs": nx_pathNodeIdxs,
+                    "startName": startName,
+                    "endName": endName,
                     "startDire": startDire,
                     "endDire": endDire,
                     "startFlexRatio": 0.0,
                     "endFlexRatio": branchInfo['flexRatio'],
-                    'radius': min(startRadius, endRadius)
+                    "startRadius": startRadius,
+                    "endRadius": endRadius
                 }
 
     def create_flexGraphRecord(self):
@@ -160,7 +166,6 @@ class FlexPathSmoother(object):
         for pathIdx in self.pathInfos.keys():
             pathInfo = self.pathInfos[pathIdx]
             groupIdx = pathInfo['groupIdx']
-            settingRadius = pathInfo['radius']
 
             nx_pathNodeIdxs = pathInfo["nx_pathIdxs"]
             path_size = len(nx_pathNodeIdxs)
@@ -188,7 +193,7 @@ class FlexPathSmoother(object):
                     flexNodeInfo = nodeInfo.copy()
                     flexNodeInfo.update({
                         'fixed': fixed,
-                        # 'radius': settingRadius
+                        'radius': pathInfo['endRadius']
                     })
 
                 else:
@@ -307,7 +312,7 @@ class FlexPathSmoother(object):
     def add_obstacleEdge(self, kSpring=10.0, weight=1.0):
         for flexNodeIdx in self.flexNodeInfos.keys():
             status = self.flexSmoother_runner.add_obstacleEdge(
-                flexNodeIdx, searchScale=1.5, repleScale=1.2, kSpring=kSpring, weight=weight
+                flexNodeIdx, searchScale=1.5, repleScale=1.1, kSpring=kSpring, weight=weight
             )
             if not status:
                 return status
@@ -326,7 +331,7 @@ class FlexPathSmoother(object):
                 record_dict[tag] = True
 
                 status = self.flexSmoother_runner.add_pipeConflictEdge(
-                    flex_nodeIdx, groupIdx, searchScale=1.5, repleScale=1.2, kSpring=kSpring, weight=weight
+                    flex_nodeIdx, groupIdx, searchScale=1.5, repleScale=1.25, kSpring=kSpring, weight=weight
                 )
                 if not status:
                     return status
@@ -342,11 +347,11 @@ class FlexPathSmoother(object):
             assert success
 
         if self.with_obstacleEdge:
-            success = self.add_obstacleEdge()
+            success = self.add_obstacleEdge(weight=100)
             assert success
 
         if self.with_pipeConflictEdge:
-            success = self.add_pipeConflictEdge()
+            success = self.add_pipeConflictEdge(weight=10)
             assert success
         
     def optimize(self, outer_times=300, inner_times=5, verbose=False):
@@ -385,6 +390,49 @@ class FlexPathSmoother(object):
 
         self.flexSmoother_runner.updateNodeMap_Vertex()
         self.plotFlexGraphEnv()
+
+    def output_result(self, save_dir):
+        rescale = 1.0 / self.env_config["global_params"]["grid_scale"]
+
+        for pathIdx in self.pathInfos.keys():
+            pathInfo = self.pathInfos[pathIdx]
+
+            path_dir = os.path.join(save_dir, "path_%d" % pathIdx)
+            if os.path.exists(path_dir):
+                shutil.rmtree(path_dir)
+            os.mkdir(path_dir)
+
+            path_xyzrs = []
+            for flexNodeIdx in pathInfo['flex_pathIdxs']:
+                flexNodeInfo = self.flexNodeInfos[flexNodeIdx]
+                x, y, z = flexNodeInfo['pose']
+                radius = flexNodeInfo['radius']
+                path_xyzrs.append([x, y, z, radius])
+            path_xyzrs = np.array(path_xyzrs)
+            path_xyzrs = path_xyzrs * rescale
+
+            path_csv = os.path.join(path_dir, "xyzs.csv")
+            pd.DataFrame(path_xyzrs[:, :3], columns=['x', 'y', 'z']).to_csv(path_csv)
+
+            radius_csv = os.path.join(path_dir, "radius.csv")
+            pd.DataFrame(path_xyzrs[:, 3:4], columns=['radius']).to_csv(radius_csv)
+
+            setting = {
+                "groupIdx": pathInfo["groupIdx"],
+                "startName": pathInfo["startName"],
+                "endName": pathInfo["endName"],
+                "startDire": pathInfo["startDire"],
+                "endDire": pathInfo["endDire"],
+                "startFlexRatio": pathInfo["startFlexRatio"],
+                "endFlexRatio": pathInfo["endFlexRatio"],
+                "startRadius": pathInfo["startRadius"] * rescale,
+                "endRadius": pathInfo["endRadius"] * rescale,
+                "path_file": path_csv
+            }
+
+            setting_file = os.path.join(path_dir, 'setting.json')
+            with open(setting_file, 'w') as f:
+                json.dump(setting, f, indent=4)
 
     def plotGroupPointCloudEnv(self):
         vis = VisulizerVista()
@@ -467,21 +515,36 @@ class FlexPathSmoother(object):
         nx.draw(self.network, with_labels=True)
         plt.show()
 
-def main():
-    import json
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--proj_dire", type=str, help="project directory", default="")
+    parser.add_argument("--config_file", type=str, help="the name of config json file", default="envGridConfig.json")
+    parser.add_argument("--path_result_file", type=str, help="path result", default="result.npy")
+    parser.add_argument("--pipe_setting_file", type=str, help="pipe optimize setting", default="pipeLink_setting.json")
+    parser.add_argument("--optimize_times", type=int, help="running times", default=400)
+    args = parser.parse_args()
+    return args
 
+def debug_run():
     with open('/home/admin123456/Desktop/work/application/envGridConfig.json') as f:
         env_config = json.load(f)
 
     result_file = '/home/admin123456/Desktop/work/application/result.npy'
     result_pipes: Dict = np.load(result_file, allow_pickle=True).item()
 
+    # pipeSetting_file = '/home/admin123456/Desktop/work/application/pipeLink_setting.json'
+    # with open(pipeSetting_file) as f:
+    #     path_links = json.load(f)
+    # for groupIdx in list(path_links.keys()):
+    #     path_links[int(groupIdx)] = path_links[groupIdx]
+    #     del path_links[groupIdx]
+
     smoother = FlexPathSmoother(
         env_config,
         with_elasticBand=True,
         with_kinematicEdge=True,
         with_obstacleEdge=True,
-        with_pipeConflictEdge=True,
+        with_pipeConflictEdge=False,
     )
     smoother.init_environment()
     smoother.createWholeNetwork(result_pipes)
@@ -535,12 +598,88 @@ def main():
             }
         }
     }
+    # with open('/home/admin123456/Desktop/work/application/pipeLink_setting.json', 'w') as f:
+    #     json.dump(path_links, f, indent=4)
+
     smoother.definePath(path_links)
     # smoother.plotPathEnv()
 
     smoother.create_flexGraphRecord()
 
-    smoother.optimize(outer_times=50, inner_times=5, verbose=False)
+    smoother.optimize(outer_times=400, inner_times=10, verbose=False)
+
+    # smoother.output_result('/home/admin123456/Desktop/work/application/debug')
+
+def custon_main():
+    args = parse_args()
+
+    if not os.path.exists(args.proj_dire):
+        print(f"[WARNING]: Project isn't Exist {args.proj_dire}")
+        return
+
+    if not args.config_file.endswith('.json'):
+        print(f"[WARNING]: Config Files isn't JSON Format {args.config_file}")
+        return
+
+    config_file = os.path.join(args.proj_dire, args.config_file)
+    if not os.path.exists(config_file):
+        print(f"[WARNING]: Config File isn't Exist {config_file}")
+        return
+
+    result_file = os.path.join(args.proj_dire, args.path_result_file)
+    if not result_file.endswith('.npy'):
+        print(f"[WARNING]: save Files must be npy Format {result_file}")
+        return
+
+    if not os.path.exists(result_file):
+        print(f"[WARNING]: Result File isn't Exist {config_file}")
+        return
+
+    pipeSetting_file = os.path.join(args.proj_dire, args.pipe_setting_file)
+    if not pipeSetting_file.endswith('.json'):
+        print(f"[WARNING]: Pipe Setting Files isn't JSON Format {pipeSetting_file}")
+        return
+
+    if not os.path.exists(pipeSetting_file):
+        print(f"[WARNING]: Pipe setting File isn't Exist {pipeSetting_file}")
+        return
+
+    ### ---------------------------------------------
+    with open(config_file) as f:
+        env_config = json.load(f)
+
+    result_pipes: Dict = np.load(result_file, allow_pickle=True).item()
+
+    smoother = FlexPathSmoother(
+        env_config,
+        with_elasticBand=True,
+        with_kinematicEdge=True,
+        with_obstacleEdge=True,
+        with_pipeConflictEdge=True,
+    )
+    smoother.init_environment()
+    smoother.createWholeNetwork(result_pipes)
+    # smoother.plotGroupPointCloudEnv()
+
+    with open(pipeSetting_file) as f:
+        path_links = json.load(f)
+
+    for groupIdx in list(path_links.keys()):
+        path_links[int(groupIdx)] = path_links[groupIdx]
+        del path_links[groupIdx]
+
+    smoother.definePath(path_links)
+
+    smoother.create_flexGraphRecord()
+
+    smoother.optimize(outer_times=args.optimize_times, inner_times=10, verbose=False)
+
+    optimize_dir = os.path.join(args.proj_dire, 'smoother_result')
+    if not os.path.exists(optimize_dir):
+        os.mkdir(optimize_dir)
+
+    smoother.output_result(optimize_dir)
 
 if __name__ == '__main__':
-    main()
+    # debug_run()
+    custon_main()

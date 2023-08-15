@@ -611,7 +611,7 @@ class CustomApp(AppWindow):
                 scaleObstacle_df.to_csv(scale_obstacle_path)
                 save_setting["scaleObstaclePath"] = scale_obstacle_path
 
-            json.dump(save_setting, f)
+            json.dump(save_setting, f, indent=4)
 
     def on_jsonLoad_dialog_done(self, filename: str):
         with open(filename, 'r') as f:
@@ -765,6 +765,7 @@ class CustomApp(AppWindow):
                     ymin=0, ymax=self.config_params['envGridY'],
                     zmin=0, zmax=self.config_params['envGridZ'],
                 )
+
                 geoInfo['scale_desc'] = {
                     'scale_radius': desc['radius'] * scale,
                     # 'grid_position': list(xyz_grid),
@@ -939,6 +940,7 @@ class CustomApp(AppWindow):
                 allocator.add_node(name, pose=scaleInfo['grid_position'], radius=scaleInfo['scale_radius'])
 
             allocator_res = allocator.getTaskTrees(method='method2')
+
             res = []
             for name_i, name_j, radius in allocator_res:
                 self.geoMap[name_i]['scale_desc']['scale_radius'] = np.maximum(

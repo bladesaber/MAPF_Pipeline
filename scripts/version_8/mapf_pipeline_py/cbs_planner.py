@@ -4,11 +4,13 @@ from typing import Dict
 from scripts.visulizer import VisulizerVista
 from tqdm import tqdm
 from copy import copy
-import os
+import os, shutil, argparse
+import json
 
 from scripts.version_8.mapf_pipeline_py.spanTree_TaskAllocator import MiniumDistributeTreeTaskRunner
 from scripts.version_8.mapf_pipeline_py.spanTree_TaskAllocator import SizeTreeTaskRunner
 from build import mapf_pipeline
+
 
 class CBS_Planner(object):
     def __init__(self, env_config, debug_dir):
@@ -138,7 +140,8 @@ class CBS_Planner(object):
 
         for groupIdx in self.groupTaskTreeRecord.keys():
             for task in self.groupTaskTreeRecord[groupIdx]:
-                print(f'GroupIdx:{groupIdx}, {task["name0"]}({task["xyz0"]}) -> {task["name1"]}({task["xyz1"]}) radius:{task["radius"]}')
+                print(
+                    f'GroupIdx:{groupIdx}, {task["name0"]}({task["xyz0"]}) -> {task["name1"]}({task["xyz1"]}) radius:{task["radius"]}')
                 root.addTask_to_GroupAgent(groupIdx, task['loc0'], task['radius'], task['loc1'], task['radius'])
         print()
 
@@ -473,9 +476,17 @@ class CBS_Planner(object):
                     self.groupTaskTreeRecord[groupIdx][i].update({'path_xyzrl': path_xyzrl})
         return self.groupTaskTreeRecord
 
-def main():
-    import json
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--proj_dire", type=str, help="project directory", default="")
+    parser.add_argument("--config_file", type=str, help="the name of config json file", default="envGridConfig.json")
+    parser.add_argument("--save_file", type=str, help="project directory", default="result.npy")
+    args = parser.parse_args()
+    return args
+
+
+def debug_run():
     with open('/home/admin123456/Desktop/work/application/envGridConfig.json') as f:
         env_config = json.load(f)
 
@@ -483,6 +494,40 @@ def main():
     cbs_planner.init_environment()
     cbs_planner.solve(save_file='/home/admin123456/Desktop/work/application/result.npy')
 
+def custon_main():
+    args = parse_args()
+
+    if not os.path.exists(args.proj_dire):
+        print(f"[WARNING]: Project isn't Exist {args.proj_dire}")
+        return
+
+    if not args.config_file.endswith('.json'):
+        print(f"[WARNING]: Config Files isn't JSON Format {args.config_file}")
+        return
+
+    config_file = os.path.join(args.proj_dire, args.config_file)
+    if not os.path.exists(config_file):
+        print(f"[WARNING]: Config File isn't Exist {config_file}")
+        return
+
+    if not args.save_file.endswith('.npy'):
+        print(f"[WARNING]: save Files must be npy Format {args.save_file}")
+        return
+
+    debug_dir = os.path.join(args.proj_dire, 'debug')
+    if not os.path.exists(debug_dir):
+        os.mkdir(debug_dir)
+
+    with open(config_file) as f:
+        env_config = json.load(f)
+
+    save_file = os.path.join(args.proj_dire, args.save_file)
+
+    cbs_planner = CBS_Planner(env_config, debug_dir=debug_dir)
+    cbs_planner.init_environment()
+    cbs_planner.solve(save_file=save_file)
+
 
 if __name__ == '__main__':
-    main()
+    # debug_run()
+    custon_main()
