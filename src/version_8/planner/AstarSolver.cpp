@@ -149,26 +149,34 @@ namespace PlannerNameSpace {
         // ------ Check startPos or endPos Valid
 //        std::cout << "Start locs Num:" << start_locs.size() << " Goal locs Num:" << goal_locs.size();
 //        std::cout << " obstacleTable Num:" << obstacle_table.getTreeCount() << " constraintTable Num:" << constraint_table.getTreeCount() << std::endl;
-        // add_timeTrigger();
+
+        this->start_locs.clear();
         for (size_t start_loc: start_locs) {
             if (
-                    !isValidSetting(instance, obstacle_table, start_loc) ||
-                    !isValidSetting(instance, constraint_table, start_loc)
+                    isValidSetting(instance, obstacle_table, start_loc) &&
+                    isValidSetting(instance, constraint_table, start_loc)
                     ) {
-                std::cout << "[DEBUG]: StartPos is not Valid" << std::endl;
-                return path;
+                this->start_locs.emplace_back(start_loc);
             }
         }
+        if (this->start_locs.size() == 0){
+            std::cout << "[DEBUG]: StartPos is not Valid" << std::endl;
+            return path;
+        }
+
+        this->goal_locs.clear();
         for (size_t goal_loc: goal_locs) {
             if (
-                    !isValidSetting(instance, obstacle_table, goal_loc) ||
-                    !isValidSetting(instance, constraint_table, goal_loc)
+                    isValidSetting(instance, obstacle_table, goal_loc) &&
+                    isValidSetting(instance, constraint_table, goal_loc)
                     ) {
-                std::cout << "[DEBUG]: EndPos is not Valid" << std::endl;
-                return path;
+                this->goal_locs.emplace_back(goal_loc);
             }
         }
-        //print_timeTrigger("Check Start+Goal Pos");
+        if (this->goal_locs.size() == 0){
+            std::cout << "[DEBUG]: EndPos is not Valid" << std::endl;
+            return path;
+        }
 
         // ------ Init Starting Nodes
         for (size_t start_loc: start_locs) {

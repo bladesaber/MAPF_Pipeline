@@ -15,12 +15,14 @@ class FlexPathSmoother(object):
     def __init__(
             self,
             env_config,
+            optimize_setting,
             with_elasticBand=True,
             with_kinematicEdge=False,
             with_obstacleEdge=False,
             with_pipeConflictEdge=False
     ):
         self.env_config = env_config
+        self.optimize_setting = optimize_setting
 
         self.nodesInfo = {}
         self.pathInfos = {}
@@ -264,7 +266,7 @@ class FlexPathSmoother(object):
 
         return True
 
-    def add_kinematicEdge(self, weight=1.0):
+    def add_kinematicEdge(self, edge_kSpring=3.0, vertex_kSpring=10.0, weight=1.0):
         record_dict = {}
 
         for pathIdx in self.pathInfos:
@@ -288,7 +290,7 @@ class FlexPathSmoother(object):
                 if i == 1:
                     vec_i, vec_j, vec_k = pathInfo['startDire']
                     status = self.flexSmoother_runner.add_kinematicVertexEdge(
-                        flex_nodeIdx0, flex_nodeIdx1, vec_i, vec_j, vec_k, kSpring=10.0, weight=weight
+                        flex_nodeIdx0, flex_nodeIdx1, vec_i, vec_j, vec_k, kSpring=vertex_kSpring, weight=weight
                     )
                     if not status:
                         return status
@@ -296,29 +298,31 @@ class FlexPathSmoother(object):
                 elif i == path_size - 2:
                     vec_i, vec_j, vec_k = pathInfo['endDire']
                     status = self.flexSmoother_runner.add_kinematicVertexEdge(
-                        flex_nodeIdx1, flex_nodeIdx2, vec_i, vec_j, vec_k, kSpring=10.0, weight=weight
+                        flex_nodeIdx1, flex_nodeIdx2, vec_i, vec_j, vec_k, kSpring=vertex_kSpring, weight=weight
                     )
                     if not status:
                         return status
 
                 status = self.flexSmoother_runner.add_kinematicEdge(
-                    flex_nodeIdx0, flex_nodeIdx1, flex_nodeIdx2, kSpring=3.0, weight=weight
+                    flex_nodeIdx0, flex_nodeIdx1, flex_nodeIdx2, kSpring=edge_kSpring, weight=weight
                 )
                 if not status:
                     return status
 
         return True
 
-    def add_obstacleEdge(self, kSpring=10.0, weight=1.0):
+    def add_obstacleEdge(self, searchScale=1.5, repleScale=1.2, kSpring=100.0, weight=1.0):
         for flexNodeIdx in self.flexNodeInfos.keys():
             status = self.flexSmoother_runner.add_obstacleEdge(
-                flexNodeIdx, searchScale=1.5, repleScale=1.1, kSpring=kSpring, weight=weight
+                flexNodeIdx,
+                searchScale=searchScale, repleScale=repleScale,
+                kSpring=kSpring, weight=weight
             )
             if not status:
                 return status
         return True
 
-    def add_pipeConflictEdge(self, kSpring=10.0, weight=1.0):
+    def add_pipeConflictEdge(self, searchScale=1.5, repleScale=1.2, kSpring=100.0, weight=1.0):
         record_dict = {}
         for pathIdx in self.pathInfos:
             pathInfo = self.pathInfos[pathIdx]
@@ -331,7 +335,8 @@ class FlexPathSmoother(object):
                 record_dict[tag] = True
 
                 status = self.flexSmoother_runner.add_pipeConflictEdge(
-                    flex_nodeIdx, groupIdx, searchScale=1.5, repleScale=1.25, kSpring=kSpring, weight=weight
+                    flex_nodeIdx, groupIdx, searchScale=searchScale, repleScale=repleScale,
+                    kSpring=kSpring, weight=weight
                 )
                 if not status:
                     return status
@@ -339,22 +344,39 @@ class FlexPathSmoother(object):
 
     def reconstruct_edges_graph(self):
         if self.with_elasticBand:
-            success = self.add_elasticBand()
+            success = self.add_elasticBand(
+                kSpring=self.optimize_setting["elasticBand_kSpring"],
+                weight=self.optimize_setting["elasticBand_weight"]
+            )
             assert success
 
         if self.with_kinematicEdge:
-            success = self.add_kinematicEdge()
+            success = self.add_kinematicEdge(
+                edge_kSpring=self.optimize_setting["kinematicEdge_kSpring"],
+                vertex_kSpring=self.optimize_setting["kinematicVertex_kSpring"],
+                weight=self.optimize_setting["kinematic_weight"]
+            )
             assert success
 
         if self.with_obstacleEdge:
-            success = self.add_obstacleEdge(weight=100)
+            success = self.add_obstacleEdge(
+                searchScale=self.optimize_setting["obstacle_searchScale"],
+                repleScale=self.optimize_setting["obstacle_repleScale"],
+                kSpring=self.optimize_setting["obstacle_kSpring"],
+                weight=self.optimize_setting["obstacle_weight"]
+            )
             assert success
 
         if self.with_pipeConflictEdge:
-            success = self.add_pipeConflictEdge(weight=10)
+            success = self.add_pipeConflictEdge(
+                searchScale=self.optimize_setting["pipeConflict_searchScale"],
+                repleScale=self.optimize_setting["pipeConflict_repleScale"],
+                kSpring=self.optimize_setting["pipeConflict_kSpring"],
+                weight=self.optimize_setting["pipeConflict_weight"]
+            )
             assert success
         
-    def optimize(self, outer_times=300, inner_times=5, verbose=False):
+    def optimize(self, outer_times=300, verbose=False):
         self.flexSmoother_runner.clear_graph()
 
         for outer_i in range(outer_times):
@@ -374,7 +396,9 @@ class FlexPathSmoother(object):
                 # self.flexSmoother_runner.info()
 
                 ### ------ Step 4 optimize
-                self.flexSmoother_runner.optimizeGraph(inner_times, verbose)
+                self.flexSmoother_runner.optimizeGraph(
+                    self.optimize_setting["inner_optimize_times"], verbose
+                )
 
                 ### ------ Step 5 Update Vertex to Node
                 self.updateNodeMap_to_flexInfos()
@@ -412,10 +436,10 @@ class FlexPathSmoother(object):
             path_xyzrs = path_xyzrs * rescale
 
             path_csv = os.path.join(path_dir, "xyzs.csv")
-            pd.DataFrame(path_xyzrs[:, :3], columns=['x', 'y', 'z']).to_csv(path_csv)
+            pd.DataFrame(path_xyzrs[:, :3], columns=['x', 'y', 'z']).to_csv(path_csv, header=True, index=False)
 
             radius_csv = os.path.join(path_dir, "radius.csv")
-            pd.DataFrame(path_xyzrs[:, 3:4], columns=['radius']).to_csv(radius_csv)
+            pd.DataFrame(path_xyzrs[:, 3:4], columns=['radius']).to_csv(radius_csv, header=True, index=False)
 
             setting = {
                 "groupIdx": pathInfo["groupIdx"],
@@ -452,9 +476,9 @@ class FlexPathSmoother(object):
             pcd_mesh = VisulizerVista.create_pointCloud(np.array(group_pointClouds[groupIdx]))
             vis.plot(pcd_mesh, color=random_colors[groupIdx, :])
 
-        obstacle_xyzs = self.obstacle_df[self.obstacle_df['tag'] != 'wall'][['x', 'y', 'z']].values
-        obstacle_mesh = VisulizerVista.create_pointCloud(obstacle_xyzs)
-        vis.plot(obstacle_mesh, (0.5, 0.5, 0.5))
+        # obstacle_xyzs = self.obstacle_df[self.obstacle_df['tag'] != 'wall'][['x', 'y', 'z']].values
+        # obstacle_mesh = VisulizerVista.create_pointCloud(obstacle_xyzs)
+        # vis.plot(obstacle_mesh, (0.5, 0.5, 0.5))
 
         vis.show()
 
@@ -521,94 +545,57 @@ def parse_args():
     parser.add_argument("--config_file", type=str, help="the name of config json file", default="envGridConfig.json")
     parser.add_argument("--path_result_file", type=str, help="path result", default="result.npy")
     parser.add_argument("--pipe_setting_file", type=str, help="pipe optimize setting", default="pipeLink_setting.json")
-    parser.add_argument("--optimize_times", type=int, help="running times", default=400)
+    parser.add_argument("--optimize_setting_file", type=str, help="", default="optimize_setting.json")
+    parser.add_argument("--optimize_times", type=int, help="", default=400)
+    parser.add_argument("--verbose", type=int, help="", default=0)
     args = parser.parse_args()
     return args
 
 def debug_run():
-    with open('/home/admin123456/Desktop/work/application/envGridConfig.json') as f:
+    with open('/home/admin123456/Desktop/work/example3/envGridConfig.json') as f:
         env_config = json.load(f)
 
-    result_file = '/home/admin123456/Desktop/work/application/result.npy'
+    result_file = '/home/admin123456/Desktop/work/example3/result.npy'
     result_pipes: Dict = np.load(result_file, allow_pickle=True).item()
 
-    # pipeSetting_file = '/home/admin123456/Desktop/work/application/pipeLink_setting.json'
-    # with open(pipeSetting_file) as f:
-    #     path_links = json.load(f)
-    # for groupIdx in list(path_links.keys()):
-    #     path_links[int(groupIdx)] = path_links[groupIdx]
-    #     del path_links[groupIdx]
+    pipeSetting_file = '/home/admin123456/Desktop/work/example3/pipeLink_setting.json'
+    with open(pipeSetting_file) as f:
+        path_links = json.load(f)
+    for groupIdx in list(path_links.keys()):
+        path_links[int(groupIdx)] = path_links[groupIdx]
+        del path_links[groupIdx]
+
+    optimize_setting_file = '/home/admin123456/Desktop/work/example3/optimize_setting.json'
+    with open(optimize_setting_file, 'r') as f:
+        optimize_setting = json.load(f)
 
     smoother = FlexPathSmoother(
         env_config,
+        optimize_setting=optimize_setting,
         with_elasticBand=True,
         with_kinematicEdge=True,
         with_obstacleEdge=True,
         with_pipeConflictEdge=False,
     )
     smoother.init_environment()
+
+    for info in result_pipes[2]:
+        print(info['path_xyzrl'])
+
     smoother.createWholeNetwork(result_pipes)
-    # smoother.plotGroupPointCloudEnv()
+    smoother.plotGroupPointCloudEnv()
 
-    path_links = {
-        0: {
-            "converge_pipe": 'B_to_slave0',
-            "branch_pipes": {
-                "M3": {"flexRatio": 0.3},
-                "B_port": {"flexRatio": 0.3},
-            }
-        },
-        1: {
-            "converge_pipe": 'P1',
-            "branch_pipes": {
-                "M1": {"flexRatio": 0.3},
-                "P_to_slave0": {"flexRatio": 0.3},
-                "P_port": {"flexRatio": 0.3},
-            }
-        },
-        2: {
-            "converge_pipe": 'T_port',
-            "branch_pipes": {
-                "A_to_T": {"flexRatio": 0.3},
-                "T_to_slave0": {"flexRatio": 0.3},
-            }
-        },
-        3: {
-            "converge_pipe": 'A_to_slave0',
-            "branch_pipes": {
-                "A_to_slave1": {"flexRatio": 0.3},
-                "A_to_slave2": {"flexRatio": 0.3},
-            }
-        },
-        4: {
-            "converge_pipe": 'A_port',
-            "branch_pipes": {
-                "slave1_to_Aport": {"flexRatio": 0.3},
-                "slave2_to_Aport": {"flexRatio": 0.3},
-                "slave3_to_Aport": {"flexRatio": 0.3},
-                "A_to_Aport": {"flexRatio": 0.3},
-                "M2": {"flexRatio": 0.3},
-            }
-        },
-        5: {
-            "converge_pipe": 'F_port',
-            "branch_pipes": {
-                "F1": {"flexRatio": 0.3},
-                "F2": {"flexRatio": 0.3},
-            }
-        }
-    }
-    # with open('/home/admin123456/Desktop/work/application/pipeLink_setting.json', 'w') as f:
-    #     json.dump(path_links, f, indent=4)
-
-    smoother.definePath(path_links)
+    # smoother.definePath(path_links)
     # smoother.plotPathEnv()
 
-    smoother.create_flexGraphRecord()
+    # smoother.create_flexGraphRecord()
+    #
+    # for pathIdx in smoother.pathInfos:
+    #     print(smoother.pathInfos[pathIdx])
 
-    smoother.optimize(outer_times=400, inner_times=10, verbose=False)
+    # smoother.optimize(outer_times=400, verbose=False)
 
-    # smoother.output_result('/home/admin123456/Desktop/work/application/debug')
+    # # smoother.output_result('/home/admin123456/Desktop/work/application/debug')
 
 def custon_main():
     args = parse_args()
@@ -650,8 +637,13 @@ def custon_main():
 
     result_pipes: Dict = np.load(result_file, allow_pickle=True).item()
 
+    optimize_setting_file = os.path.join(args.proj_dire, args.optimize_setting_file)
+    with open(optimize_setting_file, 'r') as f:
+        optimize_setting = json.load(f)
+
     smoother = FlexPathSmoother(
         env_config,
+        optimize_setting=optimize_setting,
         with_elasticBand=True,
         with_kinematicEdge=True,
         with_obstacleEdge=True,
@@ -672,7 +664,7 @@ def custon_main():
 
     smoother.create_flexGraphRecord()
 
-    smoother.optimize(outer_times=args.optimize_times, inner_times=10, verbose=False)
+    smoother.optimize(outer_times=args.optimize_times, verbose=args.verbose)
 
     optimize_dir = os.path.join(args.proj_dire, 'smoother_result')
     if not os.path.exists(optimize_dir):

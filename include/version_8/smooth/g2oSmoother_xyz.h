@@ -205,6 +205,7 @@ namespace SmootherNameSpace {
                     norm2_distance(node1->x, node1->y, node1->z, node2->x, node2->y, node2->z)
             );
             double cosTheta_target = 1.0 - std::cos(1.0 / (3.0 * std::min(node1->radius, node2->radius)) * length);
+//            double cosTheta_target = 0.0;
 
             EdgeXYZ_Kinematics *edge = new EdgeXYZ_Kinematics(cosTheta_target, kSpring);
             edge->setVertex(0, node0->vertex);
@@ -228,6 +229,7 @@ namespace SmootherNameSpace {
             Eigen::Vector3d orientation = Eigen::Vector3d(vec_i, vec_j, vec_k);
             double length = norm2_distance(node0->x, node0->y, node0->z, node1->x, node1->y, node1->z);
             double cosTheta_target = 1.0 - std::cos(1.0 / (3.0 * std::min(node0->radius, node1->radius)) * length);
+//            double cosTheta_target = 0.0;
 
             EdgeXYZ_VertexKinematics *edge = new EdgeXYZ_VertexKinematics(orientation, cosTheta_target, kSpring);
             edge->setVertex(0, node0->vertex);

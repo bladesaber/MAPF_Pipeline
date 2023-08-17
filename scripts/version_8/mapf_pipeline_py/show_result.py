@@ -49,16 +49,22 @@ def show_smooth_path():
         #     pathInfo = json.load()
 
         xyzs_file = os.path.join(path_dir, 'xyzs.csv')
-        xyzs = pd.read_csv(xyzs_file, index_col=0)[['x', 'y', 'z']].values
+        xyzs = pd.read_csv(
+            xyzs_file,
+            # index_col=0
+        )[['x', 'y', 'z']].values
 
         radius_file = os.path.join(path_dir, 'radius.csv')
-        radius = pd.read_csv(radius_file, index_col=0)['radius'].values
+        radius = pd.read_csv(
+            radius_file,
+            # index_col=0
+        )['radius'].values
 
         tube_mesh = VisulizerVista.create_complex_tube(xyzs, capping=True, radius=None, scalars=radius)
         line_mesh = VisulizerVista.create_line(xyzs)
 
-        # vis.plot(tube_mesh, color=random_colors[i, :], opacity=0.65)
-        vis.plot(line_mesh, color=random_colors[i, :], opacity=1.0)
+        vis.plot(tube_mesh, color=random_colors[i, :], opacity=0.7)
+        vis.plot(line_mesh, color=random_colors[i, :], opacity=0.8)
 
     obstacle_xyzs = obstacle_df[obstacle_df['tag'] != 'wall'][['x', 'y', 'z']].values
     obstacle_mesh = VisulizerVista.create_pointCloud(obstacle_xyzs)

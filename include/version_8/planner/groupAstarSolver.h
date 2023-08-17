@@ -124,6 +124,15 @@ namespace PlannerNameSpace {
                     taskTree[i]->res_path = sampleDetailPath(path_xyzr, stepLength);
                 }
 
+                // -----------
+                // restrict terminal point as goal
+                double terminal_x, terminal_y, terminal_z;
+                std::tie(terminal_x, terminal_y, terminal_z) = instance.getCoordinate(loc0);
+                constrain_table.insert2CT(terminal_x, terminal_y, terminal_z, 0.0);
+                std::tie(terminal_x, terminal_y, terminal_z) = instance.getCoordinate(loc1);
+                constrain_table.insert2CT(terminal_x, terminal_y, terminal_z, 0.0);
+                // -----------
+
                 TaskLeaf *taskLeaf = new TaskLeaf();
                 taskLeaf->mergeGroupMembers(locLeafsMap[loc0], locLeafsMap[loc1]);
                 taskLeaf->mergePath(locLeafsMap[loc0]->path);

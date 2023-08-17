@@ -17,7 +17,7 @@ from scripts.version_8.mapf_pipeline_py.spanTree_TaskAllocator import SizeTreeTa
 
 class ObstacleUtils(object):
     @staticmethod
-    def create_BoxPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso):
+    def create_BoxWallPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso):
         xSteps = math.ceil((xmax - xmin) / reso)
         ySteps = math.ceil((ymax - ymin) / reso)
         zSteps = math.ceil((zmax - zmin) / reso)
@@ -49,7 +49,23 @@ class ObstacleUtils(object):
         return wall_pcd
 
     @staticmethod
-    def create_CylinderPcd(xyz, radius, height, direction, reso):
+    def create_BoxSolidPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso):
+        xSteps = math.ceil((xmax - xmin) / reso)
+        ySteps = math.ceil((ymax - ymin) / reso)
+        zSteps = math.ceil((zmax - zmin) / reso)
+        xs = np.linspace(xmin, xmax, xSteps)
+        ys = np.linspace(ymin, ymax, ySteps)
+        zs = np.linspace(zmin, zmax, zSteps)
+
+        xs, ys, zs = np.meshgrid(xs, ys, zs)
+        xyzs = np.concatenate([xs[..., np.newaxis], ys[..., np.newaxis], zs[..., np.newaxis]], axis=-1)
+        xyzs = xyzs.reshape((-1, 3))
+        xyzs = pd.DataFrame(xyzs).drop_duplicates().values
+
+        return xyzs
+
+    @staticmethod
+    def create_CylinderSolidPcd(xyz, radius, height, direction, reso):
         assert np.sum(direction) == np.max(direction) == 1.0
 
         uSteps = math.ceil(radius / reso)
@@ -67,77 +83,32 @@ class ObstacleUtils(object):
             uvs.append(uv)
         uvs = np.concatenate(uvs, axis=0)
 
-        num = max(math.ceil( 2 * radius * np.pi / reso), 1)
-        rads = np.deg2rad(np.linspace(0, 360.0, num))
-        huv = np.zeros(shape=(num, 2))
-        huv[:, 0] = np.cos(rads) * radius
-        huv[:, 1] = np.sin(rads) * radius
-
+        pcds = []
         if direction[0] == 1:
-            pcds = [
-                np.concatenate([
-                    np.ones(shape=(uvs.shape[0], 1)) * height / 2.0,
-                    uvs[:, 0:1],
-                    uvs[:, 1:2],
-                ], axis=1),
-                np.concatenate([
-                    np.ones(shape=(uvs.shape[0], 1)) * -height / 2.0,
-                    uvs[:, 0:1],
-                    uvs[:, 1:2],
-                ], axis=1),
-            ]
-
             for h_value in np.linspace(-height/2.0, height/2.0, hSteps):
-                hPcd = np.zeros(shape=(num, 3))
-                hPcd[:, 0] = h_value
-                hPcd[:, 1] = huv[:, 0]
-                hPcd[:, 2] = huv[:, 1]
-                pcds.append(hPcd)
+                pcds.append(np.concatenate([
+                    np.ones(shape=(uvs.shape[0], 1)) * h_value,
+                    uvs[:, 0:1],
+                    uvs[:, 1:2],
+                ], axis=1))
 
         elif direction[1] == 1:
-            pcds = [
-                np.concatenate([
-                    uvs[:, 0:1],
-                    np.ones(shape=(uvs.shape[0], 1)) * -height / 2.0,
-                    uvs[:, 1:2],
-                ], axis=1),
-                np.concatenate([
-                    uvs[:, 0:1],
-                    np.ones(shape=(uvs.shape[0], 1)) * height / 2.0,
-                    uvs[:, 1:2],
-                ], axis=1),
-            ]
-
             for h_value in np.linspace(-height/2.0, height/2.0, hSteps):
-                hPcd = np.zeros(shape=(num, 3))
-                hPcd[:, 0] = huv[:, 0]
-                hPcd[:, 1] = h_value
-                hPcd[:, 2] = huv[:, 1]
-                pcds.append(hPcd)
+                pcds.append(np.concatenate([
+                    uvs[:, 0:1],
+                    np.ones(shape=(uvs.shape[0], 1)) * h_value,
+                    uvs[:, 1:2],
+                ], axis=1))
 
         elif direction[2] == 1:
-            pcds = [
-                np.concatenate([
+            for h_value in np.linspace(-height/2.0, height/2.0, hSteps):
+                pcds.append(np.concatenate([
                     uvs[:, 0:1],
                     uvs[:, 1:2],
-                    np.ones(shape=(uvs.shape[0], 1)) * -height / 2.0,
-                ], axis=1),
-                np.concatenate([
-                    uvs[:, 0:1],
-                    uvs[:, 1:2],
-                    np.ones(shape=(uvs.shape[0], 1)) * height / 2.0,
-                ], axis=1),
-            ]
-
-            for h_value in np.linspace(-height / 2.0, height / 2.0, hSteps):
-                hPcd = np.zeros(shape=(num, 3))
-                hPcd[:, 0] = huv[:, 0]
-                hPcd[:, 1] = huv[:, 1]
-                hPcd[:, 2] = h_value
-                pcds.append(hPcd)
-
+                    np.ones(shape=(uvs.shape[0], 1)) * h_value,
+                    ], axis=1))
         else:
-            raise NotImplementedError
+            raise ValueError
 
         pcd = np.concatenate(pcds, axis=0)
         pcd = pcd + xyz
@@ -145,36 +116,9 @@ class ObstacleUtils(object):
         return pcd
 
     @staticmethod
-    def create_PipeBoxShell(xyz, radius, direction, reso):
-        assert np.sum(np.abs(direction)) == np.max(np.abs(direction)) == 1.0
-
-        radius = radius + 0.15
-        xmin, xmax = xyz[0] - radius, xyz[0] + radius
-        ymin, ymax = xyz[1] - radius, xyz[1] + radius
-        zmin, zmax = xyz[2] - radius, xyz[2] + radius
-        pcd = ObstacleUtils.create_BoxPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso)
-
-        if (direction[0] == 1) or (direction[0] == -1):
-            pcd = pcd[pcd[:, 0] < xyz[0] + radius]
-            pcd = pcd[pcd[:, 0] > xyz[0] - radius]
-
-        elif (direction[1] == 1) or (direction[1] == -1):
-            pcd = pcd[pcd[:, 1] < xyz[1] + radius]
-            pcd = pcd[pcd[:, 1] > xyz[1] - radius]
-
-        elif (direction[2] == 1) or (direction[2] == -1):
-            pcd = pcd[pcd[:, 2] < xyz[2] + radius]
-            pcd = pcd[pcd[:, 2] > xyz[2] - radius]
-
-        else:
-            raise ValueError
-
-        return pcd, (xmin, xmax, ymin, ymax, zmin, zmax)
-
-    @staticmethod
     def removePointInSphereShell(xyzs, center, radius):
         distance = np.linalg.norm(xyzs - center, ord=2, axis=1)
-        xyzs = xyzs[distance < radius + 0.1]
+        xyzs = xyzs[distance > (radius + 0.1)]
         return xyzs
 
     @staticmethod
@@ -417,7 +361,7 @@ class CustomApp(AppWindow):
             rgb = np.array([0.0, 1.0, 0.0])
         rgb = rgb / np.sum(rgb)
 
-        xyzs = ObstacleUtils.create_BoxPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso)
+        xyzs = ObstacleUtils.create_BoxWallPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso)
         pcd_o3d = O3D_Utils.createPCD(xyzs, colors=rgb)
         self.add_pointCloud(name, pcd_o3d)
         self.adjust_centerCamera()
@@ -472,7 +416,7 @@ class CustomApp(AppWindow):
             rgb = np.array([0.0, 1.0, 0.0])
         rgb = rgb / np.sum(rgb)
 
-        xyzs = ObstacleUtils.create_CylinderPcd(xyz, radius, height, direction, reso)
+        xyzs = ObstacleUtils.create_CylinderSolidPcd(xyz, radius, height, direction, reso)
         pcd_o3d = O3D_Utils.createPCD(xyzs, colors=rgb)
         self.add_pointCloud(name, pcd_o3d)
         self.adjust_centerCamera()
@@ -645,19 +589,14 @@ class CustomApp(AppWindow):
                 'desc': info['desc'],
             }
 
-            if info['shape'] != 'shell':
-                xyzs = obstacle_df[obstacle_df['tag'] == name][['x', 'y', 'z']].values
-                pcd_o3d = O3D_Utils.createPCD(xyzs, colors=np.array(desc['color']))
-                self.add_pointCloud(name, pcd_o3d)
+            xyzs = obstacle_df[obstacle_df['tag'] == name][['x', 'y', 'z']].values
+            pcd_o3d = O3D_Utils.createPCD(xyzs, colors=np.array(desc['color']))
+            self.add_pointCloud(name, pcd_o3d)
 
-                self.geoMap[name].update(update_info)
-                self.geoMap[name].update({'pointCloud': xyzs})
-                if 'scale_desc' in info.keys():
-                    self.geoMap[name].update({'scale_desc': info['scale_desc']})
-
-            else:
-                self.add_pointCloud(name, None, isSilent=True)
-                self.geoMap[name].update(update_info)
+            self.geoMap[name].update(update_info)
+            self.geoMap[name].update({'pointCloud': xyzs})
+            if 'scale_desc' in info.keys():
+                self.geoMap[name].update({'scale_desc': info['scale_desc']})
 
             if find_scaleObstacle_df:
                 xyzs = scaleObstacle_df[scaleObstacle_df['tag'] == name][['x', 'y', 'z']].values
@@ -702,7 +641,7 @@ class CustomApp(AppWindow):
             if geoInfo['type'] == 'pipe':
                 desc = geoInfo['desc']
                 minimum_reso = np.minimum(desc['radius'], minimum_reso)
-        scale_reso = minimum_reso * scale * 1.25
+        scale_reso = minimum_reso * scale
 
         self.config_params['envX'] = self.envX_txt.double_value
         self.config_params['envY'] = self.envY_txt.double_value
@@ -731,14 +670,14 @@ class CustomApp(AppWindow):
                         'shape_reso': scale_reso
                     }
                     geoInfo['scale_desc'] = scale_desc
-                    geoInfo['scale_pointCloud'] = ObstacleUtils.create_BoxPcd(
+                    geoInfo['scale_pointCloud'] = ObstacleUtils.create_BoxWallPcd(
                         scale_desc['xmin'], scale_desc['ymin'], scale_desc['zmin'],
                         scale_desc['xmax'], scale_desc['ymax'], scale_desc['zmax'],
                         scale_desc['shape_reso']
                     )
 
                     geoInfo['desc'].update({'shape_reso': minimum_reso})
-                    geoInfo['pointCloud'] = ObstacleUtils.create_BoxPcd(
+                    geoInfo['pointCloud'] = ObstacleUtils.create_BoxWallPcd(
                         desc['xmin'], desc['ymin'], desc['zmin'], desc['xmax'], desc['ymax'], desc['zmax'],
                         desc['shape_reso']
                     )
@@ -752,13 +691,13 @@ class CustomApp(AppWindow):
                         'shape_reso': scale_reso,
                     }
                     geoInfo['scale_desc'] = scale_desc
-                    geoInfo['scale_pointCloud'] = ObstacleUtils.create_CylinderPcd(
+                    geoInfo['scale_pointCloud'] = ObstacleUtils.create_CylinderSolidPcd(
                         np.array(scale_desc['position']), scale_desc['radius'],
                         scale_desc['height'], scale_desc['direction'], scale_desc['shape_reso']
                     )
 
                     geoInfo['desc'].update({'shape_reso': minimum_reso})
-                    geoInfo['pointCloud'] = ObstacleUtils.create_CylinderPcd(
+                    geoInfo['pointCloud'] = ObstacleUtils.create_CylinderSolidPcd(
                         np.array(desc['position']), desc['radius'], desc['height'], desc['direction'], desc['shape_reso']
                     )
 
@@ -783,54 +722,18 @@ class CustomApp(AppWindow):
         # self.adjust_pipeRadius_v2(pipeNames)
         self.adjust_pipeRadius_v3(pipeNames)
 
-        ### ------ 1.3 create shell
-        shell_filters = {}
-        for name in pipeNames:
-            geoInfo = self.geoMap[name]
-            desc = geoInfo['desc']
-            scale_desc = geoInfo['scale_desc']
-
-            shell_name = f"{name}_shell"
-            shell_xyzs, shell_range = ObstacleUtils.create_PipeBoxShell(
-                xyz=np.array(scale_desc['grid_position']),
-                radius=scale_desc['scale_radius'],
-                direction=desc['direction'],
-                reso=np.minimum(scale_reso, scale_desc['scale_radius'] * 0.4)
-            )
-
-            shell_filters[shell_name] = shell_range
-            if shell_name not in self.geoMap.keys():
-                self.add_pointCloud(shell_name, None, isSilent=True)
-
-            self.geoMap[shell_name].update({
-                'type': 'obstacle',
-                'shape': 'shell',
-                'desc': {
-                    'color': list(self.groupColors[desc['groupIdx'], :]),
-                    'pipe_name': name
-                },
-                'scale_pointCloud': shell_xyzs,
-            })
-
-        ### ------ remove shell conflict
+        ### ------ 1.3 remove shell conflict
         for name in self.geoMap.keys():
             geoInfo = self.geoMap[name]
             if geoInfo['type'] != 'obstacle':
                 continue
 
-            if geoInfo['shape'] != 'shell':
-                xyzs = geoInfo['scale_pointCloud']
-                for shell_name in shell_filters.keys():
-                    shellRange = shell_filters[shell_name]
-                    xyzs = ObstacleUtils.removePointInBoxShell(xyzs, shellRange)
-
-            else:
-                xyzs = geoInfo['scale_pointCloud']
-                for shell_name in shell_filters.keys():
-                    if shell_name == name:
-                        continue
-                    shellRange = shell_filters[shell_name]
-                    xyzs = ObstacleUtils.removePointInBoxShell(xyzs, shellRange)
+            xyzs = geoInfo['scale_pointCloud']
+            for pipeName in pipeNames:
+                scale_desc = self.geoMap[pipeName]['scale_desc']
+                xyzs = ObstacleUtils.removePointInSphereShell(
+                    xyzs, center=scale_desc["grid_position"], radius=scale_desc["scale_radius"]
+                )
 
             geoInfo['scale_pointCloud'] = ObstacleUtils.removePointOutBoundary(
                 xyzs,
