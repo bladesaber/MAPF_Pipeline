@@ -363,7 +363,7 @@ class CBS_Planner(object):
                 path_xyzrl = np.array(res_path)
                 radius = path_xyzrl[0, 3]
 
-                if path_xyzrl.shape[0] > 0:
+                if path_xyzrl.shape[0] > 1:
                     tube_mesh = VisulizerVista.create_tube(path_xyzrl[:, :3], radius=radius)
                     line_mesh = VisulizerVista.create_line(path_xyzrl[:, :3])
 
@@ -433,7 +433,7 @@ class CBS_Planner(object):
                 path_xyzrl = np.array(res_path)
                 radius = path_xyzrl[0, 3]
 
-                if path_xyzrl.shape[0] > 0:
+                if path_xyzrl.shape[0] > 1:
                     tube_mesh = VisulizerVista.create_tube(path_xyzrl[:, :3], radius=radius)
                     line_mesh = VisulizerVista.create_line(path_xyzrl[:, :3])
                     vis.plot(tube_mesh, color=tuple(random_colors[groupIdx]), opacity=0.65)
@@ -468,13 +468,19 @@ class CBS_Planner(object):
         vis.show()
 
     def extractPath(self, node):
+        resRecords = {}
         for groupIdx in self.groupIdxs:
+            resRecords[groupIdx] = []
+
             resPath_list = node.getGroupAgentResPath(groupIdx)
             for i, res_path in enumerate(resPath_list):
                 path_xyzrl = np.array(res_path)
-                if path_xyzrl.shape[0] > 0:
-                    self.groupTaskTreeRecord[groupIdx][i].update({'path_xyzrl': path_xyzrl})
-        return self.groupTaskTreeRecord
+                if path_xyzrl.shape[0] > 1:
+                    info = self.groupTaskTreeRecord[groupIdx][i]
+                    info.update({'path_xyzrl': path_xyzrl})
+                    resRecords[groupIdx].append(info)
+
+        return resRecords
 
 
 def parse_args():
