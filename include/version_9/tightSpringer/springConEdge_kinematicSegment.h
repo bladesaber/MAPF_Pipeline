@@ -11,7 +11,7 @@
 #include "tightSpringer/springVertex_cell.h"
 
 using namespace std;
-
+/*
 namespace TightSpringNameSpace {
 
     // connector <---> cell <---> cell or cell <---> cell <---> cell
@@ -71,5 +71,5 @@ namespace TightSpringNameSpace {
 
     };
 }
-
+*/
 #endif //MAPF_PIPELINE_SPRINGEDGE_KINEMATICSEGMENT_H

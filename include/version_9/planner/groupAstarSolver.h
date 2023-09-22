@@ -50,12 +50,13 @@ namespace PlannerNameSpace {
 
     class TaskInfo {
     public:
+        std::string tag;
         size_t loc0, loc1;
         double radius0, radius1;
         Path_XYZRL res_path;
 
-        TaskInfo(size_t loc0, double radius0, size_t loc1, double radius1) :
-                loc0(loc0), loc1(loc1), radius0(radius0), radius1(radius1) {};
+        TaskInfo(std::string tag, size_t loc0, double radius0, size_t loc1, double radius1) :
+                tag(tag), loc0(loc0), loc1(loc1), radius0(radius0), radius1(radius1) {};
 
         ~TaskInfo() {};
     };
@@ -73,7 +74,8 @@ namespace PlannerNameSpace {
 
         bool findPath(
                 AStarSolver *solver, std::vector<ConstrainType> constraints,
-                ConstraintTable &obstacle_table, Instance &instance, double stepLength) {
+                ConstraintTable &obstacle_table, Instance &instance, double stepLength
+        ) {
             std::map<size_t, TaskLeaf *> locLeafsMap;
             for (size_t loc: locs) {
                 locLeafsMap[loc] = new TaskLeaf(loc);
@@ -113,9 +115,10 @@ namespace PlannerNameSpace {
                 );
 
                 if (path.size() == 0) {
+//                    std::cout << "[Warning]: Search Path " << taskTree[i]->tag << " Fail." << std::endl;
                     break;
 
-                }else {
+                } else {
                     path_xyzr.clear();
                     for (size_t loc: path) {
                         std::tie(x, y, z) = instance.getCoordinate(loc);
@@ -165,7 +168,7 @@ namespace PlannerNameSpace {
                 release_set.clear();
                 locLeafsMap.clear();
 
-            } else{
+            } else {
                 updateLocTree();
             }
 
@@ -193,7 +196,7 @@ namespace PlannerNameSpace {
 
         void copy(std::shared_ptr<GroupAstarSolver> rhs, bool with_path = false) {
             for (TaskInfo *task: rhs->taskTree) {
-                TaskInfo *new_obj = new TaskInfo(task->loc0, task->radius0, task->loc1, task->radius1);
+                TaskInfo *new_obj = new TaskInfo(task->tag, task->loc0, task->radius0, task->loc1, task->radius1);
 
                 if (with_path) {
                     new_obj->res_path = Path_XYZRL(task->res_path);
@@ -204,15 +207,15 @@ namespace PlannerNameSpace {
             this->locs = std::set<size_t>(rhs->locs);
         }
 
-        void addTask(size_t loc0, double radius0, size_t loc1, double radius1) {
+        void addTask(std::string tag, size_t loc0, double radius0, size_t loc1, double radius1) {
             locs.insert(loc0);
             locs.insert(loc1);
-            taskTree.emplace_back(new TaskInfo(loc0, radius0, loc1, radius1));
+            taskTree.emplace_back(new TaskInfo(tag, loc0, radius0, loc1, radius1));
         }
 
-        std::vector<Path_XYZRL> getPath(){
+        std::vector<Path_XYZRL> getPath() {
             std::vector<Path_XYZRL> taskPaths;
-            for (TaskInfo* info: taskTree) {
+            for (TaskInfo *info: taskTree) {
                 taskPaths.emplace_back(info->res_path);
             }
             return taskPaths;

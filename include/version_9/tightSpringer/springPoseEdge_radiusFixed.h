@@ -59,10 +59,6 @@ namespace TightSpringNameSpace {
             _error[0] = std::abs(radius - dist) * kSpring;
         }
 
-        double lost_calc() {
-            throw "Not Implementation";
-        }
-
     protected:
         using g2o::BaseBinaryEdge<1, double, T1, T2>::_error;
         using g2o::BaseBinaryEdge<1, double, T1, T2>::_vertices;

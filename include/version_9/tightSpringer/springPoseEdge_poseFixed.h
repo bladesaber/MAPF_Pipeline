@@ -14,6 +14,7 @@
 
 using namespace std;
 
+/*
 namespace TightSpringNameSpace {
 
     // connector(cell) <---> structor
@@ -78,5 +79,5 @@ namespace TightSpringNameSpace {
     };
 
 }
-
+*/
 #endif //MAPF_PIPELINE_SPRINGEDGE_POSEFIXED_H

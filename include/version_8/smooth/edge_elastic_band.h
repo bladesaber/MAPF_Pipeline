@@ -78,7 +78,7 @@ public:
             const VertexXYZ *pose1 = static_cast<const VertexXYZ *>(_vertices[0]);
             const VertexXYZ *pose2 = static_cast<const VertexXYZ *>(_vertices[1]);
 
-            _error[0] = (pose2->position() - pose1->position()).squaredNorm();
+            _error[0] = (pose2->position() - pose1->position()).squaredNorm() * kSpring;
 
             // _error[0] = (pose2->position() - pose1->position()).norm() * kSpring;
 

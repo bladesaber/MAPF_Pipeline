@@ -10,8 +10,8 @@
 #include "AstarSolver.h"
 
 //#include "vertex_XYZ.h"
-//#include "g2oSmoother_xyz.h"
-#include "tightSpringer/springSmoother.h"
+#include "g2oSmoother_xyz.h"
+//#include "tightSpringer/springSmoother.h"
 
 #include "cbs_node.h"
 #include "cbs_solver.h"
@@ -97,7 +97,8 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             .def("info", &Conflict::info);
 
     py::class_<PlannerNameSpace::TaskInfo>(m, "TaskInfo")
-            .def(py::init<size_t, double, size_t, double>())
+            .def(py::init<std::string, size_t, double, size_t, double>())
+            .def_readonly("tag", &PlannerNameSpace::TaskInfo::tag)
             .def_readonly("loc0", &PlannerNameSpace::TaskInfo::loc0)
             .def_readonly("loc1", &PlannerNameSpace::TaskInfo::loc1)
             .def_readonly("radius0", &PlannerNameSpace::TaskInfo::radius0)
@@ -107,7 +108,8 @@ PYBIND11_MODULE(mapf_pipeline, m) {
     py::class_<PlannerNameSpace::GroupAstarSolver>(m, "GroupAstarSolver")
             .def(py::init<>())
             .def_readonly("taskTree", &PlannerNameSpace::GroupAstarSolver::taskTree)
-            .def("addTask", &PlannerNameSpace::GroupAstarSolver::addTask, "loc0"_a, "radius0"_a, "loc1"_a, "radius1"_a)
+            .def("addTask", &PlannerNameSpace::GroupAstarSolver::addTask,
+                 "tag"_a, "loc0"_a, "radius0"_a, "loc1"_a, "radius1"_a)
             .def("findPath", &PlannerNameSpace::GroupAstarSolver::findPath, "solver"_a, "constraints"_a,
                  "obstacle_table"_a, "instance"_a, "stepLength"_a);
 
@@ -127,8 +129,8 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             .def("copy", &CBSNameSpace::CBSNode::copy, "rhs"_a)
             .def("add_GroupAgent", &CBSNameSpace::CBSNode::add_GroupAgent, "groupIdx"_a)
             .def("getConstrains", &CBSNameSpace::CBSNode::getConstrains, "groupIdx"_a)
-            .def("addTask_to_GroupAgent", &CBSNameSpace::CBSNode::addTask_to_GroupAgent, "groupIdx"_a, "loc0"_a,
-                 "radius0"_a, "loc1"_a, "radius1"_a)
+            .def("addTask_to_GroupAgent", &CBSNameSpace::CBSNode::addTask_to_GroupAgent, "groupIdx"_a,
+                 "tag"_a, "loc0"_a, "radius0"_a, "loc1"_a, "radius1"_a)
             .def("getGroupAgentResPath", &CBSNameSpace::CBSNode::getGroupAgentResPath, "groupIdx"_a)
             .def("info", &CBSNameSpace::CBSNode::info, "with_constrainInfo"_a = false, "with_pathInfo"_a = false)
             .def("add_rectangleExcludeArea", &CBSNameSpace::CBSNode::add_rectangleExcludeArea,
@@ -148,6 +150,46 @@ PYBIND11_MODULE(mapf_pipeline, m) {
                  "groupIdx"_a, "node"_a, "instance"_a)
             .def("add_obstacle", &CBSNameSpace::CBSSolver::add_obstacle, "x"_a, "y"_a, "z"_a, "radius"_a);
 
+    py::class_<SmootherNameSpace::NxGraphNode>(m, "NxGraphNode")
+            .def(py::init<size_t, double, double, double, double, bool>())
+            .def_readonly("nodeIdx", &SmootherNameSpace::NxGraphNode::nodeIdx)
+            .def_readonly("x", &SmootherNameSpace::NxGraphNode::x)
+            .def_readonly("y", &SmootherNameSpace::NxGraphNode::y)
+            .def_readonly("z", &SmootherNameSpace::NxGraphNode::z)
+            .def_readonly("radius", &SmootherNameSpace::NxGraphNode::radius)
+            .def_readonly("fixed", &SmootherNameSpace::NxGraphNode::fixed);
+
+    py::class_<SmootherNameSpace::FlexSmootherXYZ_Runner>(m, "FlexSmootherXYZ_Runner")
+            .def(py::init<>())
+            .def_readonly("graphNode_map", &SmootherNameSpace::FlexSmootherXYZ_Runner::graphNode_map)
+            .def("initOptimizer", &SmootherNameSpace::FlexSmootherXYZ_Runner::initOptimizer)
+            .def("add_obstacle", &SmootherNameSpace::FlexSmootherXYZ_Runner::add_obstacle, "x"_a, "y"_a, "z"_a, "radius"_a)
+            .def("clear_graph", &SmootherNameSpace::FlexSmootherXYZ_Runner::clear_graph)
+            .def("add_graphNode", &SmootherNameSpace::FlexSmootherXYZ_Runner::add_graphNode,
+                 "nodeIdx"_a, "x"_a, "y"_a, "z"_a, "radius"_a, "fixed"_a)
+            .def("clear_graphNodeMap", &SmootherNameSpace::FlexSmootherXYZ_Runner::clear_graphNodeMap)
+            .def("add_vertex", &SmootherNameSpace::FlexSmootherXYZ_Runner::add_vertex, "nodeIdx"_a)
+            .def("is_g2o_graph_empty", &SmootherNameSpace::FlexSmootherXYZ_Runner::is_g2o_graph_empty)
+            .def("is_g2o_graph_edges_empty", &SmootherNameSpace::FlexSmootherXYZ_Runner::is_g2o_graph_edges_empty)
+            .def("is_g2o_graph_vertices_empty", &SmootherNameSpace::FlexSmootherXYZ_Runner::is_g2o_graph_vertices_empty)
+            .def("add_elasticBand", &SmootherNameSpace::FlexSmootherXYZ_Runner::add_elasticBand,
+                 "nodeIdx0"_a, "nodeIdx1"_a, "kSpring"_a, "weight"_a)
+            .def("add_kinematicEdge", &SmootherNameSpace::FlexSmootherXYZ_Runner::add_kinematicEdge,
+                 "nodeIdx0"_a, "nodeIdx1"_a, "nodeIdx2"_a, "kSpring"_a, "weight"_a)
+            .def("add_kinematicVertexEdge", &SmootherNameSpace::FlexSmootherXYZ_Runner::add_kinematicVertexEdge,
+                 "nodeIdx0"_a, "nodeIdx1"_a, "vec_i"_a, "vec_j"_a, "vec_k"_a, "kSpring"_a, "weight"_a)
+            .def("add_obstacleEdge", &SmootherNameSpace::FlexSmootherXYZ_Runner::add_obstacleEdge,
+                 "nodeIdx"_a, "searchScale"_a, "repleScale"_a, "kSpring"_a, "weight"_a)
+            .def("add_pipeConflictEdge", &SmootherNameSpace::FlexSmootherXYZ_Runner::add_pipeConflictEdge,
+                 "nodeIdx"_a, "groupIdx"_a, "searchScale"_a, "repleScale"_a, "kSpring"_a, "weight"_a)
+            .def("updateNodeMap_Vertex", &SmootherNameSpace::FlexSmootherXYZ_Runner::updateNodeMap_Vertex)
+            .def("updateGroupTrees", &SmootherNameSpace::FlexSmootherXYZ_Runner::updateGroupTrees,
+                 "groupIdx"_a, "nodeIdxs"_a)
+            .def("optimizeGraph", &SmootherNameSpace::FlexSmootherXYZ_Runner::optimizeGraph,
+                 "no_iterations"_a, "verbose"_a)
+            .def("info", &SmootherNameSpace::FlexSmootherXYZ_Runner::info);
+
+    /*
     py::class_<TightSpringNameSpace::Springer_Plane>(m, "SpringerPlane")
             .def(py::init<std::string, size_t, double, double, double, bool>())
             .def_readonly("name", &TightSpringNameSpace::Springer_Plane::name)
@@ -249,6 +291,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             .def("addEdge_minAxes", &TightSpringNameSpace::SpringerSmooth_Runner::addEdge_minAxes,
                  "minPlaneIdx"_a, "maxPlaneIdx"_a, "xyzTag"_a, "scale"_a, "kSpring"_a, "weight"_a);
 
+     */
 
     // it don't work, I don't know why
     // m.def("printPointer", &printPointer<KDTreeData>, "a"_a, "tag"_a);

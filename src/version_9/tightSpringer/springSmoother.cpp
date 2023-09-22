@@ -4,6 +4,7 @@
 
 #include "tightSpringer/springSmoother.h"
 
+/*
 namespace TightSpringNameSpace {
 
     bool SpringerSmooth_Runner::addEdge_structorToPlane_valueShift(
@@ -349,3 +350,5 @@ namespace TightSpringNameSpace {
     }
 
 }
+
+ */

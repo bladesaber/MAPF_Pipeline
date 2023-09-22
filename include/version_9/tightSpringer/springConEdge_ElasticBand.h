@@ -11,6 +11,7 @@
 
 #include "tightSpringer/springVertex_cell.h"
 
+/*
 namespace TightSpringNameSpace {
 
     class SpringConEdge_ElasticBand : public g2o::BaseBinaryEdge<1, double, SpringVertexCell, SpringVertexCell> {
@@ -57,5 +58,5 @@ namespace TightSpringNameSpace {
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     };
 }
-
+*/
 #endif //MAPF_PIPELINE_SPRINGEDGE_ELASTICBAND_H

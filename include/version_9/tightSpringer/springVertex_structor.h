@@ -15,6 +15,7 @@
 
 using namespace std;
 
+/*
 namespace TightSpringNameSpace {
 
     class SpringVertexStructor : public g2o::BaseVertex<4, Eigen::Vector4d> {
@@ -158,7 +159,7 @@ namespace TightSpringNameSpace {
 
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     };
-
 }
+*/
 
 #endif //MAPF_PIPELINE_SPRINGVERTEX_XYZR_H

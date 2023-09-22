@@ -14,6 +14,7 @@
 #include "tightSpringer/springVertex_structor.h"
 #include "tightSpringer/springVertex_plane.h"
 
+/*
 namespace TightSpringNameSpace {
 
     // cell <---> plane
@@ -280,5 +281,5 @@ namespace TightSpringNameSpace {
     };
 
 }
-
+*/
 #endif //MAPF_PIPELINE_SPRINGEDGE_RANGEFIXED_H

@@ -14,6 +14,7 @@
 #include "tightSpringer/springVertex_structor.h"
 #include "tightSpringer/springVertex_plane.h"
 
+/*
 namespace TightSpringNameSpace {
 
     // structor <---> plane
@@ -62,20 +63,6 @@ namespace TightSpringNameSpace {
             _error[0] = std::abs(shiftValue - dist) * kSpring;
         }
 
-        /*
-        virtual void linearizeOplus() override{
-            if (xyzTag == "X"){
-                _jacobianOplusXj(0, 0) = 1.0;
-
-            } else if (xyzTag == "Y"){
-                _jacobianOplusXj(0, 1) = 1.0;
-
-            } else{
-                _jacobianOplusXj(0, 2) = 1.0;
-            }
-        }
-        */
-
     protected:
         using g2o::BaseBinaryEdge<1, double, T1, T2>::_error;
         using g2o::BaseBinaryEdge<1, double, T1, T2>::_vertices;
@@ -90,5 +77,6 @@ namespace TightSpringNameSpace {
     };
 
 }
+ */
 
 #endif //MAPF_PIPELINE_SPRINGEDGE_XYZSHIFT_H

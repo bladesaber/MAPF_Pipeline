@@ -148,7 +148,8 @@ namespace PlannerNameSpace {
 
         // ------ Check startPos or endPos Valid
 //        std::cout << "Start locs Num:" << start_locs.size() << " Goal locs Num:" << goal_locs.size();
-//        std::cout << " obstacleTable Num:" << obstacle_table.getTreeCount() << " constraintTable Num:" << constraint_table.getTreeCount() << std::endl;
+//        std::cout << " obstacleTable Num:" << obstacle_table.getTreeCount()
+//            << " constraintTable Num:" << constraint_table.getTreeCount() << std::endl;
 
         this->start_locs.clear();
         for (size_t start_loc: start_locs) {

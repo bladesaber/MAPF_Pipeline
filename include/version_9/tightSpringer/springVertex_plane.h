@@ -14,6 +14,7 @@
 
 using namespace std;
 
+/*
 namespace TightSpringNameSpace {
     class SpringVertexPlane : public g2o::BaseVertex<3, Eigen::Vector3d> {
     private:
@@ -94,5 +95,6 @@ namespace TightSpringNameSpace {
     };
 
 }
+*/
 
 #endif //MAPF_PIPELINE_SPRINGVERTEX_PLANE_H

@@ -14,24 +14,24 @@
 
 namespace TightSpringNameSpace{
 
-    class SpringVertexCell : public g2o::BaseVertex<3, Eigen::Vector3d> {
+    class SpringVertex : public g2o::BaseVertex<3, Eigen::Vector3d> {
     private:
         std::string name;
 
     public:
-        SpringVertexCell(bool fixed = false) {
+        SpringVertex(bool fixed = false) {
             setToOriginImpl();
             setFixed(fixed);
         }
 
-        SpringVertexCell(double x, double y, double z, bool fixed = false) {
+        SpringVertex(double x, double y, double z, bool fixed = false) {
             _estimate.coeffRef(0) = x;
             _estimate.coeffRef(1) = y;
             _estimate.coeffRef(2) = z;
             setFixed(fixed);
         }
 
-        ~SpringVertexCell() {}
+        ~SpringVertex() {}
 
         virtual void setToOriginImpl() override {
             _estimate.setZero();

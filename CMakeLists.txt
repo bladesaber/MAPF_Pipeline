@@ -27,14 +27,15 @@ find_package(Boost REQUIRED)
 LIST( APPEND CMAKE_MODULE_PATH ${PACKAGE_TOP_DIR}/Thirdparty/g2o/cmake_modules)
 #set(G2O_ROOT /usr/local/include/g2o)
 find_package(G2O REQUIRED)
+find_package(Ceres REQUIRED)
 
 message("Boost_INCLUDE_DIRS: " ${Boost_INCLUDE_DIRS})
 # message("PCL_INCLUDE_DIR: " ${PCL_INCLUDE_DIRS})
 # message("PCL_LIBRARY_DIR: " ${PCL_LIBRARIES})
 
 ### ---------------------- Version Setting
-set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_8)
-set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_8)
+set(Include_DIR ${PACKAGE_TOP_DIR}/include/version_9)
+set(Src_DIR ${PACKAGE_TOP_DIR}/src/version_9)
 
 message("Include_DIR: " ${Include_DIR})
 message("Src_DIR: " ${Src_DIR})
@@ -43,21 +44,22 @@ message("Src_DIR: " ${Src_DIR})
 add_subdirectory(${Thirdparty_DIR}/pybind11)
 
 include_directories(
-#        ${Thirdparty_DIR}/pybind11
-#        ${Thirdparty_DIR}/pybind11/tools
+        ${Thirdparty_DIR}/pybind11
+        ${Thirdparty_DIR}/pybind11/tools
 
-        # include
         ${Include_DIR}
         ${Boost_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
         # ${PCL_INCLUDE_DIRS}
         # ${VTK_INCLUDE_DIRS}
         ${G2O_INCLUDE_DIR}
+        ${CERES_INCLUDE_DIRS}
 
         ${Include_DIR}/smooth
         ${Include_DIR}/planner
         ${Include_DIR}/pather
         ${Include_DIR}/cbs
+#        ${Include_DIR}/tightSpringer
 )
 
 link_directories(
@@ -126,6 +128,8 @@ pybind11_add_module(mapf_pipeline ${Src_DIR}/driver.cpp
 
         ${Src_DIR}/cbs/cbs_node.cpp
 #        ${Src_DIR}/cbs/cbs_solver.cpp
+
+#        ${Src_DIR}/tightSpringer/springSmoother.cpp
         )
 target_link_libraries(mapf_pipeline PRIVATE
         pybind11::module
@@ -154,4 +158,5 @@ target_link_libraries(mapf_pipeline PRIVATE
         # g2o_types_slam3d
         # g2o_types_slam3d_addons
 
+        Ceres::ceres
         )

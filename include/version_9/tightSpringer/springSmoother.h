@@ -39,6 +39,7 @@
 #include "tightSpringer/springTarEdge_poseCluster.h"
 #include "tightSpringer/springTarEdge_minAxes.h"
 
+/*
 namespace TightSpringNameSpace {
 
     class Springer_Plane {
@@ -268,7 +269,7 @@ namespace TightSpringNameSpace {
             return false;
         }
 
-        /* ------ Position Edge Type ------ */
+        // ------ Position Edge Type ------
         // structor <---> plane
         bool addEdge_structorToPlane_valueShift(
                 size_t planeIdx, size_t structorIdx, std::string xyzTag, double shiftValue,
@@ -292,7 +293,7 @@ namespace TightSpringNameSpace {
                 double kSpring, double weight
         );
 
-        /* ------ Connect Edge Type ------ */
+        // ------ Connect Edge Type ------
         // Cell <---> Connector
         bool addEdge_cellToConnector_elasticBand(size_t cellIdx, size_t connectorIdx, double kSpring, double weight);
 
@@ -312,7 +313,7 @@ namespace TightSpringNameSpace {
                 size_t cellIdx0, size_t cellIdx1, size_t cellIdx2, double targetValue, double kSpring, double weight
         );
 
-        /* ------ Force Edge Type ------ */
+        // ------ Force Edge Type ------
         bool addEdge_structorToPlane_planeRepel(
                 size_t structorIdx, size_t planeIdx,
                 std::string planeTag, std::string compareTag,
@@ -343,7 +344,7 @@ namespace TightSpringNameSpace {
                 double bound_shift, double kSpring, double weight
         );
 
-        /* ------ Target Edge Type ------ */
+        // ------ Target Edge Type ------
         bool addEdge_minVolume(size_t minPlaneIdx, size_t maxPlaneIdx, double scale, double kSpring, double weight);
 
         bool addEdge_structor_poseCluster(size_t structorIdx, double scale, double kSpring, double weight);
@@ -552,5 +553,5 @@ namespace TightSpringNameSpace {
     };
 
 }
-
+*/
 #endif //MAPF_PIPELINE_SPRINGSMOOTHER_H

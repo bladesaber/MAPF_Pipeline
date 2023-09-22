@@ -11,7 +11,7 @@ namespace CBSNameSpace {
 
     class CBSNode {
     public:
-        CBSNode(double stepLength): stepLength(stepLength) {};
+        CBSNode(double stepLength) : stepLength(stepLength) {};
 
         ~CBSNode() {
             release();
@@ -62,16 +62,18 @@ namespace CBSNameSpace {
             groupAgentMap[groupIdx] = groupAgent;
         }
 
-        std::vector<Path_XYZRL> getGroupAgentResPath(size_t groupIdx){
+        std::vector<Path_XYZRL> getGroupAgentResPath(size_t groupIdx) {
             std::vector<Path_XYZRL> res;
-            for (TaskInfo* iter: groupAgentMap[groupIdx]->taskTree) {
+            for (TaskInfo *iter: groupAgentMap[groupIdx]->taskTree) {
                 res.emplace_back(Path_XYZRL(iter->res_path));
             }
             return res;
         }
 
-        void addTask_to_GroupAgent(size_t groupIdx, size_t loc0, double radius0, size_t loc1, double radius1) {
-            groupAgentMap[groupIdx]->addTask(loc0, radius0, loc1, radius1);
+        void addTask_to_GroupAgent(
+                size_t groupIdx, std::string tag, size_t loc0, double radius0, size_t loc1, double radius1
+        ) {
+            groupAgentMap[groupIdx]->addTask(tag, loc0, radius0, loc1, radius1);
         }
 
         void copy(CBSNode *rhs) {
@@ -82,7 +84,8 @@ namespace CBSNameSpace {
                 constrainsMap[iter.first] = std::shared_ptr<std::vector<ConstrainType>>(iter.second);
             }
             rectangleExcludeAreas.clear();
-            rectangleExcludeAreas = std::vector<std::tuple<double, double, double, double, double, double>>(rhs->rectangleExcludeAreas);
+            rectangleExcludeAreas = std::vector<std::tuple<double, double, double, double, double, double>>(
+                    rhs->rectangleExcludeAreas);
         }
 
         inline double getFVal() const {
@@ -128,16 +131,16 @@ namespace CBSNameSpace {
         // TODO need to change to share_ptr
         std::vector<std::tuple<double, double, double, double, double, double>> rectangleExcludeAreas;
 
-        void add_rectangleExcludeArea(double xmin, double ymin, double zmin, double xmax, double ymax, double zmax){
+        void add_rectangleExcludeArea(double xmin, double ymin, double zmin, double xmax, double ymax, double zmax) {
             rectangleExcludeAreas.emplace_back(std::make_tuple(xmin, ymin, zmin, xmax, ymax, zmax));
         }
 
-        void clear_rectangleExcludeArea(){
+        void clear_rectangleExcludeArea() {
             rectangleExcludeAreas.clear();
         }
 
-        bool isIn_rectangleExcludeAreas(double x, double y, double z){
-            if (rectangleExcludeAreas.size() == 0){
+        bool isIn_rectangleExcludeAreas(double x, double y, double z) {
+            if (rectangleExcludeAreas.size() == 0) {
                 return false;
             }
 
@@ -145,17 +148,17 @@ namespace CBSNameSpace {
             for (int i = 0; i < rectangleExcludeAreas.size(); ++i) {
                 std::tie(xmin, ymin, zmin, xmax, ymax, zmax) = rectangleExcludeAreas[i];
 
-                if (x < xmin){
+                if (x < xmin) {
                     continue;
-                } else if (x > xmax){
+                } else if (x > xmax) {
                     continue;
-                } else if (y < ymin){
+                } else if (y < ymin) {
                     continue;
-                } else if (y > ymax){
+                } else if (y > ymax) {
                     continue;
-                } else if (z < zmin){
+                } else if (z < zmin) {
                     continue;
-                } else if (z > zmax){
+                } else if (z > zmax) {
                     continue;
                 }
 

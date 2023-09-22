@@ -14,6 +14,7 @@
 
 using namespace std;
 
+/*
 namespace TightSpringNameSpace {
 
     // connector <---> cell or cell <---> connector
@@ -71,5 +72,5 @@ namespace TightSpringNameSpace {
 
     };
 }
-
+*/
 #endif //MAPF_PIPELINE_SPRINGEDGE_KINEMATICSPOINT_H

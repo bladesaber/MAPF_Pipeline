@@ -14,6 +14,7 @@
 
 using namespace std;
 
+/*
 namespace TightSpringNameSpace {
 
     // cell <---> cell
@@ -224,5 +225,5 @@ namespace TightSpringNameSpace {
     };
 
 }
-
+*/
 #endif //MAPF_PIPELINE_SPRINGEDGE_SHAPEREPEL_H
