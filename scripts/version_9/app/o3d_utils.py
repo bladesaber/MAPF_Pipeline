@@ -210,7 +210,7 @@ class AppWindow(object):
 
     def init_infoWidget(self):
         self.info_layout = gui.CollapsableVert("info", self.spacing, self.margins)
-        self.info_content = gui.Label("......")
+        self.info_content = gui.Label("[info]: Welcome")
         self.panel.add_child(self.info_content)
 
     # ------------------------------------------------------------------

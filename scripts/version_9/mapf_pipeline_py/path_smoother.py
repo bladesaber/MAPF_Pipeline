@@ -11,6 +11,7 @@ from tqdm import tqdm
 from build import mapf_pipeline
 from scripts.visulizer import VisulizerVista
 
+
 class FlexPathSmoother(object):
     def __init__(
             self,
@@ -41,121 +42,121 @@ class FlexPathSmoother(object):
         self.with_pipeConflictEdge = with_pipeConflictEdge
 
     def init_environment(self):
-        self.obstacle_df = pd.read_csv(self.env_config['scaleObstaclePath'], index_col=0)
+        self.obstacle_df = pd.read_csv(self.env_config['obstacle_path'], index_col=0)
 
         self.groupConfig = {}
-        for groupIdx in self.env_config['pipeConfig'].keys():
-            groupPipes = self.env_config['pipeConfig'][groupIdx]
-            for name in groupPipes:
-                groupPipes[name]['scale_desc']['scale_position'] = np.round(
-                    groupPipes[name]['scale_desc']['scale_position'], decimals=1
+        for group_idx_str in self.env_config['pipe_cfgs'].keys():
+            group_pipes = self.env_config['pipe_cfgs'][group_idx_str]
+            for name in group_pipes:
+                group_pipes[name]['scale_position'] = np.round(
+                    group_pipes[name]['scale_position'], decimals=1
                 )
-            self.groupConfig[int(groupIdx)] = groupPipes
+            self.groupConfig[int(group_idx_str)] = group_pipes
 
-        ### ------ shift shell obstacle pointCloud
-        for groupIdx in self.groupConfig.keys():
-            pipeInfos = self.groupConfig[groupIdx]
-            for name in pipeInfos.keys():
-                pipeInfo = pipeInfos[name]
-                scaleInfo = pipeInfo['scale_desc']
+        # ------ shift shell obstacle pointCloud
+        shell_names = list(self.obstacle_df['tag'].unique())
+        for group_idx in self.groupConfig.keys():
+            pipe_infos = self.groupConfig[group_idx]
+            for name in pipe_infos.keys():
+                pipe_info = pipe_infos[name]
 
-                shift_xyz = np.array(scaleInfo['scale_position']) - np.array(scaleInfo['grid_position'])
                 shell_name = f'{name}_shell'
-                idxs = self.obstacle_df.index[self.obstacle_df['tag'] == shell_name]
-                self.obstacle_df.loc[idxs, ['x', 'y', 'z']] += shift_xyz
+                if shell_name in shell_names:
+                    shift_xyz = np.array(pipe_info['scale_position']) - np.array(pipe_info['position'])
+                    idxs = self.obstacle_df.index[self.obstacle_df['tag'] == shell_name]
+                    self.obstacle_df.loc[idxs, ['x', 'y', 'z']] += shift_xyz
 
-        ### ------ create obstacle tree
+        # ------ create obstacle tree
         for _, row in self.obstacle_df.iterrows():
             self.flexSmoother_runner.add_obstacle(row.x, row.y, row.z, row.radius)
 
     def createWholeNetwork(self, resGroupPaths: Dict):
         for groupIdx in resGroupPaths.keys():
-            pathInfos = resGroupPaths[groupIdx]
+            path_infos = resGroupPaths[groupIdx]
 
-            for pathIdx, pathInfo in enumerate(pathInfos):
-                last_nodeIdx = None
+            for pathIdx, pathInfo in enumerate(path_infos):
+                last_node_idx = None
                 path_xyzrl = pathInfo['path_xyzrl']
 
                 for i, (x, y, z, radius, length) in enumerate(path_xyzrl):
 
-                    ### ------ recover correct start and end point
+                    # ------ recover correct start and end point
                     if i == 0:
-                        startName = pathInfo['name0']
-                        scaleInfo = self.groupConfig[groupIdx][startName]['scale_desc']
-                        grid_position = np.array(scaleInfo['grid_position'])
+                        start_name = pathInfo['name0']
+                        info = self.groupConfig[groupIdx][start_name]
+                        grid_position = np.array(info['position'])
                         if np.all(grid_position == np.array([x, y, z])):
-                            x, y, z = np.array(scaleInfo['scale_position'])
+                            x, y, z = np.array(info['scale_position'])
 
                     elif i == path_xyzrl.shape[0] - 1:
-                        endName = pathInfo['name1']
-                        scaleInfo = self.groupConfig[groupIdx][endName]['scale_desc']
-                        grid_position = np.array(scaleInfo['grid_position'])
+                        end_name = pathInfo['name1']
+                        info = self.groupConfig[groupIdx][end_name]
+                        grid_position = np.array(info['position'])
                         if np.all(grid_position == np.array([x, y, z])):
-                            x, y, z = np.array(scaleInfo['scale_position'])
+                            x, y, z = np.array(info['scale_position'])
 
-                    ### ------ record points
+                    # ------ record points
                     if (x, y, z) not in self.pose2NodeIdx.keys():
-                        current_nodeIdx = len(self.pose2NodeIdx.keys())
+                        current_node_idx = len(self.pose2NodeIdx.keys())
                         self.network.add_node(
-                            current_nodeIdx,
-                            # **{"x": x, "y": y, "z": z, "radius": radius}
+                            current_node_idx,  # **{"x": x, "y": y, "z": z, "radius": radius}
                         )
-                        self.nodesInfo[current_nodeIdx] = {
+                        self.nodesInfo[current_node_idx] = {
                             "pose": np.array([x, y, z]),
                             "radius": radius,
                             "groupIdx": groupIdx,
                             # "pathIdx": [pathIdx],
                         }
-                        self.pose2NodeIdx[(x, y, z)] = current_nodeIdx
+                        self.pose2NodeIdx[(x, y, z)] = current_node_idx
 
                     else:
-                        current_nodeIdx = self.pose2NodeIdx[(x, y, z)]
-                        self.nodesInfo[current_nodeIdx]["radius"] = max(
-                            self.nodesInfo[current_nodeIdx]["radius"], radius
+                        current_node_idx = self.pose2NodeIdx[(x, y, z)]
+                        self.nodesInfo[current_node_idx]["radius"] = max(
+                            self.nodesInfo[current_node_idx]["radius"], radius
                         )
-                        # self.nodesInfo[current_nodeIdx]['pathIdx'].append(pathIdx)
+                        # self.nodesInfo[current_node_idx]['pathIdx'].append(pathIdx)
 
-                    if last_nodeIdx is not None:
-                        self.network.add_edge(last_nodeIdx, current_nodeIdx)
+                    if last_node_idx is not None:
+                        self.network.add_edge(last_node_idx, current_node_idx)
 
-                    last_nodeIdx = current_nodeIdx
+                    last_node_idx = current_node_idx
 
     def definePath(self, path_links):
         for groupIdx in path_links.keys():
-            linkInfo = path_links[groupIdx]
-            startName = linkInfo['converge_pipe']
+            link_nfo = path_links[groupIdx]
+            start_name = link_nfo['converge_pipe']
 
-            startPos = self.groupConfig[groupIdx][startName]['scale_desc']['scale_position']
-            startNodeIdx = self.pose2NodeIdx[(startPos[0], startPos[1], startPos[2])]
-            startDire = self.groupConfig[groupIdx][startName]['desc']['direction']
-            startRadius = self.groupConfig[groupIdx][startName]['scale_desc']['scale_radius']
+            start_pos = self.groupConfig[groupIdx][start_name]['scale_position']
+            start_node_idx = self.pose2NodeIdx[(start_pos[0], start_pos[1], start_pos[2])]
+            start_dire = self.groupConfig[groupIdx][start_name]['direction']
+            start_radius = self.groupConfig[groupIdx][start_name]['radius']
 
-            for endName in linkInfo['branch_pipes']:
-                branchInfo = linkInfo['branch_pipes'][endName]
+            for end_name in link_nfo['branch_pipes']:
+                branch_info = link_nfo['branch_pipes'][end_name]
 
-                endPos = self.groupConfig[groupIdx][endName]['scale_desc']['scale_position']
-                endNodeIdx = self.pose2NodeIdx[(endPos[0], endPos[1], endPos[2])]
-                endDire = self.groupConfig[groupIdx][endName]['desc']['direction']
-                endRadius = self.groupConfig[groupIdx][endName]['scale_desc']['scale_radius']
+                end_pos = self.groupConfig[groupIdx][end_name]['scale_position']
+                end_node_idx = self.pose2NodeIdx[(end_pos[0], end_pos[1], end_pos[2])]
+                end_dire = self.groupConfig[groupIdx][end_name]['direction']
+                end_radius = self.groupConfig[groupIdx][end_name]['radius']
 
-                nx_pathNodeIdxs = nx.shortest_path(self.network, startNodeIdx, endNodeIdx)
-                path_size = len(nx_pathNodeIdxs)
+                nx_path_idxs = nx.shortest_path(self.network, start_node_idx, end_node_idx)
+                path_size = len(nx_path_idxs)
                 if path_size == 0:
                     print('[Waring]: inValid Path')
                     return
 
-                pathIdx = len(self.pathInfos)
-                self.pathInfos[pathIdx] = {
+                path_idx = len(self.pathInfos)
+                self.pathInfos[path_idx] = {
                     "groupIdx": groupIdx,
-                    "nx_pathIdxs": nx_pathNodeIdxs,
-                    "startName": startName,
-                    "endName": endName,
-                    "startDire": startDire,
-                    "endDire": endDire,
+                    "nx_pathIdxs": nx_path_idxs,
+                    "startName": start_name,
+                    "endName": end_name,
+                    "startDire": start_dire,
+                    "endDire": end_dire,
                     "startFlexRatio": 0.0,
-                    "endFlexRatio": branchInfo['flexRatio'],
-                    "startRadius": startRadius,
-                    "endRadius": endRadius
+                    "endFlexRatio": branch_info['flexRatio'],
+                    "startRadius": start_radius,
+                    "endRadius": end_radius
                 }
 
     def create_flexGraphRecord(self):
@@ -165,55 +166,55 @@ class FlexPathSmoother(object):
         shift_num = len(self.nodesInfo)
         new_num = 0
 
-        for pathIdx in self.pathInfos.keys():
-            pathInfo = self.pathInfos[pathIdx]
-            groupIdx = pathInfo['groupIdx']
+        for path_idx in self.pathInfos.keys():
+            path_info = self.pathInfos[path_idx]
+            group_idx = path_info['groupIdx']
 
-            nx_pathNodeIdxs = pathInfo["nx_pathIdxs"]
-            path_size = len(nx_pathNodeIdxs)
-            # startFlexNum = math.ceil(path_size * pathInfo['startFlexRatio'])
-            startFlexNum = 0
+            path_node_idxs = path_info["nx_pathIdxs"]
+            path_size = len(path_node_idxs)
+            # start_flex_num = math.ceil(path_size * pathInfo['startFlexRatio'])
+            start_flex_num = 0
 
-            endFlexNum = min(max(math.floor(path_size * pathInfo['endFlexRatio']), 6), path_size - 2)
-            endFlexNum = path_size - endFlexNum
+            end_flex_num = min(max(math.floor(path_size * path_info['endFlexRatio']), 6), path_size - 2)
+            end_flex_num = path_size - end_flex_num
 
-            flex_pathNodeIdxs = []
-            for i, nodeIdx in enumerate(nx_pathNodeIdxs):
-                nodeInfo: Dict = self.nodesInfo[nodeIdx]
+            flex_path_node_idxs = []
+            for i, node_idx in enumerate(path_node_idxs):
+                node_info: Dict = self.nodesInfo[node_idx]
 
                 if i == 0 or i == path_size - 1:
                     fixed = True
-                    flexNodeIdx = nodeIdx
-                    flexNodeInfo = nodeInfo.copy()
-                    flexNodeInfo.update({'fixed': fixed})
+                    flex_node_idx = node_idx
+                    flex_node_info = node_info.copy()
+                    flex_node_info.update({'fixed': fixed})
 
-                elif i <= startFlexNum or i >= endFlexNum:
+                elif i <= start_flex_num or i >= end_flex_num:
                     fixed = False
-                    flexNodeIdx = new_num + shift_num
+                    flex_node_idx = new_num + shift_num
                     new_num += 1
 
-                    flexNodeInfo = nodeInfo.copy()
-                    flexNodeInfo.update({
+                    flex_node_info = node_info.copy()
+                    flex_node_info.update({
                         'fixed': fixed,
-                        'radius': pathInfo['endRadius']
+                        'radius': path_info['endRadius']
                     })
 
                 else:
                     fixed = False
-                    flexNodeIdx = nodeIdx
-                    flexNodeInfo = nodeInfo.copy()
-                    flexNodeInfo.update({'fixed': fixed})
+                    flex_node_idx = node_idx
+                    flex_node_info = node_info.copy()
+                    flex_node_info.update({'fixed': fixed})
 
-                if flexNodeIdx not in self.flexNodeInfos.keys():
-                    self.flexNodeInfos[flexNodeIdx] = flexNodeInfo
+                if flex_node_idx not in self.flexNodeInfos.keys():
+                    self.flexNodeInfos[flex_node_idx] = flex_node_info
 
-                flex_pathNodeIdxs.append(flexNodeIdx)
+                flex_path_node_idxs.append(flex_node_idx)
 
-                if groupIdx not in self.groupFlexNodeIdxs.keys():
-                    self.groupFlexNodeIdxs[groupIdx] = []
-                self.groupFlexNodeIdxs[groupIdx].append(flexNodeIdx)
+                if group_idx not in self.groupFlexNodeIdxs.keys():
+                    self.groupFlexNodeIdxs[group_idx] = []
+                self.groupFlexNodeIdxs[group_idx].append(flex_node_idx)
 
-            pathInfo.update({'flex_pathIdxs': flex_pathNodeIdxs})
+            path_info.update({'flex_pathIdxs': flex_path_node_idxs})
 
         for groupIdx in self.groupFlexNodeIdxs.keys():
             self.groupFlexNodeIdxs[groupIdx] = list(set(self.groupFlexNodeIdxs[groupIdx]))
@@ -246,21 +247,21 @@ class FlexPathSmoother(object):
     def add_elasticBand(self, kSpring=1.0, weight=1.0):
         record_dict = {}
         for pathIdx in self.pathInfos:
-            pathInfo = self.pathInfos[pathIdx]
+            path_info = self.pathInfos[pathIdx]
 
-            flex_pathIdxs = pathInfo['flex_pathIdxs']
-            path_size = len(flex_pathIdxs)
+            flex_path_idxs = path_info['flex_pathIdxs']
+            path_size = len(flex_path_idxs)
 
             for i in range(path_size - 1):
-                flex_nodeIdx0 = flex_pathIdxs[i]
-                flex_nodeIdx1 = flex_pathIdxs[i + 1]
+                node_idx0 = flex_path_idxs[i]
+                node_idx1 = flex_path_idxs[i + 1]
 
-                tag = f'{min(flex_nodeIdx0, flex_nodeIdx1)}-{max(flex_nodeIdx0, flex_nodeIdx1)}'
+                tag = f'{min(node_idx0, node_idx1)}-{max(node_idx0, node_idx1)}'
                 if tag in record_dict.keys():
                     continue
                 record_dict[tag] = True
 
-                status = self.flexSmoother_runner.add_elasticBand(flex_nodeIdx0, flex_nodeIdx1, kSpring=kSpring, weight=weight)
+                status = self.flexSmoother_runner.add_elasticBand(node_idx0, node_idx1, kSpring=kSpring, weight=weight)
                 if not status:
                     return status
 
@@ -270,17 +271,17 @@ class FlexPathSmoother(object):
         record_dict = {}
 
         for pathIdx in self.pathInfos:
-            pathInfo = self.pathInfos[pathIdx]
+            path_info = self.pathInfos[pathIdx]
 
-            flex_pathIdxs = pathInfo['flex_pathIdxs']
-            path_size = len(flex_pathIdxs)
+            flex_path_idxs = path_info['flex_pathIdxs']
+            path_size = len(flex_path_idxs)
 
             for i in range(1, path_size - 1, 1):
-                flex_nodeIdx0 = flex_pathIdxs[i - 1]
-                flex_nodeIdx1 = flex_pathIdxs[i]
-                flex_nodeIdx2 = flex_pathIdxs[i + 1]
+                node_idx0 = flex_path_idxs[i - 1]
+                node_idx1 = flex_path_idxs[i]
+                node_idx2 = flex_path_idxs[i + 1]
 
-                tags = [flex_nodeIdx0, flex_nodeIdx1, flex_nodeIdx2]
+                tags = [node_idx0, node_idx1, node_idx2]
                 tags = sorted(tags)
                 tag = f'{tags[0]}-{tags[1]}-{tags[2]}'
                 if tag in record_dict.keys():
@@ -288,23 +289,23 @@ class FlexPathSmoother(object):
                 record_dict[tag] = True
 
                 if i == 1:
-                    vec_i, vec_j, vec_k = pathInfo['startDire']
+                    vec_i, vec_j, vec_k = path_info['startDire']
                     status = self.flexSmoother_runner.add_kinematicVertexEdge(
-                        flex_nodeIdx0, flex_nodeIdx1, vec_i, vec_j, vec_k, kSpring=vertex_kSpring, weight=weight
+                        node_idx0, node_idx1, vec_i, vec_j, vec_k, kSpring=vertex_kSpring, weight=weight
                     )
                     if not status:
                         return status
 
                 elif i == path_size - 2:
-                    vec_i, vec_j, vec_k = pathInfo['endDire']
+                    vec_i, vec_j, vec_k = path_info['endDire']
                     status = self.flexSmoother_runner.add_kinematicVertexEdge(
-                        flex_nodeIdx1, flex_nodeIdx2, vec_i, vec_j, vec_k, kSpring=vertex_kSpring, weight=weight
+                        node_idx1, node_idx2, vec_i, vec_j, vec_k, kSpring=vertex_kSpring, weight=weight
                     )
                     if not status:
                         return status
 
                 status = self.flexSmoother_runner.add_kinematicEdge(
-                    flex_nodeIdx0, flex_nodeIdx1, flex_nodeIdx2, kSpring=edge_kSpring, weight=weight
+                    node_idx0, node_idx1, node_idx2, kSpring=edge_kSpring, weight=weight
                 )
                 if not status:
                     return status
@@ -324,18 +325,18 @@ class FlexPathSmoother(object):
 
     def add_pipeConflictEdge(self, searchScale=1.5, repleScale=1.2, kSpring=100.0, weight=1.0):
         record_dict = {}
-        for pathIdx in self.pathInfos:
-            pathInfo = self.pathInfos[pathIdx]
-            groupIdx = pathInfo['groupIdx']
+        for path_idx in self.pathInfos:
+            path_info = self.pathInfos[path_idx]
+            group_idx = path_info['groupIdx']
 
-            for flex_nodeIdx in pathInfo['flex_pathIdxs']:
+            for flex_nodeIdx in path_info['flex_pathIdxs']:
                 tag = f'{flex_nodeIdx}'
                 if tag in record_dict.keys():
                     continue
                 record_dict[tag] = True
 
                 status = self.flexSmoother_runner.add_pipeConflictEdge(
-                    flex_nodeIdx, groupIdx, searchScale=searchScale, repleScale=repleScale,
+                    flex_nodeIdx, group_idx, searchScale=searchScale, repleScale=repleScale,
                     kSpring=kSpring, weight=weight
                 )
                 if not status:
@@ -375,38 +376,38 @@ class FlexPathSmoother(object):
                 weight=self.optimize_setting["pipeConflict_weight"]
             )
             assert success
-        
+
     def optimize(self, outer_times=300, verbose=False):
         self.flexSmoother_runner.clear_graph()
 
         for outer_i in range(outer_times):
-            print(f'[DEBUG]: Runing Iteration {outer_i} ......')
+            print(f'[DEBUG]: Running Iteration {outer_i} ......')
 
             if self.flexSmoother_runner.is_g2o_graph_empty():
-                ### ------ Step 1 Create flex graph
+                # ------ Step 1 Create flex graph
                 self.reconstruct_vertex_graph()
 
-                ### ------ Step 2 Update group loc tree
+                # ------ Step 2 Update group loc tree
                 for groupIdx in self.groupFlexNodeIdxs.keys():
                     self.flexSmoother_runner.updateGroupTrees(groupIdx, self.groupFlexNodeIdxs[groupIdx])
 
-                ### ------ Step 3 Create G2o optimize graph
+                # ------ Step 3 Create G2o optimize graph
                 self.reconstruct_edges_graph()
 
                 # self.flexSmoother_runner.info()
 
-                ### ------ Step 4 optimize
+                # ------ Step 4 optimize
                 self.flexSmoother_runner.optimizeGraph(
                     self.optimize_setting["inner_optimize_times"], verbose
                 )
 
-                ### ------ Step 5 Update Vertex to Node
+                # ------ Step 5 Update Vertex to Node
                 self.updateNodeMap_to_flexInfos()
 
-                ### ------ Step 6 Clear Graph
+                # ------ Step 6 Clear Graph
                 self.flexSmoother_runner.clear_graph()
 
-                ### ------ Step 7 Clear vertex memory in FlexSmootherXYZ_Runner
+                # ------ Step 7 Clear vertex memory in FlexSmootherXYZ_Runner
                 self.flexSmoother_runner.clear_graphNodeMap()
 
             else:
@@ -416,18 +417,18 @@ class FlexPathSmoother(object):
         self.plotFlexGraphEnv()
 
     def output_result(self, save_dir):
-        rescale = 1.0 / self.env_config["global_params"]["grid_scale"]
+        rescale = 1.0 / self.env_config["global_params"]["scale"]
 
-        for pathIdx in self.pathInfos.keys():
-            pathInfo = self.pathInfos[pathIdx]
+        for path_idx in self.pathInfos.keys():
+            path_info = self.pathInfos[path_idx]
 
-            path_dir = os.path.join(save_dir, "path_%d" % pathIdx)
+            path_dir = os.path.join(save_dir, "path_%d" % path_idx)
             if os.path.exists(path_dir):
                 shutil.rmtree(path_dir)
             os.mkdir(path_dir)
 
             path_xyzrs = []
-            for flexNodeIdx in pathInfo['flex_pathIdxs']:
+            for flexNodeIdx in path_info['flex_pathIdxs']:
                 flexNodeInfo = self.flexNodeInfos[flexNodeIdx]
                 x, y, z = flexNodeInfo['pose']
                 radius = flexNodeInfo['radius']
@@ -442,15 +443,15 @@ class FlexPathSmoother(object):
             pd.DataFrame(path_xyzrs[:, 3:4], columns=['radius']).to_csv(radius_csv, header=True, index=False)
 
             setting = {
-                "groupIdx": pathInfo["groupIdx"],
-                "startName": pathInfo["startName"],
-                "endName": pathInfo["endName"],
-                "startDire": pathInfo["startDire"],
-                "endDire": pathInfo["endDire"],
-                "startFlexRatio": pathInfo["startFlexRatio"],
-                "endFlexRatio": pathInfo["endFlexRatio"],
-                "startRadius": pathInfo["startRadius"] * rescale,
-                "endRadius": pathInfo["endRadius"] * rescale,
+                "groupIdx": path_info["groupIdx"],
+                "startName": path_info["startName"],
+                "endName": path_info["endName"],
+                "startDire": path_info["startDire"],
+                "endDire": path_info["endDire"],
+                "startFlexRatio": path_info["startFlexRatio"],
+                "endFlexRatio": path_info["endFlexRatio"],
+                "startRadius": path_info["startRadius"] * rescale,
+                "endRadius": path_info["endRadius"] * rescale,
                 "path_file": path_csv
             }
 
@@ -526,7 +527,7 @@ class FlexPathSmoother(object):
             )
             line_mesh = VisulizerVista.create_line(path_xyzrs[:, :3])
 
-            vis.plot(tube_mesh, color=random_colors[i, :], opacity=0.65)
+            # vis.plot(tube_mesh, color=random_colors[i, :], opacity=0.65)
             vis.plot(line_mesh, color=random_colors[i, :], opacity=1.0)
 
         obstacle_xyzs = self.obstacle_df[self.obstacle_df['tag'] != 'wall'][['x', 'y', 'z']].values
@@ -539,10 +540,12 @@ class FlexPathSmoother(object):
         nx.draw(self.network, with_labels=True)
         plt.show()
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--proj_dire", type=str, help="project directory", default="")
-    parser.add_argument("--config_file", type=str, help="the name of config json file", default="envGridConfig.json")
+    parser.add_argument("--config_file", type=str, help="the name of config json file",
+                        default="/home/admin123456/Desktop/work/example1/grid_env_cfg.json"
+                        )
     parser.add_argument("--path_result_file", type=str, help="path result", default="result.npy")
     parser.add_argument("--pipe_setting_file", type=str, help="pipe optimize setting", default="pipeLink_setting.json")
     parser.add_argument("--optimize_setting_file", type=str, help="", default="optimize_setting.json")
@@ -551,98 +554,30 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def debug_run():
-    with open('/home/admin123456/Desktop/work/example3/envGridConfig.json') as f:
-        env_config = json.load(f)
-
-    result_file = '/home/admin123456/Desktop/work/example3/result.npy'
-    result_pipes: Dict = np.load(result_file, allow_pickle=True).item()
-
-    pipeSetting_file = '/home/admin123456/Desktop/work/example3/pipeLink_setting.json'
-    with open(pipeSetting_file) as f:
-        path_links = json.load(f)
-    for groupIdx in list(path_links.keys()):
-        path_links[int(groupIdx)] = path_links[groupIdx]
-        del path_links[groupIdx]
-
-    optimize_setting_file = '/home/admin123456/Desktop/work/example3/optimize_setting.json'
-    with open(optimize_setting_file, 'r') as f:
-        optimize_setting = json.load(f)
-
-    smoother = FlexPathSmoother(
-        env_config,
-        optimize_setting=optimize_setting,
-        with_elasticBand=True,
-        with_kinematicEdge=True,
-        with_obstacleEdge=True,
-        with_pipeConflictEdge=False,
-    )
-    smoother.init_environment()
-
-    for info in result_pipes[2]:
-        print(info['path_xyzrl'])
-
-    smoother.createWholeNetwork(result_pipes)
-    smoother.plotGroupPointCloudEnv()
-
-    # smoother.definePath(path_links)
-    # smoother.plotPathEnv()
-
-    # smoother.create_flexGraphRecord()
-    #
-    # for pathIdx in smoother.pathInfos:
-    #     print(smoother.pathInfos[pathIdx])
-
-    # smoother.optimize(outer_times=400, verbose=False)
-
-    # # smoother.output_result('/home/admin123456/Desktop/work/application/debug')
 
 def custon_main():
     args = parse_args()
 
-    if not os.path.exists(args.proj_dire):
-        print(f"[WARNING]: Project isn't Exist {args.proj_dire}")
-        return
+    with open(args.config_file) as f:
+        env_cfg = json.load(f)
 
-    if not args.config_file.endswith('.json'):
-        print(f"[WARNING]: Config Files isn't JSON Format {args.config_file}")
-        return
-
-    config_file = os.path.join(args.proj_dire, args.config_file)
-    if not os.path.exists(config_file):
-        print(f"[WARNING]: Config File isn't Exist {config_file}")
-        return
-
-    result_file = os.path.join(args.proj_dire, args.path_result_file)
-    if not result_file.endswith('.npy'):
-        print(f"[WARNING]: save Files must be npy Format {result_file}")
-        return
-
-    if not os.path.exists(result_file):
-        print(f"[WARNING]: Result File isn't Exist {config_file}")
-        return
-
-    pipeSetting_file = os.path.join(args.proj_dire, args.pipe_setting_file)
-    if not pipeSetting_file.endswith('.json'):
-        print(f"[WARNING]: Pipe Setting Files isn't JSON Format {pipeSetting_file}")
-        return
-
-    if not os.path.exists(pipeSetting_file):
-        print(f"[WARNING]: Pipe setting File isn't Exist {pipeSetting_file}")
-        return
-
-    ### ---------------------------------------------
-    with open(config_file) as f:
-        env_config = json.load(f)
-
+    result_file = os.path.join(env_cfg['project_dir'], args.path_result_file)
     result_pipes: Dict = np.load(result_file, allow_pickle=True).item()
 
-    optimize_setting_file = os.path.join(args.proj_dire, args.optimize_setting_file)
+    optimize_setting_file = os.path.join(env_cfg['project_dir'], args.optimize_setting_file)
     with open(optimize_setting_file, 'r') as f:
         optimize_setting = json.load(f)
 
+    pipe_setting_file = os.path.join(env_cfg['project_dir'], args.pipe_setting_file)
+    with open(pipe_setting_file) as f:
+        path_links = json.load(f)
+
+    for groupIdx in list(path_links.keys()):
+        path_links[int(groupIdx)] = path_links[groupIdx]
+        del path_links[groupIdx]
+
     smoother = FlexPathSmoother(
-        env_config,
+        env_cfg,
         optimize_setting=optimize_setting,
         with_elasticBand=True,
         with_kinematicEdge=True,
@@ -650,15 +585,26 @@ def custon_main():
         with_pipeConflictEdge=True,
     )
     smoother.init_environment()
+
+    # result_pipes = {
+    #     0: result_pipes[0],
+    #     1: result_pipes[1],
+    #     2: result_pipes[2],
+    #     3: result_pipes[3],
+    #     4: result_pipes[4],
+    #     5: result_pipes[5]
+    # }
+    # path_links = {
+    #     0: path_links[0],
+    #     1: path_links[1],
+    #     2: path_links[2],
+    #     3: path_links[3],
+    #     4: path_links[4],
+    #     5: path_links[5]
+    # }
+
     smoother.createWholeNetwork(result_pipes)
     # smoother.plotGroupPointCloudEnv()
-
-    with open(pipeSetting_file) as f:
-        path_links = json.load(f)
-
-    for groupIdx in list(path_links.keys()):
-        path_links[int(groupIdx)] = path_links[groupIdx]
-        del path_links[groupIdx]
 
     smoother.definePath(path_links)
 
@@ -666,12 +612,12 @@ def custon_main():
 
     smoother.optimize(outer_times=args.optimize_times, verbose=args.verbose)
 
-    optimize_dir = os.path.join(args.proj_dire, 'smoother_result')
+    optimize_dir = os.path.join(env_cfg['project_dir'], 'smoother_result')
     if not os.path.exists(optimize_dir):
         os.mkdir(optimize_dir)
 
     smoother.output_result(optimize_dir)
 
+
 if __name__ == '__main__':
-    # debug_run()
     custon_main()

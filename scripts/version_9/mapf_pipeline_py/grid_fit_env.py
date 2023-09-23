@@ -8,22 +8,6 @@ import math
 from scripts.version_9.app.env_utils import Shape_Utils
 from scripts.version_9.mapf_pipeline_py.spanTree_TaskAllocator import SizeTreeTaskRunner
 
-'''
-2023-09-22
-栅格化在部分情况会出问题，主要是pipe的grid position会移动，部分情况下会移动到障碍物内部
-'''
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Grid Environment")
-    parser.add_argument(
-        "--env_json", type=str, help="project json file",
-        default="/home/admin123456/Desktop/work/example1/env_cfg.json"
-    )
-    parser.add_argument("--scale", type=float, help="scale ratio", default=0.35)
-    parser.add_argument("--create_shell", type=int, help="create shell (bool)", default=1)
-    args = parser.parse_args()
-    return args
-
 
 def create_task_tree(pipes_cfg):
     task_trees = {}
@@ -62,6 +46,13 @@ def fit_env(args):
         for pipe_name in group_infos.keys():
             pipe_info = group_infos[pipe_name]
             minimum_reso = np.minimum(pipe_info['radius'], minimum_reso)
+
+    # limit scale of step_length which is 1.0, is 4 * radius
+    scale_limit = (1.0 / 2.5) / minimum_reso
+    if scale < scale_limit:
+        print(f"[Warning]: scale parameter is too small, the limit is {scale_limit}")
+        return
+
     scale_reso = minimum_reso * scale * 1.25
 
     # ------ fit env
@@ -126,91 +117,104 @@ def fit_env(args):
     task_tree = create_task_tree(pipes_cfg)
     env_cfg['task_tree'] = task_tree
 
-    shell_filters = {}
-    for group_idx_str in pipes_cfg.keys():
-        groupPipes_info = pipes_cfg[group_idx_str]
+    if args.create_shell > 0:
+        shell_filters = {}
+        for group_idx_str in pipes_cfg.keys():
+            groupPipes_info = pipes_cfg[group_idx_str]
 
-        for pipe_name in groupPipes_info.keys():
-            info = groupPipes_info[pipe_name]
-            shell_name = f"{pipe_name}_shell"
+            for pipe_name in groupPipes_info.keys():
+                info = groupPipes_info[pipe_name]
+                shell_name = f"{pipe_name}_shell"
 
-            position_dif = np.array(info['scale_position']) - np.array(info['position'])
-            direction = info['direction']
-            radius = info['radius']
-            xmin_dist, xmax_dist = radius + 0.15, radius + 0.15
-            ymin_dist, ymax_dist = radius + 0.15, radius + 0.15
-            zmin_dist, zmax_dist = radius + 0.15, radius + 0.15
+                position_dif = np.array(info['scale_position']) - np.array(info['position'])
+                direction = info['direction']
+                radius = info['radius']
+                xmin_dist, xmax_dist = radius + 0.1, radius + 0.1
+                ymin_dist, ymax_dist = radius + 0.1, radius + 0.1
+                zmin_dist, zmax_dist = radius + 0.1, radius + 0.1
 
-            if direction[0] == 1:
-                if position_dif[0] > 0:
-                    xmax_dist += position_dif[0]
-                elif position_dif[0] < 0:
-                    xmin_dist += abs(position_dif[0])
-            elif direction[1] == 1:
-                if position_dif[1] > 0:
-                    ymax_dist += position_dif[1]
-                elif position_dif[1] < 0:
-                    ymin_dist += abs(position_dif[1])
+                if direction[0] == 1:
+                    if position_dif[0] > 0:
+                        xmax_dist += position_dif[0]
+                    elif position_dif[0] < 0:
+                        xmin_dist += abs(position_dif[0])
+                elif direction[1] == 1:
+                    if position_dif[1] > 0:
+                        ymax_dist += position_dif[1]
+                    elif position_dif[1] < 0:
+                        ymin_dist += abs(position_dif[1])
+                else:
+                    if position_dif[2] > 0:
+                        zmax_dist += position_dif[2]
+                    elif position_dif[2] < 0:
+                        zmin_dist += abs(position_dif[2])
+
+                shell_xyzs, shell_range = Shape_Utils.create_PipeBoxShell(
+                    xyz=np.array(info['position']),
+                    xmin_dist=xmin_dist, xmax_dist=xmax_dist,
+                    ymin_dist=ymin_dist, ymax_dist=ymax_dist,
+                    zmin_dist=zmin_dist, zmax_dist=zmax_dist,
+                    direction=info['direction'],
+                    reso=np.minimum(scale_reso, info['radius'] * 0.4)
+                )
+                shell_filters[shell_name] = shell_range
+
+                if args.create_shell > 0:
+                    obstacle_cfgs[shell_name] = {
+                        'shape': 'shell',
+                        'pipe_name': pipe_name
+                    }
+                    obstacle_dict[shell_name] = shell_xyzs
+
+        for name in obstacle_cfgs.keys():
+            info = obstacle_cfgs[name]
+            xyzs = obstacle_dict[name]
+
+            if info['shape'] != 'shell':
+                for shell_name in shell_filters.keys():
+                    shell_range = shell_filters[shell_name]
+                    xyzs = Shape_Utils.removePointInBoxShell(xyzs, shell_range)
             else:
-                if position_dif[2] > 0:
-                    zmax_dist += position_dif[2]
-                elif position_dif[2] < 0:
-                    zmin_dist += abs(position_dif[2])
+                for shell_name in shell_filters.keys():
+                    if shell_name == name:
+                        continue
+                    shell_range = shell_filters[shell_name]
+                    xyzs = Shape_Utils.removePointInBoxShell(xyzs, shell_range)
 
-            shell_xyzs, shell_range = Shape_Utils.create_PipeBoxShell(
-                xyz=np.array(info['position']),
-                xmin_dist=xmin_dist, xmax_dist=xmax_dist,
-                ymin_dist=ymin_dist, ymax_dist=ymax_dist,
-                zmin_dist=zmin_dist, zmax_dist=zmax_dist,
-                direction=info['direction'],
-                reso=np.minimum(scale_reso, info['radius'] * 0.4)
+            xyzs = Shape_Utils.removePointOutBoundary(
+                xyzs,
+                xmin=0, xmax=global_params['envScaleX'],
+                ymin=0, ymax=global_params['envScaleY'],
+                zmin=0, zmax=global_params['envScaleZ']
             )
-            shell_filters[shell_name] = shell_range
+            obstacle_dict[name] = xyzs
 
-            if args.create_shell > 0:
-                obstacle_cfgs[shell_name] = {
-                    'shape': 'shell',
-                    'pipe_name': pipe_name
-                }
-                obstacle_dict[shell_name] = shell_xyzs
+        obstacle_dfs = []
+        for name in obstacle_dict.keys():
+            df = pd.DataFrame(obstacle_dict[name], columns=['x', 'y', 'z'])
+            df['radius'] = 0.0
+            df['tag'] = name
+            obstacle_dfs.append(df)
+        obstacle_dfs = pd.concat(obstacle_dfs, axis=0, ignore_index=True)
+        obstacle_file = os.path.join(env_cfg['project_dir'], 'scale_obstacle.csv')
+        obstacle_dfs.to_csv(obstacle_file)
+        env_cfg['obstacle_path'] = obstacle_file
 
-    for name in obstacle_cfgs.keys():
-        info = obstacle_cfgs[name]
-        xyzs = obstacle_dict[name]
+        cfg_file = os.path.join(env_cfg['project_dir'], 'grid_env_cfg.json')
+        with open(cfg_file, 'w') as f:
+            json.dump(env_cfg, f, indent=4)
 
-        if info['shape'] != 'shell':
-            for shell_name in shell_filters.keys():
-                shell_range = shell_filters[shell_name]
-                xyzs = Shape_Utils.removePointInBoxShell(xyzs, shell_range)
-        else:
-            for shell_name in shell_filters.keys():
-                if shell_name == name:
-                    continue
-                shell_range = shell_filters[shell_name]
-                xyzs = Shape_Utils.removePointInBoxShell(xyzs, shell_range)
 
-        xyzs = Shape_Utils.removePointOutBoundary(
-            xyzs,
-            xmin=0, xmax=global_params['envScaleX'],
-            ymin=0, ymax=global_params['envScaleY'],
-            zmin=0, zmax=global_params['envScaleZ']
-        )
-        obstacle_dict[name] = xyzs
-
-    obstacle_dfs = []
-    for name in obstacle_dict.keys():
-        df = pd.DataFrame(obstacle_dict[name], columns=['x', 'y', 'z'])
-        df['radius'] = 0.0
-        df['tag'] = name
-        obstacle_dfs.append(df)
-    obstacle_dfs = pd.concat(obstacle_dfs, axis=0, ignore_index=True)
-    obstacle_file = os.path.join(env_cfg['project_dir'], 'scale_obstacle.csv')
-    obstacle_dfs.to_csv(obstacle_file)
-    env_cfg['obstacle_path'] = obstacle_file
-
-    cfg_file = os.path.join(env_cfg['project_dir'], 'grid_env_cfg.json')
-    with open(cfg_file, 'w') as f:
-        json.dump(env_cfg, f, indent=4)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Grid Environment")
+    parser.add_argument(
+        "--env_json", type=str, help="project json file",
+        default="/home/admin123456/Desktop/work/springer_debug/env_cfg.json"
+    )
+    parser.add_argument("--scale", type=float, help="scale ratio", default=1.0)
+    parser.add_argument("--create_shell", type=int, help="create shell (bool)", default=1)
+    args = parser.parse_args()
+    return args
 
 
 def main():

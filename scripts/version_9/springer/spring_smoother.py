@@ -6,6 +6,7 @@ import os
 import json
 import shutil
 from functools import partial
+from copy import copy, deepcopy
 
 from scipy import optimize
 from scipy.optimize import Bounds, NonlinearConstraint, LinearConstraint
@@ -15,8 +16,16 @@ from scripts.version_9.springer.smoother_utils import get_rotationMat
 from scripts.version_9.springer.smoother_utils import ConnectVisulizer
 
 '''
-2023-09-19
-先不考虑XYZR
+2023-09-23
+
+Inner Point Method Fail: gradient 效率过低
+Nonlinear Object + Nonlinear eq/ineq Constraint
+Nonlinear Object + Nonlinear eq Constraint
+Nonlinear Object + Nonlinear eq Constraint + Integer Define
+Nonlinear Object + Nonlinear eq/ineq Constraint + Integer Define
+
+先评估简单问题，不考虑 radius fix 约束与xyzr
+UIOP
 '''
 
 
@@ -43,16 +52,16 @@ class ConstraintParser(object):
 
                     if i == 0:
                         name = path_info['name0']
-                        env_info = env_cfg['pipeConfig'][str(groupIdx)][name]
-                        if np.all(np.array([x, y, z]) == np.array(env_info['scale_desc']['grid_position'])):
-                            x, y, z = env_info['scale_desc']['scale_position']
+                        info = env_cfg['pipe_cfgs'][str(groupIdx)][name]
+                        if np.all(np.array([x, y, z]) == np.array(info['position'])):
+                            x, y, z = info['scale_position']
                             is_connector = True
 
                     if i == path_xyzrl.shape[0] - 1:
                         name = path_info['name1']
-                        env_info = env_cfg['pipeConfig'][str(groupIdx)][name]
-                        if np.all(np.array([x, y, z]) == np.array(env_info['scale_desc']['grid_position'])):
-                            x, y, z = env_info['scale_desc']['scale_position']
+                        info = env_cfg['pipe_cfgs'][str(groupIdx)][name]
+                        if np.all(np.array([x, y, z]) == np.array(info['position'])):
+                            x, y, z = info['scale_position']
                             is_connector = True
 
                     if (x, y, z) not in self.xyz_to_nodeIdx.keys():
@@ -60,15 +69,15 @@ class ConstraintParser(object):
 
                         if is_connector:
                             self.nodes_info[cur_node_idx] = {
-                                'vertex': env_info['vertex'],
-                                'poseEdges': env_info['poseEdges'],
+                                'vertex': info['vertex'],
+                                'poseEdges': info['poseEdges'],
                                 'node_idx': cur_node_idx,
                                 'groupIdx': groupIdx,
                                 'desc': {
                                     'name': name,
-                                    'position': [x, y, z],
-                                    'direction': env_info['desc']['direction'],
-                                    'radius': env_info['scale_desc']['scale_radius']
+                                    'position': np.array([x, y, z]),
+                                    'direction': info['direction'],
+                                    'radius': info['radius']
                                 }
                             }
                             self.name_to_nodeIdx[name] = cur_node_idx
@@ -108,29 +117,29 @@ class ConstraintParser(object):
         self.xyz_to_nodeIdx.clear()
 
         # ------ load shape point cloud
-        shape_pcd_df = pd.read_csv(env_cfg['scaleObstaclePath'], index_col=0)
+        shape_pcd_df = pd.read_csv(env_cfg['obstacle_path'], index_col=0)
+        shape_pcd_df['x'] = shape_pcd_df['x'] * env_cfg['global_params']['scale']
+        shape_pcd_df['y'] = shape_pcd_df['y'] * env_cfg['global_params']['scale']
+        shape_pcd_df['z'] = shape_pcd_df['z'] * env_cfg['global_params']['scale']
 
         # ------ load structor node
-        for structor_name in env_cfg['obstacleConfig'].keys():
+        for structor_name in env_cfg['obstacle_cfgs'].keys():
             cur_node_idx = len(self.nodes_info.keys())
-
-            info = env_cfg['obstacleConfig'][structor_name]
-
-            # todo remember to remove in the future
+            info = env_cfg['obstacle_cfgs'][structor_name]
             if 'vertex' not in info.keys():
                 continue
 
             desc_info = {
                 'name': structor_name,
-                'position': info['scale_desc']['position'],
+                'position': np.array(info['position']),
                 'search_radius': 0.5,
             }
             if info['vertex']['type'] == "xyzr":
-                desc_info.update({
-                    'xyz_tag': None,
-                    'direction': info['scale_desc']['direction'],
-                    'radian': 0.0
-                })
+                # desc_info.update({
+                #     'xyz_tag': None,
+                #     'direction': info['scale_desc']['direction'],
+                #     'radian': 0.0
+                # })
                 raise NotImplementedError
 
             shape_pcds = []
@@ -138,7 +147,7 @@ class ConstraintParser(object):
                 xyzs = shape_pcd_df[shape_pcd_df['tag'] == shape_name][['x', 'y', 'z']].values
                 shape_pcds.append(xyzs)
             shape_pcds = np.concatenate(shape_pcds, axis=0)
-            shape_pcds = shape_pcds - np.array([desc_info['position']])
+            shape_pcds = shape_pcds - desc_info['position']
             desc_info.update({'shape_pcd': shape_pcds})
 
             self.nodes_info[cur_node_idx] = {
@@ -158,11 +167,7 @@ class ConstraintParser(object):
             'node_idx': cur_node_idx,
             'desc': {
                 'name': 'planeMax',
-                'position': [
-                    env_params['envGridX'] + 1.0,
-                    env_params['envGridY'] + 1.0,
-                    env_params['envGridZ'] + 1.0
-                ],
+                'position': np.array([env_params['envX'], env_params['envY'], env_params['envZ']]),
             }
         }
         self.name_to_nodeIdx["planeMax"] = cur_node_idx
@@ -279,14 +284,23 @@ class ConstraintParser(object):
                     if pose[xyz_col] - radius - scale <= 0.:
                         plane_constraints.append({
                             'type': 'planeMin_conflict', 'plane_tag': plane_tag,
-                            'node_idx': node_idx, 'info': f"{node['desc']['name']}.{plane_tag} - radius >= 0.0"
+                            'node_idx': node_idx, 'info': f"{node['desc']['name']}.{plane_tag} - radius >= 0.0",
+                            'detail': {
+                                'position': node['desc']['position'],
+                                'radius': node['desc']['radius'],
+                            }
                         })
 
                     if pose[xyz_col] + radius >= planeMax_xyz[xyz_col] - scale:
                         plane_constraints.append({
                             'type': 'planeMax_conflict', 'plane_tag': plane_tag,
                             'node_idx': node_idx, 'ref_node_idx': planeMax_node_idx,
-                            'info': f"{node['desc']['name']}.{plane_tag} + radius <= planeMax.{plane_tag}"
+                            'info': f"{node['desc']['name']}.{plane_tag} + radius <= planeMax.{plane_tag}",
+                            'detail': {
+                                'position': node['desc']['position'],
+                                'radius': node['desc']['radius'],
+                                'planeMax': planeMax_xyz
+                            }
                         })
 
             elif node['vertex']['type'] == 'structor':
@@ -320,18 +334,22 @@ class ConstraintParser(object):
                                 'shape_x': shape_pcd[conflict_idx, 0],
                                 'shape_y': shape_pcd[conflict_idx, 1],
                                 'shape_z': shape_pcd[conflict_idx, 2],
-                                'info': f"{node['desc']['name']}.{planeTag} + shape_{planeTag} >= 0.0"
+                                'info': f"{node['desc']['name']}.{planeTag} + shape_{planeTag} >= 0.0",
+                                'detail': {
+                                    'position': node['desc']['position'],
+                                }
                             })
                     elif node['vertex']['dim'] == 'xyzr':
-                        for conflict_idx in conflict_idxs:
-                            plane_constraints.append({
-                                'type': 'planeMin_conflict', 'plane_tag': planeTag, 'node_idx': node_idx,
-                                'shape_x': shape_pcd[conflict_idx, 0],
-                                'shape_y': shape_pcd[conflict_idx, 1],
-                                'shape_z': shape_pcd[conflict_idx, 2],
-                                'info': f"({node['desc']['name']}.xyz + "
-                                        f"rotMat_{node['desc']['xyzTag']}.dot(shape_xyz.T).T).{planeTag} >= 0.0"
-                            })
+                        # for conflict_idx in conflict_idxs:
+                        #     plane_constraints.append({
+                        #         'type': 'planeMin_conflict', 'plane_tag': planeTag, 'node_idx': node_idx,
+                        #         'shape_x': shape_pcd[conflict_idx, 0],
+                        #         'shape_y': shape_pcd[conflict_idx, 1],
+                        #         'shape_z': shape_pcd[conflict_idx, 2],
+                        #         'info': f"({node['desc']['name']}.xyz + "
+                        #                 f"rotMat_{node['desc']['xyzTag']}.dot(shape_xyz.T).T).{planeTag} >= 0.0"
+                        #     })
+                        raise NotImplementedError
 
                 for planeTag in planeMax_dict.keys():
                     xyz_col = planeMax_dict[planeTag]
@@ -345,20 +363,25 @@ class ConstraintParser(object):
                                 'shape_x': shape_pcd[conflict_idx, 0],
                                 'shape_y': shape_pcd[conflict_idx, 1],
                                 'shape_z': shape_pcd[conflict_idx, 2],
-                                'info': f"{node['desc']['name']}.{planeTag} + shape_{planeTag} <= planeMax.{planeTag}"
+                                'info': f"{node['desc']['name']}.{planeTag} + shape_{planeTag} <= planeMax.{planeTag}",
+                                'detail': {
+                                    'position': node['desc']['position'],
+                                    'planeMax': planeMax_xyz
+                                }
                             })
                     else:
-                        for conflict_idx in conflict_idxs:
-                            plane_constraints.append({
-                                'type': 'planeMax_conflict', 'plane_tag': planeTag,
-                                'node_idx': node_idx, 'ref_node_idx': planeMax_node_idx,
-                                'shape_x': shape_pcd[conflict_idx, 0],
-                                'shape_y': shape_pcd[conflict_idx, 1],
-                                'shape_z': shape_pcd[conflict_idx, 2],
-                                'info': f"({node['desc']['name']}.xyz + "
-                                        f"rotMat_{node['desc']['xyzTag']}.dot(shape_xyz.T).T).{planeTag} "
-                                        f"<= planeMax.{planeTag}>"
-                            })
+                        # for conflict_idx in conflict_idxs:
+                        #     plane_constraints.append({
+                        #         'type': 'planeMax_conflict', 'plane_tag': planeTag,
+                        #         'node_idx': node_idx, 'ref_node_idx': planeMax_node_idx,
+                        #         'shape_x': shape_pcd[conflict_idx, 0],
+                        #         'shape_y': shape_pcd[conflict_idx, 1],
+                        #         'shape_z': shape_pcd[conflict_idx, 2],
+                        #         'info': f"({node['desc']['name']}.xyz + "
+                        #                 f"rotMat_{node['desc']['xyzTag']}.dot(shape_xyz.T).T).{planeTag} "
+                        #                 f"<= planeMax.{planeTag}>"
+                        #     })
+                        raise NotImplementedError
 
         return plane_constraints
 
@@ -655,7 +678,7 @@ class ConstraintParser(object):
             pose = np.array(node['desc']['position'])
 
             if node['vertex']['type'] in ['cell', 'connector']:
-                vis.plot_cell(pose, node['desc']['radius'] * 0.5, color=random_colors[i])
+                vis.plot_cell(pose, node['desc']['radius'], color=random_colors[i])
 
             elif node['vertex']['type'] == 'structor':
                 shape_pcd = node['desc']['shape_pcd']
@@ -664,7 +687,13 @@ class ConstraintParser(object):
                 else:
                     rot_mat = get_rotationMat(node['desc']['xyz_tag'], node['desc']['radian'])
                     world_pcd = pose + (rot_mat.dot(shape_pcd.T)).T
-                vis.plot_structor(pose, radius=1.0, shape_xyzs=world_pcd, color=random_colors[i])
+
+                radius = np.min([
+                    shape_pcd[:, 0].max() - shape_pcd[:, 0].min(),
+                    shape_pcd[:, 1].max() - shape_pcd[:, 1].min(),
+                    shape_pcd[:, 2].max() - shape_pcd[:, 2].min(),
+                ]) / 3.0
+                vis.plot_structor(pose, radius=radius, shape_xyzs=world_pcd, color=random_colors[i])
 
         vis.show()
 
@@ -866,12 +895,14 @@ class Optimizer_Scipy_v1(object):
                 self.xs_init.extend(node['desc']['position'])
 
             elif node['vertex']['dim'] == 'xyzr':
-                problem_nodes[node_idx] = {
-                    'x': var_num, 'y': var_num + 1, 'z': var_num + 2, 'radian': var_num + 3
-                }
-                var_num += 4
-                self.xs_init.extend(node['desc']['position'])
-                self.xs_init.extend([node['desc']['radian']])
+                # problem_nodes[node_idx] = {
+                #     'x': var_num, 'y': var_num + 1, 'z': var_num + 2, 'radian': var_num + 3
+                # }
+                # var_num += 4
+                # self.xs_init.extend(node['desc']['position'])
+                # self.xs_init.extend([node['desc']['radian']])
+                raise NotImplementedError
+
         self.xs_init = np.array(self.xs_init)
 
         constraint_set = []
@@ -1017,7 +1048,7 @@ class Optimizer_Scipy_v1(object):
         print(f"[Debug]: Init Cost: {cost_func(xs)} ConstrainsNum:{len(constraint_set)} CostNum:{len(cost_edges)}")
         res = optimize.minimize(
             cost_func, xs,
-            # constraints=constraint_set,
+            constraints=constraint_set,
             bounds=Bounds(lbs, ubs),
             tol=0.01,
             # options={'maxiter': 3, 'disp': True},
@@ -1154,12 +1185,13 @@ class Optimizer_Scipy_v2(object):
                 self.xs_init.extend(node['desc']['position'])
 
             elif node['vertex']['dim'] == 'xyzr':
-                problem_nodes[node_idx] = {
-                    'x': var_num, 'y': var_num + 1, 'z': var_num + 2, 'radian': var_num + 3
-                }
-                var_num += 4
-                self.xs_init.extend(node['desc']['position'])
-                self.xs_init.extend([node['desc']['radian']])
+                # problem_nodes[node_idx] = {
+                #     'x': var_num, 'y': var_num + 1, 'z': var_num + 2, 'radian': var_num + 3
+                # }
+                # var_num += 4
+                # self.xs_init.extend(node['desc']['position'])
+                # self.xs_init.extend([node['desc']['radian']])
+                raise NotImplementedError
 
         num_of_xs = len(self.xs_init)
 
@@ -1252,10 +1284,9 @@ class Optimizer_Scipy_v2(object):
                 node_idx = constraint['node_idx']
                 node = nodes_info[node_idx]
 
-                self.xs_init.append(0.0)
-                z_idx = len(self.xs_init) - 1
-
                 if node['vertex']['type'] == 'cell':
+                    self.xs_init.append(np.sqrt(node['desc']['radius']))
+                    z_idx = len(self.xs_init) - 1
                     constraint_set.append({
                         'type': 'ineq_planeMin_conflict_cell',
                         'param': {
@@ -1269,24 +1300,26 @@ class Optimizer_Scipy_v2(object):
                     if node['vertex']['dim'] == 'xyzr':
                         raise NotImplementedError
 
-                    constraint_set.append({
-                        'type': 'ineq_planeMin_conflict_structor',
-                        'param': {
-                            'col': problem_nodes[node_idx][constraint['plane_tag']],
-                            'shape_value': constraint[f"shape_{constraint['plane_tag']}"],
-                            'z_col': z_idx
-                        }
-                    })
+                    # self.xs_init.append(np.sqrt(node['desc']['radius']))
+                    # z_idx = len(self.xs_init) - 1
+                    # constraint_set.append({
+                    #     'type': 'ineq_planeMin_conflict_structor',
+                    #     'param': {
+                    #         'col': problem_nodes[node_idx][constraint['plane_tag']],
+                    #         'shape_value': constraint[f"shape_{constraint['plane_tag']}"],
+                    #         'z_col': z_idx
+                    #     }
+                    # })
+                    raise NotImplementedError
 
             elif constraint['type'] == 'planeMax_conflict':
                 node_idx = constraint['node_idx']
                 node = nodes_info[node_idx]
                 ref_node_idx = constraint['ref_node_idx']
 
-                self.xs_init.append(0.0)
-                z_idx = len(self.xs_init) - 1
-
                 if node['vertex']['type'] == 'cell':
+                    self.xs_init.append(np.sqrt(node['desc']['radius']))
+                    z_idx = len(self.xs_init) - 1
                     constraint_set.append({
                         'type': 'ineq_planeMax_conflict_cell',
                         'param': {
@@ -1301,15 +1334,16 @@ class Optimizer_Scipy_v2(object):
                     if node['vertex']['dim'] == 'xyzr':
                         raise NotImplementedError
 
-                    constraint_set.append({
-                        'type': 'ineq_planeMax_conflict_structor',
-                        'param': {
-                            'node_col': problem_nodes[node_idx][constraint['plane_tag']],
-                            'plane_col': problem_nodes[ref_node_idx][constraint['plane_tag']],
-                            'shape_value': constraint[f"shape_{constraint['plane_tag']}"],
-                            'z_col': z_idx
-                        }
-                    })
+                    # constraint_set.append({
+                    #     'type': 'ineq_planeMax_conflict_structor',
+                    #     'param': {
+                    #         'node_col': problem_nodes[node_idx][constraint['plane_tag']],
+                    #         'plane_col': problem_nodes[ref_node_idx][constraint['plane_tag']],
+                    #         'shape_value': constraint[f"shape_{constraint['plane_tag']}"],
+                    #         'z_col': z_idx
+                    #     }
+                    # })
+                    raise NotImplementedError
 
         cost_lists = []
         for edge in cost_edges:
@@ -1340,8 +1374,7 @@ class Optimizer_Scipy_v2(object):
         print(f"[Debug]: Init Cost: {cost_func(xs)} ConstrainsNum:{len(constraint_set)} CostNum:{len(cost_edges)}")
         res = optimize.minimize(
             cost_func, xs,
-            bounds=Bounds(lbs, ubs),
-            tol=0.01,
+            bounds=Bounds(lbs, ubs), tol=0.01,
             # options={'maxiter': 3, 'disp': True},
             callback=partial(self.log_info, info={'iter': 0}, cost_func=cost_func)
         )
@@ -1368,99 +1401,112 @@ class Optimizer_Scipy_v2(object):
 def run_optimize_scipy():
     import json
 
-    env_cfg_file = '/home/admin123456/Desktop/work/application_tem/envGridConfig.json'
+    env_cfg_file = '/home/admin123456/Desktop/work/springer_debug/springer_grid_env_cfg.json'
     with open(env_cfg_file, 'r') as f:
         env_cfg = json.load(f)
 
-    pipe_links_file = '/home/admin123456/Desktop/work/application_tem/pipeLink_setting.json'
+    pipe_links_file = '/home/admin123456/Desktop/work/springer_debug/pipeLink_setting.json'
     with open(pipe_links_file, 'r') as f:
         pipe_links = json.load(f)
 
-    res_paths = np.load('/home/admin123456/Desktop/work/application_tem/result.npy', allow_pickle=True).item()
+    res_paths = np.load('/home/admin123456/Desktop/work/springer_debug/result.npy', allow_pickle=True).item()
 
-    debug_dir = '/home/admin123456/Desktop/work/application_tem/record'
+    debug_dir = '/home/admin123456/Desktop/work/springer_debug/debug'
 
-    # res_paths = {0: res_paths[0]}
-    # pipe_links = {'0': pipe_links['0']}
+    parser = ConstraintParser()
+    parser.create_connective_graph(env_cfg, res_paths)
 
-    constraints_parser = ConstraintParser()
-    constraints_parser.create_connective_graph(env_cfg, res_paths)
+    parser.define_path(env_cfg, pipe_links)
+    # parser.plot_path()
 
-    constraints_parser.define_path(env_cfg, pipe_links)
-    # constraints_parser.plot_path()
+    parser.create_hyper_vertex()
+    # parser.plot_path()
 
-    constraints_parser.create_hyper_vertex()
-    # constraints_parser.plot_path()
+    # parser.plot_node()
 
-    # constraints_parser.plot_node()
-
-    for run_time in range(150):
+    for run_time in range(10):
 
         # ------ Cost Edges
         cost_edges = []
 
-        elastic_costs = constraints_parser.get_elastic_cost()
-        # constraints_parser.plot_constraints(elastic_costs)
+        elastic_costs = parser.get_elastic_cost()
+        # parser.plot_constraints(elastic_costs)
         cost_edges.extend(elastic_costs)
 
-        # kinematic_costs = constraints_parser.get_kinematic_cost()
-        # constraints_parser.plot_constraints(kinematic_costs, constraint_type=['kinematic_vertex'])
+        # kinematic_costs = parser.get_kinematic_cost()
+        # parser.plot_constraints(kinematic_costs, constraint_type=['kinematic_vertex'])
         # cost_edges.extend(kinematic_costs)
 
         # ------ Constraints Edges
         constraint_edges = []
 
-        pose_constrains = constraints_parser.get_pose_constraints()
-        # constraints_parser.plot_constraints(
+        pose_constrains = parser.get_pose_constraints()
+        # parser.plot_constraints(
         #     pose_constrains, constraint_type=['radius_fixed', 'value_shift'], with_path=True, with_structor=True
         # )
         constraint_edges.extend(pose_constrains)
 
-        shape_constraints = constraints_parser.get_shape_constraints(scale=0.5)
-        # constraints_parser.plot_constraints(
-        #     shape_constraints, constraint_type=['shape_conflict'], with_path=True, with_structor=True
-        # )
-        constraint_edges.extend(shape_constraints)
+        # shape_constraints = parser.get_shape_constraints(scale=0.5)
+        # # parser.plot_constraints(
+        # #     shape_constraints, constraint_type=['shape_conflict'], with_path=True, with_structor=True
+        # # )
+        # constraint_edges.extend(shape_constraints)
 
-        plane_constraints = constraints_parser.get_plane_constraints(scale=0.5)
-        # constraints_parser.plot_constraints(
+        plane_constraints = parser.get_plane_constraints(scale=0.5)
+        # parser.plot_constraints(
         #     plane_constraints, constraint_type=['planeMin_conflict', 'planeMax_conflict'],
         #     with_path=True, with_structor=True
         # )
         constraint_edges.extend(plane_constraints)
 
-        # ------ record
-        record_dir = os.path.join(debug_dir, "%.3d" % run_time)
-        if os.path.exists(record_dir):
-            shutil.rmtree(record_dir)
-        os.mkdir(record_dir)
-
-        np.save(os.path.join(record_dir, 'env.npy'), {
-            'nodes_info': constraints_parser.nodes_info,
-            'name_to_nodeIdx': constraints_parser.name_to_nodeIdx,
-            'paths_info': constraints_parser.paths_info
-        })
-        np.save(os.path.join(record_dir, 'problem.npy'), {
-            'constraint_edges': constraint_edges,
-            'cost_edges': cost_edges,
-        })
+        # # ------ record
+        # record_dir = os.path.join(debug_dir, "%.3d" % run_time)
+        # if os.path.exists(record_dir):
+        #     shutil.rmtree(record_dir)
+        # os.mkdir(record_dir)
+        #
+        # np.save(os.path.join(record_dir, 'env.npy'), {
+        #     'nodes_info': parser.nodes_info,
+        #     'name_to_nodeIdx': parser.name_to_nodeIdx,
+        #     'paths_info': parser.paths_info
+        # })
+        # np.save(os.path.join(record_dir, 'problem.npy'), {
+        #     'constraint_edges': constraint_edges,
+        #     'cost_edges': cost_edges,
+        # })
 
         # ------ optimize
-        # model = Optimizer_Scipy_v1()
-        model = Optimizer_Scipy_v2()
+        model = Optimizer_Scipy_v1()
+        # model = Optimizer_Scipy_v2()
 
-        opt_node_infos = model.create_problem(constraints_parser.nodes_info, constraint_edges, cost_edges)
-        np.save(os.path.join(record_dir, 'opt_env.npy'), {
-            'nodes_info': opt_node_infos
-        })
+        opt_node_infos = model.create_problem(deepcopy(parser.nodes_info), constraint_edges, cost_edges)
+        # np.save(os.path.join(record_dir, 'opt_env.npy'), {
+        #     'nodes_info': opt_node_infos
+        # })
 
-        constraints_parser.nodes_info = opt_node_infos
-        planeMax_node = constraints_parser.nodes_info[constraints_parser.name_to_nodeIdx["planeMax"]]
+        # ------ check each change
+        # for node_idx in parser.nodes_info.keys():
+        #     node_raw = parser.nodes_info[node_idx]
+        #     node_opt = opt_node_infos[node_idx]
+        #
+        #     pose_raw = node_raw['desc']['position']
+        #     pose_opt = node_opt['desc']['position']
+        #     if node_raw['vertex']['dim'] == 'xyz':
+        #         print(f"{node_raw['desc']['name']} "
+        #               f"({pose_raw[0]:.3f}, {pose_raw[1]:.3f}, {pose_raw[2]:.3f}) -> "
+        #               f"({pose_opt[0]:.3f}, {pose_opt[1]:.3f}, {pose_opt[2]:.3f})")
+        #     else:
+        #         raise NotImplementedError
+
+        parser.nodes_info = opt_node_infos
+        planeMax_node = parser.nodes_info[parser.name_to_nodeIdx["planeMax"]]
         planeMax_pose = planeMax_node['desc']['position']
         print(f"[Debug]: Running ...... {run_time} "
-              f"Vol:{planeMax_pose[0]:.1f}-{planeMax_pose[1]:.1f}-{planeMax_pose[2]:.1f} \n")
+              f"Vol:{planeMax_pose[0]:.1f}-{planeMax_pose[1]:.3f}-{planeMax_pose[2]:.3f} \n")
 
-    constraints_parser.plot_node()
+        # parser.plot_node()
+
+    # parser.plot_node()
 
 if __name__ == '__main__':
     run_optimize_scipy()

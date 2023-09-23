@@ -181,11 +181,12 @@ class CustomApp(AppWindow):
         rgb = np.array([self.boxR_txt.double_value, self.boxG_txt.double_value, self.boxB_txt.double_value])
 
         if (
-                len(name.strip()) == 0
+                len(name.strip()) != 1.0
                 or reso == 0
-                or (xmax - xmin) < reso or (ymax - ymin) < reso or (zmax - zmin) < reso
+                or (xmax - xmin) <= 1.5 * reso or (ymax - ymin) <= 1.5 * reso or (zmax - zmin) <= 1.5 * reso
                 or name in self.geoMap.keys()
         ):
+            self.info_content.text = "[Warning]: Please Check Valid Parameters for Box Define"
             return
         if np.sum(rgb) <= 0:
             rgb = np.array([0.3, 0.3, 0.3])
@@ -225,10 +226,11 @@ class CustomApp(AppWindow):
         ])
 
         if (
-                np.sum(direction) == 0
-                or height < reso or radius < reso or reso == 0
+                np.sum(direction) != 1.0
+                or height < 1.5 * reso or radius < 1.5 * reso or reso == 0
                 or name in self.geoMap.keys()
         ):
+            self.info_content.text = "[Warning]: Please Check Valid Parameters for Cylinder Define"
             return
         if np.sum(rgb) <= 0:
             rgb = np.array([0.3, 0.3, 0.3])
@@ -263,8 +265,9 @@ class CustomApp(AppWindow):
 
         if (
                 name in self.geoMap.keys()
-                or radius == 0
+                or radius < 0.5
         ):
+            self.info_content.text = "[Warning]: Please Check Valid Parameters for Pipe Define"
             return
 
         mesh_o3d = O3D_Utils.createArrow(xyz, direction, radius, color=self.groupColors[group_idx, :])

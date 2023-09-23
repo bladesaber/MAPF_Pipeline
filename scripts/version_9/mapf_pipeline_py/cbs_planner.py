@@ -438,7 +438,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file", type=str, help="the name of config json file",
-        default="/home/admin123456/Desktop/work/example1/grid_env_cfg.json"
+        default="/home/admin123456/Desktop/work/springer_debug/grid_env_cfg.json"
     )
     parser.add_argument("--save_file", type=str, help="project directory", default="result.npy")
     args = parser.parse_args()
