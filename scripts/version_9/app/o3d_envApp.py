@@ -181,11 +181,12 @@ class CustomApp(AppWindow):
         rgb = np.array([self.boxR_txt.double_value, self.boxG_txt.double_value, self.boxB_txt.double_value])
 
         if (
-                len(name.strip()) != 1.0
+                len(name.strip()) <= 1.0
                 or reso == 0
                 or (xmax - xmin) <= 1.5 * reso or (ymax - ymin) <= 1.5 * reso or (zmax - zmin) <= 1.5 * reso
                 or name in self.geoMap.keys()
         ):
+            print(name in self.geoMap.keys(), reso == 0, len(name.strip()) != 1.0)
             self.info_content.text = "[Warning]: Please Check Valid Parameters for Box Define"
             return
         if np.sum(rgb) <= 0:
