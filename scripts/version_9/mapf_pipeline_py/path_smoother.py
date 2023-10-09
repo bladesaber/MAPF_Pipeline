@@ -544,7 +544,7 @@ class FlexPathSmoother(object):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_file", type=str, help="the name of config json file",
-                        default="/home/admin123456/Desktop/work/example1/grid_env_cfg.json"
+                        default="/home/admin123456/Desktop/work/example4/grid_env_cfg.json"
                         )
     parser.add_argument("--path_result_file", type=str, help="path result", default="result.npy")
     parser.add_argument("--pipe_setting_file", type=str, help="pipe optimize setting", default="pipeLink_setting.json")
@@ -589,18 +589,18 @@ def custon_main():
     # result_pipes = {
     #     0: result_pipes[0],
     #     1: result_pipes[1],
-    #     2: result_pipes[2],
-    #     3: result_pipes[3],
-    #     4: result_pipes[4],
-    #     5: result_pipes[5]
+    #     # 2: result_pipes[2],
+    #     # 3: result_pipes[3],
+    #     # 4: result_pipes[4],
+    #     # 5: result_pipes[5]
     # }
     # path_links = {
     #     0: path_links[0],
     #     1: path_links[1],
-    #     2: path_links[2],
-    #     3: path_links[3],
-    #     4: path_links[4],
-    #     5: path_links[5]
+    #     # 2: path_links[2],
+    #     # 3: path_links[3],
+    #     # 4: path_links[4],
+    #     # 5: path_links[5]
     # }
 
     smoother.createWholeNetwork(result_pipes)

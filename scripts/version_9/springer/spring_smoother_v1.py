@@ -30,7 +30,6 @@ UIOP
 
 
 class ConstraintParser(object):
-
     def __init__(self):
         self.nodes_info = {}
         self.xyz_to_nodeIdx = {}

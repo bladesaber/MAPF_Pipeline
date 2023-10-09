@@ -68,6 +68,7 @@ class CustomApp(AppWindow):
         self.boxR_txt = O3D_Utils.getInputWidget(style='double')
         self.boxG_txt = O3D_Utils.getInputWidget(style='double')
         self.boxB_txt = O3D_Utils.getInputWidget(style='double')
+        self.isBoxSolid = gui.Checkbox("isSolid")
         self.boxCreate_btn = gui.Button("createBox_Obstacle")
         self.boxCreate_btn.set_on_clicked(self.creatBoxBtn_on_click)
         vlayout = O3D_Utils.createVertCell([
@@ -91,7 +92,7 @@ class CustomApp(AppWindow):
                 gui.Label("R:"), self.boxR_txt, gui.Label("G:"), self.boxG_txt, gui.Label("B:"), self.boxB_txt
             ]),
             O3D_Utils.createHorizCell([
-                gui.Label("Reso:"), self.boxReso_txt,
+                gui.Label("Reso:"), self.boxReso_txt, self.isBoxSolid
             ]),
             self.boxCreate_btn,
         ])
@@ -111,6 +112,7 @@ class CustomApp(AppWindow):
         self.cylinderR_txt = O3D_Utils.getInputWidget(style='double')
         self.cylinderG_txt = O3D_Utils.getInputWidget(style='double')
         self.cylinderB_txt = O3D_Utils.getInputWidget(style='double')
+        self.isCylinderSolid = gui.Checkbox("isSolid")
         self.cylinderCreate_btn = gui.Button("createCylinder_Obstacle")
         self.cylinderCreate_btn.set_on_clicked(self.creatCylinderBtn_on_click)
         vlayout = O3D_Utils.createVertCell([
@@ -133,7 +135,8 @@ class CustomApp(AppWindow):
             O3D_Utils.createHorizCell([
                 gui.Label("R:"), self.cylinderR_txt,
                 gui.Label("G:"), self.cylinderG_txt,
-                gui.Label("B:"), self.cylinderB_txt
+                gui.Label("B:"), self.cylinderB_txt,
+                self.isCylinderSolid
             ]),
             self.cylinderCreate_btn
         ])
@@ -192,7 +195,11 @@ class CustomApp(AppWindow):
         if np.sum(rgb) <= 0:
             rgb = np.array([0.3, 0.3, 0.3])
 
-        xyzs = Shape_Utils.create_BoxPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso)
+        if self.isBoxSolid.checked:
+            xyzs = Shape_Utils.create_BoxSolidPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso)
+        else:
+            xyzs = Shape_Utils.create_BoxPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso)
+
         pcd_o3d = O3D_Utils.createPCD(xyzs, colors=rgb)
         self.add_pointCloud(name, pcd_o3d)
         self.adjust_centerCamera()
@@ -205,7 +212,8 @@ class CustomApp(AppWindow):
                 'ymin': ymin, 'ymax': ymax,
                 'zmin': zmin, 'zmax': zmax,
                 'shape_reso': reso,
-                'color': list(rgb)
+                'color': list(rgb),
+                'isSolid': self.isBoxSolid.checked
             },
             'pointCloud': xyzs,
         })
@@ -236,7 +244,10 @@ class CustomApp(AppWindow):
         if np.sum(rgb) <= 0:
             rgb = np.array([0.3, 0.3, 0.3])
 
-        xyzs = Shape_Utils.create_CylinderPcd(xyz, radius, height, direction, reso)
+        if self.isCylinderSolid.checked:
+            xyzs = Shape_Utils.create_CylinderSolidPcd(xyz, radius, height, direction, reso)
+        else:
+            xyzs = Shape_Utils.create_CylinderPcd(xyz, radius, height, direction, reso)
         pcd_o3d = O3D_Utils.createPCD(xyzs, colors=rgb)
         self.add_pointCloud(name, pcd_o3d)
         self.adjust_centerCamera()
@@ -250,7 +261,8 @@ class CustomApp(AppWindow):
                 'height': height,
                 'direction': list(direction),
                 'shape_reso': reso,
-                'color': list(rgb)
+                'color': list(rgb),
+                'isSolid': self.isCylinderSolid.checked
             },
             'pointCloud': xyzs,
         })

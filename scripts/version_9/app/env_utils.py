@@ -133,31 +133,99 @@ class Shape_Utils(object):
 
     @staticmethod
     def create_PipeBoxShell(
-            xyz, xmin_dist, xmax_dist, ymin_dist, ymax_dist, zmin_dist, zmax_dist, direction, reso
+            xyz, xmin_dist, xmax_dist, ymin_dist, ymax_dist, zmin_dist, zmax_dist, direction, reso, with_shell
     ):
-        assert np.sum(np.abs(direction)) == np.max(np.abs(direction)) == 1.0
-
         xmin, xmax = xyz[0] - xmin_dist, xyz[0] + xmax_dist
         ymin, ymax = xyz[1] - ymin_dist, xyz[1] + ymax_dist
         zmin, zmax = xyz[2] - zmin_dist, xyz[2] + zmax_dist
-        pcd = Shape_Utils.create_BoxPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso)
 
-        if (direction[0] == 1) or (direction[0] == -1):
-            pcd = pcd[pcd[:, 0] < xmax]
-            pcd = pcd[pcd[:, 0] > xmin]
+        pcd = None
+        if with_shell:
+            assert np.sum(np.abs(direction)) == np.max(np.abs(direction)) == 1.0
+            pcd = Shape_Utils.create_BoxPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso)
+            if (direction[0] == 1) or (direction[0] == -1):
+                pcd = pcd[pcd[:, 0] < xmax]
+                pcd = pcd[pcd[:, 0] > xmin]
 
-        elif (direction[1] == 1) or (direction[1] == -1):
-            pcd = pcd[pcd[:, 1] < ymax]
-            pcd = pcd[pcd[:, 1] > ymin]
+            elif (direction[1] == 1) or (direction[1] == -1):
+                pcd = pcd[pcd[:, 1] < ymax]
+                pcd = pcd[pcd[:, 1] > ymin]
 
-        elif (direction[2] == 1) or (direction[2] == -1):
-            pcd = pcd[pcd[:, 2] < zmax]
-            pcd = pcd[pcd[:, 2] > zmin]
+            elif (direction[2] == 1) or (direction[2] == -1):
+                pcd = pcd[pcd[:, 2] < zmax]
+                pcd = pcd[pcd[:, 2] > zmin]
 
+            else:
+                raise ValueError
+
+        return pcd, (xmin, xmax, ymin, ymax, zmin, zmax)
+
+    @staticmethod
+    def create_BoxSolidPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso):
+        xSteps = math.ceil((xmax - xmin) / reso)
+        ySteps = math.ceil((ymax - ymin) / reso)
+        zSteps = math.ceil((zmax - zmin) / reso)
+        xs = np.linspace(xmin, xmax, xSteps)
+        ys = np.linspace(ymin, ymax, ySteps)
+        zs = np.linspace(zmin, zmax, zSteps)
+
+        xs, ys, zs = np.meshgrid(xs, ys, zs)
+        xyzs = np.concatenate([xs[..., np.newaxis], ys[..., np.newaxis], zs[..., np.newaxis]], axis=-1)
+        xyzs = xyzs.reshape((-1, 3))
+        xyzs = pd.DataFrame(xyzs).drop_duplicates().values
+
+        return xyzs
+
+    @staticmethod
+    def create_CylinderSolidPcd(xyz, radius, height, direction, reso):
+        assert np.sum(direction) == np.max(direction) == 1.0
+
+        uSteps = math.ceil(radius / reso)
+        hSteps = max(math.ceil(height / reso), 2)
+
+        uvs = []
+        for cell_radius in np.linspace(0, radius, uSteps):
+            length = 2 * cell_radius * np.pi
+            num = max(math.ceil(length / reso), 1)
+
+            rads = np.deg2rad(np.linspace(0, 360.0, num))
+            uv = np.zeros(shape=(num, 2))
+            uv[:, 0] = np.cos(rads) * cell_radius
+            uv[:, 1] = np.sin(rads) * cell_radius
+            uvs.append(uv)
+        uvs = np.concatenate(uvs, axis=0)
+
+        pcds = []
+        if direction[0] == 1:
+            for h_value in np.linspace(-height/2.0, height/2.0, hSteps):
+                pcds.append(np.concatenate([
+                    np.ones(shape=(uvs.shape[0], 1)) * h_value,
+                    uvs[:, 0:1],
+                    uvs[:, 1:2],
+                    ], axis=1))
+
+        elif direction[1] == 1:
+            for h_value in np.linspace(-height/2.0, height/2.0, hSteps):
+                pcds.append(np.concatenate([
+                    uvs[:, 0:1],
+                    np.ones(shape=(uvs.shape[0], 1)) * h_value,
+                    uvs[:, 1:2],
+                    ], axis=1))
+
+        elif direction[2] == 1:
+            for h_value in np.linspace(-height/2.0, height/2.0, hSteps):
+                pcds.append(np.concatenate([
+                    uvs[:, 0:1],
+                    uvs[:, 1:2],
+                    np.ones(shape=(uvs.shape[0], 1)) * h_value,
+                    ], axis=1))
         else:
             raise ValueError
 
-        return pcd, (xmin, xmax, ymin, ymax, zmin, zmax)
+        pcd = np.concatenate(pcds, axis=0)
+        pcd = pcd + xyz
+
+        return pcd
 
     @staticmethod
     def removePointInSphereShell(xyzs, center, radius):

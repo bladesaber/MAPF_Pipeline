@@ -73,6 +73,36 @@ namespace SmootherNameSpace {
         }
 
         virtual void oplusImpl(const double *update) override {
+            Eigen::Vector3d::ConstMapType vec(update);
+
+            /*
+            if (vec.norm() > 1.0){
+                _estimate += vec / vec.norm();
+            } else{
+                _estimate + vec;
+            }
+            */
+
+            /*
+            if (update[0] > 1.0){
+                _estimate.coeffRef(0) += 1.0;
+            }else{
+                _estimate.coeffRef(0) += update[0];
+            }
+
+            if (update[1] > 1.0){
+                _estimate.coeffRef(1) += 1.0;
+            }else{
+                _estimate.coeffRef(1) += update[1];
+            }
+
+            if (update[2] > 1.0){
+                _estimate.coeffRef(2) += 1.0;
+            }else{
+                _estimate.coeffRef(2) += update[2];
+            }
+            */
+
             _estimate.coeffRef(0) += update[0];
             _estimate.coeffRef(1) += update[1];
             _estimate.coeffRef(2) += update[2];

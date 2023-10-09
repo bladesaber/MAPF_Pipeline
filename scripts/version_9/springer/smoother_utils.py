@@ -40,6 +40,14 @@ class ConnectVisulizer(object):
         line_mesh.lines = the_cell
         self.plot(line_mesh, color=color, opacity=opacity)
 
+    def plot_tube(self, xyzs: np.array, radius, color, opacity=0.2):
+        pointCloud_mesh = pyvista.PolyData(xyzs)
+        the_cell = np.arange(0, xyzs.shape[0], 1)
+        the_cell = np.insert(the_cell, 0, xyzs.shape[0])
+        pointCloud_mesh.lines = the_cell
+        tube_mesh = pointCloud_mesh.tube(radius=radius)
+        self.plot(tube_mesh, color=color, opacity=opacity)
+
     def plot_cell(self, xyz, radius, color, opacity=1.0):
         sphere = pyvista.Sphere(radius, center=xyz)
         self.plot(sphere, color=color, opacity=opacity)
@@ -50,6 +58,10 @@ class ConnectVisulizer(object):
             self.plot(sphere, color=color, opacity=opacity)
         shape_mesh = pyvista.PolyData(shape_xyzs)
         self.plot(shape_mesh, color=color, opacity=opacity)
+
+    def plot_bound(self, xmax, ymax, zmax, color, opacity=0.1):
+        bound = pyvista.Box((0., xmax, 0., ymax, 0., zmax))
+        self.plot(bound, color=color, opacity=opacity)
 
     def plot(self, mesh, color=(0.5, 0.1, 0.8), opacity=1.0, style=None, show_edges=False):
         self.ploter.add_mesh(mesh, color=color, opacity=opacity, style=style, show_edges=show_edges)
