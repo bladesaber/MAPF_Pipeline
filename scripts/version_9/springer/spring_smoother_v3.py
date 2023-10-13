@@ -10,7 +10,12 @@ from scipy.optimize import Bounds
 from sklearn.neighbors import KDTree
 
 from scripts.version_9.app.env_utils import Shape_Utils
-from scripts.version_9.springer.smoother_utils import ConnectVisulizer
+from scripts.version_9.springer.smoother_utils import ConnectVisulizer, RecordAnysisVisulizer
+
+import warnings
+# from pandas.core.common import SettingWithCopyWarning
+from pandas.errors import SettingWithCopyWarning
+warnings.simplefilter(action="ignore", category=SettingWithCopyWarning)
 
 
 class BSpline_utils(object):
@@ -58,6 +63,7 @@ class BSpline_utils(object):
         :param k: degree
         :param sample_num: num of sample points
         """
+        assert c_mat.shape[0] > k
         ts = np.linspace(0.0, 1.0, num=c_mat.shape[0] - k + 1)
         ts = np.concatenate([ts[0] * np.ones(shape=(k,)), ts, ts[-1] * np.ones(shape=(k,))])
         xs = np.linspace(0.0, 1.0, sample_num)
@@ -83,6 +89,62 @@ class BSpline_utils(object):
                 return cur_path_length
 
             run_times += 1
+            if run_times > 50:
+                return -1
+
+    @staticmethod
+    def compare_curvature(path_xyz, start_vec, end_vec):
+        vecs = path_xyz[1:, :] - path_xyz[:-1, :]
+        vec01 = np.concatenate([start_vec, vecs], axis=0)
+        vec12 = np.concatenate([vecs, end_vec], axis=0)
+        length0 = np.sqrt(np.sum(np.power(vec01, 2.0), axis=1))
+        length1 = np.sqrt(np.sum(np.power(vec12, 2.0), axis=1))
+        cos_theta = np.sum(vec01 * vec12, axis=1) / (length0 * length1)
+
+        # ------ 由于 arccos 的不稳定，采用近似函数
+        arc_theta = np.arccos(cos_theta)
+        real_curvature = np.arccos(cos_theta) / np.minimum(length0, length1)
+
+        # arc_theta = (1.0 - cos_theta) * np.pi / 2.0
+        arc_theta = np.log((1.0 - cos_theta) * 11.0 + 1.0)
+        fake_curvature = arc_theta / np.minimum(length0, length1)
+
+        return real_curvature, fake_curvature
+
+    @staticmethod
+    def sample_uniform(c_mat: np.array, k: int, sample_num, point_num=100):
+        # todo wrong function
+        b_mat = BSpline_utils.compute_Bmat_uniform(c_mat, k, point_num)
+        path_xyzs = b_mat.dot(c_mat)
+        path_lengths = np.linalg.norm(path_xyzs[1:, :] - path_xyzs[:-1, :], ord=2, axis=1)
+
+        sample_pcd = [path_xyzs[0, :]]
+        step_length = np.sum(path_lengths) / sample_num
+        last_length, cur_length = 0.0, 0.0
+        for i, sub_length in enumerate(path_lengths[:-1]):
+            if cur_length + sub_length > last_length + step_length:
+                sample_pcd.append(path_xyzs[i + 1])
+                last_length = cur_length
+            cur_length += sub_length
+        sample_pcd.append(path_xyzs[-1, :])
+        return np.array(sample_pcd)
+
+    @staticmethod
+    def get_mini_sample_num(c_mat: np.array, k: int, radius, length_tol=0.05, sample_tol=0.05):
+        real_length = BSpline_utils.compute_spline_length(c_mat, k, length_tol)
+        sample_num = max(math.ceil(real_length / radius), k + 1)
+
+        run_times = 0
+        while True:
+            b_mat = BSpline_utils.compute_Bmat_uniform(c_mat, k, sample_num)
+            path_xyzs = b_mat.dot(c_mat)
+            sample_length = np.sum(np.linalg.norm(path_xyzs[1:, :] - path_xyzs[:-1, :], ord=2, axis=1))
+            if np.abs(sample_length - real_length) < sample_tol:
+                return sample_num
+
+            sample_num += 3
+            run_times += 1
+
             if run_times > 50:
                 return -1
 
@@ -133,7 +195,11 @@ class VarTree(object):
                 raise NotImplementedError
 
         if node_info['node_type'] == 'structor':
-            var_info.update({'shape_pcd': node_info['shape_pcd'], 'exclude_edges': node_info['exclude_edges']})
+            var_info.update({
+                'shape_pcd': node_info['shape_pcd'],
+                'exclude_edges': node_info['exclude_edges'],
+                'reso': node_info['shape_reso']
+            })
 
         self.nodes_info[node_idx] = var_info
         self.name_to_nodeIdx[node_info['name']] = node_idx
@@ -176,7 +242,6 @@ class VarTree(object):
 
             ref_node = nodes_info[name_to_nodeIdx[params['ref_obj']]]
             ref_res = VarTree.get_cell(ref_node, tag, xs, name_to_nodeIdx, nodes_info, return_method)
-
             radius = params['radius']
 
             if params['is_cos']:
@@ -191,7 +256,7 @@ class VarTree(object):
                 elif return_method == 1:
                     return ref_res + radius * np.sin(radian_res)
 
-        raise NotImplementedError
+        return -999
 
     @staticmethod
     def get_node_from_name(name, name_to_nodeIdx, nodes_info):
@@ -225,44 +290,65 @@ class OptimizerScipy(object):
             return 1.0 / (1.0 + np.exp(-1 * (x - bound) * weight))
 
     @staticmethod
+    def pentalty_relu_func(x, bound, weight, method):
+        """
+        :param method: larger | less
+        """
+        if method == 'larger':
+            if x >= bound:
+                return 0.0
+            else:
+                return (bound - x) * weight
+        else:
+            if x <= bound:
+                return 0.0
+            else:
+                return (x - bound) * weight
+
+    @staticmethod
     def cost_path_length(path_xyz):
         cost = np.sum(np.power(path_xyz[1:, :] - path_xyz[:-1, :], 2))
         return cost
 
-    """
     @staticmethod
-    def cost_path_curvature(path_xyz, k=1.0 / 3.0):
-        vec01 = path_xyz[1:-1, :] - path_xyz[:-2, :]
-        vec12 = path_xyz[2:, :] - path_xyz[1:-1, :]
-        length0 = np.power(vec01, 1.0 / 2.0)
-        length1 = np.power(vec12, 1.0 / 2.0)
+    def cost_path_curvature(path_xyz, start_vec, end_vec, k=1.0 / 3.0):
+        vecs = path_xyz[1:, :] - path_xyz[:-1, :]
+        vec01 = np.concatenate([start_vec, vecs], axis=0)
+        vec12 = np.concatenate([vecs, end_vec], axis=0)
+        length0 = np.sqrt(np.sum(np.power(vec01, 2.0), axis=1))
+        length1 = np.sqrt(np.sum(np.power(vec12, 2.0), axis=1))
         cos_theta = np.sum(vec01 * vec12, axis=1) / (length0 * length1)
-        curvature = np.arccos(cos_theta) / np.min(length0, length1, axis=1)
+
+        # ------ 由于 arccos 的不稳定，采用近似函数
+        # arc_theta = (1.0 - cos_theta) * np.pi / 2.0
+        arc_theta = np.log((1.0 - cos_theta) * 11.0 + 1.0)
+        curvature = arc_theta / np.minimum(length0, length1)
+
         return np.sum(np.maximum(curvature - k, 0.0))
-    """
 
     @staticmethod
-    def penalty_shape_conflict(xyz0, xyz1, threshold, method, weight=300.0):
+    def penalty_shape_conflict(xyz0, xyz1, threshold, method, weight=1.0):
         dist = np.sqrt(np.sum(np.power(xyz0 - xyz1, 2.0)))
-        penalty = OptimizerScipy.penalty_bound_func(dist, threshold, weight=weight, method=method)
+        penalty = OptimizerScipy.pentalty_relu_func(dist, threshold, weight=weight, method=method)
         return penalty
 
     @staticmethod
-    def penalty_plane_conflict(v0, v1, threshold, method, weight=300.0):
-        penalty = OptimizerScipy.penalty_bound_func(v0 - v1, threshold, weight=weight, method=method)
+    def penalty_plane_conflict(v0, v1, threshold, method, weight=1.0):
+        penalty = OptimizerScipy.pentalty_relu_func(v0 - v1, threshold, weight=weight, method=method)
         return penalty
 
     def target_func(
             self, xs, xs_init,
             paths_cfg, constraints, structor_nodes,
-            name_to_nodeIdx, nodes_info,
-            opt_step, penalty_weight, volume_cost_weight, debug_vis=False
+            name_to_nodeIdx, nodes_info, opt_step,
+            curvature_weight, penalty_weight, volume_cost_weight,
+            debug_vis=False
     ):
         xs_new = xs + xs_init
 
         # ------ step 1 reconstruct env
         # ------ step 1.1 reconstruct path
-        obj_dict, path_names = {}, []
+        obj_dict, path_names, path_idx_2_name = {}, [], {}
         for path_idx in paths_cfg.keys():
             path_cfg = paths_cfg[path_idx]
 
@@ -279,6 +365,7 @@ class OptimizerScipy(object):
 
             obj_dict[path_cfg['name']] = path_cfg['b_mat'].dot(c_mat)
             path_names.append(path_cfg['name'])
+            path_idx_2_name[path_idx] = path_cfg['name']
 
         # ------ step 1.2 reconstruct structor
         for node in structor_nodes:
@@ -290,10 +377,20 @@ class OptimizerScipy(object):
 
         # ------ step 2 compute cost
         # ------ step 2.1 compute path length cost
-        path_cost = 0.0
+        length_cost = 0.0
         for path_name in path_names:
             path_xyzs = obj_dict[path_name]
-            path_cost += self.cost_path_length(path_xyzs)
+            length_cost += self.cost_path_length(path_xyzs)
+
+        """
+        curvature_cost = 0.0
+        for path_idx in paths_cfg.keys():
+            path_cfg = paths_cfg[path_idx]
+            path_xyzs = obj_dict[path_idx_2_name[path_idx]]
+            curvature_cost += self.cost_path_curvature(
+                path_xyzs, path_cfg['start_vec'], path_cfg['end_vec'], k=0.5
+            )
+        """
 
         # ------ step 2.2 compute shape conflict penalty
         planeMax_node = VarTree.get_node_from_name('planeMax', name_to_nodeIdx, nodes_info)
@@ -338,12 +435,17 @@ class OptimizerScipy(object):
         x_dif, y_dif, z_dif = VarTree.get_xyz_from_node(planeMax_node, xs, name_to_nodeIdx, nodes_info, 1)
         volume_cost = x_dif / opt_step + y_dif / opt_step + z_dif / opt_step
 
-        cost = path_cost + penalty_cost * penalty_weight + volume_cost * volume_cost_weight
-        # cost = path_cost + penalty_cost * penalty_weight
+        cost = length_cost + penalty_cost * penalty_weight + \
+               volume_cost * volume_cost_weight  # + curvature_cost * curvature_weight
 
         if debug_vis:
-            print(f"[Info] Path Cost:{path_cost} penalty_cost:{penalty_cost} "
-                  f"volume_cost:{volume_cost * volume_cost_weight}")
+            print(
+                f"[Info] length_cost:{length_cost:.4f} "
+                # f"curvature_cost:{curvature_cost:.4f} "
+                f"penalty_cost:{penalty_cost * penalty_weight:.4f} "
+                f"volume_cost:{volume_cost * volume_cost_weight:.4f}"
+                )
+            return length_cost, penalty_cost * penalty_weight, volume_cost * volume_cost_weight
 
         return cost
 
@@ -352,7 +454,10 @@ class OptimizerScipy(object):
         print(f"Iter:{info['iter']} Cost:{cost_func(xs)}")
         info['iter'] += 1
 
-    def solve_problem(self, xs_init, var_tree: VarTree, paths_cfg, constraints, opt_step):
+    def solve_problem(
+            self, xs_init, var_tree: VarTree, paths_cfg, constraints, opt_step,
+            penalty_weight=1000.0, volume_cost_weight=0.1
+    ):
         assert opt_step > 0.0
 
         structor_nodes = []
@@ -367,8 +472,9 @@ class OptimizerScipy(object):
             'constraints': constraints,
             'structor_nodes': structor_nodes,
             'opt_step': opt_step,
-            'volume_cost_weight': 0.1,
-            'penalty_weight': 10.0,
+            'curvature_weight': 1.0,
+            'volume_cost_weight': volume_cost_weight,
+            'penalty_weight': penalty_weight,
             'name_to_nodeIdx': var_tree.name_to_nodeIdx,
             'nodes_info': var_tree.nodes_info
         }
@@ -386,74 +492,54 @@ class OptimizerScipy(object):
         )
 
         # log_problem(np.zeros(xs_init.shape))
-        log_problem(res.x)
-        # print('------')
+        length_cost, penalty_cost, volume_cost = log_problem(res.x)
 
         opt_xs = res.x
-        if res.success:
-            print(f"[Debug]: OptCost:{res.fun} optXs:{opt_xs.min()}->{opt_xs.max()}")
-        else:
+        if not res.success:
             print(f"[Debug]: State:{res.success} StateCode:{res.status} OptCost:{res.fun} "
                   f"optXs:{opt_xs.min()}->{opt_xs.max()} msg:{res.message}")
+        # else:
+        #     print(f"[Debug]: OptCost:{res.fun} optXs:{opt_xs.min()}->{opt_xs.max()}")
 
-        return opt_xs, problem(opt_xs)
-
-    @staticmethod
-    def plot_env(path_dict, structor_dict):
-        vis = ConnectVisulizer()
-
-        ramdom_colors = np.random.random(size=(len(path_dict), 3))
-        for i, path_idx in enumerate(path_dict.keys()):
-            path_xyzs = path_dict[path_idx]
-            vis.plot_connect(path_xyzs, color=ramdom_colors[i], opacity=1.0)
-        vis.show()
-
-        ramdom_colors = np.random.random(size=(len(structor_dict), 3))
-        for i, key in enumerate(structor_dict.keys()):
-            pcd_world = structor_dict[key]
-            vis.plot_structor(
-                xyz=None, radius=None, shape_xyzs=pcd_world,
-                color=ramdom_colors[i, :], with_center=False
-            )
-
-        vis.show()
+        return opt_xs, (length_cost, penalty_cost, volume_cost)
 
 
 class EnvParser(object):
-    def __init__(self):
-        self.var_tree = VarTree()
 
-    def create_vars_tree(self, pipes_cfg, structos_cfg, bgs_cfg):
+    def create_graph(self, pipes_cfg, structos_cfg, bgs_cfg, paths_cfg, k, length_tol, sample_tol, with_check=True):
+        var_tree = VarTree()
+
         for cfg in pipes_cfg:
-            self.var_tree.add_node(cfg)
+            var_tree.add_node(cfg)
 
         for cfg in structos_cfg:
-            self.var_tree.add_node(cfg)
+            var_tree.add_node(cfg)
 
         for cfg in bgs_cfg:
-            self.var_tree.add_node(cfg)
+            var_tree.add_node(cfg)
 
-    def define_path(self, paths_cfg, k=3):
-        name_to_nodeIdx = self.var_tree.name_to_nodeIdx
-        nodes_info = self.var_tree.nodes_info
-        xs = self.var_tree.get_xs_init()
+        name_to_nodeIdx = var_tree.name_to_nodeIdx
+        nodes_info = var_tree.nodes_info
+        xs = var_tree.get_xs_init()
 
         for path_idx in paths_cfg.keys():
             path_cfg = paths_cfg[path_idx]
             xyzs = path_cfg['xyzs']
             src_name, end_name = path_cfg['src_name'], path_cfg['end_name']
-
-            # ------ check path
             src_node = VarTree.get_node_from_name(src_name, name_to_nodeIdx, nodes_info)
             end_node = VarTree.get_node_from_name(end_name, name_to_nodeIdx, nodes_info)
-            src_xyz = VarTree.get_xyz_from_node(src_node, xs, name_to_nodeIdx, nodes_info, 1)
-            end_xyz = VarTree.get_xyz_from_node(end_node, xs, name_to_nodeIdx, nodes_info, 1)
-            # print(src_xyz, xyzs[0], end_xyz, xyzs[-1])
-            assert np.all(src_xyz == xyzs[0]) and np.all(end_xyz == xyzs[-1])
+
+            # ------ check path
+            if with_check:
+                src_xyz = VarTree.get_xyz_from_node(src_node, xs, name_to_nodeIdx, nodes_info, 1)
+                end_xyz = VarTree.get_xyz_from_node(end_node, xs, name_to_nodeIdx, nodes_info, 1)
+                # print(path_cfg['name'], src_xyz, xyzs[0], end_xyz, xyzs[-1])
+                assert np.all(np.isclose(src_xyz, xyzs[0])) and np.all(np.isclose(end_xyz, xyzs[-1]))
+            # ------
 
             path_cols = []
             for i, cell_xyz in enumerate(xyzs[1:-1]):
-                cell_node = self.var_tree.add_node({
+                cell_node = var_tree.add_node({
                     'node_type': 'cell', 'position': cell_xyz, 'name': f"{path_cfg['name']}_cell{i + 1}",
                     'pose_edge_x': {'type': 'var_value'},
                     'pose_edge_y': {'type': 'var_value'},
@@ -463,50 +549,24 @@ class EnvParser(object):
                 path_cols.append(xyz_col)
             path_cols = np.array(path_cols).reshape(-1)
 
-            # path_length = BSpline_utils.compute_spline_length(c_mat=xyzs, k=k)
-            # sample_num = math.ceil(path_length / path_cfg['radius'] * 1.15)
-            # sample_num = max(sample_num, 2)
-            sample_num = 30
+            assert k < xyzs.shape[0]
+            sample_num = BSpline_utils.get_mini_sample_num(
+                xyzs, k, path_cfg['radius'], length_tol=length_tol, sample_tol=sample_tol
+            )
+            assert sample_num > 0
 
             b_mat = BSpline_utils.compute_Bmat_uniform(c_mat=xyzs, k=k, sample_num=sample_num)
-
             path_cfg.update({
                 'src_node_idx': src_node['idx'], 'end_node_idx': end_node['idx'],
-                'path_cols': path_cols, 'b_mat': b_mat
+                'path_cols': path_cols, 'b_mat': b_mat,
+                'start_vec': path_cfg['start_vec'].reshape((1, -1)),
+                'end_vec': path_cfg['end_vec'].reshape((1, -1)),
             })
 
-        return paths_cfg
+        return var_tree, paths_cfg
 
-    def update_Bspline_mat(self, xs, paths_cfg, k=3):
-        name_to_nodeIdx = self.var_tree.name_to_nodeIdx
-        nodes_info = self.var_tree.nodes_info
-
-        for path_idx in paths_cfg.keys():
-            path_cfg = paths_cfg[path_idx]
-
-            src_node = nodes_info[path_cfg['src_node_idx']]
-            src_x, src_y, src_z = VarTree.get_xyz_from_node(src_node, xs, name_to_nodeIdx, nodes_info, 1)
-            end_node = nodes_info[path_cfg['end_node_idx']]
-            end_x, end_y, end_z = VarTree.get_xyz_from_node(end_node, xs, name_to_nodeIdx, nodes_info, 1)
-            cell_xyzs = xs[path_cfg['path_cols']].reshape((-1, 3))
-            c_mat = np.concatenate((
-                [[src_x, src_y, src_z]],
-                cell_xyzs,
-                [[end_x, end_y, end_z]]
-            ), axis=0)
-
-            path_length = BSpline_utils.compute_spline_length(c_mat=c_mat, k=k)
-            sample_num = math.ceil(path_length / path_cfg['radius'] * 1.15)
-            sample_num = max(sample_num, c_mat.shape[0])
-            b_mat = BSpline_utils.compute_Bmat_uniform(c_mat=c_mat, k=k, sample_num=sample_num)
-
-            path_cfg.update({'b_mat': b_mat})
-
-        return paths_cfg
-
-    def get_structor_plane_constraints(self, node, node_df: pd.DataFrame, planeMax_xyz, planeMin_xyz, opt_step):
-        constraints = []
-        xyzs = node_df[['x', 'y', 'z']].values
+    def get_structor_conflict_plane(self, node, node_df: pd.DataFrame, planeMax_xyz, planeMin_xyz, opt_step):
+        xyzs, constraints = node_df[['x', 'y', 'z']].values, []
 
         exclude_tags = []
         if 'plane_max_conflict' in node['exclude_edges'].keys():
@@ -514,16 +574,22 @@ class EnvParser(object):
         for xyz_tag, xyz_col in zip(['x', 'y', 'z'], [0, 1, 2]):
             if xyz_tag in exclude_tags:
                 continue
-            conflicts = xyzs[:, xyz_col] + node_df['radius'].values + opt_step >= planeMax_xyz[xyz_col]
-            for i in np.nonzero(conflicts)[0]:
-                cur_series = node_df.iloc[i]
-                constraints.append({
-                    'type': 'plane_max_conflict', 'xyz_tag': xyz_tag, 'threshold': cur_series['radius'],
-                    'info': {
-                        'group_t_idx': cur_series['group_t_idx'], 'name': cur_series['name'],
-                        'world_xyz': [cur_series['x'], cur_series['y'], cur_series['z']], 'radius': cur_series['radius']
-                    }
-                })
+
+            conflict_difs = xyzs[:, xyz_col] + node_df['radius'].values + opt_step - planeMax_xyz[xyz_col]
+            max_dif = np.max(conflict_difs)
+            idxs = np.nonzero(conflict_difs == max_dif)[0]
+            if idxs.shape[0] > 15:
+                idxs = np.random.choice(idxs, size=math.ceil(idxs.shape[0] * 0.35), replace=False)
+            for idx in idxs:
+                if conflict_difs[idx] >= 0.0:
+                    cur_series = node_df.iloc[idx]
+                    constraints.append({
+                        'type': 'plane_max_conflict', 'xyz_tag': xyz_tag, 'threshold': cur_series['radius'],
+                        'info': {
+                            'group_t_idx': cur_series['group_t_idx'], 'name': cur_series['name'],
+                            'debug_xyz': cur_series[['x', 'y', 'z']].values
+                        }
+                    })
 
         exclude_tags = []
         if 'plane_min_conflict' in node['exclude_edges'].keys():
@@ -531,6 +597,39 @@ class EnvParser(object):
         for xyz_tag, xyz_col in zip(['x', 'y', 'z'], [0, 1, 2]):
             if xyz_tag in exclude_tags:
                 continue
+
+            conflict_difs = xyzs[:, xyz_col] - node_df['radius'].values - opt_step - planeMin_xyz[xyz_col]
+            min_dif = np.min(conflict_difs)
+            idxs = np.nonzero(conflict_difs == min_dif)[0]
+            if idxs.shape[0] > 15:
+                idxs = np.random.choice(idxs, size=math.ceil(idxs.shape[0] * 0.35), replace=False)
+            for idx in idxs:
+                if conflict_difs[idx] <= 0.0:
+                    cur_series = node_df.iloc[idx]
+                    constraints.append({
+                        'type': 'plane_min_conflict', 'xyz_tag': xyz_tag, 'threshold': cur_series['radius'],
+                        'info': {
+                            'group_t_idx': cur_series['group_t_idx'], 'name': cur_series['name'],
+                            'debug_xyz': cur_series[['x', 'y', 'z']].values
+                        }
+                    })
+
+        return constraints
+
+    def get_path_conflict_plane(self, node_df: pd.DataFrame, planeMax_xyz, planeMin_xyz, opt_step):
+        xyzs, constraints = node_df[['x', 'y', 'z']].values, []
+        for xyz_tag, xyz_col in zip(['x', 'y', 'z'], [0, 1, 2]):
+            conflicts = xyzs[:, xyz_col] + node_df['radius'].values + opt_step >= planeMax_xyz[xyz_col]
+            for i in np.nonzero(conflicts)[0]:
+                cur_series = node_df.iloc[i]
+                constraints.append({
+                    'type': 'plane_max_conflict', 'xyz_tag': xyz_tag, 'threshold': cur_series['radius'],
+                    'info': {
+                        'group_t_idx': cur_series['group_t_idx'], 'name': cur_series['name'],
+                        'debug_xyz': cur_series[['x', 'y', 'z']].values
+                    }
+                })
+
             conflicts = xyzs[:, xyz_col] - node_df['radius'].values - opt_step <= planeMin_xyz[xyz_col]
             for i in np.nonzero(conflicts)[0]:
                 cur_series = node_df.iloc[i]
@@ -538,51 +637,138 @@ class EnvParser(object):
                     'type': 'plane_min_conflict', 'xyz_tag': xyz_tag, 'threshold': cur_series['radius'],
                     'info': {
                         'group_t_idx': cur_series['group_t_idx'], 'name': cur_series['name'],
-                        'world_xyz': [cur_series['x'], cur_series['y'], cur_series['z']], 'radius': cur_series['radius']
+                        'debug_xyz': cur_series[['x', 'y', 'z']].values
                     }
                 })
-
         return constraints
 
-    def get_path_plane_constraints(self, node_df: pd.DataFrame, planeMax_xyz, planeMin_xyz, opt_step):
+    def get_shape_conflict(self, nodes_df: pd.DataFrame, opt_step, path_names: list, structor_names: list):
         constraints = []
-        xyzs = node_df[['x', 'y', 'z']].values
+        max_step_length = np.linalg.norm(np.array([opt_step, opt_step, opt_step]), ord=2) * 1.05
 
-        for xyz_tag, xyz_col in zip(['x', 'y', 'z'], [0, 1, 2]):
-            conflicts = xyzs[:, xyz_col] + node_df['radius'].values + opt_step >= planeMax_xyz[xyz_col]
-            for i in np.nonzero(conflicts)[0]:
-                cur_series = node_df.iloc[i]
-                constraints.append({
-                    'type': 'plane_max_conflict', 'xyz_tag': xyz_tag,
-                    'info': {
-                        'group_t_idx': cur_series['group_t_idx'], 'name': cur_series['name'],
-                        'world_xyz': [cur_series['x'], cur_series['y'], cur_series['z']],
-                        'radius': cur_series['radius']
-                    },
-                    'threshold': cur_series['radius']
-                })
+        # --- 由于path的约束比structor更紧致，因此必须先由path开始
+        sort_names = path_names + structor_names
 
-            conflicts = xyzs[:, xyz_col] - node_df['radius'].values - opt_step <= planeMin_xyz[xyz_col]
-            for i in np.nonzero(conflicts)[0]:
-                cur_series = node_df.iloc[i]
-                constraints.append({
-                    'type': 'plane_min_conflict', 'xyz_tag': xyz_tag,
-                    'info': {
-                        'group_t_idx': cur_series['group_t_idx'], 'name': cur_series['name'],
-                        'world_xyz': [cur_series['x'], cur_series['y'], cur_series['z']],
-                        'radius': cur_series['radius']
-                    },
-                    'threshold': cur_series['radius']
-                })
+        for name in sort_names[:-1]:
+            cur_df: pd.DataFrame = nodes_df[nodes_df['name'] == name]
+            other_df: pd.DataFrame = nodes_df[nodes_df['name'] != name]
+
+            cur_type = cur_df.iloc[0]['df_type']
+            max_search_radius = cur_df['radius'].max() + other_df['radius'].max() + max_step_length * 2.0
+
+            cur_xyzs = cur_df[['x', 'y', 'z']].values
+            other_xyzs = other_df[['x', 'y', 'z']].values
+            other_tree = KDTree(other_xyzs)
+            idxs_list, dists_list = other_tree.query_radius(cur_xyzs, max_search_radius, return_distance=True)
+
+            if cur_type == 'path':
+                for i, (idxs, dists) in enumerate(zip(idxs_list, dists_list)):
+                    if idxs.shape[0] == 0:
+                        continue
+
+                    cur_radius = cur_df.iloc[i]['radius']
+                    other_radius_list = other_df.iloc[idxs]['radius'].values
+                    real_thresholds = cur_radius + other_radius_list
+
+                    inside_bool = dists <= real_thresholds + max_step_length * 2.0
+                    idxs = idxs[inside_bool]
+                    if idxs.shape[0] == 0:
+                        continue
+                    real_thresholds = real_thresholds[inside_bool]
+                    dists = dists[inside_bool]
+
+                    cur_series = cur_df.iloc[i]
+                    conflicts_df: pd.DataFrame = other_df.iloc[idxs]
+                    conflicts_df['dist'] = dists
+                    conflicts_df['real_thresholds'] = real_thresholds
+
+                    for group_idx_tuple, group_data in conflicts_df.groupby(by=['name']):
+                        group_dists = group_data['dist'].values
+                        select_group_idxs = np.nonzero(np.isclose(
+                            group_dists, np.min(group_dists), atol=cur_series['radius'] * 0.1
+                        ))[0]
+                        # select_group_idxs = list(range(group_data.shape[0]))
+
+                        for select_group_idx in select_group_idxs:
+                            other_series = group_data.iloc[select_group_idx]
+                            constraints.append({
+                                'type': 'shape_conflict',
+                                'info_0': {
+                                    'group_t_idx': cur_series['group_t_idx'], 'name': cur_series['name'],
+                                    'debug_xyz': cur_series[['x', 'y', 'z']].values
+                                },
+                                'info_1': {
+                                    'group_t_idx': other_series['group_t_idx'], 'name': other_series['name'],
+                                    'debug_xyz': other_series[['x', 'y', 'z']].values
+                                },
+                                'threshold': other_series['real_thresholds']
+                            })
+
+            else:
+                record = {}
+                for i, (idxs, dists) in enumerate(zip(idxs_list, dists_list)):
+                    if idxs.shape[0] == 0:
+                        continue
+
+                    cur_radius = cur_df.iloc[i]['radius']
+                    other_radius_list = other_df.iloc[idxs]['radius'].values
+                    real_thresholds = cur_radius + other_radius_list
+                    inside_bool = dists <= real_thresholds + max_step_length * 2.0
+
+                    idxs = idxs[inside_bool]
+                    if idxs.shape[0] == 0:
+                        continue
+                    real_thresholds = real_thresholds[inside_bool]
+                    dists = dists[inside_bool]
+
+                    cur_series = cur_df.iloc[i]
+                    conflicts_df: pd.DataFrame = other_df.iloc[idxs]
+                    conflicts_df['dist'] = dists
+                    conflicts_df['real_thresholds'] = real_thresholds
+
+                    for group_idx_tuple, group_data in conflicts_df.groupby(by=['name']):
+                        select_group_idx = np.argmin(group_data['dist'])
+                        other_series = group_data.iloc[select_group_idx]
+                        other_name, other_group_t_idx = other_series['name'], other_series['group_t_idx']
+
+                        if other_name not in record.keys():
+                            record[other_name] = {}
+
+                        if other_group_t_idx not in record[other_name].keys():
+                            record[other_name][other_group_t_idx] = {
+                                'series0': cur_series, 'series1': other_series, 'score': other_series['dist']
+                            }
+                        else:
+                            if other_series['dist'] < record[other_name][other_group_t_idx]['score']:
+                                record[other_name][other_group_t_idx] = {
+                                    'series0': cur_series, 'series1': other_series, 'score': other_series['dist']
+                                }
+
+                for name_key in record.keys():
+                    for t_idx_key in record[name_key].keys():
+                        cur_series = record[name_key][t_idx_key]['series0']
+                        other_series = record[name_key][t_idx_key]['series1']
+                        constraints.append({
+                            'type': 'shape_conflict',
+                            'info_0': {
+                                'group_t_idx': cur_series['group_t_idx'], 'name': cur_series['name'],
+                                'debug_xyz': cur_series[['x', 'y', 'z']].values
+                            },
+                            'info_1': {
+                                'group_t_idx': other_series['group_t_idx'], 'name': other_series['name'],
+                                'debug_xyz': other_series[['x', 'y', 'z']].values
+                            },
+                            'threshold': other_series['real_thresholds']
+                        })
+
+            # ------ 为防止重复生成，这是必须的
+            nodes_df = other_df
 
         return constraints
 
-    def get_constraints(self, xs, paths_cfg, opt_step=0.1):
-        # 由于矩形阀块是个凸包，因此只要控制点不超出边界，路径就不会超出边界
-
-        name_to_nodeIdx = self.var_tree.name_to_nodeIdx
-        nodes_info = self.var_tree.nodes_info
-        max_step_length = np.linalg.norm(np.array([opt_step, opt_step, opt_step]), ord=2) * 1.05
+    def get_constraints(self, xs, var_tree, paths_cfg, opt_step=0.1):
+        name_to_nodeIdx = var_tree.name_to_nodeIdx
+        nodes_info = var_tree.nodes_info
 
         # ------ step 1 create data point dataframe
         dfs = []
@@ -596,14 +782,14 @@ class EnvParser(object):
 
             x, y, z = VarTree.get_xyz_from_node(node, xs, name_to_nodeIdx, nodes_info, 1)
             pcd_world = np.array([x, y, z]) + node['shape_pcd']
-            pcd_array = np.concatenate([pcd_world, node['shape_pcd']], axis=1)
-            sub_df = pd.DataFrame(pcd_array, columns=['x', 'y', 'z', 'shape_x', 'shape_y', 'shape_z'])
-            sub_df[['radius', 'name', 'node_idx', 'df_type']] = 0.15, node['name'], node_idx, 'structor'
-            sub_df['group_t_idx'] = np.arange(0, pcd_array.shape[0], 1)
+            sub_df = pd.DataFrame(pcd_world, columns=['x', 'y', 'z'])
+            sub_df[['radius', 'name', 'node_idx', 'df_type']] = node['reso'] * 0.5, node['name'], node_idx, 'structor'
+            sub_df['group_t_idx'] = np.arange(0, pcd_world.shape[0], 1)
             dfs.append(sub_df)
             structor_names.append(node['name'])
 
         # ------ step 1.2 record path data point
+        path_names = []
         for path_idx in paths_cfg.keys():
             path_cfg = paths_cfg[path_idx]
 
@@ -612,101 +798,59 @@ class EnvParser(object):
             end_node = nodes_info[path_cfg['end_node_idx']]
             end_x, end_y, end_z = VarTree.get_xyz_from_node(end_node, xs, name_to_nodeIdx, nodes_info, 1)
             cell_xyzs = xs[path_cfg['path_cols']].reshape((-1, 3))
-
             c_mat = np.concatenate((
                 [[src_x, src_y, src_z]],
                 cell_xyzs,
                 [[end_x, end_y, end_z]]
             ), axis=0)
-            cell_xyzs = path_cfg['b_mat'].dot(c_mat)
+            path_xyzs = path_cfg['b_mat'].dot(c_mat)
 
-            sub_df = pd.DataFrame(cell_xyzs, columns=['x', 'y', 'z'])
-            sub_df[['shape_x', 'shape_y', 'shape_z']] = 0.0, 0.0, 0.0
+            sub_df = pd.DataFrame(path_xyzs, columns=['x', 'y', 'z'])
             sub_df[['radius', 'name', 'node_idx', 'df_type']] = path_cfg['radius'], path_cfg['name'], -1, 'path'
-            sub_df['group_t_idx'] = np.arange(0, cell_xyzs.shape[0], 1)
+            sub_df['group_t_idx'] = np.arange(0, path_xyzs.shape[0], 1)
             dfs.append(sub_df)
+            path_names.append(path_cfg['name'])
 
         dfs = pd.concat(dfs, axis=0, ignore_index=True)
 
+        # ------ step 2 find conflict
+        constraints = []
+
+        # ------ step 2.1 find possible conflict between plane and path/structor
         planeMax_node = VarTree.get_node_from_name('planeMax', name_to_nodeIdx, nodes_info)
         planeMax_xyz = VarTree.get_xyz_from_node(planeMax_node, xs, name_to_nodeIdx, nodes_info, 1)
         planeMin_node = VarTree.get_node_from_name('planeMin', name_to_nodeIdx, nodes_info)
         planeMin_xyz = VarTree.get_xyz_from_node(planeMin_node, xs, name_to_nodeIdx, nodes_info, 1)
 
-        # ------ step 2 find conflict
-        constraints = []
-
-        '''
-        # ------ step 2.1 find possible conflict between plane and path/structor
         for name in dfs['name'].unique():
             cur_df: pd.DataFrame = dfs[dfs['name'] == name]
 
             # ------ is structor
             if name in structor_names:
                 tag_node = nodes_info[name_to_nodeIdx[name]]
-                plane_constraints = self.get_structor_plane_constraints(
+                plane_constraints = self.get_structor_conflict_plane(
                     tag_node, cur_df, planeMax_xyz, planeMin_xyz, opt_step
                 )
                 constraints.extend(plane_constraints)
             else:
-                plane_constraints = self.get_path_plane_constraints(cur_df, planeMax_xyz, planeMin_xyz, opt_step)
+                plane_constraints = self.get_path_conflict_plane(cur_df, planeMax_xyz, planeMin_xyz, opt_step)
                 constraints.extend(plane_constraints)
-        '''
 
         # ------ step 2.2 find possible conflict between structor and path
-        for name in dfs['name'].unique()[:-1]:
-            cur_df: pd.DataFrame = dfs[dfs['name'] == name]
-            other_df: pd.DataFrame = dfs[dfs['name'] != name]
-
-            max_search_radius = cur_df['radius'].max() + other_df['radius'].max() + max_step_length
-            cur_xyzs = cur_df[['x', 'y', 'z']].values
-            other_xyzs = other_df[['x', 'y', 'z']].values
-
-            other_tree = KDTree(other_xyzs)
-            idxs_list, dists_list = other_tree.query_radius(cur_xyzs, max_search_radius, return_distance=True)
-            for i, (idxs, dists) in enumerate(zip(idxs_list, dists_list)):
-                if idxs.shape[0] == 0:
-                    continue
-
-                for idx, dist in zip(idxs, dists):
-                    cur_series, other_series = cur_df.iloc[i], other_df.iloc[idx]
-                    real_threshold = cur_series['radius'] + other_series['radius']
-                    assert real_threshold > 0.0
-
-                    scale_threshold = real_threshold + max_step_length
-                    if dist >= scale_threshold:
-                        continue
-
-                    constraints.append({
-                        'type': 'shape_conflict',
-                        'info_0': {
-                            'group_t_idx': cur_series['group_t_idx'], 'name': cur_series['name'],
-                            'world_xyz': [cur_series['x'], cur_series['y'], cur_series['z']],
-                            'radius': cur_series['radius']
-                        },
-                        'info_1': {
-                            'group_t_idx': other_series['group_t_idx'], 'name': other_series['name'],
-                            'world_xyz': [other_series['x'], other_series['y'], other_series['z']],
-                            'radius': other_series['radius']
-                        },
-                        'threshold': real_threshold
-                    })
-
-            # ------ only contain rest part
-            dfs = other_df
+        shape_constraints = self.get_shape_conflict(dfs, opt_step, path_names, structor_names)
+        constraints.extend(shape_constraints)
 
         return constraints
 
     def plot_env(
-            self, xs, constraints, paths_cfg, with_path=False, with_structor=False,
+            self, xs, var_tree, constraints, paths_cfg, with_path=False, with_structor=False,
             with_bound=False, with_constraint=False, with_control_points=False, with_tube=False
     ):
-        name_to_nodeIdx = self.var_tree.name_to_nodeIdx
-        nodes_info = self.var_tree.nodes_info
+        name_to_nodeIdx = var_tree.name_to_nodeIdx
+        nodes_info = var_tree.nodes_info
 
         vis = ConnectVisulizer()
         obj_dict = {}
-
         for path_idx in paths_cfg.keys():
             path_cfg = paths_cfg[path_idx]
 
@@ -750,7 +894,11 @@ class EnvParser(object):
         planeMin_xyz = VarTree.get_xyz_from_node(planeMin_node, xs, name_to_nodeIdx, nodes_info, 1)
 
         if with_bound:
-            vis.plot_bound(planeMax_xyz[0], planeMax_xyz[1], planeMax_xyz[2], color=np.array([0.5, 0.75, 1.0]))
+            vis.plot_bound(
+                planeMin_xyz[0], planeMin_xyz[1], planeMin_xyz[2],
+                planeMax_xyz[0], planeMax_xyz[1], planeMax_xyz[2],
+                color=np.array([0.5, 0.75, 1.0])
+            )
 
         if with_constraint:
             for cfg in constraints:
@@ -759,19 +907,19 @@ class EnvParser(object):
                     xyz0 = obj_dict[info_0['name']][info_0['group_t_idx'], :]
                     xyz1 = obj_dict[info_1['name']][info_1['group_t_idx'], :]
 
-                    try:
-                        assert np.all(np.isclose(xyz0, np.array(info_0['world_xyz'])))
-                    except Exception as e:
-                        print(info_0)
-                        print(xyz0)
-                        raise ValueError(e)
-
-                    try:
-                        assert np.all(np.isclose(xyz1, np.array(info_1['world_xyz'])))
-                    except Exception as e:
-                        print(info_1)
-                        print(xyz1)
-                        raise ValueError(e)
+                    # try:
+                    #     assert np.all(np.isclose(xyz0, np.array(info_0['debug_xyz'])))
+                    # except Exception as e:
+                    #     print(info_0)
+                    #     print(xyz0)
+                    #     raise ValueError(e)
+                    #
+                    # try:
+                    #     assert np.all(np.isclose(xyz1, np.array(info_1['world_xyz'])))
+                    # except Exception as e:
+                    #     print(info_1)
+                    #     print(xyz1)
+                    #     raise ValueError(e)
 
                     vis.plot_connect(np.array([xyz0, xyz1]), color=np.array([0., 1., 0.]))
 
@@ -786,7 +934,7 @@ class EnvParser(object):
                     else:
                         xyzs = np.array([xyz, [xyz[0], xyz[1], planeMax_xyz[2]]])
 
-                    vis.plot_connect(xyzs, color=np.array([1., 1., 0.]))
+                    vis.plot_connect(xyzs, color=np.array([1., 0.5, 0.]))
 
                 elif cfg['type'] == 'plane_min_conflict':
                     info, xyz_tag = cfg['info'], cfg['xyz_tag']
@@ -799,7 +947,7 @@ class EnvParser(object):
                     else:
                         xyzs = np.array([xyz, [xyz[0], xyz[1], planeMin_xyz[2]]])
 
-                    vis.plot_connect(xyzs, color=np.array([0., 1., 1.]))
+                    vis.plot_connect(xyzs, color=np.array([0., 0.5, 1.]))
 
         if with_structor:
             for name in structor_names.keys():
@@ -812,53 +960,206 @@ class EnvParser(object):
 
         vis.show()
 
-    def solve(self, paths_cfg, opt_step=0.1, run_count=300):
-        xs_init = self.var_tree.get_xs_init()
-        run_times = 0
-        stop_tol = opt_step * 0.001
-        last_cost = np.inf
-        cur_paths_cfg = deepcopy(paths_cfg)
+    def record_video(
+            self,
+            vis: RecordAnysisVisulizer,
+            xs, var_tree, paths_cfg, with_path=False, with_structor=False,
+            with_bound=False, with_control_points=False, with_tube=False,
+    ):
+        vis.clear_objs()
 
-        while True:
-            if run_times > 0:
-                self.update_Bspline_mat(xs_init, cur_paths_cfg, k=3)
+        name_to_nodeIdx = var_tree.name_to_nodeIdx
+        nodes_info = var_tree.nodes_info
 
-            constraints = self.get_constraints(xs_init, cur_paths_cfg, opt_step=opt_step)
+        obj_dict = {}
+        for path_idx in paths_cfg.keys():
+            path_cfg = paths_cfg[path_idx]
 
-            self.plot_env(
-                xs=xs_init, constraints=constraints, paths_cfg=cur_paths_cfg, with_path=True,
-                with_structor=True, with_bound=True, with_constraint=True, with_control_points=True,
-                with_tube=True
+            src_node = nodes_info[path_cfg['src_node_idx']]
+            src_x, src_y, src_z = VarTree.get_xyz_from_node(src_node, xs, name_to_nodeIdx, nodes_info, 1)
+            end_node = nodes_info[path_cfg['end_node_idx']]
+            end_x, end_y, end_z = VarTree.get_xyz_from_node(end_node, xs, name_to_nodeIdx, nodes_info, 1)
+            cell_xyzs = xs[path_cfg['path_cols']].reshape((-1, 3))
+            c_mat = np.concatenate((
+                [[src_x, src_y, src_z]],
+                cell_xyzs,
+                [[end_x, end_y, end_z]]
+            ), axis=0)
+            path_xyzs = path_cfg['b_mat'].dot(c_mat)
+            obj_dict[path_cfg['name']] = path_xyzs
+
+            if with_path:
+                vis.plot_connect(path_xyzs, color=np.array([0., 0., 1.]), opacity=1.0)
+
+            if with_control_points:
+                vis.plot_connect(c_mat, color=np.array([1., 0., 1.]), opacity=1.0)
+
+            if with_tube:
+                vis.plot_tube(path_xyzs, radius=path_cfg['radius'], color=np.array([0.8, 0.5, 0.3]), opacity=0.2)
+
+        structor_names = {}
+        for node_idx in nodes_info.keys():
+            node = nodes_info[node_idx]
+            if node['node_type'] != 'structor':
+                continue
+
+            pose_xyz = VarTree.get_xyz_from_node(node, xs, name_to_nodeIdx, nodes_info, 1)
+            pose_xyz = np.array(pose_xyz)
+            pcd_world = pose_xyz + node['shape_pcd']
+            obj_dict[node['name']] = pcd_world
+            structor_names[node['name']] = pose_xyz
+
+        planeMax_node = VarTree.get_node_from_name('planeMax', name_to_nodeIdx, nodes_info)
+        planeMax_xyz = VarTree.get_xyz_from_node(planeMax_node, xs, name_to_nodeIdx, nodes_info, 1)
+        planeMin_node = VarTree.get_node_from_name('planeMin', name_to_nodeIdx, nodes_info)
+        planeMin_xyz = VarTree.get_xyz_from_node(planeMin_node, xs, name_to_nodeIdx, nodes_info, 1)
+
+        if with_bound:
+            vis.plot_bound(
+                planeMin_xyz[0], planeMin_xyz[1], planeMin_xyz[2],
+                planeMax_xyz[0], planeMax_xyz[1], planeMax_xyz[2],
+                color=np.array([0.5, 0.75, 1.0])
             )
 
-            optimizer = OptimizerScipy()
-            opt_xs, cur_cost = optimizer.solve_problem(xs_init, self.var_tree, cur_paths_cfg, constraints, opt_step)
+        if with_structor:
+            for name in structor_names.keys():
+                pcd_world = obj_dict[name]
+                radius = np.min(np.max(pcd_world, axis=0) - np.min(pcd_world, axis=0)) * 0.25
+                vis.plot_structor(
+                    xyz=structor_names[name], radius=radius, shape_xyzs=pcd_world,
+                    color=np.array([0.5, 0.5, 0.5]), with_center=True
+                )
 
-            if cur_cost > last_cost * 10.0:
-                break
+    def update_node_info(self, cfg, xs, nodes_info, name_to_nodeIdx):
+        node = VarTree.get_node_from_name(cfg['name'], name_to_nodeIdx, nodes_info)
+        new_x, new_y, new_z = VarTree.get_xyz_from_node(node, xs, name_to_nodeIdx, nodes_info, 1)
+        cfg['position'] = np.array([new_x, new_y, new_z])
+        return cfg
 
-            xs_init += opt_xs
-            paths_cfg = cur_paths_cfg
+    def save_to_npy(self, xs, var_tree, constraints, paths_cfg, file_path):
+        name_to_nodeIdx = var_tree.name_to_nodeIdx
+        nodes_info = var_tree.nodes_info
 
-            # ------ debug
-            name_to_nodeIdx, nodes_info = self.var_tree.name_to_nodeIdx, self.var_tree.nodes_info
-            planeMax_node = VarTree.get_node_from_name('planeMax', name_to_nodeIdx, nodes_info)
-            planeMax_xyz = VarTree.get_xyz_from_node(planeMax_node, xs_init, name_to_nodeIdx, nodes_info, 1)
-            planeMin_node = VarTree.get_node_from_name('planeMin', name_to_nodeIdx, nodes_info)
-            planeMin_xyz = VarTree.get_xyz_from_node(planeMin_node, xs_init, name_to_nodeIdx, nodes_info, 1)
-            print(f"[Debug]: Iter:{run_times} min_xyz:({planeMin_xyz[0]}, {planeMin_xyz[1]}, {planeMin_xyz[2]}) -> "
-                  f"({planeMax_xyz[0]}, {planeMax_xyz[1]}, {planeMax_xyz[2]}) cost:{last_cost} -> {cur_cost} \n")
+        record_dict = {}
+        for path_idx in paths_cfg.keys():
+            path_cfg = paths_cfg[path_idx]
 
-            last_cost = cur_cost
+            src_node = nodes_info[path_cfg['src_node_idx']]
+            src_x, src_y, src_z = VarTree.get_xyz_from_node(src_node, xs, name_to_nodeIdx, nodes_info, 1)
+            end_node = nodes_info[path_cfg['end_node_idx']]
+            end_x, end_y, end_z = VarTree.get_xyz_from_node(end_node, xs, name_to_nodeIdx, nodes_info, 1)
+            cell_xyzs = xs[path_cfg['path_cols']].reshape((-1, 3))
+            c_mat = np.concatenate((
+                [[src_x, src_y, src_z]],
+                cell_xyzs,
+                [[end_x, end_y, end_z]]
+            ), axis=0)
+            path_xyzs = path_cfg['b_mat'].dot(c_mat)
+            record_dict[path_cfg['name']] = {
+                'type': 'path', 'xyzs': path_xyzs, 'radius': path_cfg['radius']
+            }
 
-            run_times += 1
-            if run_times > run_count:
-                break
+        for node_idx in nodes_info.keys():
+            node = nodes_info[node_idx]
+            if node['node_type'] != 'structor':
+                continue
 
-            # if np.max(np.abs(opt_xs)) < stop_tol:
-            #     break
+            pose_xyz = VarTree.get_xyz_from_node(node, xs, name_to_nodeIdx, nodes_info, 1)
+            pose_xyz = np.array(pose_xyz)
+            pcd_world = pose_xyz + node['shape_pcd']
+            record_dict[node['name']] = {
+                'type': 'structor', 'xyzs': pcd_world, 'center': pose_xyz
+            }
 
-        return xs_init, paths_cfg
+        planeMax_node = VarTree.get_node_from_name('planeMax', name_to_nodeIdx, nodes_info)
+        planeMax_xyz = VarTree.get_xyz_from_node(planeMax_node, xs, name_to_nodeIdx, nodes_info, 1)
+        planeMin_node = VarTree.get_node_from_name('planeMin', name_to_nodeIdx, nodes_info)
+        planeMin_xyz = VarTree.get_xyz_from_node(planeMin_node, xs, name_to_nodeIdx, nodes_info, 1)
+        record_dict['planeMax'] = {'type': 'planeMax', 'xyzs': planeMax_xyz}
+        record_dict['planeMin'] = {'type': 'planeMin', 'xyzs': planeMin_xyz}
+
+        for cfg in constraints:
+            if cfg['type'] == 'shape_conflict':
+                info_0, info_1, threshold = cfg['info_0'], cfg['info_1'], cfg['threshold']
+                info_0['xyz'] = record_dict[info_0['name']]['xyzs'][info_0['group_t_idx'], :]
+                info_1['xyz'] = record_dict[info_1['name']]['xyzs'][info_1['group_t_idx'], :]
+
+            elif cfg['type'] == 'plane_max_conflict':
+                info, xyz_tag = cfg['info'], cfg['xyz_tag']
+                info['xyz'] = record_dict[info['name']]['xyzs'][info['group_t_idx'], :]
+
+            elif cfg['type'] == 'plane_min_conflict':
+                info, xyz_tag = cfg['info'], cfg['xyz_tag']
+                info['xyz'] = record_dict[info['name']]['xyzs'][info['group_t_idx'], :]
+
+        npy_dict = {
+            'objs': record_dict,
+            'constraints': constraints
+        }
+        np.save(file_path, npy_dict)
+
+    def plot_npy_record(self, file_path):
+        vis = ConnectVisulizer()
+
+        record_dict = np.load(file_path, allow_pickle=True).item()
+        objs_dict: dict = record_dict['objs']
+        constraints: dict = record_dict['constraints']
+
+        planeMin_xyz, planeMax_xyz = None, None
+        for name in objs_dict.keys():
+            info = objs_dict[name]
+            if info['type'] == 'path':
+                vis.plot_connect(info['xyzs'], color=np.array([0., 0., 1.]), opacity=1.0)
+                vis.plot_tube(info['xyzs'], radius=info['radius'], color=np.array([0.8, 0.5, 0.3]), opacity=0.2)
+
+            elif info['type'] == 'structor':
+                pcd_world = info['xyzs']
+                radius = np.min(np.max(pcd_world, axis=0) - np.min(pcd_world, axis=0)) * 0.25
+                vis.plot_structor(
+                    xyz=info['center'], radius=radius, shape_xyzs=pcd_world,
+                    color=np.array([0.5, 0.5, 0.5]), with_center=True
+                )
+            elif info['type'] == 'planeMax':
+                planeMax_xyz = info['xyzs']
+            elif info['type'] == 'planeMin':
+                planeMin_xyz = info['xyzs']
+            else:
+                raise NotImplementedError
+
+        vis.plot_bound(
+            planeMin_xyz[0], planeMin_xyz[1], planeMin_xyz[2],
+            planeMax_xyz[0], planeMax_xyz[1], planeMax_xyz[2],
+            color=np.array([0.5, 0.75, 1.0])
+        )
+
+        for cfg in constraints:
+            if cfg['type'] == 'shape_conflict':
+                info_0, info_1, threshold = cfg['info_0'], cfg['info_1'], cfg['threshold']
+                vis.plot_connect(np.array([info_0['xyz'], info_1['xyz']]), color=np.array([0., 1., 0.]))
+
+            elif cfg['type'] == 'plane_max_conflict':
+                info, xyz_tag = cfg['info'], cfg['xyz_tag']
+                xyz = info['xyz']
+                if xyz_tag == 'x':
+                    xyzs = np.array([xyz, [planeMax_xyz[0], xyz[1], xyz[2]]])
+                elif xyz_tag == 'y':
+                    xyzs = np.array([xyz, [xyz[0], planeMax_xyz[1], xyz[2]]])
+                else:
+                    xyzs = np.array([xyz, [xyz[0], xyz[1], planeMax_xyz[2]]])
+                vis.plot_connect(xyzs, color=np.array([1., 0.5, 0.]))
+
+            elif cfg['type'] == 'plane_min_conflict':
+                info, xyz_tag = cfg['info'], cfg['xyz_tag']
+                xyz = info['xyz']
+                if xyz_tag == 'x':
+                    xyzs = np.array([xyz, [planeMin_xyz[0], xyz[1], xyz[2]]])
+                elif xyz_tag == 'y':
+                    xyzs = np.array([xyz, [xyz[0], planeMin_xyz[1], xyz[2]]])
+                else:
+                    xyzs = np.array([xyz, [xyz[0], xyz[1], planeMin_xyz[2]]])
+                vis.plot_connect(xyzs, color=np.array([0., 0.5, 1.]))
+
+        vis.show()
 
 
 if __name__ == '__main__':

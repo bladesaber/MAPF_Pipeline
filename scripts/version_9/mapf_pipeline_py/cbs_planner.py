@@ -137,27 +137,28 @@ class CBS_Planner(object):
 
             root.update_Constrains(groupIdx_i, constrains)
 
-            # ------ 1.4.2 todo I forgot why I do that:
-            for pipe_name in self.group_cfg[groupIdx_i].keys():
-                pipe_info = self.group_cfg[groupIdx_i][pipe_name]
-                grid_x, grid_y, grid_z = np.array(pipe_info['position'])
-                radius = pipe_info['radius']
+            # # ------ 1.4.2 todo I forgot why I do that:
+            # for pipe_name in self.group_cfg[groupIdx_i].keys():
+            #     pipe_info = self.group_cfg[groupIdx_i][pipe_name]
+            #     grid_x, grid_y, grid_z = np.array(pipe_info['position'])
+            #     radius = pipe_info['radius']
+            #
+            #     xmin, ymin, zmin = grid_x - radius, grid_y - radius, grid_z - radius
+            #     xmax, ymax, zmax = grid_x + radius, grid_y + radius, grid_z + radius
+            #     root.add_rectangleExcludeArea(xmin, ymin, zmin, xmax, ymax, zmax)
 
-                xmin, ymin, zmin = grid_x - radius, grid_y - radius, grid_z - radius
-                xmax, ymax, zmax = grid_x + radius, grid_y + radius, grid_z + radius
-                root.add_rectangleExcludeArea(xmin, ymin, zmin, xmax, ymax, zmax)
-
+        # self.print_init_env(root, [2], with_constraints=True)
         # for group_idx in self.group_idxs:
-        #     # self.print_init_env(root, [group_idx], with_constraints=True)
-        #     self.print_init_env(
-        #         root, [0], with_constraints=True,
-        #         specify_steps=np.array([
-        #             [1.0, 0.0, 0.0],
-        #             [-1.0, 0.0, 0.0],
-        #             [0.0, 1.0, 0.0],
-        #             [0.0, -1.0, 0.0],
-        #         ])
-        #     )
+        #     self.print_init_env(root, [group_idx], with_constraints=True)
+        #     # self.print_init_env(
+        #     #     root, [0], with_constraints=True,
+        #     #     specify_steps=np.array([
+        #     #         [1.0, 0.0, 0.0],
+        #     #         [-1.0, 0.0, 0.0],
+        #     #         [0.0, 1.0, 0.0],
+        #     #         [0.0, -1.0, 0.0],
+        #     #     ])
+        #     # )
         # root.info(with_constrainInfo=True)
 
         print("Starting Solving ...")
@@ -487,7 +488,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file", type=str, help="the name of config json file",
-        default="/home/admin123456/Desktop/work/example4/grid_env_cfg.json"
+        default="/home/admin123456/Desktop/work/example7/grid_springer_env_cfg.json"
     )
     parser.add_argument("--save_file", type=str, help="project directory", default="result.npy")
     args = parser.parse_args()

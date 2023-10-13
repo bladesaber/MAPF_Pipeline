@@ -115,7 +115,7 @@ namespace PlannerNameSpace {
                 );
 
                 if (path.size() == 0) {
-//                    std::cout << "[Warning]: Search Path " << taskTree[i]->tag << " Fail." << std::endl;
+                    std::cout << "[Warning]: Search Path " << taskTree[i]->tag << " Fail." << std::endl;
                     break;
 
                 } else {

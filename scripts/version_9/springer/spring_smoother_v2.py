@@ -834,8 +834,8 @@ class EnvParser(object):
             optimizer = OptimizerScipy()
             opt_xs, cur_cost = optimizer.solve_problem(xs_init, self.var_tree, cur_paths_cfg, constraints, opt_step)
 
-            if cur_cost > last_cost * 10.0:
-                break
+            # if cur_cost > last_cost * 10.0:
+            #     break
 
             xs_init += opt_xs
             paths_cfg = cur_paths_cfg

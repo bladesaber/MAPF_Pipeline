@@ -205,6 +205,7 @@ def fit_env(args):
     obstacle_dfs = []
     for name in obstacle_dict.keys():
         df = pd.DataFrame(obstacle_dict[name], columns=['x', 'y', 'z'])
+        # TODO radius is 0.0 may be non reasonable
         df['radius'] = 0.0
         df['tag'] = name
         obstacle_dfs.append(df)
@@ -222,7 +223,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Grid Environment")
     parser.add_argument(
         "--env_json", type=str, help="project json file",
-        default="/home/admin123456/Desktop/work/example4/env_cfg.json"
+        default="/home/admin123456/Desktop/work/example6/env_cfg.json"
     )
     parser.add_argument("--scale", type=float, help="scale ratio", default=0.4)
     parser.add_argument("--create_shell", type=int, help="create shell (bool)", default=0)

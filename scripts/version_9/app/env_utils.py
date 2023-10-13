@@ -54,7 +54,7 @@ class Shape_Utils(object):
             uvs.append(uv)
         uvs = np.concatenate(uvs, axis=0)
 
-        num = max(math.ceil( 2 * radius * np.pi / reso), 1)
+        num = max(math.ceil(2 * radius * np.pi / reso), 1)
         rads = np.deg2rad(np.linspace(0, 360.0, num))
         huv = np.zeros(shape=(num, 2))
         huv[:, 0] = np.cos(rads) * radius
@@ -161,6 +161,48 @@ class Shape_Utils(object):
         return pcd, (xmin, xmax, ymin, ymax, zmin, zmax)
 
     @staticmethod
+    def create_PipeCylinderShell(xyz, radius, hmin_dist, hmax_dist, direction, reso, with_shell):
+        pcd = None
+        if with_shell:
+            height = hmin_dist + hmax_dist
+
+            num = max(math.ceil(2 * radius * np.pi / reso), 1)
+            hSteps = max(math.ceil(height / reso), 2)
+            rads = np.deg2rad(np.linspace(0, 360.0, num))
+            huv = np.zeros(shape=(num, 2))
+            huv[:, 0] = np.cos(rads) * radius
+            huv[:, 1] = np.sin(rads) * radius
+
+            if direction[0] == 1:
+                pcds = []
+                for h_value in np.linspace(xyz[0] - hmin_dist, xyz[0] + hmax_dist, hSteps):
+                    hPcd = np.zeros(shape=(num, 3))
+                    hPcd[:, 0] = h_value
+                    hPcd[:, 1] = huv[:, 0] + xyz[1]
+                    hPcd[:, 2] = huv[:, 1] + xyz[2]
+                    pcds.append(hPcd)
+
+            elif direction[1] == 1:
+                pcds = []
+                for h_value in np.linspace(xyz[1] - hmin_dist, xyz[1] + hmax_dist, hSteps):
+                    hPcd = np.zeros(shape=(num, 3))
+                    hPcd[:, 0] = huv[:, 0] + xyz[0]
+                    hPcd[:, 1] = h_value
+                    hPcd[:, 2] = huv[:, 1] + xyz[2]
+                    pcds.append(hPcd)
+
+            elif direction[2] == 1:
+                pcds = []
+                for h_value in np.linspace(xyz[2] - hmin_dist, xyz[2] + hmax_dist, hSteps):
+                    hPcd = np.zeros(shape=(num, 3))
+                    hPcd[:, 0] = huv[:, 0] + xyz[0]
+                    hPcd[:, 1] = huv[:, 1] + xyz[1]
+                    hPcd[:, 2] = h_value
+                    pcds.append(hPcd)
+
+        return pcd, (xyz, radius, hmin_dist, hmax_dist)
+
+    @staticmethod
     def create_BoxSolidPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso):
         xSteps = math.ceil((xmax - xmin) / reso)
         ySteps = math.ceil((ymax - ymin) / reso)
@@ -228,9 +270,37 @@ class Shape_Utils(object):
         return pcd
 
     @staticmethod
-    def removePointInSphereShell(xyzs, center, radius):
+    def removePointInSphereShell(
+            xyzs, center, radius, with_bound=False, direction=None, reso=0.1, scale_dist=None
+    ):
         distance = np.linalg.norm(xyzs - center, ord=2, axis=1)
-        xyzs = xyzs[distance < radius + 0.1]
+        xyzs = xyzs[distance > radius + 0.1]
+
+        if with_bound:
+            scale_radius = radius + scale_dist
+            num = max(math.ceil(2 * scale_radius * np.pi / reso), 1)
+            rads = np.deg2rad(np.linspace(0, 360.0, num))
+            rads = rads[:-1]  # 0 is the same as 360
+            huv = np.zeros(shape=(rads.shape[0], 2))
+            huv[:, 0] = np.cos(rads) * scale_radius
+            huv[:, 1] = np.sin(rads) * scale_radius
+
+            hPcd = np.zeros(shape=(rads.shape[0], 3))
+            if direction[0] == 1:
+                hPcd[:, 0] = center[0]
+                hPcd[:, 1] = huv[:, 0] + center[1]
+                hPcd[:, 2] = huv[:, 1] + center[2]
+            elif direction[1] == 1:
+                hPcd[:, 0] = huv[:, 0] + center[0]
+                hPcd[:, 1] = center[1]
+                hPcd[:, 2] = huv[:, 1] + center[2]
+            else:
+                hPcd[:, 0] = huv[:, 0] + center[0]
+                hPcd[:, 1] = huv[:, 1] + center[1]
+                hPcd[:, 2] = center[2]
+
+            xyzs = np.concatenate([xyzs, hPcd], axis=0)
+
         return xyzs
 
     @staticmethod

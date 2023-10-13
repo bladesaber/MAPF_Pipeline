@@ -137,47 +137,13 @@ def fit_env(args):
         for pipe_name in groupPipes_info.keys():
             info = groupPipes_info[pipe_name]
             shell_name = f"{pipe_name}_shell"
-
-            position_dif = np.array(info['scale_position']) - np.array(info['position'])
-            direction = info['direction']
-            radius = info['radius']
-            xmin_dist, xmax_dist = radius + 0.1, radius + 0.1
-            ymin_dist, ymax_dist = radius + 0.1, radius + 0.1
-            zmin_dist, zmax_dist = radius + 0.1, radius + 0.1
-
-            if direction[0] == 1:
-                if position_dif[0] > 0:
-                    xmax_dist += position_dif[0]
-                elif position_dif[0] < 0:
-                    xmin_dist += abs(position_dif[0])
-            elif direction[1] == 1:
-                if position_dif[1] > 0:
-                    ymax_dist += position_dif[1]
-                elif position_dif[1] < 0:
-                    ymin_dist += abs(position_dif[1])
-            else:
-                if position_dif[2] > 0:
-                    zmax_dist += position_dif[2]
-                elif position_dif[2] < 0:
-                    zmin_dist += abs(position_dif[2])
-
-            shell_xyzs, shell_range = Shape_Utils.create_PipeBoxShell(
-                xyz=np.array(info['position']),
-                xmin_dist=xmin_dist, xmax_dist=xmax_dist,
-                ymin_dist=ymin_dist, ymax_dist=ymax_dist,
-                zmin_dist=zmin_dist, zmax_dist=zmax_dist,
-                direction=info['direction'],
-                reso=np.minimum(scale_reso, info['radius'] * 0.4),
-                with_shell=args.create_shell > 0
-            )
-            shell_filters[shell_name] = shell_range
-
-            if args.create_shell > 0:
-                obstacle_cfgs[shell_name] = {
-                    'shape': 'shell',
-                    'pipe_name': pipe_name
-                }
-                obstacle_dict[shell_name] = shell_xyzs
+            shell_filters[shell_name] = {
+                'center': np.array(info['position']),
+                'radius': info['radius'],
+                'direction': info['direction'],
+                'reso': scale_reso,
+                'scale_dist': scale_reso / 2.0 * 1.5
+            }
 
     for name in obstacle_cfgs.keys():
         info = obstacle_cfgs[name]
@@ -185,14 +151,11 @@ def fit_env(args):
 
         if info['shape'] != 'shell':
             for shell_name in shell_filters.keys():
-                shell_range = shell_filters[shell_name]
-                xyzs = Shape_Utils.removePointInBoxShell(xyzs, shell_range)
-        else:
-            for shell_name in shell_filters.keys():
-                if shell_name == name:
-                    continue
-                shell_range = shell_filters[shell_name]
-                xyzs = Shape_Utils.removePointInBoxShell(xyzs, shell_range)
+                remove_info = shell_filters[shell_name]
+                xyzs = Shape_Utils.removePointInSphereShell(
+                    xyzs, center=remove_info['center'], radius=remove_info['radius'], with_bound=False,
+                    direction=remove_info['direction'], reso=remove_info['reso'], scale_dist=remove_info['scale_dist']
+                )
 
         xyzs = Shape_Utils.removePointOutBoundary(
             xyzs,
@@ -200,12 +163,15 @@ def fit_env(args):
             ymin=0, ymax=global_params['envScaleY'],
             zmin=0, zmax=global_params['envScaleZ']
         )
-        obstacle_dict[name] = xyzs
+        obstacle_dict[name] = {
+            'xyzs': xyzs,
+            'radius': info['shape_reso'] / 4.0
+        }
 
     obstacle_dfs = []
     for name in obstacle_dict.keys():
-        df = pd.DataFrame(obstacle_dict[name], columns=['x', 'y', 'z'])
-        df['radius'] = 0.0
+        df = pd.DataFrame(obstacle_dict[name]['xyzs'], columns=['x', 'y', 'z'])
+        df['radius'] = obstacle_dict[name]['radius']
         df['tag'] = name
         obstacle_dfs.append(df)
     obstacle_dfs = pd.concat(obstacle_dfs, axis=0, ignore_index=True)
@@ -222,11 +188,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Grid Environment")
     parser.add_argument(
         "--env_json", type=str, help="project json file",
-        default="/home/admin123456/Desktop/work/example6/env_cfg.json"
+        default="/home/admin123456/Desktop/work/example7/env_cfg.json"
     )
-    parser.add_argument("--scale", type=float, help="scale ratio", default=0.4)
-    parser.add_argument("--create_shell", type=int, help="create shell (bool)", default=0)
-    parser.add_argument("--scale_reso", type=float, help="create shell (bool)", default=1.0)
+    parser.add_argument("--scale", type=float, help="scale ratio", default=1.0)
+    parser.add_argument("--scale_reso", type=float, help="", default=1.0)
     args = parser.parse_args()
     return args
 
