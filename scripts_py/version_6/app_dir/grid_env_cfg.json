@@ -1,0 +1,396 @@
+{
+    "warning": "这里的所有管道半径都必须加上管道壁厚",
+    "x": 63,
+    "y": 63,
+    "z": 63,
+    "resolution": 2,
+    "stepLength": 1,
+    "pipeConfig": [
+        {
+            "groupIdx": 0,
+            "pipe": [
+                {
+                    "name": "p",
+                    "position": [
+                        0,
+                        67.5,
+                        67
+                    ],
+                    "radius": 5,
+                    "alpha": 0,
+                    "theta": 0,
+                    "grid_position": [
+                        0,
+                        33,
+                        33
+                    ],
+                    "grid_radius": 2.5
+                },
+                {
+                    "name": "p1",
+                    "position": [
+                        125,
+                        67.5,
+                        67
+                    ],
+                    "radius": 5,
+                    "alpha": 0,
+                    "theta": 0,
+                    "grid_position": [
+                        62,
+                        33,
+                        33
+                    ],
+                    "grid_radius": 2.5
+                },
+                {
+                    "name": "M1",
+                    "position": [
+                        0,
+                        67.5,
+                        105
+                    ],
+                    "radius": 2.5,
+                    "alpha": 3.14,
+                    "theta": 0,
+                    "grid_position": [
+                        0,
+                        33,
+                        52
+                    ],
+                    "grid_radius": 1.25
+                },
+                {
+                    "name": "p_valve",
+                    "position": [
+                        61.7,
+                        60.3,
+                        125
+                    ],
+                    "radius": 2.5,
+                    "alpha": 0,
+                    "theta": 1.57,
+                    "grid_position": [
+                        30,
+                        30,
+                        62
+                    ],
+                    "grid_radius": 1.25
+                }
+            ],
+            "grid_radius": 1.875
+        },
+        {
+            "groupIdx": 1,
+            "pipe": [
+                {
+                    "name": "M3",
+                    "position": [
+                        53,
+                        0,
+                        65
+                    ],
+                    "radius": 5,
+                    "alpha": -1.57,
+                    "theta": 0,
+                    "grid_position": [
+                        26,
+                        0,
+                        32
+                    ],
+                    "grid_radius": 2.5
+                },
+                {
+                    "name": "B_valve",
+                    "position": [
+                        53,
+                        50,
+                        125
+                    ],
+                    "radius": 3,
+                    "alpha": 0,
+                    "theta": -1.57,
+                    "grid_position": [
+                        26,
+                        25,
+                        62
+                    ],
+                    "grid_radius": 1.5
+                },
+                {
+                    "name": "B",
+                    "position": [
+                        55,
+                        17,
+                        0
+                    ],
+                    "radius": 5,
+                    "alpha": 0,
+                    "theta": -1.57,
+                    "grid_position": [
+                        27,
+                        8,
+                        0
+                    ],
+                    "grid_radius": 2.5
+                }
+            ],
+            "grid_radius": 2.1666666666666665
+        },
+        {
+            "groupIdx": 2,
+            "pipe": [
+                {
+                    "name": "T_valve",
+                    "position": [
+                        61.7,
+                        39.7,
+                        125
+                    ],
+                    "radius": 3,
+                    "alpha": 0,
+                    "theta": -1.57,
+                    "grid_position": [
+                        30,
+                        19,
+                        62
+                    ],
+                    "grid_radius": 1.5
+                },
+                {
+                    "name": "T",
+                    "position": [
+                        98,
+                        42.5,
+                        0
+                    ],
+                    "radius": 7.5,
+                    "alpha": 0,
+                    "theta": -1.57,
+                    "grid_position": [
+                        49,
+                        21,
+                        0
+                    ],
+                    "grid_radius": 3.75
+                },
+                {
+                    "name": "A2T",
+                    "position": [
+                        35,
+                        95,
+                        110
+                    ],
+                    "radius": 3,
+                    "alpha": -1.57,
+                    "theta": 0,
+                    "grid_position": [
+                        17,
+                        47,
+                        55
+                    ],
+                    "grid_radius": 1.5
+                }
+            ],
+            "grid_radius": 2.25
+        },
+        {
+            "groupIdx": 3,
+            "pipe": [
+                {
+                    "name": "A_valve",
+                    "position": [
+                        70.5,
+                        50,
+                        125
+                    ],
+                    "radius": 2.5,
+                    "alpha": 0,
+                    "theta": -1.57,
+                    "grid_position": [
+                        35,
+                        25,
+                        62
+                    ],
+                    "grid_radius": 1.25
+                },
+                {
+                    "name": "A2valve_01",
+                    "position": [
+                        85,
+                        50,
+                        102
+                    ],
+                    "radius": 5,
+                    "alpha": 0,
+                    "theta": 0,
+                    "grid_position": [
+                        42,
+                        25,
+                        51
+                    ],
+                    "grid_radius": 2.5
+                },
+                {
+                    "name": "A2valve_02",
+                    "position": [
+                        72,
+                        82,
+                        110
+                    ],
+                    "radius": 5,
+                    "alpha": 1.57,
+                    "theta": 0,
+                    "grid_position": [
+                        36,
+                        41,
+                        55
+                    ],
+                    "grid_radius": 2.5
+                }
+            ],
+            "grid_radius": 2.0833333333333335
+        },
+        {
+            "groupIdx": 4,
+            "pipe": [
+                {
+                    "name": "valve_01",
+                    "position": [
+                        100,
+                        50,
+                        89
+                    ],
+                    "radius": 5,
+                    "alpha": 3.14,
+                    "theta": 0,
+                    "grid_position": [
+                        50,
+                        25,
+                        44
+                    ],
+                    "grid_radius": 2.5
+                },
+                {
+                    "name": "valve_02",
+                    "position": [
+                        72,
+                        98,
+                        98.65
+                    ],
+                    "radius": 5,
+                    "alpha": 1.57,
+                    "theta": 0,
+                    "grid_position": [
+                        36,
+                        49,
+                        49
+                    ],
+                    "grid_radius": 2.5
+                },
+                {
+                    "name": "valve_03",
+                    "position": [
+                        35,
+                        109,
+                        98.65
+                    ],
+                    "radius": 5,
+                    "alpha": 0,
+                    "theta": -1.57,
+                    "grid_position": [
+                        17,
+                        54,
+                        49
+                    ],
+                    "grid_radius": 2.5
+                },
+                {
+                    "name": "A",
+                    "position": [
+                        35,
+                        109,
+                        0
+                    ],
+                    "radius": 5,
+                    "alpha": 0,
+                    "theta": -1.57,
+                    "grid_position": [
+                        17,
+                        54,
+                        0
+                    ],
+                    "grid_radius": 2.5
+                },
+                {
+                    "name": "M2",
+                    "position": [
+                        0,
+                        33,
+                        45
+                    ],
+                    "radius": 2.5,
+                    "alpha": 3.14,
+                    "theta": 0,
+                    "grid_position": [
+                        0,
+                        16,
+                        22
+                    ],
+                    "grid_radius": 1.25
+                }
+            ],
+            "grid_radius": 2.25
+        }
+    ],
+    "mesh_dir": "/home/quan/Desktop/MAPF_Pipeline/scripts/version_6/app_dir/mesh",
+    "static_obstacle": [
+        {
+            "file": "support1.stl",
+            "sample_num": 500
+        },
+        {
+            "file": "support2.stl",
+            "sample_num": 500
+        },
+        {
+            "file": "support3.stl",
+            "sample_num": 500
+        },
+        {
+            "file": "support4.stl",
+            "sample_num": 500
+        },
+        {
+            "file": "screw1.stl",
+            "sample_num": 50
+        },
+        {
+            "file": "screw2.stl",
+            "sample_num": 50
+        },
+        {
+            "file": "screw3.stl",
+            "sample_num": 50
+        },
+        {
+            "file": "screw4.stl",
+            "sample_num": 50
+        },
+        {
+            "file": "valve1.stl",
+            "sample_num": 200
+        },
+        {
+            "file": "valve2.stl",
+            "sample_num": 200
+        },
+        {
+            "file": "valve3.stl",
+            "sample_num": 200
+        }
+    ],
+    "static_obs_pcd": "/home/quan/Desktop/MAPF_Pipeline/scripts/version_6/app_dir/obs_df.csv",
+    "static_grid_obs_pcd": "/home/quan/Desktop/MAPF_Pipeline/scripts/version_6/app_dir/grid_obs_df.csv",
+    "wall_obs_pcd": "/home/quan/Desktop/MAPF_Pipeline/scripts/version_6/app_dir/wall_obs_df.csv"
+}
