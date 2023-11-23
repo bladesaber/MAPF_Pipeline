@@ -54,7 +54,7 @@ def fit_env(args):
         return
 
     if args.scale_reso is None:
-        scale_reso = minimum_reso * scale
+        scale_reso = minimum_reso * scale * 1.5
     else:
         scale_reso = args.scale_reso
 
@@ -223,11 +223,11 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Grid Environment")
     parser.add_argument(
         "--env_json", type=str, help="project json file",
-        default="/home/admin123456/Desktop/work/example6/env_cfg.json"
+        default="/home/admin123456/Desktop/work/example8/env_cfg.json"
     )
-    parser.add_argument("--scale", type=float, help="scale ratio", default=0.4)
+    parser.add_argument("--scale", type=float, help="scale ratio", default=0.3)
     parser.add_argument("--create_shell", type=int, help="create shell (bool)", default=0)
-    parser.add_argument("--scale_reso", type=float, help="create shell (bool)", default=1.0)
+    parser.add_argument("--scale_reso", type=float, help="", default=None)
     args = parser.parse_args()
     return args
 

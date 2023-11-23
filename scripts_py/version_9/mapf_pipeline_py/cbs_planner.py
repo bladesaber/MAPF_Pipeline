@@ -9,6 +9,13 @@ import json
 
 from build import mapf_pipeline
 
+"""
+1. 由于这不是一个标准grid环境，不同搜索的半径差异大，基于步长的搜索方法受很大的影响，不受限于步长的方法更好
+2. 如果拓扑结构是固定的，从压缩态到常态就很容易，但反过来，从放松态到压缩态就很难
+3. 我需要阅读下其他的论文
+4. 由于障碍物是连续空间，路径点是离散空间，而且有多个不同尺寸的个体，导致这变成了一个不标准或一致的问题，
+    保留grid搜索方法，但要考虑使用非标准的空间网格
+"""
 
 class CBS_Planner(object):
     def __init__(self, env_cfg, debug_dir):
@@ -185,7 +192,7 @@ class CBS_Planner(object):
         self.pushNode(root)
 
         success = False
-        for run_times in range(1000):
+        for run_times in range(50000):
             node = self.popNode()
 
             if self.cbs_planner.isGoal(node):
@@ -194,6 +201,7 @@ class CBS_Planner(object):
                 break
 
             childNodes = self.extendNode(node)
+            # childNodes = self.extendNode_deepFirst(node)
             for child_node in childNodes:
                 self.pushNode(child_node)
 
@@ -488,7 +496,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file", type=str, help="the name of config json file",
-        default="/home/admin123456/Desktop/work/example7/grid_springer_env_cfg.json"
+        default="/home/admin123456/Desktop/work/example8/grid_env_cfg.json"
     )
     parser.add_argument("--save_file", type=str, help="project directory", default="result.npy")
     args = parser.parse_args()

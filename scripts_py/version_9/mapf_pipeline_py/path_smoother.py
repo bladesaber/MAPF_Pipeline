@@ -544,12 +544,12 @@ class FlexPathSmoother(object):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_file", type=str, help="the name of config json file",
-                        default="/home/admin123456/Desktop/work/example1/grid_env_cfg.json"
+                        default="/home/admin123456/Desktop/work/example8/grid_env_cfg.json"
                         )
     parser.add_argument("--path_result_file", type=str, help="path result", default="result.npy")
     parser.add_argument("--pipe_setting_file", type=str, help="pipe optimize setting", default="pipeLink_setting.json")
     parser.add_argument("--optimize_setting_file", type=str, help="", default="optimize_setting.json")
-    parser.add_argument("--optimize_times", type=int, help="", default=200)
+    parser.add_argument("--optimize_times", type=int, help="", default=100)
     parser.add_argument("--verbose", type=int, help="", default=0)
     args = parser.parse_args()
     return args

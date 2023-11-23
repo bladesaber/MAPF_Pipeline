@@ -11,15 +11,15 @@ from scripts_py.visulizer import VisulizerVista
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_file", type=str, help="the name of config json file",
-                        default='/home/admin123456/Desktop/work/example1/env_cfg.json'
-                        # default='/home/admin123456/Desktop/work/example3/env_cfg.json'
+                        default='/home/admin123456/Desktop/work/example8/env_cfg.json'
+                        # default='/home/admin123456/Desktop/work/example8/grid_env_cfg.json'
                         )
     parser.add_argument("--smooth_result_dir", type=str, help="",
                         # default=None
-                        default="/home/admin123456/Desktop/work/example1/smoother_result"
+                        default="/home/admin123456/Desktop/work/example8/smoother_result"
                         )
     parser.add_argument("--path_result_file", type=str, help="",
-                        # default="/home/admin123456/Desktop/work/example1/result.npy"
+                        # default="/home/admin123456/Desktop/work/example8/result.npy"
                         default=None
                         )
     args = parser.parse_args()
@@ -146,7 +146,6 @@ def show_smooth_path():
         # vis.plot(line_mesh, color=random_colors[group_idx, :], opacity=1.0)
 
     obstacle_xyzs = obstacle_df[obstacle_df['tag'] != 'wall'][['x', 'y', 'z']].values
-    obstacle_xyzs = obstacle_xyzs[::3, :]
     obstacle_mesh = VisulizerVista.create_pointCloud(obstacle_xyzs)
     vis.plot(obstacle_mesh, (0.5, 0.5, 0.5))
 
