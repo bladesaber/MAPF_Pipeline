@@ -115,41 +115,50 @@ class CBS_Planner(object):
             xyzr_i = []
             for name_i in self.group_cfg[groupIdx_i].keys():
                 info = self.group_cfg[groupIdx_i][name_i]
-                xyzr_i.append([
-                    info['position'][0], info['position'][1], info['position'][2], info['radius'],
-                ])
+                xyzr_i.append([info['position'][0], info['position'][1], info['position'][2], info['radius']])
             xyzr_i = np.array(xyzr_i)
 
             # ------ 1.4.1 add pipe terminal sphere constraint
-            # for groupIdx_j in self.group_idxs:
-            #     if groupIdx_i == groupIdx_j:
-            #         continue
-            #
-            #     for pipeName in self.group_cfg[groupIdx_j].keys():
-            #         pipe_info = self.group_cfg[groupIdx_j][pipeName]
-            #         pipe_position = np.array(pipe_info['position']).reshape((1, 3))
-            #         pipe_radius = pipe_info['radius']
-            #
-            #         # ------ 1.4.1 add pipe terminal sphere constraint
-            #         dist = np.linalg.norm(xyzr_i[:, :3] - pipe_position, axis=1, ord=2) - xyzr_i[:, 3] - 0.1
-            #         dist = np.min(np.minimum(dist, pipe_radius))
-            #
-            #         constrains.append((
-            #             pipe_info['position'][0], pipe_info['position'][1], pipe_info['position'][2], dist
-            #         ))
+            for groupIdx_j in self.group_idxs:
+                if groupIdx_i == groupIdx_j:
+                    continue
+
+                for pipeName in self.group_cfg[groupIdx_j].keys():
+                    pipe_info = self.group_cfg[groupIdx_j][pipeName]
+                    pipe_position = np.array(pipe_info['position']).reshape((1, 3))
+                    pipe_radius = pipe_info['radius']
+
+                    dist = np.linalg.norm(xyzr_i[:, :3] - pipe_position, axis=1, ord=2) - xyzr_i[:, 3] - 0.1
+                    dist = np.min(np.minimum(dist, pipe_radius))
+
+                    constrains.append((
+                        pipe_info['position'][0], pipe_info['position'][1], pipe_info['position'][2], dist
+                    ))
 
             root.update_Constrains(groupIdx_i, constrains)
 
-            # ------ 1.4.2 todo I forgot why I do that:
-            for pipe_name in self.group_cfg[groupIdx_i].keys():
-                pipe_info = self.group_cfg[groupIdx_i][pipe_name]
-                grid_x, grid_y, grid_z = np.array(pipe_info['position'])
-                radius = pipe_info['radius']
+            # # ------ 1.4.2 todo I forgot why I do that:
+            # for pipe_name in self.group_cfg[groupIdx_i].keys():
+            #     pipe_info = self.group_cfg[groupIdx_i][pipe_name]
+            #     grid_x, grid_y, grid_z = np.array(pipe_info['position'])
+            #     radius = pipe_info['radius']
+            #
+            #     xmin, ymin, zmin = grid_x - radius, grid_y - radius, grid_z - radius
+            #     xmax, ymax, zmax = grid_x + radius, grid_y + radius, grid_z + radius
+            #     root.add_rectangleExcludeArea(xmin, ymin, zmin, xmax, ymax, zmax)
 
-                xmin, ymin, zmin = grid_x - radius, grid_y - radius, grid_z - radius
-                xmax, ymax, zmax = grid_x + radius, grid_y + radius, grid_z + radius
-                root.add_rectangleExcludeArea(xmin, ymin, zmin, xmax, ymax, zmax)
-
+        # self.print_init_env(root, [2], with_constraints=True)
+        # for group_idx in self.group_idxs:
+        #     self.print_init_env(root, [group_idx], with_constraints=True)
+        #     # self.print_init_env(
+        #     #     root, [0], with_constraints=True,
+        #     #     specify_steps=np.array([
+        #     #         [1.0, 0.0, 0.0],
+        #     #         [-1.0, 0.0, 0.0],
+        #     #         [0.0, 1.0, 0.0],
+        #     #         [0.0, -1.0, 0.0],
+        #     #     ])
+        #     # )
         # root.info(with_constrainInfo=True)
 
         print("Starting Solving ...")
@@ -159,7 +168,7 @@ class CBS_Planner(object):
             print("groupIdx:%d success:%d" % (group_idx, success))
 
             if not success:
-                print("[Debug]: Conflict Exist in Start Or End Pos")
+                # print("[Debug]: Conflict Exist in Start Or End Pos")
                 return {'status': False}
 
         # --- 1.4 find all the conflict and compute cost and heuristics
@@ -168,13 +177,15 @@ class CBS_Planner(object):
         root.compute_Heuristics()
         root.compute_Gval()
         # print(f'[Debug]: h_val:{root.h_val} g_val:{root.g_val}')
-        # self.print_pathGraph(root, groupIdxs=self.groupIdxs, with_confict=True)
+        # self.print_pathGraph(root, groupIdxs=self.group_idxs, with_confict=True)
+        # for group_idx in self.group_idxs:
+        #     self.print_pathGraph(root, [group_idx], with_confict=True)
 
         # --- 1.5 push node into list
         self.pushNode(root)
 
         success = False
-        for run_times in range(300):
+        for run_times in range(1000):
             node = self.popNode()
 
             if self.cbs_planner.isGoal(node):
@@ -187,19 +198,27 @@ class CBS_Planner(object):
                 self.pushNode(child_node)
 
             if self.cbs_planner.is_openList_empty():
-                print("[DEBUG]: Out of Resource !!!")
+                # print("[DEBUG]: Out of Resource !!!")
                 break
 
             print(f'Running {run_times} ......')
 
         if success:
             self.print_pathGraph(result_node, groupIdxs=self.group_idxs, with_confict=True)
+            # constraints = result_node.getConstrains(3)
+            # self.printDetailPath(
+            #     result_node,
+            #     compare_node=None,
+            #     groupIdxs=self.group_idxs,
+            #     constraints=constraints,
+            #     target_groupIdx=3,
+            #     specify_constraints=None
+            #     # specify_constraints=None
+            # )
 
             res_dict = self.extractPath(result_node)
             np.save(save_file, res_dict)
-
             return {'status': True}
-
         else:
             print('[DEBUG]: Fail Find Any Solution')
             return {'status': False}
@@ -271,16 +290,17 @@ class CBS_Planner(object):
             # for constraint in old_constrains:
             #     print(f'old: {constraint[0]:.1f}, {constraint[1]:.1f}, {constraint[2]:.1f}, radius:{constraint[3]:.1f}')
             # print(f'new: {new_constrain[0]:.1f}, {new_constrain[1]:.1f}, {new_constrain[2]:.1f}, radius:{constraint[3]:.1f}')
+
+            # self.print_init_env(node, [groupIdx], with_constraints=True)
             # self.printDetailPath(
             #     node,
             #     compare_node=None,
-            #     groupIdxs=self.groupIdxs,
+            #     groupIdxs=self.group_idxs,
             #     constraints=old_constrains,
             #     target_groupIdx=groupIdx,
             #     specify_constraints=[new_constrain]
             #     # specify_constraints=None
             # )
-
             return False, None
 
         childNode.depth = node.depth + 1
@@ -303,6 +323,36 @@ class CBS_Planner(object):
         # self.print_pathGraph(childNode, groupIdxs=self.groupIdxs, with_confict=True)
 
         return True, childNode
+
+    def print_init_env(self, node, groupIdxs, with_constraints=True, specify_steps=None):
+        vis = VisulizerVista()
+
+        pipe_colors = np.random.uniform(0.0, 1.0, size=(len(self.group_idxs), 3))
+        constraints_colors = np.random.uniform(0.0, 1.0, size=(len(self.group_idxs), 3))
+        for groupIdx in groupIdxs:
+            for name_i in self.group_cfg[groupIdx].keys():
+                info = self.group_cfg[groupIdx][name_i]
+                pose = np.array(info['position'])
+                pipe_mesh = vis.create_sphere(pose, info['radius'])
+                vis.plot(pipe_mesh, pipe_colors[groupIdx, :], opacity=0.8)
+
+                if specify_steps is not None:
+                    for specify_step in specify_steps:
+                        new_pose = pose + specify_step
+                        pipe_mesh = vis.create_sphere(new_pose, info['radius'])
+                        vis.plot(pipe_mesh, pipe_colors[groupIdx, :], opacity=0.8)
+
+            if with_constraints:
+                constraints = node.getConstrains(groupIdx)
+                for x, y, z, radius in constraints:
+                    constraint_mesh = vis.create_sphere(np.array([x, y, z]), radius)
+                    vis.plot(constraint_mesh, constraints_colors[groupIdx, :], opacity=0.8)
+
+        obstacle_xyzs = self.obstacle_df[self.obstacle_df['tag'] != 'wall'][['x', 'y', 'z']].values
+        obstacle_mesh = VisulizerVista.create_pointCloud(obstacle_xyzs)
+        vis.plot(obstacle_mesh, (0.5, 0.5, 0.5))
+
+        vis.show()
 
     def print_pathGraph(self, node, groupIdxs, with_confict=True):
         vis = VisulizerVista()
@@ -397,7 +447,7 @@ class CBS_Planner(object):
         if constraints is not None:
             for x, y, z, radius in constraints:
                 constraint_mesh = vis.create_sphere(np.array([x, y, z]), radius)
-                vis.plot(constraint_mesh, (1.0, 0.0, 0.0), opacity=0.85)
+                vis.plot(constraint_mesh, (0.0, 1.0, 0.0), opacity=0.85)
 
         if specify_constraints is not None:
             for x, y, z, radius in specify_constraints:
@@ -438,11 +488,12 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file", type=str, help="the name of config json file",
-        default="/home/admin123456/Desktop/work/springer_debug/grid_env_cfg.json"
+        default="/home/admin123456/Desktop/work/example7/grid_springer_env_cfg.json"
     )
     parser.add_argument("--save_file", type=str, help="project directory", default="result.npy")
     args = parser.parse_args()
     return args
+
 
 def custon_main():
     args = parse_args()
@@ -460,6 +511,7 @@ def custon_main():
     cbs_planner = CBS_Planner(env_cfg, debug_dir=debug_dir)
     cbs_planner.init_environment()
     cbs_planner.solve(save_file=save_file)
+
 
 if __name__ == '__main__':
     custon_main()

@@ -549,7 +549,7 @@ def parse_args():
     parser.add_argument("--path_result_file", type=str, help="path result", default="result.npy")
     parser.add_argument("--pipe_setting_file", type=str, help="pipe optimize setting", default="pipeLink_setting.json")
     parser.add_argument("--optimize_setting_file", type=str, help="", default="optimize_setting.json")
-    parser.add_argument("--optimize_times", type=int, help="", default=400)
+    parser.add_argument("--optimize_times", type=int, help="", default=200)
     parser.add_argument("--verbose", type=int, help="", default=0)
     args = parser.parse_args()
     return args

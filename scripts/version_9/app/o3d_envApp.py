@@ -23,6 +23,7 @@ class CustomApp(AppWindow):
         super().__init__(config=config)
 
         self.init_operateWidget()
+        self.init_helperWidget()
         self.init_infoWidget()
 
         self.groupColors = np.random.uniform(0.0, 1.0, size=(20, 3))
@@ -68,6 +69,7 @@ class CustomApp(AppWindow):
         self.boxR_txt = O3D_Utils.getInputWidget(style='double')
         self.boxG_txt = O3D_Utils.getInputWidget(style='double')
         self.boxB_txt = O3D_Utils.getInputWidget(style='double')
+        self.isBoxSolid = gui.Checkbox("isSolid")
         self.boxCreate_btn = gui.Button("createBox_Obstacle")
         self.boxCreate_btn.set_on_clicked(self.creatBoxBtn_on_click)
         vlayout = O3D_Utils.createVertCell([
@@ -91,7 +93,7 @@ class CustomApp(AppWindow):
                 gui.Label("R:"), self.boxR_txt, gui.Label("G:"), self.boxG_txt, gui.Label("B:"), self.boxB_txt
             ]),
             O3D_Utils.createHorizCell([
-                gui.Label("Reso:"), self.boxReso_txt,
+                gui.Label("Reso:"), self.boxReso_txt, self.isBoxSolid
             ]),
             self.boxCreate_btn,
         ])
@@ -111,6 +113,7 @@ class CustomApp(AppWindow):
         self.cylinderR_txt = O3D_Utils.getInputWidget(style='double')
         self.cylinderG_txt = O3D_Utils.getInputWidget(style='double')
         self.cylinderB_txt = O3D_Utils.getInputWidget(style='double')
+        self.isCylinderSolid = gui.Checkbox("isSolid")
         self.cylinderCreate_btn = gui.Button("createCylinder_Obstacle")
         self.cylinderCreate_btn.set_on_clicked(self.creatCylinderBtn_on_click)
         vlayout = O3D_Utils.createVertCell([
@@ -133,7 +136,8 @@ class CustomApp(AppWindow):
             O3D_Utils.createHorizCell([
                 gui.Label("R:"), self.cylinderR_txt,
                 gui.Label("G:"), self.cylinderG_txt,
-                gui.Label("B:"), self.cylinderB_txt
+                gui.Label("B:"), self.cylinderB_txt,
+                self.isCylinderSolid
             ]),
             self.cylinderCreate_btn
         ])
@@ -149,6 +153,7 @@ class CustomApp(AppWindow):
         self.pipeDireZ_txt = O3D_Utils.getInputWidget(style='double')
         self.pipeGroup_txt = O3D_Utils.getInputWidget(style='int', init_value=-1)
         self.pipeRadius_txt = O3D_Utils.getInputWidget(style='double')
+        self.isPipeInput = gui.Checkbox("is_Input")
         self.pipeCreate_btn = gui.Button("createPipe")
         self.pipeCreate_btn.set_on_clicked(self.creatPipeBtn_on_click)
         vlayout = O3D_Utils.createVertCell([
@@ -166,11 +171,20 @@ class CustomApp(AppWindow):
             O3D_Utils.createHorizCell([
                 gui.Label("group:"), self.pipeGroup_txt
             ]),
-            O3D_Utils.createHorizCell([gui.Label("radius:"), self.pipeRadius_txt]),
+            O3D_Utils.createHorizCell([gui.Label("radius:"), self.pipeRadius_txt, self.isPipeInput]),
             self.pipeCreate_btn
         ])
         collapsedLayout.add_child(vlayout)
 
+        self.panel.add_child(collapsedLayout)
+
+    def init_helperWidget(self):
+        collapsedLayout = gui.CollapsableVert("HelperWidget", self.spacing, self.margins)
+        self.output_pipesLink_checkbox = gui.Checkbox("output pipesLink setting")
+        self.output_optSetting_checkbox = gui.Checkbox("output optSetting")
+
+        vlayout = O3D_Utils.createVertCell([self.output_pipesLink_checkbox, self.output_optSetting_checkbox])
+        collapsedLayout.add_child(vlayout)
         self.panel.add_child(collapsedLayout)
 
     def creatBoxBtn_on_click(self):
@@ -192,7 +206,11 @@ class CustomApp(AppWindow):
         if np.sum(rgb) <= 0:
             rgb = np.array([0.3, 0.3, 0.3])
 
-        xyzs = Shape_Utils.create_BoxPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso)
+        if self.isBoxSolid.checked:
+            xyzs = Shape_Utils.create_BoxSolidPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso)
+        else:
+            xyzs = Shape_Utils.create_BoxPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso)
+
         pcd_o3d = O3D_Utils.createPCD(xyzs, colors=rgb)
         self.add_pointCloud(name, pcd_o3d)
         self.adjust_centerCamera()
@@ -205,7 +223,8 @@ class CustomApp(AppWindow):
                 'ymin': ymin, 'ymax': ymax,
                 'zmin': zmin, 'zmax': zmax,
                 'shape_reso': reso,
-                'color': list(rgb)
+                'color': list(rgb),
+                'isSolid': self.isBoxSolid.checked
             },
             'pointCloud': xyzs,
         })
@@ -236,7 +255,10 @@ class CustomApp(AppWindow):
         if np.sum(rgb) <= 0:
             rgb = np.array([0.3, 0.3, 0.3])
 
-        xyzs = Shape_Utils.create_CylinderPcd(xyz, radius, height, direction, reso)
+        if self.isCylinderSolid.checked:
+            xyzs = Shape_Utils.create_CylinderSolidPcd(xyz, radius, height, direction, reso)
+        else:
+            xyzs = Shape_Utils.create_CylinderPcd(xyz, radius, height, direction, reso)
         pcd_o3d = O3D_Utils.createPCD(xyzs, colors=rgb)
         self.add_pointCloud(name, pcd_o3d)
         self.adjust_centerCamera()
@@ -250,7 +272,8 @@ class CustomApp(AppWindow):
                 'height': height,
                 'direction': list(direction),
                 'shape_reso': reso,
-                'color': list(rgb)
+                'color': list(rgb),
+                'isSolid': self.isCylinderSolid.checked
             },
             'pointCloud': xyzs,
         })
@@ -285,8 +308,51 @@ class CustomApp(AppWindow):
                 'direction': list(direction),
                 'groupIdx': group_idx,
                 'radius': radius,
+                'is_input': self.isPipeInput.checked
             }
         })
+
+    def output_optSetting(self, env_cfg):
+        opt_setting = {
+            "elasticBand_kSpring": 1.0,
+            "elasticBand_weight": 1.0,
+            "kinematicEdge_kSpring": 3.0,
+            "kinematicVertex_kSpring": 10.0,
+            "kinematic_weight": 1.0,
+            "obstacle_kSpring": 100,
+            "obstacle_weight": 10.0,
+            "obstacle_searchScale": 1.5,
+            "obstacle_repleScale": 1.0,
+            "pipeConflict_kSpring": 100,
+            "pipeConflict_weight": 10.0,
+            "pipeConflict_searchScale": 1.5,
+            "pipeConflict_repleScale": 1.0,
+            "inner_optimize_times": 1
+        }
+        with open(os.path.join(env_cfg['project_dir'], 'optimize_setting.json'), 'w') as f:
+            json.dump(opt_setting, f, indent=4)
+
+    def output_pipesLink_setting(self, env_cfg):
+        pipe_cfgs = env_cfg['pipe_cfgs']
+        pipesLink_setting = {}
+
+        for group_idx_str in pipe_cfgs.keys():
+            group_link_cfg = {
+                'converge_pipe': "error",
+                "branch_pipes": {}
+            }
+            for pipe_name in pipe_cfgs[group_idx_str].keys():
+                pipe_cfg = pipe_cfgs[group_idx_str][pipe_name]
+                if pipe_cfg['is_input']:
+                    group_link_cfg['converge_pipe'] = pipe_name
+                else:
+                    group_link_cfg["branch_pipes"][pipe_name] = {
+                        "flexRatio": 0.1
+                    }
+            pipesLink_setting[group_idx_str] = group_link_cfg
+
+        with open(os.path.join(env_cfg['project_dir'], 'pipeLink_setting.json'), 'w') as f:
+            json.dump(pipesLink_setting, f, indent=4)
 
     def _on_menu_saveJson(self):
         dlg = gui.FileDialog(gui.FileDialog.SAVE, "Choose path to output", self.window.theme)
@@ -343,6 +409,12 @@ class CustomApp(AppWindow):
                 save_setting["obstacle_path"] = obstacle_path
 
             json.dump(save_setting, f, indent=4)
+
+        if self.output_optSetting_checkbox.checked:
+            self.output_optSetting(save_setting)
+
+        if self.output_pipesLink_checkbox.checked:
+            self.output_pipesLink_setting(save_setting)
 
     def on_jsonLoad_dialog_done(self, filename: str):
         with open(filename, 'r') as f:
