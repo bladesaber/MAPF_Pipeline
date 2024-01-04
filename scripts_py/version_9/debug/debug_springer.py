@@ -3,12 +3,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from tensorboardX import SummaryWriter
 
-from scripts_py.version_9.springer.spring_smoother_v3 import Shape_Utils
-from scripts_py.version_9.springer.spring_smoother_v3 import EnvParser
-from scripts_py.version_9.springer.spring_smoother_v3 import OptimizerScipy
-from scripts_py.version_9.springer.spring_smoother_v3 import BSpline_utils
-from scripts_py.version_9.springer.spring_smoother_v3 import VarTree
-from scripts_py.version_9.springer.smoother_utils import RecordAnysisVisulizer
+from ..springer.spring_smoother_v3 import Shape_Utils
+from ..springer.spring_smoother_v3 import EnvParser
+from ..springer.spring_smoother_v3 import OptimizerScipy
+from ..springer.spring_smoother_v3 import BSpline_utils
+from ..springer.spring_smoother_v3 import VarTree
+from ..springer.smoother_utils import RecordAnysisVisulizer
 
 
 def env1_test():

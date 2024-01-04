@@ -63,7 +63,8 @@ class DolfinxUtils(object):
         boundary_fun is None, mean all boundary
         """
         if bc_fun is None:
-            facets = dolfinx.mesh.exterior_facet_indices(domain)
+            domain.topology.create_connectivity(domain.topology.dim - 1, domain.topology.dim)
+            facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
             dofs = dolfinx.fem.locate_dofs_topological(V, entity_dim=domain.topology.dim - 1, entities=facets)
         else:
             facets = dolfinx.mesh.locate_entities_boundary(domain, domain.topology.dim - 1, marker=bc_fun)

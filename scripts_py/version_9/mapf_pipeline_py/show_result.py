@@ -140,12 +140,13 @@ def show_smooth_path():
         tube_mesh = VisulizerVista.create_complex_tube(xyzs, capping=True, radius=None, scalars=radius)
         line_mesh = VisulizerVista.create_line(xyzs)
 
-        vis.plot(tube_mesh, color=random_colors[i, :], opacity=0.6)
-        vis.plot(line_mesh, color=random_colors[i, :], opacity=0.8)
-        # vis.plot(tube_mesh, color=random_colors[group_idx, :], opacity=1.0)
+        # vis.plot(tube_mesh, color=random_colors[i, :], opacity=0.6)
+        # vis.plot(line_mesh, color=random_colors[i, :], opacity=0.8)
+        vis.plot(tube_mesh, color=random_colors[group_idx, :], opacity=1.0)
         # vis.plot(line_mesh, color=random_colors[group_idx, :], opacity=1.0)
 
     obstacle_xyzs = obstacle_df[obstacle_df['tag'] != 'wall'][['x', 'y', 'z']].values
+    obstacle_xyzs = obstacle_xyzs[::3, :]
     obstacle_mesh = VisulizerVista.create_pointCloud(obstacle_xyzs)
     vis.plot(obstacle_mesh, (0.5, 0.5, 0.5))
 

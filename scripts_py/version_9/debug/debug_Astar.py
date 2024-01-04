@@ -2,8 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from build import mapf_pipeline
-from scripts_py.version_8.mapf_pipeline_py.spanTree_TaskAllocator import MiniumSpanTreeTaskRunner
-from scripts_py.version_8.mapf_pipeline_py.spanTree_TaskAllocator import MiniumDistributeTreeTaskRunner
+from ..mapf_pipeline_py.spanTree_TaskAllocator import MiniumSpanTree_TaskRunner
+from ..mapf_pipeline_py.spanTree_TaskAllocator import MiniumDistributeTree_TaskRunner
 
 def debug_constrainTable():
     constrainTable = mapf_pipeline.ConstraintTable()
@@ -99,7 +99,7 @@ def debugGroupAstar():
 
     solver = mapf_pipeline.GroupAstarSolver()
 
-    allocator = MiniumDistributeTreeTaskRunner()
+    allocator = MiniumDistributeTree_TaskRunner()
     for i, xyz in enumerate(loc_xyzs):
         allocator.add_node(i, xyz)
     res_list = allocator.getTaskTrees()

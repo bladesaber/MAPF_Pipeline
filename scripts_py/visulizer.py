@@ -6,6 +6,7 @@ from tqdm import tqdm
 
 from scripts_py.utils import polar2RotMatrix
 
+
 class VisulizerVista(object):
     def __init__(self):
         self.ploter = pyvista.Plotter()
@@ -13,12 +14,12 @@ class VisulizerVista(object):
         self.ploter.set_background('white')
 
     @staticmethod
-    def create_pointCloud(xyzs:np.array):
+    def create_pointCloud(xyzs: np.array):
         pointCloud_mesh = pyvista.PolyData(xyzs)
         return pointCloud_mesh
 
     @staticmethod
-    def create_tube(xyzs:np.array, radius=0.5):
+    def create_tube(xyzs: np.array, radius=0.5):
         pointCloud_mesh = pyvista.PolyData(xyzs)
         the_cell = np.arange(0, xyzs.shape[0], 1)
         the_cell = np.insert(the_cell, 0, xyzs.shape[0])
@@ -26,7 +27,7 @@ class VisulizerVista(object):
         # pointCloud_mesh["scalars"] = np.arange(pointCloud_mesh.n_points)
         tube_mesh = pointCloud_mesh.tube(radius=radius)
         return tube_mesh
-    
+
     @staticmethod
     def create_box(xyz, length=1.0):
         semi_length = length / 2.0
@@ -44,7 +45,7 @@ class VisulizerVista(object):
         return sphere
 
     @staticmethod
-    def create_many_boxs(xyzs:np.array, length=1.0):
+    def create_many_boxs(xyzs: np.array, length=1.0):
         semi_length = length / 2.0
 
         boxs_mesh = []
@@ -61,7 +62,7 @@ class VisulizerVista(object):
         return boxs_mesh
 
     @staticmethod
-    def create_complex_tube(xyzs:np.array, capping, radius, scalars=None):
+    def create_complex_tube(xyzs: np.array, capping, radius, scalars=None):
         pointCloud_mesh = pyvista.PolyData(xyzs)
         the_cell = np.arange(0, xyzs.shape[0], 1)
         the_cell = np.insert(the_cell, 0, xyzs.shape[0])
@@ -69,7 +70,7 @@ class VisulizerVista(object):
         if scalars is not None:
             pointCloud_mesh["scalars"] = scalars
             tube_mesh = pointCloud_mesh.tube(
-                radius=radius, capping=capping, scalars='scalars', 
+                radius=radius, capping=capping, scalars='scalars',
                 # radius_factor=2.0,
                 absolute=True
             )
@@ -98,6 +99,7 @@ class VisulizerVista(object):
     def read_file(path):
         return pyvista.read_meshio(path)
 
+
 class VisulizerO3D(object):
     def __init__(self):
         self.vis = o3d.visualization.Visualizer()
@@ -111,11 +113,11 @@ class VisulizerO3D(object):
     def create_Arrow(
             self, x, y, z, alpha, beta,
             cylinder_radius=0.05, cone_radius=0.2, cylinder_height=1.0, cone_height=0.25
-        ):
+    ):
         rot_mat = polar2RotMatrix(alpha, beta)
 
         arrow: o3d.geometry.TriangleMesh = o3d.geometry.TriangleMesh.create_arrow(
-            cylinder_radius=cylinder_radius, 
+            cylinder_radius=cylinder_radius,
             cone_radius=cone_radius,
             cylinder_height=cylinder_height,
             cone_height=cone_height,
@@ -169,6 +171,7 @@ class VisulizerO3D(object):
     def show(self):
         self.vis.run()
         self.vis.destroy_window()
+
 
 if __name__ == '__main__':
     pass
