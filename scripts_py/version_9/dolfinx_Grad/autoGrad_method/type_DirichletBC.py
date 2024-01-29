@@ -1,15 +1,13 @@
 import dolfinx
-from copy import deepcopy
-from petsc4py import PETSc
 from typing import Union, Optional
 import numpy as np
 import numbers
 from dolfinx import cpp as _cpp
 
 from Thirdparty.pyadjoint.pyadjoint.overloaded_type import (
-    OverloadedType, register_overloaded_type, get_overloaded_class
+    OverloadedType
 )
-from Thirdparty.pyadjoint.pyadjoint.tape import get_working_tape, annotate_tape, stop_annotating, no_annotations
+from Thirdparty.pyadjoint.pyadjoint.tape import no_annotations
 from Thirdparty.pyadjoint import pyadjoint
 
 from .type_utils import AuxiliaryType

@@ -5,13 +5,14 @@ import dolfinx
 
 from Thirdparty.pyadjoint.pyadjoint import *
 
-from scripts_py.version_9.AD_dolfinx.type_Function import Function
-from scripts_py.version_9.AD_dolfinx.type_Mesh import Mesh
-from scripts_py.version_9.AD_dolfinx.block_solve import solve
-from scripts_py.version_9.AD_dolfinx.block_assemble import assemble
-from scripts_py.version_9.AD_dolfinx.type_utils import start_annotation
-from scripts_py.version_9.AD_dolfinx.type_DirichletBC import dirichletbc, DirichletBC
-from scripts_py.version_9.AD_dolfinx.backend_dolfinx import VisUtils, SolverUtils, XDMFRecorder
+from scripts_py.version_9.dolfinx_Grad.autoGrad_method.type_Function import Function
+from scripts_py.version_9.dolfinx_Grad.autoGrad_method.type_Mesh import Mesh
+from scripts_py.version_9.dolfinx_Grad.autoGrad_method.block_solve import solve
+from scripts_py.version_9.dolfinx_Grad.autoGrad_method.block_assemble import assemble
+from scripts_py.version_9.dolfinx_Grad.autoGrad_method.type_utils import start_annotation
+from scripts_py.version_9.dolfinx_Grad.autoGrad_method.type_DirichletBC import dirichletbc, DirichletBC
+from scripts_py.version_9.dolfinx_Grad.recorder_utils import XDMFRecorder
+from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 
 tape = Tape()
 set_working_tape(tape)
@@ -54,8 +55,7 @@ with start_annotation():
     grid = VisUtils.convert_to_grid(domain)
 
     V = dolfinx.fem.FunctionSpace(domain, ("Lagrange", 1))
-
-    u = Function(V, name='State')
+    u: Function = Function(V, name='State')
     v = ufl.TestFunction(V)
     f1: Function = Function(V, name='control')
     # f1.x.array[:] = 1.0
@@ -68,7 +68,19 @@ with start_annotation():
     dofs = dolfinx.fem.locate_dofs_topological(V, tdim - 1, facets)
     bc: DirichletBC = dirichletbc(0.0, dofs, V)
 
-    solve(u, F_form, [bc], domain=domain, is_linear=False)
+    solve(
+        u, F_form, [bc],
+        domain=domain, is_linear=False,
+        tlm_ksp_option={
+            'ksp_type': 'preonly', 'pc_type': 'lu',
+        },
+        adj_ksp_option={
+            'ksp_type': 'preonly', 'pc_type': 'lu',
+        },
+        forward_ksp_option={
+            'ksp_type': 'preonly', 'pc_type': 'lu',
+        },
+    )
     # VisUtils.show_scalar_res_vtk(grid, 'u', u)
 
     f_d: Function = Function(V)
@@ -88,7 +100,7 @@ opt_problem = ReducedFunctional(J, [control])
 # res_opt = opt_problem([f_opt])
 # print(f"org_score:{res_origin} opt_score:{res_opt} pcg:{res_opt/res_origin}")
 
-recorder = XDMFRecorder(file='/home/admin123456/Desktop/temptory/test_1/res.xdmf')
+recorder = XDMFRecorder(file='/home/admin123456/Desktop/work/topopt_exps/opt_control_01/res.xdmf')
 recorder.write_mesh(domain)
 
 trial_f: Function = Function(V)
@@ -113,19 +125,11 @@ while True:
     print(f"{step} loss: {loss}, Enhance:{opt_pcg}")
 
     if step % 30 == 0:
-        # grad.name = 'grad'
-        # grad.x.array[:] = grad_np
-        # recorder.write_function(grad, step)
+        recorder.write_function(u.block_variable.checkpoint, step)
 
-        f1.assign(trial_f)
-        SolverUtils.solve_nonlinear_variational_problem(u, F_form, bcs=[bc])
-        recorder.write_function(u, step)
-
-    if opt_pcg < 0.1:
+    if opt_pcg < 0.01:
         break
 
-f1.assign(trial_f)
-SolverUtils.solve_nonlinear_variational_problem(u, F_form, bcs=[bc])
-recorder.write_function(u, step=step)
-# VisUtils.show_scalar_res_vtk(grid, 'u_opt', u)
+recorder.write_function(u.block_variable.checkpoint, step=step)
+VisUtils.show_scalar_res_vtk(grid, 'u_opt', u.block_variable.checkpoint)
 # VisUtils.show_scalar_res_vtk(grid, 'control', trial_f)

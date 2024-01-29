@@ -1,3 +1,11 @@
+"""
+Mesh Tool From:
+1. gmsh: https://gitlab.onelab.info/gmsh/gmsh
+    1.1 please input 'gmsh' in console to enter the GUI
+2. Netgen: https://github.com/NGSolve/netgen.git
+    2.1 please input 'netgen' in console to enter the GUI
+"""
+
 import numpy as np
 import gmsh
 import math
@@ -6,9 +14,23 @@ from mpi4py import MPI
 
 
 class GmshGeoUtils(object):
-    @staticmethod
-    def init_env():
+    """
+    How To Use:
+    1. init_env
+    2. define_model
+    3. Draw something like add_box
+    4. synchronize
+    5. write (optional)
+    6. show
+    """
+
+    def __init__(self, log):
         gmsh.initialize()
+
+        self.log_enable = False
+        if log:
+            gmsh.logger.start()
+            self.log_enable = True
 
     @staticmethod
     def define_model(name: str):
@@ -200,17 +222,21 @@ class GmshGeoUtils(object):
         return gmsh.model.mesh.setSize(dimTags, mesh_size)
 
     @staticmethod
-    def show():
-        gmsh.option.setNumber("Geometry.PointNumbers", 1)
-        gmsh.option.setColor("Geometry.Color.Points", 255, 165, 0)
-        gmsh.option.setColor("General.Color.Text", 255, 255, 255)
-        gmsh.option.setColor("Mesh.Color.Points", 255, 0, 0)
-        r, g, b, a = gmsh.option.getColor("Geometry.Points")
-        gmsh.option.setColor("Geometry.Surfaces", r, g, b, a)
+    def show(with_pars=False):
+        if with_pars:
+            gmsh.option.setNumber("Geometry.PointNumbers", 1)
+            gmsh.option.setColor("Geometry.Color.Points", 255, 165, 0)
+            gmsh.option.setColor("General.Color.Text", 255, 255, 255)
+            gmsh.option.setColor("Mesh.Color.Points", 255, 0, 0)
+            r, g, b, a = gmsh.option.getColor("Geometry.Points")
+            gmsh.option.setColor("Geometry.Surfaces", r, g, b, a)
         gmsh.fltk.run()
 
-    @staticmethod
-    def finish():
+    def finish(self):
+        if self.log_enable:
+            log = gmsh.logger.get()
+            print("Logger has recorded " + str(len(log)) + " lines")
+            gmsh.logger.stop()
         gmsh.finalize()
 
     @staticmethod
@@ -239,8 +265,23 @@ class GmshGeoUtils(object):
             gmsh.option.setNumber("Mesh.SaveAll", 1)
         gmsh.write(file)
 
+    @staticmethod
+    def read_geo(filename: str):
+        assert filename.endswith('.geo')
+        gmsh.open(filename)
+
 
 class GmshOccUtils(GmshGeoUtils):
+    """
+    How To Use:
+    1. init_env
+    2. define_model
+    3. Draw something like add_box
+    4. synchronize
+    5. write (optional)
+    6. show
+    """
+
     @staticmethod
     def add_point(x, y, z, meshSize, tag=-1):
         return gmsh.model.occ.addPoint(x, y, z, meshSize, tag)
@@ -359,5 +400,87 @@ class GmshOccUtils(GmshGeoUtils):
         gmsh.logger.start()
 
 
-if __name__ == '__main__':
-    pass
+def create_geo_import_model(model_file: str, is_openscad, output_file: str, with_reclassify=False):
+    assert output_file.endswith('.geo')
+    if is_openscad:
+        content = f"""// The OpenCASCADE geometry kernel allows to import STEP files and to modify them.
+SetFactory("OpenCASCADE");
+        
+// Load a STEP file (using `ShapeFromFile' instead of `Merge' allows to directly
+// retrieve the tags of the highest dimensional imported entities):
+v() = ShapeFromFile("{model_file}");
+"""
+
+    else:
+        if not with_reclassify:
+            embed_content_start = "/*"
+            embed_content_end = "*/"
+        else:
+            embed_content_start = ""
+            embed_content_end = ""
+
+        content = f"""Merge "{model_file}";
+
+/*
+It is Unstable Here. Please use GUI Mesh->ReClassify 2D
+*/
+
+{embed_content_start}
+DefineConstant[
+  // Angle between two triangles above which an edge is considered as sharp
+  angle = {{40, Min 20, Max 150, Step 1, Name "Parameters/Angle for surface detection"}},
+  
+  // For open surfaces include the boundary edges in the classification process:
+  includeBoundary = {{0, Choices{{0,1}}, Name "Parameters/create curves on boundary"}},
+  
+  // For complex geometries, patches can be too complex, too elongated or too large to be parametrized
+  // setting the following option will force the creation of patches that are amenable to reparametrization
+  forceParametrizablePatches = {{0, Choices{{0,1}}, Name "Parameters/Create surfaces guaranteed to be parametrizable"}},
+  
+  // Force curves to be split on given angle:
+  curveAngle = 180
+];
+
+ClassifySurfaces{{
+        angle * Pi/180, includeBoundary, forceParametrizablePatches, curveAngle * Pi / 180
+        }};
+
+// Create a geometry for all the discrete curves and surfaces in the mesh, by
+// computing a parametrization for each one
+CreateGeometry;
+{embed_content_end}
+
+// Create a volume as usual
+Surface Loop(1) = Surface{{:}};
+Volume(1) = {{1}};
+"""
+
+    with open(output_file, 'w') as f:
+        f.write(content)
+
+
+def read_model_from_stl(
+        model_file: str, gmsh_utils: GmshGeoUtils,
+        angle: float = 80, includeBoundary=False, force_Parametrizable=False, curveAngle=180.0,
+        with_reclassify=False,
+):
+    assert model_file.endswith('stl')
+
+    gmsh.clear()
+    gmsh.merge(model_file)
+
+    # ------ It is Fail easily when meet complex model
+    if with_reclassify:
+        gmsh.model.mesh.classifySurfaces(
+            angle * math.pi / 180.,
+            includeBoundary,
+            force_Parametrizable,
+            curveAngle * math.pi / 180.
+        )
+        gmsh.model.mesh.createGeometry()
+
+    # Create a volume from all the surfaces
+    surfaces = gmsh.model.getEntities(2)
+    surface_loop = gmsh.model.geo.addSurfaceLoop([entity[1] for entity in surfaces])
+    gmsh.model.geo.addVolume([surface_loop])
+    gmsh_utils.synchronize()

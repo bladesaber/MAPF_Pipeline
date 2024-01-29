@@ -2,6 +2,7 @@ import dolfinx
 
 from Thirdparty.pyadjoint.pyadjoint.overloaded_type import OverloadedType, register_overloaded_type
 
+
 @register_overloaded_type
 class Mesh(OverloadedType, dolfinx.mesh.Mesh):
     def __init__(self, domain: dolfinx.mesh.Mesh, *args, **kwargs):
