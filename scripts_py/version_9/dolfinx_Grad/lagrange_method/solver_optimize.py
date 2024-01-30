@@ -62,6 +62,9 @@ class OptimalControlProblem(object):
         self.state_system.has_solution = False
         has_solution = self.state_system.solve(comm, **kwargs)
 
+        for cost_func in self.cost_functional_list:
+            cost_func.update()
+
     def compute_adjoint(self, comm, **kwargs):
         self.adjoint_system.has_solution = False
         has_solution = self.adjoint_system.solve(comm, **kwargs)
@@ -69,6 +72,9 @@ class OptimalControlProblem(object):
     def compute_gradient(self, comm, **kwargs):
         self.state_system.has_solution = False
         has_solution = self.state_system.solve(comm, **kwargs)
+
+        for cost_func in self.cost_functional_list:
+            cost_func.update()
 
         self.adjoint_system.has_solution = False
         has_solution = self.adjoint_system.solve(comm, **kwargs)
@@ -131,6 +137,9 @@ class OptimalShapeProblem(OptimalControlProblem):
         self.state_system.has_solution = False
         has_solution = self.state_system.solve(comm, **kwargs)
 
+        for cost_func in self.cost_functional_list:
+            cost_func.update()
+
         self.adjoint_system.has_solution = False
         has_solution = self.adjoint_system.solve(comm, **kwargs)
 
@@ -138,4 +147,3 @@ class OptimalShapeProblem(OptimalControlProblem):
         has_solution = self.gradient_system.solve(comm, **kwargs)
 
         return self.shape_problem.shape_grad
-

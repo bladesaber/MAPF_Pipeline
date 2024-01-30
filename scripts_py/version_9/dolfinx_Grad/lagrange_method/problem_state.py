@@ -47,6 +47,9 @@ class StateProblem(object):
                         **kwargs
                     )
 
+                    if kwargs.get('with_debug', False):
+                        print(f"[DEBUG]: max_error:{res_dict['max_error']:.6f} cost_time:{res_dict['cost_time']:.2f}")
+
                 else:
                     res_dict = NonLinearProblemSolver.solve_by_dolfinx(
                         comm=comm,

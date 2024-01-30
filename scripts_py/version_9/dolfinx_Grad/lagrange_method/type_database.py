@@ -224,7 +224,7 @@ def create_control_problem(
         bcs_info: Dict[str, List[Tuple[
             dolfinx.fem.DirichletBC, dolfinx.fem.FunctionSpaceBase,
             np.ndarray, Union[float, np.ndarray, dolfinx.fem.Function]
-        ]]],
+        ]]] = None,
         gradient_ksp_options: Dict[str, KspOption] = None,
 ):
     problem = ControlDataBase(controls, gradient_ksp_options)

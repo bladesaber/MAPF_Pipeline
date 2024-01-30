@@ -1,5 +1,5 @@
 import dolfinx
-import numpy
+import numpy as np
 import ufl
 from typing import Union, Tuple, List, Set
 
@@ -28,10 +28,50 @@ class IntegralFunction(object):
     def scale(self, scaling_factor: float):
         self.form = scaling_factor * self.form
 
+    def update(self):
+        pass
+
+
+class ScalarTrackingFunctional(object):
+    def __init__(
+            self,
+            domain: dolfinx.mesh.Mesh,
+            integrand_form: ufl.Form,
+            tracking_goal: float
+    ):
+        self.domain = domain
+        self.integrand_form = integrand_form
+        self.integrand_dolfinx = dolfinx.fem.form(self.integrand_form)
+        self.tracking_goal = tracking_goal
+
+        self.integrand_value = dolfinx.fem.Constant(domain, 0.0)
+        self.goal_value = dolfinx.fem.Constant(domain, tracking_goal)
+        self.derivative_form = (self.integrand_value - self.goal_value) * self.integrand_form
+
+    def evaluate(self):
+        val: float = np.power(AssembleUtils.assemble_scalar(self.integrand_dolfinx) - self.tracking_goal, 2) * 0.5
+        return val
+
+    def coefficients(self):
+        coeffs: Tuple[dolfinx.fem.Function] = self.integrand_form.coefficients()
+        return coeffs
+
+    def derivative(
+            self,
+            argument: [ufl.Coefficient],
+            direction: Union[dolfinx.fem.Function, ufl.Argument],
+    ):
+        derivative = ufl.derivative(self.derivative_form, argument, direction)
+        return derivative
+
+    def update(self):
+        val: float = AssembleUtils.assemble_scalar(self.integrand_dolfinx)
+        self.integrand_value.value = val
+
 
 # ------ Define Lagrangian Functional
 CostFunctional_types = Union[
-    IntegralFunction,
+    IntegralFunction, ScalarTrackingFunctional
 ]
 
 

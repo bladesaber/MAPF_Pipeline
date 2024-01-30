@@ -2,7 +2,7 @@ from dolfinx.io import gmshio, XDMFFile, VTKFile
 import dolfinx
 from mpi4py import MPI
 from tensorboardX import SummaryWriter
-from typing import Union, List
+from typing import Union, List, Dict
 
 
 class XDMFRecorder(object):
@@ -47,3 +47,6 @@ class TensorBoardRecorder(object):
 
     def write_scalar(self, tag, scalar_value, step):
         self.writer.add_scalar(tag=tag, scalar_value=scalar_value, global_step=step)
+
+    def write_scalars(self, tag, scalar_dict: Dict, step):
+        self.writer.add_scalars(tag, scalar_dict, step)
