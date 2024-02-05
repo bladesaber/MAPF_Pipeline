@@ -33,7 +33,7 @@ class GovDataBase(object):
         self.state_ksp_option = self.parse_ksp_option(state_ksp_option)
         self.adjoint_ksp_option = self.parse_ksp_option(adjoint_ksp_option)
 
-    def set_state_eq_form(self, eqs_form: ufl.Form, lhs: ufl.Form, rhs: ufl.Form):
+    def set_state_eq_form(self, eqs_form: ufl.Form, lhs: ufl.Form, rhs: Union[ufl.Form, float]):
         self.state_eq_form = eqs_form
         self.state_eq_form_lhs = lhs
         self.state_eq_form_rhs = rhs

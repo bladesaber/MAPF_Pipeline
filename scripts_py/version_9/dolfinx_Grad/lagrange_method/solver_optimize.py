@@ -14,27 +14,26 @@ from .shape_regularization import ShapeRegularization
 class OptimalControlProblem(object):
     def __init__(
             self,
-            state_problems: List[GovDataBase],
+            state_system: StateProblem,
             control_problem: ControlDataBase,
             cost_functional_list: List[CostFunctional_types],
             scalar_product: Callable = None,
             **kwargs
     ):
-        self.state_problems = state_problems
+        self.state_system = state_system
         self.control_problem = control_problem
         self.cost_functional_list = cost_functional_list
 
-        F_forms = [state_problem.F_form for state_problem in self.state_problems]
+        F_forms = [state_problem.F_form for state_problem in self.state_system.state_problems]
         self.lagrangian_function = LagrangianFunction(
             self.cost_functional_list, F_forms
         )
 
-        self.states = [problem.state for problem in self.state_problems]
-        self.adjoints = [problem.adjoint for problem in self.state_problems]
+        self.states = [problem.state for problem in self.state_system.state_problems]
+        self.adjoints = [problem.adjoint for problem in self.state_system.state_problems]
 
-        self.state_system = StateProblem(state_problems=self.state_problems)
         self.adjoint_system = AdjointProblem(
-            state_problems=self.state_problems,
+            state_problems=self.state_system.state_problems,
             lagrangian_function=self.lagrangian_function
         )
 
@@ -88,29 +87,28 @@ class OptimalControlProblem(object):
 class OptimalShapeProblem(OptimalControlProblem):
     def __init__(
             self,
-            state_problems: List[GovDataBase],
+            state_system: StateProblem,
             shape_problem: ShapeDataBase,
             cost_functional_list: List[CostFunctional_types],
             shape_regulariztions: ShapeRegularization,
             scalar_product: Callable = None,
             **kwargs
     ):
-        self.state_problems = state_problems
+        self.state_system = state_system
         self.shape_problem = shape_problem
         self.cost_functional_list = cost_functional_list
         self.shape_regulariztions = shape_regulariztions
 
-        F_forms = [state_problem.F_form for state_problem in self.state_problems]
+        F_forms = [state_problem.F_form for state_problem in self.state_system.state_problems]
         self.lagrangian_function = LagrangianFunction(
             self.cost_functional_list, F_forms
         )
 
-        self.states = [problem.state for problem in self.state_problems]
-        self.adjoints = [problem.adjoint for problem in self.state_problems]
+        self.states = [problem.state for problem in self.state_system.state_problems]
+        self.adjoints = [problem.adjoint for problem in self.state_system.state_problems]
 
-        self.state_system = StateProblem(state_problems=self.state_problems)
         self.adjoint_system = AdjointProblem(
-            state_problems=self.state_problems,
+            state_problems=self.state_system.state_problems,
             lagrangian_function=self.lagrangian_function
         )
 

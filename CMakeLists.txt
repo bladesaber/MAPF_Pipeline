@@ -25,7 +25,7 @@ find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
 
 LIST( APPEND CMAKE_MODULE_PATH ${PACKAGE_TOP_DIR}/Thirdparty/g2o/cmake_modules)
-#set(G2O_ROOT /usr/local/include/g2o)
+set(G2O_ROOT /usr/local/include/g2o)
 find_package(G2O REQUIRED)
 find_package(Ceres REQUIRED)
 

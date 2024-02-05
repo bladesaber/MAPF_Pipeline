@@ -9,6 +9,7 @@ import dolfinx
 from typing import Dict
 
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.type_database import create_control_problem, create_state_problem
+from scripts_py.version_9.dolfinx_Grad.lagrange_method.problem_state import StateProblem
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.solver_optimize import OptimalControlProblem
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.recorder_utils import XDMFRecorder
@@ -44,6 +45,8 @@ state_problem_1 = create_state_problem(
 )
 state_problems.append(state_problem_1)
 
+state_system = StateProblem(state_problems)
+
 # ------ Define Control problem
 f1_bc_dofs = MeshUtils.extract_entity_dofs(V, fdim, facets)
 f1_bc0: dolfinx.fem.DirichletBC = dolfinx.fem.dirichletbc(0.0, f1_bc_dofs, V)
@@ -66,7 +69,7 @@ cost1_fun = IntegralFunction(cost1_form)
 
 # ------ Define Optimal Problem
 opt_problem = OptimalControlProblem(
-    state_problems=state_problems,
+    state_system=state_system,
     control_problem=control_problem,
     cost_functional_list=[cost1_fun]
 )

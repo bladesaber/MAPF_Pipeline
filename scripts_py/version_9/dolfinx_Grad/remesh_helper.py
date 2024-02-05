@@ -2,15 +2,18 @@ import pyvista
 import gmsh
 import os
 import dolfinx
-from typing import Union
+from typing import Union, List
 import subprocess
 from tempfile import TemporaryDirectory
 import numpy as np
 from dolfinx.io.gmshio import extract_geometry
 from sklearn.neighbors import KDTree
+from dolfinx import geometry
+import ufl
 
 from .dolfinx_utils import MeshUtils
 from .vis_mesh_utils import VisUtils
+from .equation_solver import LinearProblemSolver
 
 
 class ReMesher(object):
@@ -166,3 +169,90 @@ class ReMesher(object):
             MeshUtils.msh_to_XDMF(msh_file, output_file=xdmf_file, name=model_name, dim=dim)
 
         return msh_file, xdmf_file
+
+
+class MeshQuality(object):
+    @staticmethod
+    def compute_collide_counts(domain: dolfinx.mesh.Mesh):
+        bb_tree = geometry.bb_tree(domain, domain.topology.dim)
+        cell_candidates = geometry.compute_collisions_points(bb_tree, domain.geometry.x)
+
+        collide_counts = []
+        for i in range(domain.geometry.x.shape[0]):
+            link_cells: np.ndarray[int] = cell_candidates.links(i)
+            collide_counts.append(link_cells.size)
+
+        return np.array(collide_counts)
+
+    @staticmethod
+    def detect_collision(domain: dolfinx.mesh.Mesh, orig_collide_counts: np.ndarray, with_intersections=False):
+        bb_tree = geometry.bb_tree(domain, domain.topology.dim)
+
+        # compute_collisions_points return a list of cells whose bounding box collide for each input points
+        cell_candidates = geometry.compute_collisions_points(bb_tree, domain.geometry.x)
+
+        # compute_colliding_cells measure the exact distance between point and cell
+        # colliding_cells = geometry.compute_colliding_cells(domain, cell_candidates, domain.geometry.x)
+
+        collide_counts = []
+        for i in range(domain.geometry.x.shape[0]):
+            link_cells: np.ndarray[int] = cell_candidates.links(i)
+            collide_counts.append(link_cells.size)
+
+        collide_counts = np.array(collide_counts)
+        intersections_bool = collide_counts == orig_collide_counts
+        is_intersection = not np.all(intersections_bool)
+
+        if with_intersections:
+            return intersections_bool, is_intersection
+        else:
+            return is_intersection
+
+
+class MeshDeformation(object):
+    @staticmethod
+    def estimate_cell_topology_volume_change(
+            domain: dolfinx.mesh.Mesh, transformation: dolfinx.fem.Function, **kwargs
+    ):
+        """
+        TODO: Math Base Still need to explored
+        estimate the volume change of each cell
+        """
+        dg_function_space = dolfinx.fem.FunctionSpace(domain, element=("DG", 0))
+
+        a_form = ufl.TrialFunction(dg_function_space) * ufl.TestFunction(dg_function_space) * ufl.dx
+        l_form = ufl.det(ufl.Identity(domain.geometry.dim) + ufl.grad(transformation)) * \
+                 ufl.TestFunction(dg_function_space) * ufl.dx
+
+        uh = dolfinx.fem.Function(transformation.function_space)
+        res_dict = LinearProblemSolver.solve_by_petsc_form(
+            comm=domain.comm,
+            uh=uh,
+            a_form=a_form,
+            L_form=l_form,
+            bcs=[],
+            ksp_option={
+                "ksp_type": "preonly",
+                "pc_type": "jacobi",
+                # "pc_jacobi_type": "diagonal",
+            },
+            **kwargs
+        )
+        return uh
+
+    @staticmethod
+    def estimate_mesh_quality(domain: dolfinx.mesh.Mesh, quality_measure: str, tdim=None, entities=None):
+        """
+        quality_measure:
+            1. area
+            2. radius_ratio
+            3. skew
+            4. volume
+            5. max_angle
+            6. min_angle
+            7. condition
+        """
+        grid = VisUtils.convert_to_grid(domain, tdim, entities)
+        qual = grid.compute_cell_quality(quality_measure=quality_measure, progress_bar=False)
+        quality = qual['CellQuality']
+        return quality

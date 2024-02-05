@@ -1,5 +1,7 @@
 """
 IF you use mpi, please tape 'mpirun -n 8 python3 runfile' in console
+
+Not Sure whether it is Correct
 """
 
 import gmsh

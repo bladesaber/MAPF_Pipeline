@@ -8,6 +8,7 @@ import os
 from ufl import div, inner, grad
 
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.type_database import create_shape_problem, create_state_problem
+from scripts_py.version_9.dolfinx_Grad.lagrange_method.problem_state import StateProblem
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.solver_optimize import OptimalShapeProblem
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization import ShapeRegularization
@@ -121,6 +122,8 @@ state_problem_1 = create_state_problem(
 )
 state_problems.append(state_problem_1)
 
+state_system = StateProblem(state_problems)
+
 # ------ Define Control problem
 coordinate_space = domain.ufl_domain().ufl_coordinate_element()
 V_S = dolfinx.fem.FunctionSpace(domain, coordinate_space)
@@ -163,7 +166,7 @@ cost1_fun = IntegralFunction(cost1_form)
 volume_reg = VolumeRegularization(control_problem, mu=0.2, target_volume_rho=1.0)
 
 opt_problem = OptimalShapeProblem(
-    state_problems=state_problems,
+    state_system=state_system,
     shape_problem=control_problem,
     shape_regulariztions=ShapeRegularization(regularization_list=[
         volume_reg

@@ -57,9 +57,6 @@ def solve(*args, **kwargs):
             )
             output = res_dict['res']
 
-            if kwargs.get('with_debug', False):
-                print(f"[Forward Inference] max_error:{res_dict['max_error']:.5f} cost_time:{res_dict['cost_time']:.5f}")
-
         else:
             is_valid = False
             exp_form: ufl.form.Form = args[1]
@@ -68,11 +65,32 @@ def solve(*args, **kwargs):
                     is_valid = True
             assert is_valid
 
-            res_dict = NonLinearProblemSolver.solve_by_dolfinx(
-                args[1], args[0], args[2], domain.comm, forward_ksp_option, **kwargs
+            # res_dict = NonLinearProblemSolver.solve_by_dolfinx(
+            #     F_form=args[1],
+            #     uh=args[0],
+            #     bcs=args[2],
+            #     comm=domain.comm,
+            #     ksp_option=forward_ksp_option,
+            #     **kwargs
+            # )
+
+            jacobi_form = ufl.derivative(
+                args[1], args[0], ufl.TrialFunction(args[0].function_space)
             )
+            res_dict = NonLinearProblemSolver.solve_by_petsc(
+                F_form=args[1], uh=args[0],
+                jacobi_form=jacobi_form,
+                bcs=args[2],
+                comm=domain.comm,
+                ksp_option=forward_ksp_option,
+                **kwargs
+            )
+
             assert res_dict['is_converge']
             output = res_dict['res']
+
+    if kwargs.get('with_debug', False):
+        print(f"[Forward Inference] max_error:{res_dict['max_error']:.8f} cost_time:{res_dict['cost_time']:.5f}")
 
     if annotate:
         block_variable = args[0].create_block_variable()

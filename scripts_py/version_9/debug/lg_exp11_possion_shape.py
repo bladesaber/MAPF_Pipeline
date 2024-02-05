@@ -4,6 +4,7 @@ import dolfinx
 import ufl
 
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.type_database import create_state_problem, create_shape_problem
+from scripts_py.version_9.dolfinx_Grad.lagrange_method.problem_state import StateProblem
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.solver_optimize import OptimalShapeProblem
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization import ShapeRegularization
@@ -68,6 +69,8 @@ state_problem_1 = create_state_problem(
 )
 state_problems.append(state_problem_1)
 
+state_system = StateProblem(state_problems)
+
 # ------ Define Control problem
 control_problem = create_shape_problem(
     domain=domain,
@@ -83,7 +86,7 @@ cost1_fun = IntegralFunction(cost1_form)
 
 # ------ Define Optimal Problem
 opt_problem = OptimalShapeProblem(
-    state_problems=state_problems,
+    state_system=state_system,
     shape_problem=control_problem,
     shape_regulariztions=ShapeRegularization(regularization_list=[]),
     cost_functional_list=[cost1_fun],
@@ -109,11 +112,11 @@ while True:
     displacement_np[:, :tdim] = shape_grad_np.reshape((-1, tdim))
 
     if step % 50 == 0:
-        dJ = dolfinx.fem.Function(shape_grad.function_space)
-        dJ.x.array[:] = shape_grad_np.reshape(-1)
-        VisUtils.show_vector_res_vtk(grid, dJ, dim=2, with_wrap=True)
-
-        VisUtils.show_scalar_res_vtk(grid, 'u1', u1)
+        # dJ = dolfinx.fem.Function(shape_grad.function_space)
+        # dJ.x.array[:] = shape_grad_np.reshape(-1)
+        # VisUtils.show_vector_res_vtk(grid, dJ, dim=2, with_wrap=True)
+        # VisUtils.show_scalar_res_vtk(grid, 'u1', u1)
+        pass
 
     MeshUtils.move(domain, displacement_np)
     cur_loss = opt_problem.evaluate_cost_functional(domain.comm, update_state=True)
@@ -124,4 +127,4 @@ while True:
 
     last_loss = cur_loss
 
-# VisUtils.show_scalar_res_vtk(grid, 'u_opt', u1)
+VisUtils.show_scalar_res_vtk(grid, 'u_opt', u1)

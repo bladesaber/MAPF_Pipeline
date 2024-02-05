@@ -51,11 +51,22 @@ class StateProblem(object):
                         print(f"[DEBUG]: max_error:{res_dict['max_error']:.6f} cost_time:{res_dict['cost_time']:.2f}")
 
                 else:
-                    res_dict = NonLinearProblemSolver.solve_by_dolfinx(
-                        comm=comm,
+                    jacobi_form = kwargs.get('jacobi_form', None)
+                    if jacobi_form is None:
+                        function_space = kwargs.get('function_space', None)
+                        if function_space is None:
+                            function_space = problem.state.function_space
+
+                        jacobi_form = ufl.derivative(
+                            problem.state_eq_form_lhs, problem.state, ufl.TrialFunction(function_space)
+                        )
+
+                    res_dict = NonLinearProblemSolver.solve_by_petsc(
                         F_form=problem.state_eq_form_lhs,
                         uh=problem.state,
+                        jacobi_form=jacobi_form,
                         bcs=problem.bcs,
+                        comm=comm,
                         ksp_option=problem.state_ksp_option,
                         **kwargs
                     )

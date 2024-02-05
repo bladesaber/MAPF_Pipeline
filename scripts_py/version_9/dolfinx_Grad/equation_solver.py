@@ -65,19 +65,17 @@ class LinearProblemSolver(object):
         # opts = PETSc.Options()
         # option_prefix = solver.getOptionsPrefix()
 
-        if "ksp_type" in solver_setting.keys():
-            # opts[f"{option_prefix}ksp_type"] = solver_setting["ksp_type"]
-            solver.setType(solver_setting["ksp_type"])
+        # opts[f"{option_prefix}ksp_type"] = solver_setting.get("ksp_type", "preonly")
+        solver.setType(solver_setting.get("ksp_type", "preonly"))
 
-        if "pc_type" in solver_setting.keys():
-            # opts[f"{option_prefix}pc_type"] = solver_setting["pc_type"]
-            solver.getPC().setType(solver_setting["pc_type"])
+        # opts[f"{option_prefix}pc_type"] = solver_setting.get("pc_type", 'lu')
+        solver.getPC().setType(solver_setting.get("pc_type", "lu"))
 
-        if "factory_type" in solver_setting.keys():
+        if "pc_factor_mat_solver_type" in solver_setting.keys():
             # opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
             solver.getPC().setFactorSolverType(solver_setting["pc_factor_mat_solver_type"])
 
-        if "hypre_type" in solver_setting.keys():
+        if "pc_hypre_mat_solver_type" in solver_setting.keys():
             solver.getPC().setHYPREType(solver_setting["pc_hypre_mat_solver_type"])
 
         solver.setFromOptions()
@@ -215,23 +213,9 @@ class LinearProblemSolver(object):
 
 
 class NonlinearPdeHelper:
-    """
-    The Math Background on solving Nonlinear Equations:
-    Nonlinear Equation: F(x) = 0
-
-    the solution of n step: x_n
-    residual_error_n = F(x_n)           ... compute the residual of n step
-    solve a linear sub problem:
-        jacobiMat_n = Jacobi(F, x_n)    ... compute the jacobi matrix of n step
-        dot(jacobiMat_n, perturbation) = residual_error_n
-    jacobiMat_n is the gradient direction
-    the perturbation is the gradient length to reduce the residual error
-
-    """
-
     @staticmethod
     def residual(
-            snes: PETSc.SNES, x: PETSc.Vec, F: PETSc.Vec,
+            snes: PETSc.SNES, x: PETSc.Vec, F_vec: PETSc.Vec,
             solution: dolfinx.fem.Function, F_form: dolfinx.fem.Form,
             jacobi_form: dolfinx.fem.Form, bcs: List[dolfinx.fem.DirichletBC]
     ):
@@ -241,58 +225,62 @@ class NonlinearPdeHelper:
         solution.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
         # ------ clear rhs(right hand side, residual)
-        with F.localForm() as f_local:
+        with F_vec.localForm() as f_local:
             f_local.set(0.0)
 
         # ------ recompute residual since solution change
-        petsc.assemble_vector(F, F_form)
+        petsc.assemble_vector(F_vec, F_form)
 
         # ------ apply boundary function to residual
-        if len(bcs) > 0:
-            petsc.apply_lifting(F, [jacobi_form], bcs=[bcs], x0=[x], scale=-1.0)
-            F.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-            petsc.set_bc(F, bcs, x, -1.0)
+        petsc.apply_lifting(F_vec, [jacobi_form], bcs=[bcs], x0=[x], scale=-1.0)
+        F_vec.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+        petsc.set_bc(F_vec, bcs, x, -1.0)
 
     @staticmethod
     def jacobi(
-            snes: PETSc.SNES, x: PETSc.Vec, J: PETSc.Mat, P: PETSc.Mat,
+            snes: PETSc.SNES, x: PETSc.Vec, J_mat: PETSc.Mat, P: PETSc.Mat,
             jacobi_form: dolfinx.fem.Form, bcs: List[dolfinx.fem.DirichletBC]
     ):
-        J.zeroEntries()  # clear jacobi matrix
-        petsc.assemble_matrix(J, jacobi_form, bcs=bcs)  # recompute the jacobi matrix
-        J.assemble()
+        J_mat.zeroEntries()  # clear jacobi matrix
+        petsc.assemble_matrix(J_mat, jacobi_form, bcs=bcs, diagonal=1.0)  # recompute the jacobi matrix
+        J_mat.assemble()
+
+    @staticmethod
+    def obj_func(snes: PETSc.SNES, x: PETSc.Vec, F_vec: PETSc.Vec):
+        return F_vec.norm()
 
 
 class NonLinearProblemSolver(object):
     @staticmethod
     def solve_by_dolfinx(
             F_form: ufl.Form, uh: dolfinx.fem.Function, bcs: List[dolfinx.fem.DirichletBC],
-            comm=MPI.COMM_WORLD, ksp_option={}, with_debug=False, **kwargs,
+            comm=MPI.COMM_WORLD, ksp_option={},
+            with_debug=False, **kwargs,
     ):
         problem = dolfinx.fem.petsc.NonlinearProblem(F_form, uh, bcs)
-
         solver = NewtonSolver(comm, problem)
 
         # ------ ksp setting
         ksp = solver.krylov_solver
-        if "ksp_type" in ksp_option.keys():
-            ksp.setType(ksp_option["ksp_type"])
 
-        if "pc_type" in ksp_option.keys():
-            ksp.getPC().setType(ksp_option["pc_type"])
+        ksp.setType(ksp_option.get("ksp_type", "preonly"))
+        ksp.getPC().setType(ksp_option.get("pc_type", "lu"))
 
-        if "factory_type" in ksp_option.keys():
+        if "pc_factor_mat_solver_type" in ksp_option.keys():
             ksp.getPC().setFactorSolverType(ksp_option["pc_factor_mat_solver_type"])
+
+        if "pc_hypre_mat_solver_type" in ksp_option.keys():
+            ksp.getPC().setHYPREType(ksp_option["pc_hypre_mat_solver_type"])
 
         # ------ newton setting
         solver.convergence_criterion = 'incremental'
-        solver.rtol = kwargs.pop('rtol', 1e-6)
+        solver.rtol = kwargs.pop('rtol', 1e-10)
         solver.atol = kwargs.pop('atol', 1e-10)
         solver.max_it = kwargs.pop('max_it', 1000)
 
         if with_debug:
             tick0 = time.time()
-            solver.setConvergenceHistory()
+
         n_times, is_converg = solver.solve(uh)
 
         res = {
@@ -310,7 +298,7 @@ class NonLinearProblemSolver(object):
 
     @staticmethod
     def solve_by_petsc(
-            F_form: ufl.Form, u: dolfinx.fem.Function,
+            F_form: ufl.Form, uh: dolfinx.fem.Function,
             jacobi_form: ufl.Form, bcs: List[dolfinx.fem.DirichletBC],
             comm=MPI.COMM_WORLD, ksp_option={}, with_debug=False, **kwargs
     ):
@@ -327,8 +315,8 @@ class NonLinearProblemSolver(object):
 
         residual_func = partial(
             NonlinearPdeHelper.residual,
-            solution=u,
-            F_form=F_form,
+            solution=uh,
+            F_form=F_dolfinx,
             jacobi_form=dFdu_dolfinx,
             bcs=bcs
         )
@@ -337,40 +325,49 @@ class NonLinearProblemSolver(object):
             jacobi_form=dFdu_dolfinx,
             bcs=bcs
         )
+        obj_func = partial(
+            NonlinearPdeHelper.obj_func,
+            F_vec=residual_vec
+        )
 
         solver = PETSc.SNES().create(comm)
+        solver.setObjective(obj_func)
         solver.setFunction(residual_func, residual_vec)
-        solver.setJacobian(jacobi_func, jacobi_mat)
-
-        # ------ ksp setting
-        ksp = solver.getKSP()
-        if "ksp_type" in ksp_option.keys():
-            ksp.setType(ksp_option["ksp_type"])
-
-        if "pc_type" in ksp_option.keys():
-            ksp.getPC().setType(ksp_option["pc_type"])
-
-        if "factory_type" in ksp_option.keys():
-            ksp.getPC().setFactorSolverType(ksp_option["pc_factor_mat_solver_type"])
-
-        # ------ newton setting
+        solver.setJacobian(jacobi_func, jacobi_mat, P=None)
         solver.setTolerances(
-            rtol=kwargs.pop('rtol', 1e-6),
+            rtol=kwargs.pop('rtol', 1e-10),
             atol=kwargs.pop('atol', 1e-10),
             max_it=kwargs.pop('max_it', 1000),
         )
+        # solver.setMonitor(lambda _, it, residual: print(f"Iter:{it} residual:{residual}"))
 
+        # ------ ksp setting
+        ksp = solver.getKSP()
+
+        ksp.setType(ksp_option.get("ksp_type", "preonly"))
+        ksp.getPC().setType(ksp_option.get("pc_type", "lu"))
+
+        if "pc_factor_mat_solver_type" in ksp_option.keys():
+            ksp.getPC().setFactorSolverType(ksp_option["pc_factor_mat_solver_type"])
+
+        if "pc_hypre_mat_solver_type" in ksp_option.keys():
+            ksp.getPC().setHYPREType(ksp_option["pc_hypre_mat_solver_type"])
+
+        # ------ newton setting
         if with_debug:
             tick0 = time.time()
             solver.setConvergenceHistory()
 
-        solver.solve(None, u.vector)
-        res = {'res': u}
+        solver.solve(None, uh.vector)
+        res = {'res': uh}
 
         if with_debug:
             convergence_history = solver.getConvergenceHistory()[0]
 
             res.update({
+                'mean_error': np.mean(np.abs(residual_vec)),
+                'max_error': np.max(np.abs(residual_vec)),
+                'norm_error': residual_vec.norm(),
                 'cost_time': time.time() - tick0,
                 'last_error': convergence_history[-1] if len(convergence_history) else 0
             })
@@ -384,7 +381,7 @@ class NonLinearProblemSolver(object):
         return res
 
 
-def find_ksp_option(record_file: str, A_mat_dat: str, b_vec_dat: str, ref_record_file: str = None):
+def find_linear_ksp_option(record_file: str, A_mat_dat: str, b_vec_dat: str, ref_record_file: str = None):
     assert record_file.endswith('.csv')
     assert A_mat_dat.endswith('.dat') and b_vec_dat.endswith('.dat')
     ksp_types = [
@@ -416,9 +413,10 @@ def find_ksp_option(record_file: str, A_mat_dat: str, b_vec_dat: str, ref_record
         record = pd.DataFrame(columns=['ksp', 'pc', 'costTime', 'meanError', 'maxError', 'log'])
 
     ref_record_enable = False
-    if os.path.exists(ref_record_file):
-        ref_record = pd.read_csv(ref_record_file, index_col=0)
-        ref_record_enable = False
+    if ref_record_file is not None:
+        if os.path.exists(ref_record_file):
+            ref_record = pd.read_csv(ref_record_file, index_col=0)
+            ref_record_enable = True
 
     for ksp_type in ksp_types:
         for pc_type in pc_types:
@@ -456,3 +454,75 @@ def find_ksp_option(record_file: str, A_mat_dat: str, b_vec_dat: str, ref_record
                 print(f"[{ksp_type}] [{pc_type}]: {str(e)}")
 
             record.to_csv(record_file)
+
+
+def find_nonlinear_ksp_option(
+        comm, F_form: ufl.Form, jacobi_form: ufl.Form, uh: dolfinx.fem.Function, bcs: List[dolfinx.fem.DirichletBC],
+        record_file: str, ref_record_file: str = None
+):
+    ksp_types = [
+        'richardson', 'preonly', 'cg', 'pipecg', 'groppcg', 'pipecgrr',
+        'cgne', 'fcg', 'pipefcg', 'cgls', 'nash', 'stcg', 'gltr',
+        'bicg', 'bcgs', 'ibcgs', 'qmrcgs', 'fbcgs', 'bcgsl', 'minres', 'gmres',
+        'fgmres', 'dgmres', 'pgmres', 'pipefgmres', 'lgmres', 'cr', 'gcr',
+        'pipecr', 'cgs', 'tfqmr', 'tcqmr', 'lsqr', 'symmlq',
+        # 'chebyshev', 'qcg', 'tsirm', 'fetidp',
+    ]
+    pc_types = [
+        'lu', 'ksp', 'none',
+        'jacobi', 'bjacobi', 'sor', 'eisenstat', 'icc', 'ilu', 'asm',
+        'gasm', 'gamg', 'cholesky',
+        # 'bddc', 'composite'  # give up
+    ]
+
+    if os.path.exists(record_file):
+        record = pd.read_csv(record_file, index_col=0)
+    else:
+        record = pd.DataFrame(columns=['ksp', 'pc', 'costTime', 'meanError', 'maxError', 'log'])
+
+    ref_record_enable = False
+    if ref_record_file is not None:
+        if os.path.exists(ref_record_file):
+            ref_record = pd.read_csv(ref_record_file, index_col=0)
+            ref_record_enable = True
+
+    uh_tmp_np = uh.x.array
+    for ksp_type in ksp_types:
+        for pc_type in pc_types:
+
+            if ref_record_enable:
+                ref_res = ref_record[(ref_record['ksp'] == ksp_type) & (ref_record['pc'] == pc_type)]
+                if ref_res.shape[0] > 0:
+                    if ref_res['log'] != '':
+                        print(f"[###] Skip [{ksp_type}] [{pc_type}]")
+                        continue
+
+            up_tmp = dolfinx.fem.Function(uh.function_space)
+            up_tmp.x.array[:] = uh_tmp_np
+
+            F_form_tmp = ufl.replace(F_form, {uh: up_tmp})
+            jacobi_form_tmp = ufl.replace(jacobi_form, {uh: up_tmp})
+
+            idx = record.shape[0]
+            try:
+                res_dict = NonLinearProblemSolver.solve_by_petsc(
+                    F_form=F_form_tmp,
+                    uh=up_tmp,
+                    jacobi_form=jacobi_form_tmp,
+                    bcs=bcs,
+                    comm=comm,
+                    ksp_option={'ksp_type': ksp_type, 'pc_type': pc_type},
+                    with_debug=True
+                )
+
+                record.loc[
+                    idx, ['ksp', 'pc', 'costTime', 'meanError', 'maxError', 'log']
+                ] = ksp_type, pc_type, res_dict['cost_time'], res_dict['mean_error'], res_dict['max_error'], ''
+                print(
+                    f"[{ksp_type}] [{pc_type}]: costTime:{res_dict['cost_time']:.3f}, "
+                    f"meanError:{res_dict['mean_error']:.8f}, maxError:{res_dict['max_error']:.8f}"
+                )
+
+            except Exception as e:
+                record.loc[idx, ['ksp', 'pc', 'log']] = ksp_type, pc_type, str(e)
+                print(f"[{ksp_type}] [{pc_type}]: {str(e)}")
