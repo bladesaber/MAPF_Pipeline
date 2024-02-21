@@ -6,6 +6,7 @@ from petsc4py import PETSc
 from typing import Union, Callable, List
 from dolfinx.io import XDMFFile, gmshio
 from mpi4py import MPI
+from ufl.core import expr
 
 
 class AssembleUtils(object):
@@ -251,6 +252,9 @@ class BoundaryUtils(object):
 
 class UFLUtils(object):
     @staticmethod
-    def create_expression(form: ufl.Form, V: dolfinx.fem.FunctionSpaceBase):
+    def create_expression(
+            form: expr,
+            V: dolfinx.fem.FunctionSpaceBase
+    ):
         exp = dolfinx.fem.Expression(form, V.element.interpolation_points())
         return exp

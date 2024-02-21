@@ -59,14 +59,18 @@ class ReMesher(object):
 
     @staticmethod
     def reconstruct_vertex_indices(orig_msh_file: str, domain: dolfinx.mesh.Mesh, check=False):
+        """
+        Create dof to vertex map.
+        Needed in convert_domain_to_new_msh
+        """
         gmsh.initialize()
         gmsh.model.add("Mesh from file")
         gmsh.merge(orig_msh_file)
         msh_xyzs = extract_geometry(gmsh.model)
-        geo_xyzs = domain.geometry.x
         gmsh.finalize()
 
         tree = KDTree(msh_xyzs, metric='minkowski')
+        geo_xyzs = domain.geometry.x
         neighbour_idxs = tree.query_radius(geo_xyzs, r=1e-8, return_distance=False)
 
         if check:

@@ -47,9 +47,6 @@ class StateProblem(object):
                         **kwargs
                     )
 
-                    if kwargs.get('with_debug', False):
-                        print(f"[DEBUG]: max_error:{res_dict['max_error']:.6f} cost_time:{res_dict['cost_time']:.2f}")
-
                 else:
                     jacobi_form = kwargs.get('jacobi_form', None)
                     if jacobi_form is None:
@@ -73,6 +70,9 @@ class StateProblem(object):
 
                     if not res_dict['is_converge']:
                         raise ValueError("[DEBUG###] Nonlinear Solver Fail")
+
+                if kwargs.get('with_debug', False):
+                    print(f"[DEBUG]: max_error:{res_dict['max_error']:.6f} cost_time:{res_dict['cost_time']:.2f}")
 
             self.has_solution = True
 

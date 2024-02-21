@@ -1,4 +1,6 @@
 """
+Fail Trial
+
 关于下一步如何处理NS流的问题与后续工作：
 1.切换使用其他成熟软件来做仿真
 2.使用AutoGrad方法
@@ -50,10 +52,7 @@ tdim = domain.topology.dim
 fdim = tdim - 1
 grid = VisUtils.convert_to_grid(domain)
 
-vertex_indices = ReMesher.reconstruct_vertex_indices(
-    orig_msh_file=msh_file,
-    domain=domain
-)
+vertex_indices = ReMesher.reconstruct_vertex_indices(orig_msh_file=msh_file, domain=domain)
 
 # ------ Define State Problem 1
 input_marker = 1
@@ -96,7 +95,7 @@ bc_in1_dofs = MeshUtils.extract_entity_dofs(
 bc_in1 = dolfinx.fem.dirichletbc(bc_in1_value, bc_in1_dofs, W0)
 bcs_info.append((bc_in1, W0, bc_in1_dofs, bc_in1_value))
 
-for marker in [5, 6, 7]:
+for marker in output_markers:
     bc_out_value = dolfinx.fem.Function(Q, name=f"outflow_p_{marker}")
     bc_out_dofs = MeshUtils.extract_entity_dofs(
         (W1, Q), fdim, MeshUtils.extract_facet_entities(domain, facet_tags, marker)
@@ -105,7 +104,7 @@ for marker in [5, 6, 7]:
     bcs_info.append((bc_out, W1, bc_out_dofs, bc_out_value))
 
 # ------ define variation problems
-Re = 120
+Re = 100
 nuValue = 1. / Re
 nu = dolfinx.fem.Constant(domain, nuValue)
 
@@ -164,9 +163,7 @@ class NsStateProblem(StateProblem):
         stoke_eq_form = ufl.replace(stoke_form, replace_map)
         stoke_eq_form_lhs = ufl.lhs(stoke_eq_form)
         stoke_eq_form_rhs = ufl.rhs(stoke_eq_form)
-        self.stoke_problem.set_state_eq_form(
-            eqs_form=stoke_eq_form, lhs=stoke_eq_form_lhs, rhs=stoke_eq_form_rhs
-        )
+        self.stoke_problem.set_state_eq_form(eqs_form=stoke_eq_form, lhs=stoke_eq_form_lhs, rhs=stoke_eq_form_rhs)
 
         # ------ define stoke navier nonlinear problem
         nstoke_form = self.nstoke_problem.F_form
@@ -175,9 +172,7 @@ class NsStateProblem(StateProblem):
         nstoke_eq_form = ufl.replace(nstoke_form, replace_map)
         nstoke_eq_form_lhs = nstoke_eq_form
         nstoke_eq_form_rhs = 0.0
-        self.nstoke_problem.set_state_eq_form(
-            eqs_form=nstoke_eq_form, lhs=nstoke_eq_form_lhs, rhs=nstoke_eq_form_rhs
-        )
+        self.nstoke_problem.set_state_eq_form(eqs_form=nstoke_eq_form, lhs=nstoke_eq_form_lhs, rhs=nstoke_eq_form_rhs)
 
     def solve(self, comm, **kwargs):
         res_dict = LinearProblemSolver.solve_by_petsc_form(

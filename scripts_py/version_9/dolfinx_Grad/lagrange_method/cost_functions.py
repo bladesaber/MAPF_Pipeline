@@ -1,6 +1,7 @@
 import dolfinx
 import numpy as np
 import ufl
+import ctypes
 from typing import Union, Tuple, List, Set
 
 from ..dolfinx_utils import AssembleUtils
@@ -37,19 +38,28 @@ class ScalarTrackingFunctional(object):
             self,
             domain: dolfinx.mesh.Mesh,
             integrand_form: ufl.Form,
-            tracking_goal: float
+            tracking_goal: Union[float, ctypes.c_float, ctypes.c_double]
     ):
         self.domain = domain
         self.integrand_form = integrand_form
         self.integrand_dolfinx = dolfinx.fem.form(self.integrand_form)
+
         self.tracking_goal = tracking_goal
+        if isinstance(tracking_goal, (ctypes.c_float, ctypes.c_double)):
+            self.tracking_goal_value = tracking_goal.value
+        else:
+            self.tracking_goal_value = tracking_goal
 
         self.integrand_value = dolfinx.fem.Constant(domain, 0.0)
-        self.goal_value = dolfinx.fem.Constant(domain, tracking_goal)
+        self.goal_value = dolfinx.fem.Constant(domain, self.tracking_goal_value)
         self.derivative_form = (self.integrand_value - self.goal_value) * self.integrand_form
 
     def evaluate(self):
-        val: float = np.power(AssembleUtils.assemble_scalar(self.integrand_dolfinx) - self.tracking_goal, 2) * 0.5
+        if isinstance(self.tracking_goal, (ctypes.c_float, ctypes.c_double)):
+            self.tracking_goal_value = self.tracking_goal.value
+            self.goal_value.value = self.tracking_goal_value
+
+        val: float = np.power(AssembleUtils.assemble_scalar(self.integrand_dolfinx) - self.tracking_goal_value, 2) * 0.5
         return val
 
     def coefficients(self):
@@ -61,6 +71,10 @@ class ScalarTrackingFunctional(object):
             argument: [ufl.Coefficient],
             direction: Union[dolfinx.fem.Function, ufl.Argument],
     ):
+        if isinstance(self.tracking_goal, (ctypes.c_float, ctypes.c_double)):
+            self.tracking_goal_value = self.tracking_goal.value
+            self.goal_value.value = self.tracking_goal_value
+
         derivative = ufl.derivative(self.derivative_form, argument, direction)
         return derivative
 

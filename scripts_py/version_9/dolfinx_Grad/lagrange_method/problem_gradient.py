@@ -1,13 +1,15 @@
 import dolfinx.mesh
 import numpy as np
 import ufl
-from typing import Callable
+from typing import Callable, Union
 from ufl import inner, div, grad
+from functools import partial
+from ufl.core import expr
 
 from .cost_functions import LagrangianFunction
 from .type_database import ControlDataBase, ShapeDataBase
 from ..equation_solver import LinearProblemSolver
-from ..dolfinx_utils import MeshUtils, AssembleUtils
+from ..dolfinx_utils import MeshUtils, AssembleUtils, UFLUtils
 from .shape_regularization import ShapeRegularization
 
 
@@ -80,7 +82,8 @@ class ShapeGradientProblem(object):
             shape_problem: ShapeDataBase,
             lagrangian_function: LagrangianFunction,
             shape_regulariztions: ShapeRegularization,
-            scalar_product: Callable = None
+            scalar_product: Callable = None,
+            scalar_product_method: str = 'default'
     ):
         self.has_solution = False
 
@@ -89,11 +92,11 @@ class ShapeGradientProblem(object):
         self.shape_regulariztions = shape_regulariztions
 
         if scalar_product is None:
-            self.scalar_product = self._scalar_product
+            self.scalar_product = partial(self._scalar_product, method=scalar_product_method)
         else:
             self.scalar_product = scalar_product
 
-        self.trail_u = ufl.TrialFunction(self.shape_problem.deformation_space)
+        self.trial_u = ufl.TrialFunction(self.shape_problem.deformation_space)
         self.test_v = ufl.TestFunction(self.shape_problem.deformation_space)
         self.coodr = MeshUtils.define_coordinate(self.shape_problem.domain)
 
@@ -102,12 +105,46 @@ class ShapeGradientProblem(object):
     def _compute_gradient_equations(self):
         grad_forms_rhs = self.lagrangian_function.derivative(self.coodr, self.test_v)
         grad_forms_rhs += self.shape_regulariztions.compute_shape_derivative()
-        grad_forms_lhs = self.scalar_product(self.trail_u, self.test_v)
+        grad_forms_lhs = self.scalar_product(self.trial_u, self.test_v)
         self.shape_problem.set_gradient_eq_form(grad_forms_lhs, grad_forms_rhs)
 
-    @staticmethod
-    def _scalar_product(trial_u: ufl.Argument, test_v: ufl.Argument):
-        lhs_form = inner((grad(trial_u)), (grad(test_v))) * ufl.dx + inner(trial_u, test_v) * ufl.dx
+    def _scalar_product(self, trial_u: ufl.Argument, test_v: ufl.Argument, method: str):
+        if method == 'default':
+            lhs_form = inner((grad(trial_u)), (grad(test_v))) * ufl.dx + inner(trial_u, test_v) * ufl.dx
+
+        elif method == 'surface_metrics':
+            # TODO Fail, it is wrong Now
+            """
+            Based on `Schulz and Siebenborn, Computational Comparison of Surface Metrics for
+            PDE Constrained Shape Optimization <https://doi.org/10.1515/cmam-2016-0009>`_.
+            """
+
+            mu_lame = dolfinx.fem.Constant(self.shape_problem.domain, 1.0)
+            inhomogeneous_exponent = dolfinx.fem.Constant(self.shape_problem.domain, 1.0)
+            constant = dolfinx.fem.Constant(self.shape_problem.domain, 2.0)
+
+            DG = dolfinx.fem.FunctionSpace(self.shape_problem.domain, ('DG', 0))
+            cell_volume = dolfinx.fem.Function(DG, name='cell_volume')
+            cell_volume.interpolate(UFLUtils.create_expression(ufl.CellVolume(self.shape_problem.domain), DG))
+            vol_max_idx, vol_max = cell_volume.vector.max()
+            cell_volume.vector.scale(1.0 / vol_max)
+
+            def eps(u: Union[dolfinx.fem.Function, ufl.TrialFunction, ufl.TestFunction]) -> expr.Expr:
+                """Computes the symmetric gradient of a vector field ``u``.
+                Args:
+                    u: A vector field
+                Returns:
+                    The symmetric gradient of ``u``
+
+                """
+                return 0.5 * (grad(u) + grad(u).T)
+
+            lhs_form = constant * mu_lame / np.power(cell_volume, inhomogeneous_exponent) * \
+                       inner(eps(trial_u), eps(test_v)) * ufl.dx
+
+        else:
+            raise NotImplementedError
+
         return lhs_form
 
     def solve(self, comm, **kwargs):

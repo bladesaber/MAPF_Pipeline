@@ -92,6 +92,7 @@ class OptimalShapeProblem(OptimalControlProblem):
             cost_functional_list: List[CostFunctional_types],
             shape_regulariztions: ShapeRegularization,
             scalar_product: Callable = None,
+            scalar_product_method='default',
             **kwargs
     ):
         self.state_system = state_system
@@ -116,7 +117,8 @@ class OptimalShapeProblem(OptimalControlProblem):
             shape_problem=shape_problem,
             lagrangian_function=self.lagrangian_function,
             scalar_product=scalar_product,
-            shape_regulariztions=self.shape_regulariztions
+            shape_regulariztions=self.shape_regulariztions,
+            scalar_product_method=scalar_product_method,
         )
 
     def evaluate_cost_functional(self, comm, update_state: bool, **kwargs):
