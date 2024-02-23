@@ -150,7 +150,7 @@ class LowReFluidFineModel(FineModel):
         f2 = dolfinx.fem.Constant(self.control_s, np.zeros(self.tdim))
         self.nstoke_lhs = nu * inner(grad(u2), grad(v2)) * ufl.dx + \
                           inner(grad(u2) * u2, v2) * ufl.dx - \
-                          inner(p2, ufl.div(v2)) * ufl.dx + \
+                          inner(p2, div(v2)) * ufl.dx + \
                           inner(div(u2), q2) * ufl.dx - \
                           inner(f2, v2) * ufl.dx
 

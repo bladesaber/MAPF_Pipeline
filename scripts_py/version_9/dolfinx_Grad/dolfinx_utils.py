@@ -68,6 +68,17 @@ class AssembleUtils(object):
         """
         return ufl.derivative(form, coefficient, direction)
 
+    @staticmethod
+    def function_eval(uh: dolfinx.fem.Function, point_xyzs: np.ndarray, cells: List[int]):
+        """
+        Evaluate Function at points x, where x has shape (num_points, 3),
+        and cells has shape (num_points,) and cell[i] is the index of the
+        cell containing point x[i]. If the cell index is negative the
+        point is ignored.
+        """
+        values = uh.eval(point_xyzs, cells)
+        return values
+
 
 class MeshUtils(object):
     @staticmethod

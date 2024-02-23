@@ -1,6 +1,6 @@
 import dolfinx
 import ufl
-from typing import List, Callable
+from typing import List, Callable, Dict
 import numpy as np
 
 from .cost_functions import CostFunctional_types, LagrangianFunction
@@ -83,6 +83,9 @@ class OptimalControlProblem(object):
 
         return self.control_problem.control_grads
 
+    def update_update_scalar_product(self):
+        pass
+
 
 class OptimalShapeProblem(OptimalControlProblem):
     def __init__(
@@ -92,7 +95,7 @@ class OptimalShapeProblem(OptimalControlProblem):
             cost_functional_list: List[CostFunctional_types],
             shape_regulariztions: ShapeRegularization,
             scalar_product: Callable = None,
-            scalar_product_method='default',
+            scalar_product_method: Dict = {'method': "default"},
             **kwargs
     ):
         self.state_system = state_system
@@ -147,3 +150,6 @@ class OptimalShapeProblem(OptimalControlProblem):
         has_solution = self.gradient_system.solve(comm, **kwargs)
 
         return self.shape_problem.shape_grad
+
+    def update_update_scalar_product(self, **kwargs):
+        self.gradient_system.update_scalar_product(**kwargs)

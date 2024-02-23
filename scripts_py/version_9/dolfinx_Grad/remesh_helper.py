@@ -2,7 +2,7 @@ import pyvista
 import gmsh
 import os
 import dolfinx
-from typing import Union, List
+from typing import Union, List, Literal, Dict, Callable
 import subprocess
 from tempfile import TemporaryDirectory
 import numpy as np
@@ -10,10 +10,13 @@ from dolfinx.io.gmshio import extract_geometry
 from sklearn.neighbors import KDTree
 from dolfinx import geometry
 import ufl
+from ufl import det, Identity, grad
+import collections
 
 from .dolfinx_utils import MeshUtils
 from .vis_mesh_utils import VisUtils
 from .equation_solver import LinearProblemSolver
+from .petsc_utils import PETScUtils
 
 
 class ReMesher(object):
@@ -177,86 +180,265 @@ class ReMesher(object):
 
 class MeshQuality(object):
     @staticmethod
-    def compute_collide_counts(domain: dolfinx.mesh.Mesh):
-        bb_tree = geometry.bb_tree(domain, domain.topology.dim)
-        cell_candidates = geometry.compute_collisions_points(bb_tree, domain.geometry.x)
-
-        collide_counts = []
-        for i in range(domain.geometry.x.shape[0]):
-            link_cells: np.ndarray[int] = cell_candidates.links(i)
-            collide_counts.append(link_cells.size)
-
-        return np.array(collide_counts)
-
-    @staticmethod
-    def detect_collision(domain: dolfinx.mesh.Mesh, orig_collide_counts: np.ndarray, with_intersections=False):
-        bb_tree = geometry.bb_tree(domain, domain.topology.dim)
-
-        # compute_collisions_points return a list of cells whose bounding box collide for each input points
-        cell_candidates = geometry.compute_collisions_points(bb_tree, domain.geometry.x)
-
-        # compute_colliding_cells measure the exact distance between point and cell
-        # colliding_cells = geometry.compute_colliding_cells(domain, cell_candidates, domain.geometry.x)
-
-        collide_counts = []
-        for i in range(domain.geometry.x.shape[0]):
-            link_cells: np.ndarray[int] = cell_candidates.links(i)
-            collide_counts.append(link_cells.size)
-
-        collide_counts = np.array(collide_counts)
-        intersections_bool = collide_counts == orig_collide_counts
-        is_intersection = not np.all(intersections_bool)
-
-        if with_intersections:
-            return intersections_bool, is_intersection
-        else:
-            return is_intersection
-
-
-class MeshDeformation(object):
-    @staticmethod
-    def estimate_cell_topology_volume_change(
-            domain: dolfinx.mesh.Mesh, transformation: dolfinx.fem.Function, **kwargs
+    def compute_cells_from_points(
+            domain: dolfinx.mesh.Mesh,
+            bb_tree: dolfinx.geometry.BoundingBoxTree = None,
+            point_xyzs: np.ndarray = None,
+            with_cell_counts=False
     ):
-        """
-        TODO: Math Base Still need to explored
-        estimate the volume change of each cell
-        """
-        dg_function_space = dolfinx.fem.FunctionSpace(domain, element=("DG", 0))
+        if point_xyzs is None:
+            point_xyzs = domain.geometry.x
 
-        a_form = ufl.TrialFunction(dg_function_space) * ufl.TestFunction(dg_function_space) * ufl.dx
-        l_form = ufl.det(ufl.Identity(domain.geometry.dim) + ufl.grad(transformation)) * \
-                 ufl.TestFunction(dg_function_space) * ufl.dx
+        if bb_tree is None:
+            bb_tree = geometry.bb_tree(domain, domain.topology.dim)
 
-        uh = dolfinx.fem.Function(transformation.function_space)
-        res_dict = LinearProblemSolver.solve_by_petsc_form(
-            comm=domain.comm,
-            uh=uh,
-            a_form=a_form,
-            L_form=l_form,
-            bcs=[],
-            ksp_option={
-                "ksp_type": "preonly",
-                "pc_type": "jacobi",
-                # "pc_jacobi_type": "diagonal",
-            },
-            **kwargs
+        cell_candidates: dolfinx.cpp.graph.AdjacencyList_int32 = geometry.compute_collisions_points(
+            bb_tree, point_xyzs
         )
-        return uh
+        colliding_cells: dolfinx.cpp.graph.AdjacencyList_int32 = geometry.compute_colliding_cells(
+            domain, cell_candidates, point_xyzs
+        )
+
+        cells = []
+        if with_cell_counts:
+            cell_counts = []
+            for i in range(point_xyzs.shape[0]):
+                cells.append(colliding_cells.links(i))
+                cell_counts.append(len(colliding_cells.links(i)))
+            return cells, np.array(cell_counts)
+
+        else:
+            for i in range(point_xyzs.shape[0]):
+                cells.append(colliding_cells.links(i))
+            return cells
 
     @staticmethod
-    def estimate_mesh_quality(domain: dolfinx.mesh.Mesh, quality_measure: str, tdim=None, entities=None):
+    def extract_connectivity(domain: dolfinx.mesh.Mesh):
+        # grid = VisUtils.convert_to_grid(domain)
+        # cells = []
+        # for key in grid.cells_dict.keys():
+        #     cells.append(grid.cells_dict[key])
+        # connectivity = np.concatenate(cells, axis=0)
+
+        connectivity = []
+        adjacency_list: dolfinx.cpp.graph.AdjacencyList_int32 = domain.topology.connectivity(domain.topology.dim, 0)
+        for i in range(adjacency_list.num_nodes):
+            connectivity.append(adjacency_list.links(i))
+        connectivity = np.array(connectivity)
+
+        return connectivity
+
+    @staticmethod
+    def estimate_mesh_quality(
+            obj: Union[dolfinx.mesh.Mesh, pyvista.UnstructuredGrid], quality_measure: str, tdim=None, entities=None
+    ):
         """
         quality_measure:
             1. area
             2. radius_ratio
-            3. skew
+            3. skew            | Fail
             4. volume
             5. max_angle
             6. min_angle
             7. condition
         """
-        grid = VisUtils.convert_to_grid(domain, tdim, entities)
+        if isinstance(obj, dolfinx.mesh.Mesh):
+            grid = VisUtils.convert_to_grid(obj, tdim, entities)
+        else:
+            grid = obj
         qual = grid.compute_cell_quality(quality_measure=quality_measure, progress_bar=False)
         quality = qual['CellQuality']
         return quality
+
+
+class MeshDeformationRunner(object):
+    def __init__(
+            self, domain: dolfinx.mesh.Mesh,
+            volume_change: float = -1.0,
+            quality_measures: Dict = {}
+    ):
+        """
+        quality_measures:{
+            measure_method["max_angle"]: {
+                measure_type: max,
+                tol_upper: float,
+                tol_lower: float
+            }
+        }
+        """
+        self.domain = domain
+        self.num_points = self.domain.geometry.x.shape[0]
+        self.shape = self.domain.geometry.x.shape
+        self.grid = VisUtils.convert_to_grid(domain)
+        self.bb_tree = geometry.bb_tree(domain, domain.topology.dim)
+        self.tdim = self.domain.topology.dim
+        self.fdim = self.tdim - 1
+
+        self.connectivity = MeshQuality.extract_connectivity(self.domain)
+
+        # 计算每个point都被哪些cell包含
+        cell_counter: collections.Counter = collections.Counter(self.connectivity.flatten().tolist())
+        self.occurrences = np.array([cell_counter[i] for i in range(self.num_points)])
+
+        # ------ replace by pyvista
+        # self.dg_function_space = dolfinx.fem.FunctionSpace(domain, element=("DG", 0))
+        # self.cg_function_space = dolfinx.fem.VectorFunctionSpace(domain, element=("CG", 1))
+        # self.transformation_container = dolfinx.fem.Function(self.cg_function_space)
+        # self.ksp_option = {
+        #     "ksp_type": "preonly",
+        #     "pc_type": "jacobi",
+        #     # "pc_jacobi_type": "diagonal",
+        #     # "ksp_rtol": 1e-16,
+        #     # "ksp_atol": 1e-20,
+        #     # "ksp_max_it": 1000,
+        # }
+        # self.A_prior = ufl.TrialFunction(self.dg_function_space) * ufl.TestFunction(self.dg_function_space) * ufl.dx
+        # self.l_prior = det(Identity(domain.geometry.dim) + grad(self.transformation_container)) * \
+        #                ufl.TestFunction(self.dg_function_space) * ufl.dx
+        # ------
+        if self.tdim == 2:
+            self.volume_measure_method = 'area'
+        elif self.tdim == 2:
+            self.volume_measure_method = 'volume'
+
+        self.volume_change = volume_change
+        self.validate_priori = False
+        if self.volume_change > 0.0:
+            self.validate_priori = True
+
+        self.quality_measures = quality_measures
+        self.validate_quality = False
+        if len(self.quality_measures) > 0:
+            self.validate_quality = True
+
+    def detect_collision(self, domain: dolfinx.mesh.Mesh):
+        cells, cell_counts = MeshQuality.compute_cells_from_points(domain, with_cell_counts=True)
+        is_intersections = False
+        if not np.all(cell_counts == self.occurrences):
+            is_intersections = True
+        return is_intersections
+
+    def detect_valid_volume_change(self, displacement_np: np.ndarray, volume_change: float, **kwargs):
+        """
+        estimate the volume change of each cell
+        """
+
+        volume0 = MeshQuality.estimate_mesh_quality(self.grid, self.volume_measure_method)
+        MeshUtils.move(self.domain, displacement_np)
+        volume1 = MeshQuality.estimate_mesh_quality(self.grid, self.volume_measure_method)
+        MeshUtils.move(self.domain, displacement_np * -1.0)
+        uh = volume1 / volume0
+        min_det, max_det = np.min(uh), np.max(uh)
+
+        # ------ replace by pyvista
+        # ------ compute the volume change percentage based on PETSC
+        # displacement_petsc = PETScUtils.create_vec_from_x(displacement_np[:, :self.tdim].reshape(-1))
+        # self.transformation_container.vector.aypx(0.0, displacement_petsc)
+        #
+        # uh = dolfinx.fem.Function(self.dg_function_space)  # volume1 / volume0
+        # res_dict = LinearProblemSolver.solve_by_petsc_form(
+        #     comm=self.domain.comm,
+        #     uh=uh, a_form=self.A_prior, L_form=self.l_prior, bcs=[],
+        #     ksp_option=self.ksp_option,
+        #     **kwargs
+        # )
+        # if kwargs.get('with_debug', False):
+        #     print(f"[DEBUG MeshDeformationRunner]: max_error:{res_dict['max_error']:.6f} "
+        #           f"cost_time:{res_dict['cost_time']:.2f}")
+        #
+        # min_idx, min_det = uh.vector.min()
+        # max_idx, max_det = uh.vector.max()
+        # ------
+
+        min_det = min_det - 1.0
+        max_det = max_det - 1.0
+
+        is_valid = (min_det >= -volume_change) and (max_det <= volume_change)
+        return is_valid
+
+    def detect_mesh_quality(self, domain):
+        is_valid = True
+        for measure_method in self.quality_measures.keys():
+            meausre_info = self.quality_measures[measure_method]
+            qualitys = MeshQuality.estimate_mesh_quality(domain, measure_method)
+            if meausre_info['measure_type'] == 'min':
+                quality = np.min(qualitys)
+            elif meausre_info['measure_type'] == 'max':
+                quality = np.max(qualitys)
+            else:
+                quality = np.mean(qualitys)
+
+            is_valid = (quality >= meausre_info['tol_lower']) and (quality <= meausre_info['tol_upper'])
+            if not is_valid:
+                return is_valid
+
+        return is_valid
+
+    def move_mesh(self, displacement_np: np.ndarray, **kwargs):
+        info = "Success"
+
+        if displacement_np.shape != self.shape:
+            raise ValueError("[ERROR]: Shape UnCompatible")
+
+        if self.validate_priori:
+            is_valid = self.detect_valid_volume_change(displacement_np, self.volume_change, **kwargs)
+            if not is_valid:
+                info = "validate priori Fail"
+                return False, info
+
+        MeshUtils.move(self.domain, displacement_np)
+
+        is_intersections = self.detect_collision(self.domain)
+        if is_intersections:
+            MeshUtils.move(self.domain, displacement_np * -1.0)  # revert mesh
+            info = "mesh intersect"
+            return False, info
+
+        if self.validate_quality:
+            is_valid_quality = self.detect_mesh_quality(self.domain)
+            if not is_valid_quality:
+                MeshUtils.move(self.domain, displacement_np * -1.0)  # revert mesh
+                info = "validate quality Fail"
+                return False, info
+
+        return True, info
+
+    def move_mesh_by_line_search(
+            self,
+            direction_np: np.ndarray,
+            max_iter: int, init_stepSize=1.0, stepSize_lower=1e-4,
+            detect_cost_valid_func: Callable = None,
+            **kwargs
+    ):
+        step_size = init_stepSize
+        iteration = 0
+        success_flag = False
+
+        while True:
+            if step_size < stepSize_lower:
+                break
+
+            displacement_np = direction_np * step_size
+            success_flag, info = self.move_mesh(displacement_np, **kwargs)
+            # print(f"[DEBUG MeshDeformationRunner] success_flag:{success_flag} info:{info}")
+
+            if success_flag:
+                is_valid = True
+                if detect_cost_valid_func is not None:
+                    is_valid = detect_cost_valid_func()
+
+                if is_valid:
+                    break
+                else:
+                    MeshUtils.move(self.domain, displacement_np * -1.0)  # revert mesh
+
+            step_size = step_size / 2.0
+            iteration += 1
+
+            if iteration > max_iter:
+                break
+
+        return success_flag, step_size
+
+    def require_remesh(self):
+        pass

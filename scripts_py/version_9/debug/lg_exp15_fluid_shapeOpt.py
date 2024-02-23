@@ -1,3 +1,7 @@
+"""
+Ref: https://github.com/dolfin-adjoint/dolfin-adjoint/tree/main/examples/shape-optimization-pipe
+"""
+
 import numpy as np
 import ufl
 from basix.ufl import element
@@ -17,10 +21,6 @@ from scripts_py.version_9.dolfinx_Grad.recorder_utils import VTKRecorder
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 
-"""
-1. Mesh Quality Helper for re mesher
-2. SubMapp Tech
-"""
 
 proj_dir = '/home/admin123456/Desktop/work/topopt_exps/fluid_shape2'
 model_xdmf = os.path.join(proj_dir, 'model.xdmf')

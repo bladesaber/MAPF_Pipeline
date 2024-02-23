@@ -72,7 +72,8 @@ class StateProblem(object):
                         raise ValueError("[DEBUG###] Nonlinear Solver Fail")
 
                 if kwargs.get('with_debug', False):
-                    print(f"[DEBUG]: max_error:{res_dict['max_error']:.6f} cost_time:{res_dict['cost_time']:.2f}")
+                    print(f"[DEBUG StateSystem]: max_error:{res_dict['max_error']:.6f} "
+                          f"cost_time:{res_dict['cost_time']:.2f}")
 
             self.has_solution = True
 

@@ -1,7 +1,7 @@
 import dolfinx.mesh
 import numpy as np
 import ufl
-from typing import Callable, Union
+from typing import Callable, Union, Dict, List
 from ufl import inner, div, grad
 from functools import partial
 from ufl.core import expr
@@ -76,6 +76,94 @@ class ControlGradientProblem(object):
         return self.has_solution
 
 
+class ShapeStiffness(object):
+    def __init__(
+            self,
+            mu_lame: dolfinx.fem.Function,
+            domain: dolfinx.mesh.Mesh,
+            cell_tags: dolfinx.mesh.MeshTags,
+            facet_tags: dolfinx.mesh.MeshTags,
+            bry_fixed_markers: List[int],
+            bry_free_markers: List[int],
+            mu_free: float = 1.0, mu_fix: float = 0.1,
+    ):
+        self.mu_lame = mu_lame
+        self.domain = domain
+        self.cell_tags = cell_tags
+        self.facet_tags = facet_tags
+        self.bry_fixed_markers = bry_fixed_markers
+        self.bry_free_markers = bry_free_markers
+        self.tdim = self.domain.topology.dim
+        self.fdim = self.tdim - 1
+
+        self.ds = MeshUtils.define_ds(self.domain, self.facet_tags)
+        self.cg_function_space = self.mu_lame.function_space
+
+        self.mu_free = mu_free
+        self.mu_fix = mu_fix
+        self.inhomogeneous_mu = False
+        self._setup_form()
+
+        self.ksp_option = {
+            "ksp_type": "cg",
+            "pc_type": "hypre",
+            "pc_hypre_mat_solver_type": "boomeramg",
+            # "ksp_rtol": 1e-16,
+            # "ksp_atol": 1e-50,
+            # "ksp_max_it": 100,
+        }
+
+    def _setup_form(self):
+        if np.abs(self.mu_free - self.mu_fix) / self.mu_fix > 1e-2:
+            self.inhomogeneous_mu = True
+
+            phi = ufl.TrialFunction(self.cg_function_space)
+            psi = ufl.TestFunction(self.cg_function_space)
+
+            self.A_mu = inner(grad(phi), grad(psi)) * ufl.dx
+            self.l_mu = inner(dolfinx.fem.Constant(self.domain, 0.0), psi) * ufl.dx
+            self.bcs = []
+
+            for marker in self.bry_fixed_markers:
+                bc_dofs = MeshUtils.extract_entity_dofs(
+                    self.cg_function_space, self.fdim,
+                    MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
+                )
+                bc = dolfinx.fem.dirichletbc(
+                    dolfinx.fem.Constant(self.domain, self.mu_fix), bc_dofs, self.cg_function_space
+                )
+                self.bcs.append(bc)
+
+            for marker in self.bry_free_markers:
+                bc_dofs = MeshUtils.extract_entity_dofs(
+                    self.cg_function_space, self.fdim,
+                    MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
+                )
+                bc = dolfinx.fem.dirichletbc(
+                    dolfinx.fem.Constant(self.domain, self.mu_free), bc_dofs, self.cg_function_space
+                )
+                self.bcs.append(bc)
+
+    def compute(self, **kwargs):
+        if self.inhomogeneous_mu:
+            res_dict = LinearProblemSolver.solve_by_petsc_form(
+                comm=self.domain.comm,
+                uh=self.mu_lame,
+                a_form=self.A_mu,
+                L_form=self.l_mu,
+                bcs=self.bcs,
+                ksp_option=self.ksp_option,
+                **kwargs
+            )
+
+            if kwargs.get("with_debug", False):
+                print(f"[DEBUG ShapeStiffness]: max_error:{res_dict['max_error']:.6f} "
+                      f"cost_time:{res_dict['cost_time']:.2f}")
+
+        else:
+            self.mu_lame.vector.set(self.mu_free)
+
+
 class ShapeGradientProblem(object):
     def __init__(
             self,
@@ -83,7 +171,7 @@ class ShapeGradientProblem(object):
             lagrangian_function: LagrangianFunction,
             shape_regulariztions: ShapeRegularization,
             scalar_product: Callable = None,
-            scalar_product_method: str = 'default'
+            scalar_product_method: Dict = {'method': "default"}
     ):
         self.has_solution = False
 
@@ -91,14 +179,20 @@ class ShapeGradientProblem(object):
         self.lagrangian_function = lagrangian_function
         self.shape_regulariztions = shape_regulariztions
 
+        self.scalar_product_method = scalar_product_method
         if scalar_product is None:
-            self.scalar_product = partial(self._scalar_product, method=scalar_product_method)
+            self.scalar_product = partial(self._scalar_product, method_info=scalar_product_method)
         else:
             self.scalar_product = scalar_product
 
         self.trial_u = ufl.TrialFunction(self.shape_problem.deformation_space)
         self.test_v = ufl.TestFunction(self.shape_problem.deformation_space)
         self.coodr = MeshUtils.define_coordinate(self.shape_problem.domain)
+        self.dg_functon_space = dolfinx.fem.FunctionSpace(self.shape_problem.domain, ('DG', 0))
+        self.cg_functon_space = dolfinx.fem.FunctionSpace(self.shape_problem.domain, ('CG', 1))
+        self.cell_volume_expr = UFLUtils.create_expression(
+            ufl.CellVolume(self.shape_problem.domain), self.dg_functon_space
+        )
 
         self._compute_gradient_equations()
 
@@ -108,26 +202,43 @@ class ShapeGradientProblem(object):
         grad_forms_lhs = self.scalar_product(self.trial_u, self.test_v)
         self.shape_problem.set_gradient_eq_form(grad_forms_lhs, grad_forms_rhs)
 
-    def _scalar_product(self, trial_u: ufl.Argument, test_v: ufl.Argument, method: str):
-        if method == 'default':
+    def _scalar_product(self, trial_u: ufl.Argument, test_v: ufl.Argument, method_info: Dict):
+        if method_info['method'] == "default":
             lhs_form = inner((grad(trial_u)), (grad(test_v))) * ufl.dx + inner(trial_u, test_v) * ufl.dx
 
-        elif method == 'surface_metrics':
-            # TODO Fail, it is wrong Now
+        elif method_info['method'] == "Poincare-Steklov operator":
             """
             Based on `Schulz and Siebenborn, Computational Comparison of Surface Metrics for
             PDE Constrained Shape Optimization <https://doi.org/10.1515/cmam-2016-0009>`_.
             """
 
-            mu_lame = dolfinx.fem.Constant(self.shape_problem.domain, 1.0)
-            inhomogeneous_exponent = dolfinx.fem.Constant(self.shape_problem.domain, 1.0)
-            constant = dolfinx.fem.Constant(self.shape_problem.domain, 2.0)
+            self.mu_lame = dolfinx.fem.Function(self.cg_functon_space, name='mu_lame')
+            lambda_lame = method_info.get("lambda_lame", 1.0)
+            damping_factor = method_info.get("damping_factor", 0.2)
 
-            DG = dolfinx.fem.FunctionSpace(self.shape_problem.domain, ('DG', 0))
-            cell_volume = dolfinx.fem.Function(DG, name='cell_volume')
-            cell_volume.interpolate(UFLUtils.create_expression(ufl.CellVolume(self.shape_problem.domain), DG))
-            vol_max_idx, vol_max = cell_volume.vector.max()
-            cell_volume.vector.scale(1.0 / vol_max)
+            self.shape_stiffness = ShapeStiffness(
+                mu_lame=self.mu_lame,
+                domain=self.shape_problem.domain,
+                cell_tags=method_info['cell_tags'],
+                facet_tags=method_info['facet_tags'],
+                bry_free_markers=method_info['bry_free_markers'],
+                bry_fixed_markers=method_info['bry_fixed_markers']
+            )
+            self.update_inhomogeneous = method_info['update_inhomogeneous']
+
+            self.cell_volumes = dolfinx.fem.Function(self.dg_functon_space, name='cell_volume')
+            if method_info["use_inhomogeneous"]:
+                self.cell_volumes.interpolate(self.cell_volume_expr)
+                vol_max_idx, vol_max = self.cell_volumes.vector.max()
+                self.cell_volumes.vector.scale(1.0 / vol_max)
+
+                self.inhomogeneous_exponent = dolfinx.fem.Constant(
+                    self.shape_problem.domain, method_info["inhomogeneous_exponent"]
+                )
+
+            else:
+                self.cell_volumes.vector.set(1.0)
+                self.inhomogeneous_exponent = dolfinx.fem.Constant(self.shape_problem.domain, 1.0)
 
             def eps(u: Union[dolfinx.fem.Function, ufl.TrialFunction, ufl.TestFunction]) -> expr.Expr:
                 """Computes the symmetric gradient of a vector field ``u``.
@@ -139,8 +250,20 @@ class ShapeGradientProblem(object):
                 """
                 return 0.5 * (grad(u) + grad(u).T)
 
-            lhs_form = constant * mu_lame / np.power(cell_volume, inhomogeneous_exponent) * \
-                       inner(eps(trial_u), eps(test_v)) * ufl.dx
+            constant = dolfinx.fem.Constant(self.shape_problem.domain, 2.0)
+            lambda_constant = dolfinx.fem.Constant(self.shape_problem.domain, lambda_lame)
+            damping_constant = dolfinx.fem.Constant(self.shape_problem.domain, damping_factor)
+
+            lhs_form = (
+                    constant * self.mu_lame / np.power(self.cell_volumes, self.inhomogeneous_exponent)
+                    * inner(eps(trial_u), eps(test_v)) * ufl.dx
+
+                    + lambda_constant / np.power(self.cell_volumes, self.inhomogeneous_exponent) * div(trial_u)
+                    * div(test_v) * ufl.dx
+
+                    + damping_constant / np.power(self.cell_volumes, self.inhomogeneous_exponent)
+                    * inner(trial_u, test_v) * ufl.dx
+            )
 
         else:
             raise NotImplementedError
@@ -184,3 +307,12 @@ class ShapeGradientProblem(object):
 
             self.has_solution = True
         return self.has_solution
+
+    def update_scalar_product(self, **kwargs):
+        if self.scalar_product_method['method'] == 'Poincare-Steklov operator':
+            self.shape_stiffness.compute(**kwargs)
+
+            if self.update_inhomogeneous:
+                self.cell_volumes.interpolate(self.cell_volume_expr)
+                vol_max_idx, vol_max = self.cell_volumes.vector.max()
+                self.cell_volumes.vector.scale(1.0 / vol_max)
