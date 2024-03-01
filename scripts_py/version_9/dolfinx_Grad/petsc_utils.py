@@ -32,15 +32,21 @@ class PETScUtils(object):
         for row_idx, col_idx, value in zip(row_idxs, col_idxs, values):
             A_mat.setValue(row_idx, col_idx, value)
         A_mat.assemble()
+        return A_mat
 
     @staticmethod
     def get_array_from_mat(x: PETSc.Mat, row_idxs: list[int] = None, col_idxs: list[int] = None):
         size = x.getSize()
         if row_idxs is None:
-            row_idxs = range(size[0])
+            row_idxs = range(0, size[0])
         if col_idxs is None:
-            col_idxs = range(size[1])
+            col_idxs = range(0, size[1])
         return x.getValues(row_idxs, col_idxs)
+
+    @staticmethod
+    def get_csr_from_mat(x: PETSc.Mat):
+        row_idxs, col_idxs, values = x.getValuesCSR()
+        return row_idxs, col_idxs, values
 
     @staticmethod
     def create_vec_from_x(x: np.ndarray):

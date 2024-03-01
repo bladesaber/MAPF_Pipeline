@@ -11,6 +11,7 @@ from .type_database import ControlDataBase, ShapeDataBase
 from ..equation_solver import LinearProblemSolver
 from ..dolfinx_utils import MeshUtils, AssembleUtils, UFLUtils
 from .shape_regularization import ShapeRegularization
+from ..remesh_helper import MeshQuality
 
 
 class ControlGradientProblem(object):
@@ -161,7 +162,7 @@ class ShapeStiffness(object):
                       f"cost_time:{res_dict['cost_time']:.2f}")
 
         else:
-            self.mu_lame.vector.set(self.mu_free)
+            self.mu_lame.vector.set(self.mu_fix)
 
 
 class ShapeGradientProblem(object):
@@ -213,6 +214,8 @@ class ShapeGradientProblem(object):
             """
 
             self.mu_lame = dolfinx.fem.Function(self.cg_functon_space, name='mu_lame')
+            self.mu_lame.vector.set(1.0)
+
             lambda_lame = method_info.get("lambda_lame", 1.0)
             damping_factor = method_info.get("damping_factor", 0.2)
 
@@ -222,7 +225,9 @@ class ShapeGradientProblem(object):
                 cell_tags=method_info['cell_tags'],
                 facet_tags=method_info['facet_tags'],
                 bry_free_markers=method_info['bry_free_markers'],
-                bry_fixed_markers=method_info['bry_fixed_markers']
+                bry_fixed_markers=method_info['bry_fixed_markers'],
+                mu_free=method_info.get('mu_free', 1.0),
+                mu_fix=method_info.get('mu_fix', 1.0)
             )
             self.update_inhomogeneous = method_info['update_inhomogeneous']
 
@@ -248,22 +253,32 @@ class ShapeGradientProblem(object):
                     The symmetric gradient of ``u``
 
                 """
-                return 0.5 * (grad(u) + grad(u).T)
+                return dolfinx.fem.Constant(self.shape_problem.domain, 0.5) * (grad(u) + grad(u).T)
 
             constant = dolfinx.fem.Constant(self.shape_problem.domain, 2.0)
             lambda_constant = dolfinx.fem.Constant(self.shape_problem.domain, lambda_lame)
             damping_constant = dolfinx.fem.Constant(self.shape_problem.domain, damping_factor)
 
             lhs_form = (
-                    constant * self.mu_lame / np.power(self.cell_volumes, self.inhomogeneous_exponent)
+                    constant * self.mu_lame / ufl.elem_pow(self.cell_volumes, self.inhomogeneous_exponent)
                     * inner(eps(trial_u), eps(test_v)) * ufl.dx
 
-                    + lambda_constant / np.power(self.cell_volumes, self.inhomogeneous_exponent) * div(trial_u)
-                    * div(test_v) * ufl.dx
+                    + lambda_constant / ufl.elem_pow(self.cell_volumes, self.inhomogeneous_exponent)
+                    * div(trial_u) * div(test_v) * ufl.dx
 
-                    + damping_constant / np.power(self.cell_volumes, self.inhomogeneous_exponent)
+                    + damping_constant / ufl.elem_pow(self.cell_volumes, self.inhomogeneous_exponent)
                     * inner(trial_u, test_v) * ufl.dx
             )
+
+            # print('mu_lame: ', self.mu_lame.x.array[:])
+            # print('lambda_lame: ', lambda_lame)
+            # print('damping_factor: ', damping_factor)
+            # print('volumes: ', self.cell_volumes.x.array[:])
+            # print('inhomogeneous_exponent: ', self.inhomogeneous_exponent.value)
+            # print(lhs_form)
+            # raise ValueError
+
+            self.shape_stiffness.compute(with_debug=True)
 
         else:
             raise NotImplementedError
@@ -281,7 +296,6 @@ class ShapeGradientProblem(object):
                 L_form=self.shape_problem.gradient_eq_form_rhs,
                 bcs=self.shape_problem.bcs,
                 ksp_option=self.shape_problem.gradient_ksp_option,
-                with_debug=False,
                 **kwargs
             )
 
@@ -305,6 +319,10 @@ class ShapeGradientProblem(object):
             # )
             # # ------
 
+            if kwargs.get('with_debug', False):
+                print(f"[DEBUG GradientSystem]: max_error:{res_dict['max_error']:.8f} "
+                      f"cost_time:{res_dict['cost_time']:.2f}")
+
             self.has_solution = True
         return self.has_solution
 
@@ -316,3 +334,4 @@ class ShapeGradientProblem(object):
                 self.cell_volumes.interpolate(self.cell_volume_expr)
                 vol_max_idx, vol_max = self.cell_volumes.vector.max()
                 self.cell_volumes.vector.scale(1.0 / vol_max)
+

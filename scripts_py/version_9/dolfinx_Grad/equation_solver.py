@@ -80,7 +80,6 @@ class LinearProblemSolver(object):
 
         solver.setFromOptions()
 
-        # ------
         if A_mat is not None:
             solver.setOperators(A_mat)
 
@@ -122,6 +121,8 @@ class LinearProblemSolver(object):
             tick0 = time.time()
 
         solver.solve(b_vec, res_vec)
+        res_vec.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
+
         res_dict = {'res': res_vec}
 
         if with_debug:
@@ -148,8 +149,10 @@ class LinearProblemSolver(object):
 
     @staticmethod
     def solve_by_dolfinx(
-            a_form: ufl.Form, L_form: ufl.Form, bcs: List[dolfinx.fem.DirichletBC], ksp_option=None
-    ) -> dolfinx.fem.Function:
+            uh: dolfinx.fem.function.Function,
+            a_form: ufl.Form, L_form: ufl.Form, bcs: List[dolfinx.fem.DirichletBC],
+            ksp_option=None
+    ):
         if ksp_option is None:
             ksp_option = {
                 "ksp_type": "preonly",
@@ -157,9 +160,18 @@ class LinearProblemSolver(object):
                 "pc_factor_mat_solver_type": "mumps",
                 "mat_mumps_icntl_24": 1,
             }
-        problem = LinearProblem(a_form, L_form, bcs, petsc_options=ksp_option)
+
+        problem = LinearProblem(a_form, L_form, bcs, u=uh, petsc_options=ksp_option)
+
+        tick0 = time.time()
         uh = problem.solve()
-        return uh
+        cost_time = time.time() - tick0
+
+        res_dict = {
+            'res': uh,
+            'cost_time': cost_time,
+        }
+        return res_dict
 
     @staticmethod
     def solve_by_petsc_form(
@@ -172,19 +184,22 @@ class LinearProblemSolver(object):
             **kwargs
     ):
         if isinstance(a_form, ufl.Form):
-            a_form = dolfinx.fem.form(a_form)
-        if isinstance(L_form, ufl.Form):
-            b_form = dolfinx.fem.form(L_form)
+            a_compile_form = dolfinx.fem.form(a_form)
         else:
-            b_form = L_form
+            a_compile_form = a_form
+
+        if isinstance(L_form, ufl.Form):
+            b_compile_form = dolfinx.fem.form(L_form)
+        else:
+            b_compile_form = L_form
 
         tick0 = time.time()
-        a_mat = AssembleUtils.assemble_mat(a_form, bcs)
+        a_mat = AssembleUtils.assemble_mat(a_compile_form, bcs, method=kwargs.get('A_assemble_method', 'lift'))
         time_a_mat = time.time() - tick0
 
         tick0 = time.time()
-        b_vec = AssembleUtils.assemble_vec(b_form)
-        BoundaryUtils.apply_boundary_to_vec(b_vec, bcs, a_form, clean_vec=False)
+        b_vec = AssembleUtils.assemble_vec(b_compile_form)
+        BoundaryUtils.apply_boundary_to_vec(b_vec, bcs, a_compile_form, clean_vec=False)
         time_b_vec = time.time() - tick0
 
         if kwargs.get('record_mat_dir', False):
@@ -239,10 +254,12 @@ class NonlinearPdeHelper:
     @staticmethod
     def jacobi(
             snes: PETSc.SNES, x: PETSc.Vec, J_mat: PETSc.Mat, P: PETSc.Mat,
-            jacobi_form: dolfinx.fem.Form, bcs: List[dolfinx.fem.DirichletBC]
+            jacobi_form: dolfinx.fem.Form, bcs: List[dolfinx.fem.DirichletBC],
+            method='lift'
     ):
         J_mat.zeroEntries()  # clear jacobi matrix
-        petsc.assemble_matrix(J_mat, jacobi_form, bcs=bcs, diagonal=1.0)  # recompute the jacobi matrix
+        # petsc.assemble_matrix(J_mat, jacobi_form, bcs=bcs, diagonal=1.0)  # recompute the jacobi matrix
+        AssembleUtils.assemble_mat(a_form=jacobi_form, bcs=bcs, A_mat=J_mat, diagonal=1.0, method=method)
         J_mat.assemble()
 
     @staticmethod
@@ -323,7 +340,8 @@ class NonLinearProblemSolver(object):
         jacobi_func = partial(
             NonlinearPdeHelper.jacobi,
             jacobi_form=dFdu_dolfinx,
-            bcs=bcs
+            bcs=bcs,
+            method=kwargs.get('A_assemble_method', 'lift')
         )
         obj_func = partial(
             NonlinearPdeHelper.obj_func,
@@ -359,6 +377,8 @@ class NonLinearProblemSolver(object):
             solver.setConvergenceHistory()
 
         solver.solve(None, uh.vector)
+        uh.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
+
         res = {'res': uh}
 
         if with_debug:
@@ -381,28 +401,48 @@ class NonLinearProblemSolver(object):
         return res
 
 
-def find_linear_ksp_option(record_file: str, A_mat_dat: str, b_vec_dat: str, ref_record_file: str = None):
+def find_linear_ksp_option(
+        record_file: str,
+        A_mat_dat: Union[str, PETSc.Mat],
+        b_vec_dat: Union[str, PETSc.Vec],
+        ref_record_file: str = None,
+        ksp_types: List[str] = None,
+        pc_types: List[str] = None
+):
+    if isinstance(A_mat_dat, str):
+        assert A_mat_dat.endswith('.dat')
+    if isinstance(b_vec_dat, str):
+        assert b_vec_dat.endswith('.dat')
     assert record_file.endswith('.csv')
-    assert A_mat_dat.endswith('.dat') and b_vec_dat.endswith('.dat')
-    ksp_types = [
-        'richardson', 'preonly', 'cg', 'pipecg', 'groppcg', 'pipecgrr',
-        'cgne', 'fcg', 'pipefcg', 'cgls', 'nash', 'stcg', 'gltr',
-        'bicg', 'bcgs', 'ibcgs', 'qmrcgs', 'fbcgs', 'bcgsl', 'minres', 'gmres',
-        'fgmres', 'dgmres', 'pgmres', 'pipefgmres', 'lgmres', 'cr', 'gcr',
-        'pipecr', 'cgs', 'tfqmr', 'tcqmr', 'lsqr', 'symmlq',
-        # 'chebyshev', 'qcg', 'tsirm', 'fetidp',
-    ]
-    pc_types = [
-        'lu', 'ksp', 'none',
-        'jacobi', 'bjacobi', 'sor', 'eisenstat', 'icc', 'ilu', 'asm',
-        'gasm', 'gamg', 'cholesky',
-        # 'bddc', 'composite'  # give up
-    ]
 
-    A_mat = PETScUtils.create_mat()
-    PETScUtils.load_data(A_mat, A_mat_dat)
-    b_vec = PETScUtils.create_vec()
-    PETScUtils.load_data(b_vec, b_vec_dat)
+    if ksp_types is None:
+        ksp_types = [
+            'richardson', 'preonly', 'cg', 'pipecg', 'groppcg', 'pipecgrr',
+            'cgne', 'fcg', 'pipefcg', 'cgls', 'nash', 'stcg', 'gltr',
+            'bicg', 'bcgs', 'ibcgs', 'qmrcgs', 'fbcgs', 'bcgsl', 'minres', 'gmres',
+            'fgmres', 'dgmres', 'pgmres', 'pipefgmres', 'lgmres', 'cr', 'gcr',
+            'pipecr', 'cgs', 'tfqmr', 'tcqmr', 'lsqr', 'symmlq',
+            # 'chebyshev', 'qcg', 'tsirm', 'fetidp',
+        ]
+    if pc_types is None:
+        pc_types = [
+            'lu', 'ksp', 'none',
+            'jacobi', 'bjacobi', 'sor', 'eisenstat', 'icc', 'ilu', 'asm',
+            'gasm', 'gamg', 'cholesky',
+            # 'bddc', 'composite'  # give up
+        ]
+
+    if isinstance(A_mat_dat, str):
+        A_mat = PETScUtils.create_mat()
+        PETScUtils.load_data(A_mat, A_mat_dat)
+    else:
+        A_mat = A_mat_dat
+
+    if isinstance(b_vec_dat, str):
+        b_vec = PETScUtils.create_vec()
+        PETScUtils.load_data(b_vec, b_vec_dat)
+    else:
+        b_vec = b_vec_dat
 
     print(f"A_mat Size:{PETScUtils.get_size(A_mat)}, b_vec Size:{PETScUtils.get_size(b_vec)}")
     print(f"b_vec isNan:{np.any(np.isnan(b_vec))}, isInf:{np.any(np.isinf(b_vec))} abs_sum:{np.sum(np.abs(b_vec))}")

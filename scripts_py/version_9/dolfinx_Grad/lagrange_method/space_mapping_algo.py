@@ -17,7 +17,7 @@ class FineModel(object):
             self,
             state_form: ufl.Form,
             uh_fine: dolfinx.fem.Function,
-            control_s: Union[dolfinx.mesh.Mesh, dolfinx.fem.Function],
+            control: Union[dolfinx.mesh.Mesh, dolfinx.fem.Function],
             bcs: List[dolfinx.fem.DirichletBC],
             ksp_option: Dict,
             is_linear: bool
@@ -29,7 +29,7 @@ class FineModel(object):
         self.bcs = bcs
 
         self.uh_fine = uh_fine
-        self.control_s = control_s  # Control Parameter of FineModel FunctionSpace
+        self.control = control  # Control Parameter of FineModel FunctionSpace
 
         self.is_linear = is_linear
         self.check_valid()
@@ -118,20 +118,20 @@ class ParameterExtraction(object):
     def __init__(
             self,
             opt_problem: Union[OptimalControlProblem, OptimalShapeProblem],
-            control_z: Union[dolfinx.mesh.Mesh, dolfinx.fem.Function],
+            control: Union[dolfinx.mesh.Mesh, dolfinx.fem.Function],
             extract_parameter_func: Callable,
     ):
         self.opt_problem = opt_problem
-        self.control_z = control_z  # Control Parameter of CoarseModel FunctionSpace
+        self.control = control  # Control Parameter of CoarseModel FunctionSpace
         self._extract_parameter = extract_parameter_func
-        self.parameter_z: np.ndarray = None
+        self.parameter_extract: np.ndarray = None
 
     def _optimize(self, **kwargs):
         raise NotImplementedError
 
     def solve(self, **kwargs):
         self._optimize(**kwargs)
-        self.parameter_z = self._extract_parameter(self.control_z)
+        self.parameter_extract = self._extract_parameter(self.control)
 
 
 class SpaceMappingProblem(object):
@@ -140,8 +140,7 @@ class SpaceMappingProblem(object):
             coarse_model: CoarseModel,
             fine_model: FineModel,
             parameter_extraction: ParameterExtraction,
-            tol: float,
-            max_iter: int,
+            tol: float, max_iter: int,
             is_coarse_fine_collinear: bool = False
     ):
         self.coarse_model = coarse_model
@@ -154,48 +153,70 @@ class SpaceMappingProblem(object):
         self.max_iter = max_iter
 
     def solve(
-            self, coarseModel_kwargs: Dict, fineModel_kwargs: Dict, paraExtract_kwargs: Dict
+            self,
+            coarseModel_kwargs: Dict = {},
+            fineModel_kwargs: Dict = {},
+            paraExtract_kwargs: Dict = {},
+            **kwargs
     ):
         self.coarse_model.solve(**coarseModel_kwargs)
-        z_star = self.coarse_model.parameter_optimal
+        best_para_of_z_space = self.coarse_model.parameter_optimal
 
-        iteration = 0
+        step = 0
         converged = False
         while True:
-            iteration += 1
+            step += 1
 
-            # step 1: update uh_fine
+            # ------ step 1: update uh_fine
             self.fine_model.solve_and_evaluate(**fineModel_kwargs)
 
-            # step 2: compute z_cur based on new uh_fine
+            # ------ step 2: compute z_cur based on new uh_fine
             self.parameter_extraction.solve(**paraExtract_kwargs)
 
-            self.pre_log(iteration)
+            # ------ step 2.5: log something
+            self.pre_log(step)
 
-            eps = self._compute_eps(z_cur=self.parameter_extraction.parameter_z, z_star=z_star)
+            # ------ step 3: compute direction
+            grad = self._compute_direction_step(
+                para_s2z=self.parameter_extraction.parameter_extract,
+                para_best_z=best_para_of_z_space,
+                **kwargs
+            )
+
+            # ------ step 4: update model
+            updated_info = self._update(grad, self.fine_model, **kwargs)
+
+            # ------ step 5: compute eps
+            eps = self._compute_eps(updated_info)
+
+            # ------ step 5.5: update model
+            self.post_log(step, eps)
+
+            # ------ step 6: check convergence
             if eps <= self.tol:
                 converged = True
                 break
 
-            if iteration >= self.max_iter:
+            if step >= self.max_iter:
                 break
 
-            grad = self._compute_direction_step(z_star=z_star, z_cur=self.parameter_extraction.parameter_z)
-            self._update(grad, self.fine_model)
+        return converged
 
-            self.post_log(iteration, eps)
+    def _compute_eps(self, updated_info: Dict) -> float:
+        raise NotImplementedError
 
-    def _compute_direction_step(self, z_star, z_cur, **kwargs) -> np.ndarray:
+    def _compute_direction_step(self, para_s2z: np.ndarray, para_best_z: np.ndarray, **kwargs) -> np.ndarray:
         """
         Direction is Calculated in Coarse FunctionSpace but Used in Fine FunctionSpace, so You Must confirm
         relationship between Coarse FunctionSpace and Fine FunctionSpace is similar and linear
+
+        Param:
+            para_s2z: Parameter of coarseModel functionSpace mapped by current fineModel functionSpace
+            para_best_z: The best parameter of coarseModel functionSpace
         """
         raise NotImplementedError
 
-    def _update(self, grad: np.ndarray, fine_model: FineModel):
-        raise NotImplementedError
-
-    def _compute_eps(self, z_cur, z_star) -> float:
+    def _update(self, grad: np.ndarray, fine_model: FineModel, **kwargs) -> Dict:
         raise NotImplementedError
 
     def pre_log(self, step: int):

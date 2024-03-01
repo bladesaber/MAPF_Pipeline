@@ -9,14 +9,10 @@ import numpy as np
 from dolfinx.io.gmshio import extract_geometry
 from sklearn.neighbors import KDTree
 from dolfinx import geometry
-import ufl
-from ufl import det, Identity, grad
 import collections
 
 from .dolfinx_utils import MeshUtils
 from .vis_mesh_utils import VisUtils
-from .equation_solver import LinearProblemSolver
-from .petsc_utils import PETScUtils
 
 
 class ReMesher(object):
@@ -374,8 +370,15 @@ class MeshDeformationRunner(object):
 
         return is_valid
 
+    def compute_mesh_quality(self, domain):
+        res = {}
+        for measure_method in self.quality_measures.keys():
+            qualitys = MeshQuality.estimate_mesh_quality(domain, measure_method)
+            res[measure_method] = qualitys
+        return res
+
     def move_mesh(self, displacement_np: np.ndarray, **kwargs):
-        info = "Success"
+        info = "Info:"
 
         if displacement_np.shape != self.shape:
             raise ValueError("[ERROR]: Shape UnCompatible")
@@ -383,7 +386,7 @@ class MeshDeformationRunner(object):
         if self.validate_priori:
             is_valid = self.detect_valid_volume_change(displacement_np, self.volume_change, **kwargs)
             if not is_valid:
-                info = "validate priori Fail"
+                info += "Validate Priori Fail"
                 return False, info
 
         MeshUtils.move(self.domain, displacement_np)
@@ -391,16 +394,17 @@ class MeshDeformationRunner(object):
         is_intersections = self.detect_collision(self.domain)
         if is_intersections:
             MeshUtils.move(self.domain, displacement_np * -1.0)  # revert mesh
-            info = "mesh intersect"
+            info += " |Mesh Intersect"
             return False, info
 
         if self.validate_quality:
             is_valid_quality = self.detect_mesh_quality(self.domain)
             if not is_valid_quality:
                 MeshUtils.move(self.domain, displacement_np * -1.0)  # revert mesh
-                info = "validate quality Fail"
+                info += " |Validate Quality Fail"
                 return False, info
 
+        info += "Success"
         return True, info
 
     def move_mesh_by_line_search(
@@ -408,7 +412,7 @@ class MeshDeformationRunner(object):
             direction_np: np.ndarray,
             max_iter: int, init_stepSize=1.0, stepSize_lower=1e-4,
             detect_cost_valid_func: Callable = None,
-            **kwargs
+            with_debug_info=False, **kwargs
     ):
         step_size = init_stepSize
         iteration = 0
@@ -419,18 +423,21 @@ class MeshDeformationRunner(object):
                 break
 
             displacement_np = direction_np * step_size
-            success_flag, info = self.move_mesh(displacement_np, **kwargs)
-            # print(f"[DEBUG MeshDeformationRunner] success_flag:{success_flag} info:{info}")
+            valid_move_flag, info = self.move_mesh(displacement_np, **kwargs)
+            # print(f"[DEBUG MeshDeformationRunner] Success_flag:{success_flag} Info:{info}")
 
-            if success_flag:
-                is_valid = True
+            if valid_move_flag:
+                valid_cost_flag = True
                 if detect_cost_valid_func is not None:
-                    is_valid = detect_cost_valid_func()
+                    valid_cost_flag = detect_cost_valid_func()
 
-                if is_valid:
+                if valid_cost_flag:
+                    success_flag = True
                     break
+
                 else:
                     MeshUtils.move(self.domain, displacement_np * -1.0)  # revert mesh
+                    info += '| Cost Detect Fail'
 
             step_size = step_size / 2.0
             iteration += 1
@@ -438,7 +445,10 @@ class MeshDeformationRunner(object):
             if iteration > max_iter:
                 break
 
+        if with_debug_info:
+            print(f"[DEBUG MeshDeformationRunner] Success_flag:{success_flag} Info:{info}")
+
         return success_flag, step_size
 
     def require_remesh(self):
-        pass
+        raise NotImplementedError

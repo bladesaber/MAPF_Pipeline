@@ -68,18 +68,18 @@ class OptimalControlProblem(object):
         self.adjoint_system.has_solution = False
         has_solution = self.adjoint_system.solve(comm, **kwargs)
 
-    def compute_gradient(self, comm, **kwargs):
+    def compute_gradient(self, comm, state_kwargs: Dict = {}, adjoint_kwargs: Dict = {}, gradient_kwargs: Dict = {}):
         self.state_system.has_solution = False
-        has_solution = self.state_system.solve(comm, **kwargs)
+        has_solution = self.state_system.solve(comm, **state_kwargs)
 
         for cost_func in self.cost_functional_list:
             cost_func.update()
 
         self.adjoint_system.has_solution = False
-        has_solution = self.adjoint_system.solve(comm, **kwargs)
+        has_solution = self.adjoint_system.solve(comm, **adjoint_kwargs)
 
         self.gradient_system.has_solution = False
-        has_solution = self.gradient_system.solve(comm, **kwargs)
+        has_solution = self.gradient_system.solve(comm, **gradient_kwargs)
 
         return self.control_problem.control_grads
 
@@ -136,20 +136,32 @@ class OptimalShapeProblem(OptimalControlProblem):
         val += self.shape_regulariztions.compute_objective()
         return val
 
-    def compute_gradient(self, comm, **kwargs):
-        self.state_system.has_solution = False
-        has_solution = self.state_system.solve(comm, **kwargs)
+    def compute_gradient(
+            self,
+            comm,
+            state_kwargs: Dict = {},
+            adjoint_kwargs: Dict = {},
+            gradient_kwargs: Dict = {},
+            scalar_product_kwrags: Dict = {}
+    ):
+        self.update_update_scalar_product(**scalar_product_kwrags)
 
-        for cost_func in self.cost_functional_list:
-            cost_func.update()
+        self.state_system.has_solution = False
+        has_solution = self.state_system.solve(comm, **state_kwargs)
+
+        self.update_cost_funcs()
 
         self.adjoint_system.has_solution = False
-        has_solution = self.adjoint_system.solve(comm, **kwargs)
+        has_solution = self.adjoint_system.solve(comm, **adjoint_kwargs)
 
         self.gradient_system.has_solution = False
-        has_solution = self.gradient_system.solve(comm, **kwargs)
+        has_solution = self.gradient_system.solve(comm, **gradient_kwargs)
 
         return self.shape_problem.shape_grad
 
     def update_update_scalar_product(self, **kwargs):
         self.gradient_system.update_scalar_product(**kwargs)
+
+    def update_cost_funcs(self):
+        for cost_func in self.cost_functional_list:
+            cost_func.update()

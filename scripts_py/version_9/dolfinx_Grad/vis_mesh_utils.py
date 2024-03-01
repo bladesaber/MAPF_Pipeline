@@ -28,7 +28,7 @@ class VisUtils(object):
         self.plotter.show()
 
     @staticmethod
-    def convert_to_grid(domain: dolfinx.mesh.Mesh, tdim: int = None, entities=None):
+    def convert_to_grid(domain: dolfinx.mesh.Mesh, tdim: int = None, entities=None) -> pyvista.DataSet:
         cells, cell_types, geometry = dolfinx.plot.vtk_mesh(domain, tdim, entities)
         grid = pyvista.UnstructuredGrid(cells, cell_types, geometry)
         return grid
@@ -54,14 +54,14 @@ class VisUtils(object):
             grid: pyvista.UnstructuredGrid, uh: dolfinx.fem.function, dim, with_wrap=False, factor=1.0,
             plotter: pyvista.Plotter = None
     ):
+        if plotter is None:
+            plotter = pyvista.Plotter()
+
         if dim == 2:
             u_value = uh.x.array.reshape((-1, dim))
             grid['u'] = np.concatenate([u_value, np.zeros(shape=(u_value.shape[0], 1))], axis=1)
         else:
             grid['u'] = uh.x.array.reshape((-1, dim))
-
-        if plotter is None:
-            plotter = pyvista.Plotter()
 
         if with_wrap:
             vis_mesh = grid.warp_by_vector("u", factor=factor)
@@ -195,4 +195,21 @@ class VisUtils(object):
         plotter.add_mesh(grid, style='wireframe')
         plotter.add_mesh(qual, show_scalar_bar=True)
 
+        return plotter
+
+    @staticmethod
+    def show_arrow_from_grid(grid: pyvista.DataSet, name: str, scale=1.0, plotter: pyvista.Plotter = None):
+        if plotter is None:
+            plotter = pyvista.Plotter()
+
+        plotter.add_arrows(grid.points, grid[name], mag=scale)
+        return plotter
+
+    @staticmethod
+    def show_scalar_from_grid(grid: pyvista.DataSet, name: str, plotter: pyvista.Plotter = None):
+        if plotter is None:
+            plotter = pyvista.Plotter()
+
+        grid.set_active_scalars(name)
+        plotter.add_mesh(grid, show_edges=True)
         return plotter

@@ -93,12 +93,14 @@ opt_problem = OptimalShapeProblem(
     scalar_product=None,
     scalar_product_method={
         'method': 'Poincare-Steklov operator',
-        # 'lambda_lame': 1.0,
-        # 'damping_factor': 1.0,
+        'lambda_lame': 1.0,
+        'damping_factor': 0.2,
         'cell_tags': cell_tags,
         'facet_tags': facet_tags,
         'bry_free_markers': bry_free_markers,
         'bry_fixed_markers': bry_fixed_markers,
+        'mu_fix': 1.0,
+        'mu_free': 1.0,
         'use_inhomogeneous': False,
         'inhomogeneous_exponent': 1.0,
         'update_inhomogeneous': False

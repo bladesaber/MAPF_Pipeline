@@ -3,7 +3,7 @@ import numpy as np
 import ufl
 from dolfinx.fem import petsc
 from petsc4py import PETSc
-from typing import Union, Callable, List
+from typing import Union, Callable, List, Sequence
 from dolfinx.io import XDMFFile, gmshio
 from mpi4py import MPI
 from ufl.core import expr
@@ -16,18 +16,39 @@ class AssembleUtils(object):
 
     @staticmethod
     def assemble_mat(
-            a_form: dolfinx.fem.Form, bcs: list[dolfinx.fem.DirichletBC], A_mat: PETSc.Mat = None
+            a_form: dolfinx.fem.Form, bcs: list[dolfinx.fem.DirichletBC],
+            A_mat: PETSc.Mat = None, method='lift', check_symmetric=False, diagonal=1.0,
     ):
         """
         assemble_matrix 用于组建a_form(Bilinear)的中间矩阵,即Ax=b(的A矩阵)
         a_form必须包含TrialFunction和TestFunction
         reference: https://docs.fenicsproject.org/dolfinx/main/python/generated/dolfinx.fem.petsc.html
+
+        Ref: https://jsdokken.com/FEniCS23-tutorial/src/lifting.html
+        Identity_row: 这是原始方法，但会导致A_mat不在对称，致使求解困难，很大部分的求解器不再适用
         """
-        if A_mat is None:
-            A_mat = dolfinx.fem.petsc.assemble_matrix(a_form, bcs=bcs)
+        if method == 'Identity_row':
+            if A_mat is None:
+                A_mat = dolfinx.fem.petsc.assemble_matrix(a_form, diagonal=diagonal)
+            else:
+                dolfinx.fem.petsc.assemble_matrix_mat(A_mat, a_form, diagonal=diagonal)
+            A_mat.assemble()
+
+            BoundaryUtils.apply_boundary_to_matrix_explicit(A_mat, bcs)
+
+        elif method == 'lift':
+            if A_mat is None:
+                A_mat = dolfinx.fem.petsc.assemble_matrix(a_form, bcs=bcs, diagonal=diagonal)
+            else:
+                dolfinx.fem.petsc.assemble_matrix_mat(A_mat, a_form, bcs=bcs, diagonal=diagonal)
+            A_mat.assemble()
+
         else:
-            dolfinx.fem.petsc.assemble_matrix_mat(A_mat, a_form, bcs=bcs)
-        A_mat.assemble()
+            raise NotImplementedError
+
+        if check_symmetric:
+            print(f"[Debug AssembleUtils] A_mat Symmetric: {A_mat.isSymmetric(1e-15)}")
+
         return A_mat
 
     @staticmethod
@@ -98,10 +119,12 @@ class MeshUtils(object):
             mesh.topology.create_connectivity(dim - 1, dim)
             f.write_mesh(mesh)
             f.write_meshtags(
-                cell_tags, mesh.geometry, geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
+                cell_tags, mesh.geometry,
+                # geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
             )
             f.write_meshtags(
-                facet_tags, mesh.geometry, geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
+                facet_tags, mesh.geometry,
+                # geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
             )
 
     @staticmethod
@@ -115,6 +138,43 @@ class MeshUtils(object):
         with XDMFFile(MPI.COMM_WORLD, file, "r") as f:
             facet_tags = f.read_meshtags(domain, name=facetTag_name)
         return domain, cell_tags, facet_tags
+
+    @staticmethod
+    def read_XDMFs(
+            mesh_xdmf: str, facet_xdmf: str, cell_xdmf: str, mesh_name: str, facet_name: str, cell_name: str
+    ):
+        """
+        Loading Sequence is Important:
+        Step 1: load mesh
+        Step 2: create connectivity
+        Step 3: load cell
+        Step 4: load facet
+        """
+        assert mesh_xdmf.endswith('.xdmf') and facet_xdmf.endswith('.xdmf') and cell_xdmf.endswith('.xdmf')
+
+        with XDMFFile(MPI.COMM_WORLD, mesh_xdmf, "r") as f:
+            domain = f.read_mesh(name=mesh_name)
+        domain.topology.create_connectivity(domain.topology.dim, domain.topology.dim - 1)
+
+        with XDMFFile(MPI.COMM_WORLD, facet_xdmf, "r") as f:
+            cell_tags = f.read_meshtags(domain, name=cell_name)
+
+        with XDMFFile(MPI.COMM_WORLD, facet_xdmf, "r") as f:
+            facet_tags = f.read_meshtags(domain, name=facet_name)
+
+        return domain, cell_tags, facet_tags
+
+    @staticmethod
+    def save_XDMF(
+            output_file: str,
+            domain: dolfinx.mesh.Mesh, cell_tags: dolfinx.mesh.MeshTags, facet_tags: dolfinx.mesh.MeshTags
+    ):
+        assert output_file.endswith('.xdmf')
+        with XDMFFile(domain.comm, output_file, 'w') as f:
+            domain.topology.create_connectivity(domain.topology.dim - 1, domain.topology.dim)
+            f.write_mesh(domain)
+            f.write_meshtags(cell_tags, domain.geometry)
+            f.write_meshtags(facet_tags, domain.geometry)
 
     @staticmethod
     def get_topology_dim(domain: dolfinx.mesh.Mesh):
@@ -143,6 +203,9 @@ class MeshUtils(object):
 
     @staticmethod
     def extract_entity_dofs(V: dolfinx.fem.functionspace, dim: int, entities_idxs: np.array):
+        """
+        dof是dolfinx.fem.function数组的索引idx
+        """
         dofs = dolfinx.fem.locate_dofs_topological(V, entity_dim=dim, entities=entities_idxs)
         return dofs
 
@@ -216,6 +279,18 @@ class BoundaryUtils(object):
         dolfinx.fem.apply_lifting(b_vec, [a_form], [bcs])
         b_vec.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
         dolfinx.fem.set_bc(b_vec, bcs)
+        b_vec.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
+
+    @staticmethod
+    def apply_boundary_to_matrix_explicit(a_mat: PETSc.Mat, bcs: list[dolfinx.fem.DirichletBC]):
+        """
+        But it will cause matrix become unSymmetric
+        """
+        for bc in bcs:
+            dofs, _ = bc._cpp_object.dof_indices()
+            a_mat.zeroRowsLocal(dofs, diag=1)
+
+        # print(f"[Debug]apply_boundary_to_matrix_explicit: is A_mat Symmetric{a_mat.isSymmetric(1e-15)}")
 
     @staticmethod
     def define_dirichlet_cell(

@@ -26,9 +26,13 @@ class AdjointProblem(object):
 
     def _compute_adjoint_equations(self, lagrangian_function: LagrangianFunction):
         """
-        Adjoint system is always linear
+        Adjoint System is always Linear
+        Lagrangian_function: F = J + integral(adjoint_var * constraint_function(state_var, control_var))
+        Total Variation: dF = Variation(F, state_var) + Variation(F, control_var)
+        To solve Adjoint System, we need Variation(F, state_var) = 0
         """
         for problem in self.state_problems:
+            # adjoint_eq_form is Variation(F, state_var) = 0
             adjoint_eq_form = lagrangian_function.derivative(
                 problem.state, ufl.TestFunction(problem.adjoint.function_space)
             )
@@ -45,11 +49,16 @@ class AdjointProblem(object):
                 res_dict = LinearProblemSolver.solve_by_petsc_form(
                     comm=comm,
                     uh=problem.adjoint,
-                    a_form=problem.adjoint_eq_dolfinx_form_lhs,
-                    L_form=problem.adjoint_eq_dolfinx_form_rhs,
+                    a_form=problem.adjoint_eq_form_lhs,
+                    L_form=problem.adjoint_eq_form_rhs,
                     bcs=problem.homogenize_bcs,
                     ksp_option=problem.adjoint_ksp_option,
                     **kwargs
                 )
+
+                if kwargs.get('with_debug', False):
+                    print(f"[DEBUG AdjointSystem {problem.name}]: max_error:{res_dict['max_error']:.6f} "
+                          f"cost_time:{res_dict['cost_time']:.2f}")
+
             self.has_solution = True
         return self.has_solution
