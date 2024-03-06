@@ -1,11 +1,14 @@
 import dolfinx
 import numpy as np
 import ufl
-from typing import Union, List
+from typing import Union, List, Literal
 
 from ..dolfinx_utils import AssembleUtils, MeshUtils
 from .type_database import ShapeDataBase
 from ..equation_solver import LinearProblemSolver
+
+from ..vis_mesh_utils import VisUtils
+import pyvista
 
 
 def t_grad(u: Union[ufl.Argument, dolfinx.fem.Function], n: ufl.FacetNormal):
@@ -45,7 +48,8 @@ class VolumeRegularization(object):
             self,
             shape_problem: ShapeDataBase,
             mu: float,
-            target_volume_rho: float
+            target_volume_rho: float,
+            method: Literal['absolute_sub', 'percentage_div'] = 'absolute_sub'
     ):
         self.mu = mu
         self.target_volume_rho = target_volume_rho
@@ -63,6 +67,7 @@ class VolumeRegularization(object):
 
         self.volume_dif = dolfinx.fem.Constant(self.shape_problem.domain, 0.0)
         self.coodr = MeshUtils.define_coordinate(self.shape_problem.domain)
+        self.method = method
 
     def _compute_volume(self) -> float:
         volume: float = AssembleUtils.assemble_scalar(dolfinx.fem.form(self.volume_form))
@@ -87,12 +92,22 @@ class VolumeRegularization(object):
         value = 0.0
         if self.is_active:
             volume = self._compute_volume()
-            value += 0.5 * self.mu * pow(volume - self.target_volume, 2)
+            if self.method == 'absolute_sub':
+                value += 0.5 * self.mu * pow(volume - self.target_volume, 2)
+            elif self.method == 'percentage_div':
+                value += self.mu * np.sqrt(np.power(volume / self.target_volume - 1.0, 2))
+            else:
+                raise NotImplementedError
         return value
 
     def update(self):
         current_volume = self._compute_volume()
-        volume_dif = current_volume - self.target_volume
+        if self.method == 'absolute_sub':
+            volume_dif = current_volume - self.target_volume
+        elif self.method == 'percentage_div':
+            volume_dif = current_volume / self.target_volume - 1.0
+        else:
+            raise NotImplementedError
         self.volume_dif.value = volume_dif
 
 

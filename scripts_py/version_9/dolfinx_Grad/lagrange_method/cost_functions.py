@@ -8,11 +8,24 @@ from ..dolfinx_utils import AssembleUtils
 
 
 class IntegralFunction(object):
-    def __init__(self, form: ufl.Form):
-        self.form = form
+    def __init__(
+            self,
+            domain: dolfinx.mesh.Mesh,
+            form: ufl.Form,
+            weight: float = 1.0,
+            name: str = 'IntegralFunction'
+    ):
+        self.name = name
+        self.domain = domain
+        self.weight_value = weight
+        self.weight = dolfinx.fem.Constant(self.domain, weight)
+
+        self.orig_form = form
+        self.form = self.weight * self.orig_form
+        self.form_dolfin = dolfinx.fem.form(self.form)
 
     def evaluate(self):
-        val: float = AssembleUtils.assemble_scalar(dolfinx.fem.form(self.form))
+        val: float = AssembleUtils.assemble_scalar(self.form_dolfin)
         return val
 
     def derivative(
@@ -26,11 +39,12 @@ class IntegralFunction(object):
         coeffs: Tuple[dolfinx.fem.Function] = self.form.coefficients()
         return coeffs
 
-    def scale(self, scaling_factor: float):
-        self.form = scaling_factor * self.form
-
     def update(self):
         pass
+
+    def update_scale(self, weight: float):
+        self.weight_value = weight
+        self.weight.value = weight
 
 
 class ScalarTrackingFunctional(object):
@@ -38,11 +52,18 @@ class ScalarTrackingFunctional(object):
             self,
             domain: dolfinx.mesh.Mesh,
             integrand_form: ufl.Form,
-            tracking_goal: Union[float, ctypes.c_float, ctypes.c_double]
+            tracking_goal: Union[float, ctypes.c_float, ctypes.c_double],
+            weight: float = 1.0,
+            name: str = 'ScalarTracking'
     ):
+        self.name = name
         self.domain = domain
-        self.integrand_form = integrand_form
-        self.integrand_dolfinx = dolfinx.fem.form(self.integrand_form)
+        self.weight_value = weight
+        self.weight = dolfinx.fem.Constant(self.domain, weight)
+
+        self.form_orig = integrand_form
+        self.form = self.form_orig
+        self.form_dolfin = dolfinx.fem.form(self.form)
 
         self.tracking_goal = tracking_goal
         if isinstance(tracking_goal, (ctypes.c_float, ctypes.c_double)):
@@ -52,18 +73,19 @@ class ScalarTrackingFunctional(object):
 
         self.integrand_value = dolfinx.fem.Constant(domain, 0.0)
         self.goal_value = dolfinx.fem.Constant(domain, self.tracking_goal_value)
-        self.derivative_form = (self.integrand_value - self.goal_value) * self.integrand_form
+        self.derivative_form = self.weight * (self.integrand_value - self.goal_value) * self.form
 
     def evaluate(self):
         if isinstance(self.tracking_goal, (ctypes.c_float, ctypes.c_double)):
             self.tracking_goal_value = self.tracking_goal.value
             self.goal_value.value = self.tracking_goal_value
 
-        val: float = np.power(AssembleUtils.assemble_scalar(self.integrand_dolfinx) - self.tracking_goal_value, 2) * 0.5
+        val: float = np.power(AssembleUtils.assemble_scalar(self.form_dolfin) - self.tracking_goal_value, 2) * 0.5
+        val = val * self.weight_value
         return val
 
     def coefficients(self):
-        coeffs: Tuple[dolfinx.fem.Function] = self.integrand_form.coefficients()
+        coeffs: Tuple[dolfinx.fem.Function] = self.form.coefficients()
         return coeffs
 
     def derivative(
@@ -79,13 +101,92 @@ class ScalarTrackingFunctional(object):
         return derivative
 
     def update(self):
-        val: float = AssembleUtils.assemble_scalar(self.integrand_dolfinx)
+        val: float = AssembleUtils.assemble_scalar(self.form_dolfin)
         self.integrand_value.value = val
+
+    def update_scale(self, weight: float):
+        self.weight_value = weight
+        self.weight.value = weight
+
+
+class MinMaxFunctional(object):
+    def __init__(
+            self,
+            domain: dolfinx.mesh.Mesh,
+            integrand_form: ufl.Form,
+            lower_bound: float = None,
+            upper_bound: float = None,
+            weight: float = 1.0,
+            name: str = 'MinMax'
+    ):
+        assert (lower_bound is not None) or (upper_bound is not None)
+
+        self.name = name
+        self.domain = domain
+        self.weight_value = weight
+        self.weight = dolfinx.fem.Constant(self.domain, weight)
+
+        self.form_orig = integrand_form
+        self.form = self.form_orig
+        self.form_dolfin = dolfinx.fem.form(self.form)
+
+        bound_dif_form: ufl.Form = 0.0
+
+        self.lower_bound = lower_bound
+        if self.lower_bound is not None:
+            self.lower_bound_dif = dolfinx.fem.Constant(domain, 0.0)
+            bound_dif_form += self.lower_bound_dif
+
+        self.upper_bound = upper_bound
+        if self.upper_bound is not None:
+            self.upper_bound_dif = dolfinx.fem.Constant(domain, 0.0)
+            bound_dif_form += self.upper_bound_dif
+
+        self.derivative_form = self.weight * bound_dif_form * self.form
+
+    def evaluate(self):
+        val = AssembleUtils.assemble_scalar(self.form_dolfin)
+
+        cost = 0.0
+        if self.lower_bound is not None:
+            cost += np.power(np.minimum(0.0, val - self.lower_bound), 2) * 0.5
+
+        if self.upper_bound is not None:
+            cost += np.power(np.maximum(0.0, val - self.upper_bound), 2) * 0.5
+
+        cost = self.weight_value * cost
+        return cost
+
+    def coefficients(self):
+        coeffs: Tuple[dolfinx.fem.Function] = self.form.coefficients()
+        return coeffs
+
+    def derivative(
+            self,
+            argument: [ufl.Coefficient],
+            direction: Union[dolfinx.fem.Function, ufl.Argument],
+    ):
+        derivative = ufl.derivative(self.derivative_form, argument, direction)
+        return derivative
+
+    def update(self):
+        val: float = AssembleUtils.assemble_scalar(self.form_dolfin)
+        if self.lower_bound is not None:
+            cost = np.power(np.minimum(0.0, val - self.lower_bound), 2) * 0.5
+            self.lower_bound_dif.value = cost
+
+        if self.upper_bound is not None:
+            cost = np.power(np.maximum(0.0, val - self.upper_bound), 2) * 0.5
+            self.upper_bound_dif.value = cost
+
+    def update_scale(self, weight: float):
+        self.weight_value = weight
+        self.weight.value = weight
 
 
 # ------ Define Lagrangian Functional
 CostFunctional_types = Union[
-    IntegralFunction, ScalarTrackingFunctional
+    IntegralFunction, ScalarTrackingFunctional, MinMaxFunctional
 ]
 
 

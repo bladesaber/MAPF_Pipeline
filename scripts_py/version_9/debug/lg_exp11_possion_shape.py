@@ -86,7 +86,7 @@ control_problem = create_shape_problem(
 
 # ------ Define Cost Function
 cost1_form = u1 * ufl.dx
-cost1_fun = IntegralFunction(cost1_form)
+cost1_fun = IntegralFunction(domain=domain, form=cost1_form)
 
 # ------ Define Optimal Problem
 opt_problem = OptimalShapeProblem(
@@ -126,7 +126,7 @@ while True:
     cur_loss = opt_problem.evaluate_cost_functional(domain.comm, update_state=True)
     print(f"{cur_loss:.6f} / {last_loss:.6f}")
 
-    if step > 300:
+    if step > 100:
         break
 
     last_loss = cur_loss

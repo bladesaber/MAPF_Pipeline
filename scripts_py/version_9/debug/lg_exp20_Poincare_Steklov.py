@@ -82,7 +82,7 @@ control_problem = create_shape_problem(
 
 # ------ Define Cost Function
 cost1_form = u1 * ufl.dx
-cost1_fun = IntegralFunction(cost1_form)
+cost1_fun = IntegralFunction(domain=domain, form=cost1_form)
 
 # ------ Define Optimal Problem
 opt_problem = OptimalShapeProblem(

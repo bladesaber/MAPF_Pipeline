@@ -1,5 +1,8 @@
+import os
+import shutil
 import dolfinx
 import numpy as np
+import pickle
 import ufl
 from dolfinx.fem import petsc
 from petsc4py import PETSc
@@ -52,7 +55,7 @@ class AssembleUtils(object):
         return A_mat
 
     @staticmethod
-    def assemble_vec(L_form: dolfinx.fem.Form, b_vec: PETSc.Vec = None) -> PETSc.Vec:
+    def assemble_vec(L_form: dolfinx.fem.Form, b_vec: PETSc.Vec = None, clear_vec=False) -> PETSc.Vec:
         """
         assemble_matrix用于计算L_form在FunctionSpace中每一个element的积分值
         L_form必须包含TestFunction
@@ -61,6 +64,10 @@ class AssembleUtils(object):
             b_vec = dolfinx.fem.petsc.assemble_vector(L_form)
             # b_vec = dolfinx.fem.assemble_vector(L_form)
         else:
+            if clear_vec:
+                with b_vec.localForm() as loc:
+                    loc.set(0)
+
             # dolfinx.fem.petsc._assemble_vector_vec
             dolfinx.fem.petsc.assemble_vector(b_vec, L_form)
         return b_vec
@@ -169,6 +176,9 @@ class MeshUtils(object):
             output_file: str,
             domain: dolfinx.mesh.Mesh, cell_tags: dolfinx.mesh.MeshTags, facet_tags: dolfinx.mesh.MeshTags
     ):
+        """
+        Save后Points的顺序会改变,原因不明
+        """
         assert output_file.endswith('.xdmf')
         with XDMFFile(domain.comm, output_file, 'w') as f:
             domain.topology.create_connectivity(domain.topology.dim - 1, domain.topology.dim)
@@ -270,7 +280,8 @@ class MeshUtils(object):
 class BoundaryUtils(object):
     @staticmethod
     def apply_boundary_to_vec(
-            b_vec: PETSc.Vec, bcs: list[dolfinx.fem.DirichletBC], a_form: dolfinx.fem.form, clean_vec: bool = False
+            b_vec: PETSc.Vec, bcs: list[dolfinx.fem.DirichletBC], a_form: dolfinx.fem.form,
+            clean_vec: bool = False, scalar_forward=True,
     ):
         if clean_vec:
             with b_vec.localForm() as loc_b:
@@ -279,7 +290,9 @@ class BoundaryUtils(object):
         dolfinx.fem.apply_lifting(b_vec, [a_form], [bcs])
         b_vec.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
         dolfinx.fem.set_bc(b_vec, bcs)
-        b_vec.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
+
+        if scalar_forward:
+            b_vec.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
 
     @staticmethod
     def apply_boundary_to_matrix_explicit(a_mat: PETSc.Mat, bcs: list[dolfinx.fem.DirichletBC]):

@@ -1,4 +1,7 @@
-import pickle
+"""
+Fail 2024/03/06
+"""
+
 import numpy as np
 import ufl
 from ufl import grad, inner, dot, div
@@ -9,6 +12,7 @@ from typing import List, Callable, Dict
 from functools import partial
 import pyvista
 import shutil
+import pickle
 
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils, AssembleUtils
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.space_mapping_algo import FineModel, CoarseModel, \
@@ -16,21 +20,22 @@ from scripts_py.version_9.dolfinx_Grad.lagrange_method.space_mapping_algo import
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.type_database import create_state_problem, create_shape_problem
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.problem_state import StateProblem
-from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import ScalarTrackingFunctional
+from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import ScalarTrackingFunctional, IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.solver_optimize import OptimalShapeProblem
-from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization import ShapeRegularization
+from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization import ShapeRegularization, \
+    VolumeRegularization
 from scripts_py.version_9.dolfinx_Grad.remesh_helper import ReMesher
 from scripts_py.version_9.dolfinx_Grad.equation_solver import LinearProblemSolver, NonLinearProblemSolver
 from scripts_py.version_9.dolfinx_Grad.recorder_utils import VTKRecorder, TensorBoardRecorder
 from scripts_py.version_9.dolfinx_Grad.remesh_helper import MeshDeformationRunner
 from scripts_py.version_9.dolfinx_Grad.optimizer_utils import CostConvergeHandler
 
-proj_dir = '/home/admin123456/Desktop/work/topopt_exps/fluid_shape4'
+proj_dir = '/home/admin123456/Desktop/work/topopt_exps/fluid_shape7'
 model_xdmf = os.path.join(proj_dir, 'model.xdmf')
 msh_file = os.path.join(proj_dir, 'model.msh')
 
 # ------ create xdmf
-# MeshUtils.msh_to_XDMF(name='model', msh_file=msh_file, output_file=model_xdmf, dim=2)
+MeshUtils.msh_to_XDMF(name='model', msh_file=msh_file, output_file=model_xdmf, dim=2)
 
 # ------ mutual parameters
 input_marker = 1
@@ -201,6 +206,11 @@ class LowReFluidFineModel(FineModel):
                 'target': self.tracking_goal
             }
 
+        self.energy_loss_form = dolfinx.fem.form(inner(grad(u2), grad(u2)) * ufl.dx)
+        self.energy_form = dolfinx.fem.form(inner(u2, u2) * ufl.dx)
+        self.energy_loss_value = 0.0
+        self.energy_value = 0.0
+
     def solve_and_evaluate(
             self, guass_uh: dolfinx.fem.Function = None, use_guass_init=False, **kwargs
     ):
@@ -240,6 +250,9 @@ class LowReFluidFineModel(FineModel):
             self.cost_functional_value = np.maximum(
                 self.cost_functional_value, np.abs(self.tracking_goal - outflow_value)
             )
+
+        self.energy_loss_value = AssembleUtils.assemble_scalar(self.energy_loss_form)
+        self.energy_value = AssembleUtils.assemble_scalar(self.energy_form)
 
     def update_geometry(self, grad: np.ndarray):
         displacement_np = np.zeros(self.domain.geometry.x.shape)
@@ -357,18 +370,29 @@ class FluidCoarseModel(CoarseModel):
         for marker in output_markers:
             integrand_form = ufl.dot(u, n_vec) * ds(marker)
             target_value = self.fine_model.outflow_data[f"marker_{marker}"]['target']
-            cost_functional_list.append(ScalarTrackingFunctional(domain, integrand_form, target_value))
+            cost_functional_list.append(ScalarTrackingFunctional(
+                domain, integrand_form, target_value, name=f"track_{marker}"
+            ))
 
             self.outflow_data[f"marker_{marker}"] = {
                 'form': dolfinx.fem.form(ufl.dot(u, n_vec) * ds(marker)),
                 'target': target_value
             }
 
+        energy_loss = inner(grad(u), grad(u)) * ufl.dx
+        energy_loss_fun = IntegralFunction(domain=domain, form=energy_loss, name=f"energy_loss")
+        cost_functional_list.append(energy_loss_fun)
+
+        self.energy_loss_form = dolfinx.fem.form(energy_loss)
+        self.energy_form = dolfinx.fem.form(inner(u, u) * ufl.dx)
+
         # ------ define opt problem
         opt_problem = OptimalShapeProblem(
             state_system=state_system,
             shape_problem=control_problem,
-            shape_regulariztions=ShapeRegularization([]),
+            shape_regulariztions=ShapeRegularization([
+                VolumeRegularization(control_problem, mu=1.0, target_volume_rho=1.0)
+            ]),
             cost_functional_list=cost_functional_list,
             scalar_product=None,
             scalar_product_method={
@@ -386,6 +410,15 @@ class FluidCoarseModel(CoarseModel):
                 'update_inhomogeneous': False
             }
         )
+
+        opt_problem.state_system.solve(domain.comm, with_debug=False)
+        for cost_func in cost_functional_list:
+            cost = cost_func.evaluate()
+            if cost_func.name == 'energy_loss':
+                weight = 2.0 / cost
+            else:
+                weight = (1.0 / 3.0) / cost
+            cost_func.update_scale(weight)
 
         # ------
         super().__init__(
@@ -462,6 +495,12 @@ class FluidCoarseModel(CoarseModel):
                     outflow_cells[key] = AssembleUtils.assemble_scalar(self.outflow_data[key]['form'])
                 log_recorder.write_scalars('outflow', outflow_cells, step=step)
 
+                energy_loss_value = AssembleUtils.assemble_scalar(self.energy_loss_form)
+                log_recorder.write_scalar('energy_loss', energy_loss_value, step)
+
+                energy_value = AssembleUtils.assemble_scalar(self.energy_form)
+                log_recorder.write_scalar('energy_value', energy_value, step)
+
                 vtk_recorder.write_function(self.up.sub(0).collapse(), step=step)
 
                 # ------ debug output
@@ -470,7 +509,7 @@ class FluidCoarseModel(CoarseModel):
                         target_flow, out_flow = self.outflow_data[key]['target'], outflow_cells[key]
                         ratio = out_flow / target_flow
                         debug_log += f"[{key}: {ratio:.2f}| {out_flow:.3f}/{target_flow: .3f}] "
-                    debug_log += f"loss:{loss:.8f}, stepSize:{stepSize}"
+                    debug_log += f"loss:{loss:.8f}, energy:{energy_value:.4f}, stepSize:{stepSize}"
                     print(debug_log)
                 # ------
 
@@ -590,13 +629,17 @@ class FluidParameterExtraction(ParameterExtraction):
         for marker in output_markers:
             integrand_form = ufl.dot(u, n_vec) * ds(marker)
             cost_functional_list.append(ScalarTrackingFunctional(
-                domain, integrand_form, fine_model.outflow_data[f"marker_{marker}"]['value']
+                domain, integrand_form, fine_model.outflow_data[f"marker_{marker}"]['value'], name=f"track_{marker}"
             ))
 
             self.outflow_data[f"marker_{marker}"] = {
                 'form': dolfinx.fem.form(ufl.dot(u, n_vec) * ds(marker)),
                 'target': fine_model.outflow_data[f"marker_{marker}"]['value']
             }
+
+        energy_loss = inner(grad(u), grad(u)) * ufl.dx
+        self.energy_loss_form = dolfinx.fem.form(energy_loss)
+        self.energy_form = dolfinx.fem.form(inner(u, u) * ufl.dx)
 
         # ------ define opt problem
         opt_problem = OptimalShapeProblem(
@@ -640,7 +683,7 @@ class FluidParameterExtraction(ParameterExtraction):
         os.mkdir(tensorBoard_dir)
         log_recorder = TensorBoardRecorder(tensorBoard_dir)
 
-        init_loss = self.opt_problem.evaluate_cost_functional(self.domain.comm, update_state=True)
+        init_loss = self.opt_problem.evaluate_cost_functional(self.domain.comm, update_state=False)
         loss_storge_ctype = ctypes.c_double(init_loss)
         cost_converger = CostConvergeHandler(stat_num=10, warm_up_num=10, tol=5e-3, scale=1.0 / init_loss)
 
@@ -656,8 +699,9 @@ class FluidParameterExtraction(ParameterExtraction):
             debug_log = f"ParameterExtraction Step {step}:"
             shape_grad: dolfinx.fem.Function = self.opt_problem.compute_gradient(
                 self.domain.comm,
-                state_kwargs={'with_debug': False}, adjoint_kwargs={'with_debug': False},
-                gradient_kwargs={'with_debug': False, 'A_assemble_method': 'Identity_row'},
+                state_kwargs={'with_debug': kwargs.get('with_debug', False)},
+                adjoint_kwargs={'with_debug': kwargs.get('with_debug', False)},
+                gradient_kwargs={'with_debug': kwargs.get('with_debug', False), 'A_assemble_method': 'Identity_row'},
             )
 
             shape_grad_np = shape_grad.x.array
@@ -691,6 +735,9 @@ class FluidParameterExtraction(ParameterExtraction):
                 for key in self.outflow_data.keys():
                     outflow_cells[key] = AssembleUtils.assemble_scalar(self.outflow_data[key]['form'])
                 log_recorder.write_scalars('outflow', outflow_cells, step=step)
+
+                energy_loss = AssembleUtils.assemble_scalar(self.energy_loss_form)
+                log_recorder.write_scalar('energy_loss', energy_loss, step)
 
                 vtk_recorder.write_function(self.up.sub(0).collapse(), step=step)
 
@@ -793,7 +840,9 @@ class CustomProblem(SpaceMappingProblem):
 
             # ------ step 2: solve fine model
             self.fine_model.solve_and_evaluate(**fineModel_kwargs)
-            print(f"[Info] SpaceMapping {step}, FineModel loss:{self.fine_model.cost_functional_value}")
+            print(f"[Info] SpaceMapping {step}, "
+                  f"FineModel loss:{self.fine_model.cost_functional_value}, "
+                  f"energy_value:{self.fine_model.energy_value}")
 
             self.fine_model.save_anchor(
                 record_dir=sub_record_dir,
@@ -806,6 +855,8 @@ class CustomProblem(SpaceMappingProblem):
             for key in self.fine_model.outflow_data.keys():
                 data_cells[key] = self.fine_model.outflow_data[key]['value'].value
             log_recorder.write_scalars('outflow_u', data_cells, step)
+            log_recorder.write_scalar('energy_loss', self.fine_model.energy_loss_value, step)
+            log_recorder.write_scalar('energy', self.fine_model.energy_value, step)
 
             # ------ step 3: solve para extraction model
             para_solving_record_dir = os.path.join(sub_record_dir, "para_extract")
@@ -813,9 +864,7 @@ class CustomProblem(SpaceMappingProblem):
             paraExtract_kwargs['record_dir'] = para_solving_record_dir
 
             self.parameter_extraction.solve(**paraExtract_kwargs)
-            self.parameter_extraction.save_anchor(
-                record_dir=sub_record_dir,
-            )
+            self.parameter_extraction.save_anchor(record_dir=sub_record_dir)
 
             # ------ step 4: compute grad and update model
             grad = self._compute_direction_step(
@@ -867,7 +916,7 @@ coarse_model = FluidCoarseModel(
     domain1, cell_tags1, facet_tags1, fine_model,
     record_dir=os.path.join(proj_dir, 'coarse_model')
 )
-# coarse_model.solve()
+# coarse_model.solve(with_debug=False, output_info=True)
 coarse_model.set_best_parameter(os.path.join(coarse_model.record_dir, 'coordinate.pkl'))
 
 domain2, cell_tags2, facet_tags2 = MeshUtils.read_XDMF(
@@ -879,21 +928,23 @@ problem = CustomProblem(
     coarse_model=coarse_model,
     fine_model=fine_model,
     parameter_extraction=para_extraction,
-    tol=1e-3, max_iter=10,
+    tol=1e-3, max_iter=20,
 )
 problem.solve(
     record_dir=os.path.join(proj_dir, 'spaceMapping'),
     fineModel_kwargs={'with_debug': True},
+    paraExtract_kwargs={'output_info': True},
     calculate_coarse_best=False,
 )
 
-ReMesher.convert_domain_to_new_msh(
-    orig_msh_file=msh_file,
-    new_msh_file=os.path.join(proj_dir, 'last_model.msh'),
-    domain=fine_model.domain,
-    dim=fine_model.tdim,
-    vertex_indices=fine_model.vertex_indices
-)
-pyvista.save_meshio(
-    os.path.join(proj_dir, 'last_model.vtk'), VisUtils.convert_to_grid(fine_model.domain)
-)
+# ReMesher.convert_domain_to_new_msh(
+#     orig_msh_file=msh_file,
+#     new_msh_file=os.path.join(proj_dir, 'last_model.msh'),
+#     domain=fine_model.domain,
+#     dim=fine_model.tdim,
+#     vertex_indices=fine_model.vertex_indices
+# )
+# pyvista.save_meshio(
+#     os.path.join(proj_dir, 'last_model.vtk'),
+#     VisUtils.convert_to_grid(fine_model.domain)
+# )

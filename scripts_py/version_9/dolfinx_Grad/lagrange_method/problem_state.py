@@ -68,9 +68,6 @@ class StateProblem(object):
                         **kwargs
                     )
 
-                    if not res_dict['is_converge']:
-                        raise ValueError("[DEBUG###] Nonlinear Solver Fail")
-
                 if kwargs.get('with_debug', False):
                     print(f"[DEBUG StateSystem {problem.name}]: max_error:{res_dict['max_error']:.6f} "
                           f"cost_time:{res_dict['cost_time']:.2f}")

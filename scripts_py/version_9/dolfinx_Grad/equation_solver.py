@@ -117,7 +117,7 @@ class LinearProblemSolver(object):
         res_vec = PETScUtils.create_vec(PETScUtils.get_size(b_vec))
 
         if with_debug:
-            solver.setConvergenceHistory()
+            # solver.setConvergenceHistory()
             tick0 = time.time()
 
         solver.solve(b_vec, res_vec)
@@ -134,7 +134,7 @@ class LinearProblemSolver(object):
 
             convergence_reason = solver.getConvergedReason()
             iter_num = solver.getIterationNumber()
-            convergence_history = solver.getConvergenceHistory()
+            # convergence_history = solver.getConvergenceHistory()
 
             res_dict.update({
                 'mean_error': mean_error,
@@ -142,7 +142,7 @@ class LinearProblemSolver(object):
                 'cost_time': cost_time,
                 'convergence_reason': convergence_reason,
                 'iter_num': iter_num,
-                'convergence_last_history': convergence_history[-1] if len(convergence_history) else 0
+                # 'convergence_last_history': convergence_history[-1] if len(convergence_history) else 0
             })
 
         return res_dict

@@ -10,6 +10,7 @@ from typing import Dict
 from functools import partial
 import os
 from ufl import div, inner, grad
+import pyvista
 
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.type_database import create_shape_problem, create_state_problem
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.problem_state import StateProblem
@@ -20,6 +21,7 @@ from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization impo
 from scripts_py.version_9.dolfinx_Grad.recorder_utils import VTKRecorder
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
+from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
 
 
 proj_dir = '/home/admin123456/Desktop/work/topopt_exps/fluid_shape2'
@@ -160,7 +162,7 @@ control_problem = create_shape_problem(
 
 # ------ Define Cost Function
 cost1_form = nu * inner(grad(u), grad(u)) * ufl.dx
-cost1_fun = IntegralFunction(cost1_form)
+cost1_fun = IntegralFunction(domain=domain, form=cost1_form)
 
 # ------ Define Optimal Problem
 volume_reg = VolumeRegularization(control_problem, mu=0.2, target_volume_rho=1.0)
@@ -206,8 +208,9 @@ while True:
     MeshUtils.move(domain, displacement_np)
     loss = opt_problem.evaluate_cost_functional(domain.comm, update_state=True)
 
+    energy_value = AssembleUtils.assemble_scalar(dolfinx.fem.form(nu * inner(u, u) * ufl.dx))
     best_loss = np.minimum(loss, best_loss)
-    print(f"[###Step {step}] loss:{loss:.5f} / best_loss:{best_loss:.5f}")
+    print(f"[###Step {step}] loss:{loss:.5f} / best_loss:{best_loss:.5f} energy:{energy_value}")
 
     if loss > best_loss * 1.25:
         break
@@ -218,3 +221,7 @@ while True:
 step += 1
 u_res = up.sub(0).collapse()
 u_recorder.write_function(u_res, step)
+
+# MeshUtils.save_XDMF(os.path.join(proj_dir, 'last_model.xdmf'), domain, cell_tags, facet_tags)
+grid = VisUtils.convert_to_grid(domain)
+pyvista.save_meshio(os.path.join(proj_dir, 'last_model.stl'), grid)

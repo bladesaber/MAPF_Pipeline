@@ -72,8 +72,7 @@ class OptimalControlProblem(object):
         self.state_system.has_solution = False
         has_solution = self.state_system.solve(comm, **state_kwargs)
 
-        for cost_func in self.cost_functional_list:
-            cost_func.update()
+        self.update_cost_funcs()
 
         self.adjoint_system.has_solution = False
         has_solution = self.adjoint_system.solve(comm, **adjoint_kwargs)
@@ -85,6 +84,10 @@ class OptimalControlProblem(object):
 
     def update_update_scalar_product(self):
         pass
+
+    def update_cost_funcs(self):
+        for cost_func in self.cost_functional_list:
+            cost_func.update()
 
 
 class OptimalShapeProblem(OptimalControlProblem):

@@ -44,6 +44,8 @@ class PyVistaUtils(object):
         * ``BIQUADRATIC_QUADRATIC_WEDGE = 32``
         * ``BIQUADRATIC_QUADRATIC_HEXAHEDRON = 33``
         * ``BIQUADRATIC_TRIANGLE = 34``
+
+        if grid is pyvista.UnstructuredGrid, use cell_dict get connectivity
         """
 
         if coordinates.shape[1] == 2:

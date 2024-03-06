@@ -62,7 +62,7 @@ control_problem = create_control_problem(
 f_d = dolfinx.fem.Function(V)
 f_d.interpolate(lambda x: np.sin(2 * np.pi * x[0]) * np.sin(2 * np.pi * x[1]))
 cost1_form = 0.5 * ufl.inner(u1 - f_d, u1 - f_d) * ufl.dx
-cost1_fun = IntegralFunction(cost1_form)
+cost1_fun = IntegralFunction(domain=domain, form=cost1_form)
 
 # ------ Define Optimal Problem
 opt_problem = OptimalControlProblem(
