@@ -27,3 +27,34 @@ class CostConvergeHandler(object):
         # return z_dif <= self.tol
 
         return self.scale_cost_variation < self.tol
+
+
+class CostWeightHandler(object):
+    def __init__(self):
+        self.tag_costs = {}
+        self.tag_nums = {}
+        self.tag_weight = {}
+        self.tags = []
+
+    def clear(self):
+        self.tag_costs.clear()
+        self.tag_nums.clear()
+
+    def add_cost(self, name, cost):
+        if name not in self.tags:
+            self.tags.append(name)
+            self.tag_costs[name] = cost
+            self.tag_nums[name] = 1
+        else:
+            self.tag_costs[name] += cost
+            self.tag_nums[name] += 1
+
+    def compute_weight(self, cost_weight: dict):
+        for tag in self.tag_costs.keys():
+            cost_sum = self.tag_costs[tag]
+            num = self.tag_nums[tag]
+            self.tag_weight[tag] = cost_weight[tag] / cost_sum / num
+
+    def get_weight(self, name):
+        return self.tag_weight[name]
+

@@ -407,7 +407,8 @@ def find_linear_ksp_option(
         b_vec_dat: Union[str, PETSc.Vec],
         ref_record_file: str = None,
         ksp_types: List[str] = None,
-        pc_types: List[str] = None
+        pc_types: List[str] = None,
+        other_ksp_option: dict = {}
 ):
     if isinstance(A_mat_dat, str):
         assert A_mat_dat.endswith('.dat')
@@ -473,9 +474,12 @@ def find_linear_ksp_option(
 
             idx = record.shape[0]
             try:
+                trial_ksp_option = {'ksp_type': ksp_type, 'pc_type': pc_type}
+                trial_ksp_option.update(other_ksp_option)
+
                 solver = LinearProblemSolver.create_petsc_solver(
                     MPI.COMM_WORLD, A_mat=A_mat,
-                    solver_setting={'ksp_type': ksp_type, 'pc_type': pc_type}
+                    solver_setting=trial_ksp_option
                 )
                 res_dict = LinearProblemSolver.solve_by_petsc(
                     b_vec, solver, A_mat, setOperators=False, with_debug=True

@@ -21,25 +21,23 @@ from scripts_py.version_9.dolfinx_Grad.remesh_helper import MeshDeformationRunne
 from scripts_py.version_9.dolfinx_Grad.optimizer_utils import CostConvergeHandler
 
 proj_dir = '/home/admin123456/Desktop/work/topopt_exps/fluid_shape5'
-mesh_xdmf = os.path.join(proj_dir, 'mesh.xdmf')
-facet_xdmf = os.path.join(proj_dir, 'mesh_boundaries.xdmf')
-cell_xdmf = os.path.join(proj_dir, 'mesh_boundaries.xdmf')
 
-domain, cell_tags, facet_tags = MeshUtils.read_XDMFs(
-    mesh_xdmf=mesh_xdmf, facet_xdmf=facet_xdmf, cell_xdmf=cell_xdmf,
-    mesh_name='Grid', facet_name='Grid', cell_name='Grid'
+# mesh_xdmf = os.path.join(proj_dir, 'mesh.xdmf')
+# facet_xdmf = os.path.join(proj_dir, 'mesh_boundaries.xdmf')
+# cell_xdmf = os.path.join(proj_dir, 'mesh_boundaries.xdmf')
+#
+# domain, cell_tags, facet_tags = MeshUtils.read_XDMFs(
+#     mesh_xdmf=mesh_xdmf, facet_xdmf=facet_xdmf, cell_xdmf=cell_xdmf,
+#     mesh_name='Grid', facet_name='Grid', cell_name='Grid'
+# )
+
+MeshUtils.msh_to_XDMF(
+    name='model', msh_file=os.path.join(proj_dir, 'model.msh'), output_file=os.path.join(proj_dir, 'model.xdmf'), dim=2
 )
-
-# MeshUtils.msh_to_XDMF(
-#     name='model',
-#     msh_file='/home/admin123456/Desktop/work/topopt_exps/fluid_shape5/model.msh',
-#     output_file='/home/admin123456/Desktop/work/topopt_exps/fluid_shape5/model.xdmf',
-#     dim=2
-# )
-# domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
-#     file='/home/admin123456/Desktop/work/topopt_exps/fluid_shape5/model.xdmf',
-#     mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets'
-# )
+domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
+    file=os.path.join(proj_dir, 'model.xdmf'),
+    mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets'
+)
 
 # ----------------------------------------
 input_marker = 1
@@ -293,7 +291,7 @@ while True:
         if is_converge:
             break
 
-        if step > 150:
+        if step > 100:
             break
 
     else:

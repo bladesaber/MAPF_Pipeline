@@ -21,7 +21,7 @@ from scripts_py.version_9.dolfinx_Grad.recorder_utils import VTKRecorder, Tensor
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils, AssembleUtils
 from scripts_py.version_9.dolfinx_Grad.remesh_helper import MeshDeformationRunner
-from scripts_py.version_9.dolfinx_Grad.optimizer_utils import CostConvergeHandler
+from scripts_py.version_9.dolfinx_Grad.optimizer_utils import CostConvergeHandler, CostWeightHandler
 
 proj_dir = '/home/admin123456/Desktop/work/topopt_exps/fluid_shape6'
 MeshUtils.msh_to_XDMF(
@@ -140,7 +140,7 @@ cost_functional_list = []
 for marker in output_markers:
     integrand_form = ufl.dot(u, n_vec) * ds(marker)
     cost_functional_list.append(ScalarTrackingFunctional(
-        domain, integrand_form, target_goal_dict[f"marker_{marker}"], name=f"track_{marker}"
+        domain, integrand_form, target_goal_dict[f"marker_{marker}"], name="track_scalar"
     ))
 
 energy_loss_form = inner(grad(u), grad(u)) * ufl.dx
@@ -241,16 +241,18 @@ class DataCell(object):
 
 # ---------------------------------------------------------------------------------
 opt_problem.state_system.solve(domain.comm, with_debug=True)
+cost_weight = {
+    'track_scalar': 1.0,
+    'energy_loss': 2.0
+}
+
+weight_handler = CostWeightHandler()
 for cost_func in cost_functional_list:
     cost = cost_func.evaluate()
-    print(f"[DEBUG Weight init]: {cost_func.name}:{cost}")
-    if cost_func.name == 'energy_loss':
-        weight = 2.0 / cost
-    elif cost_func.name == 'MinMax_volume':
-        pass
-    else:
-        weight = (1.0 / 3.0) / cost
-    cost_func.update_scale(weight)
+    weight_handler.add_cost(cost_func.name, cost)
+weight_handler.compute_weight(cost_weight)
+for cost_func in cost_functional_list:
+    cost_func.update_scale(weight_handler.get_weight(cost_func.name))
 
 data_cell = DataCell()
 outflow_cells = data_cell.evaluate_outflow()
@@ -263,7 +265,6 @@ log_recorder.write_scalar('energy', scalar_value=energy_value, step=0)
 init_loss = opt_problem.evaluate_cost_functional(domain.comm, update_state=True)
 loss_storge_ctype = ctypes.c_double(init_loss)
 cost_converger = CostConvergeHandler(stat_num=25, warm_up_num=25, tol=5e-3, scale=1.0 / init_loss)
-
 
 def detect_cost_valid_func(tol_rho=0.05):
     loss = opt_problem.evaluate_cost_functional(domain.comm, update_state=True)

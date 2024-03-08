@@ -4,6 +4,26 @@ Mesh Tool From:
     1.1 please input 'gmsh' in console to enter the GUI
 2. Netgen: https://github.com/NGSolve/netgen.git
     2.1 please input 'netgen' in console to enter the GUI
+
+About Boundary Mesh Size Control, Please ref:https://gmsh.info/doc/texinfo/gmsh.html#Gmsh-tutorial Example 10
+"
+    lc = 1e-1;
+    Mesh.CharacteristicLengthExtendFromBoundary = 0;  // Necessary
+    Field[1] = Distance;
+    // Field[1].NNodesByEdge = 5000;
+    // Field[1].CurvesList = {1,3};
+    // Field[1].PointsList = {4};
+    Field[1].SurfacesList = {22, 23};
+    Field[2] = Threshold;
+    Field[2].IField = 1;
+    Field[2].LcMin = lc/2;
+    Field[2].LcMax = lc*2;
+    Field[2].DistMin = 1e-2;
+    Field[2].DistMax = 1e-1;
+    Field[3] = Min;
+    Field[3].FieldsList = {2};
+    Background Field = 3;
+"
 """
 
 import numpy as np
