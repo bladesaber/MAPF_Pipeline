@@ -53,6 +53,8 @@ class TensorBoardRecorder(object):
         self.writer.add_scalar(tag=tag, scalar_value=scalar_value, global_step=step)
 
     def write_scalars(self, tag, scalar_dict: Dict, step):
+        if len(scalar_dict) == 0:
+            return
         self.writer.add_scalars(tag, scalar_dict, step)
 
 

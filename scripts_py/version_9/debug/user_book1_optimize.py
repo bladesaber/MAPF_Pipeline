@@ -6,12 +6,13 @@ from ufl import grad, dot, inner, div
 from functools import partial
 
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils, AssembleUtils
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.navier_stoke_shape_optimizer import FluidShapeOptSimple
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shape_optimizer import FluidShapeOptSimple
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import ScalarTrackingFunctional, IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization import ShapeRegularization, \
     VolumeRegularization
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.navier_stoke_simulators import FluidSimulatorIPCS
+from scripts_py.version_9.dolfinx_Grad.remesh_helper import MeshQuality
 
+# ------ Example 1
 proj_dir = '/home/admin123456/Desktop/work/topopt_exps/user_book1'
 MeshUtils.msh_to_XDMF(
     name='model', dim=2,
@@ -25,11 +26,11 @@ domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
 input_marker = 1
 output_markers = [5, 6, 7]
 bry_markers = [2, 3, 4]
-
 bry_fixed_markers = [1, 4, 5, 6, 7]
 bry_free_markers = [2, 3]
-
-Re = 100
+state_ksp_option = {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'}
+adjoint_ksp_option = {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'}
+gradient_ksp_option = {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'}
 
 
 def inflow_velocity_exp(x, tdim):
@@ -40,51 +41,47 @@ def inflow_velocity_exp(x, tdim):
 
 
 # ----------------------------------------
+Re = 100
+deformation_cfg = {
+    'volume_change': 0.15,
+    'quality_measures': {
+        # max_angle is not support for 3D
+        # 'max_angle': {
+        #     'measure_type': 'max',
+        #     'tol_upper': 165.0,
+        #     'tol_lower': 0.0
+        # },
+        'min_angle': {
+            'measure_type': 'min',
+            'tol_upper': 180.0,
+            'tol_lower': 15.0
+        }
+    }
+}
 opt = FluidShapeOptSimple(
-    domain=domain, cell_tags=cell_tags, facet_tags=facet_tags, Re=Re, isStokeEqu=False
+    domain=domain, cell_tags=cell_tags, facet_tags=facet_tags, Re=Re, isStokeEqu=False,
+    deformation_cfg=deformation_cfg
 )
 
-bcs_info_state = []
 for marker in bry_markers:
     bc_value = dolfinx.fem.Function(opt.V, name=f"bry_u{marker}")
-    bc_dofs = MeshUtils.extract_entity_dofs(
-        (opt.W0, opt.V), opt.fdim, MeshUtils.extract_facet_entities(domain, facet_tags, marker)
-    )
-    bc = dolfinx.fem.dirichletbc(bc_value, bc_dofs, opt.W0)
-    bcs_info_state.append((bc, opt.W0, bc_dofs, bc_value))
+    opt.add_state_boundary(bc_value, marker, is_velocity=True)
 
 bc_in_value = dolfinx.fem.Function(opt.V, name='inflow_u')
 bc_in_value.interpolate(partial(inflow_velocity_exp, tdim=opt.tdim))
-bc_in_dofs = MeshUtils.extract_entity_dofs(
-    (opt.W0, opt.V), opt.fdim, MeshUtils.extract_facet_entities(domain, facet_tags, input_marker)
-)
-bc_in1 = dolfinx.fem.dirichletbc(bc_in_value, bc_in_dofs, opt.W0)
-bcs_info_state.append((bc_in1, opt.W0, bc_in_dofs, bc_in_value))
+opt.add_state_boundary(bc_in_value, input_marker, is_velocity=True)
 
 for marker in output_markers:
     bc_out_value = dolfinx.fem.Function(opt.Q, name=f"outflow_p_{marker}")
-    bc_out_dofs = MeshUtils.extract_entity_dofs(
-        (opt.W1, opt.Q), opt.fdim, MeshUtils.extract_facet_entities(domain, facet_tags, marker)
-    )
-    bc_out = dolfinx.fem.dirichletbc(bc_out_value, bc_out_dofs, opt.W1)
-    bcs_info_state.append((bc_out, opt.W1, bc_out_dofs, bc_out_value))
+    opt.add_state_boundary(bc_out_value, marker, is_velocity=False)
 
-# -------
-bcs_info_control = []
 for marker in bry_fixed_markers:
     bc_value = dolfinx.fem.Function(opt.V_S, name=f"fix_bry_shape_{marker}")
-    bc_dofs = MeshUtils.extract_entity_dofs(
-        opt.V_S, opt.fdim, MeshUtils.extract_facet_entities(domain, facet_tags, marker)
-    )
-    bc = dolfinx.fem.dirichletbc(bc_value, bc_dofs, None)
-    bcs_info_control.append((bc, opt.V_S, bc_dofs, bc_value))
+    opt.add_control_boundary(bc_value, marker)
 
-opt.init_state_problem(
-    bcs_info_state=bcs_info_state,
-    bcs_info_control=bcs_info_control,
-    state_ksp_option={'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
-    adjoint_ksp_option={'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
-    gradient_ksp_option={'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
+# --------------------------------------
+opt.state_initiation(
+    state_ksp_option=state_ksp_option, adjoint_ksp_option=adjoint_ksp_option, gradient_ksp_option=gradient_ksp_option,
 )
 
 # -----------------------------------------------------
@@ -102,28 +99,6 @@ for marker in output_markers:
         name='outflow_track'
     ))
 
-# ------ Cost: Balance Goal
-# cost_functional_list.append(
-#     IntegralFunction(
-#         domain=opt.domain,
-#         form=0.5 * inner(
-#             dot(opt.u, opt.n_vec) * opt.ds(5) - dot(opt.u, opt.n_vec) * opt.ds(6),
-#             dot(opt.u, opt.n_vec) * opt.ds(5) - dot(opt.u, opt.n_vec) * opt.ds(6)
-#         ),
-#         name=f"outflow_balance"
-#     )
-# )
-# cost_functional_list.append(
-#     IntegralFunction(
-#         domain=opt.domain,
-#         form=0.5 * inner(
-#             dot(opt.u, opt.n_vec) * opt.ds(5) - dot(opt.u, opt.n_vec) * opt.ds(7),
-#             dot(opt.u, opt.n_vec) * opt.ds(5) - dot(opt.u, opt.n_vec) * opt.ds(7)
-#         ),
-#         name=f"outflow_balance"
-#     )
-# )
-
 # ------ Cost: Minium Energy
 cost_functional_list.append(
     IntegralFunction(
@@ -133,45 +108,72 @@ cost_functional_list.append(
     )
 )
 
-cost_weights = {
+cost_weight = {
     'outflow_track': 1.0,
     'minium_energy': 1.0,
 }
 
 shape_regularization = ShapeRegularization([
-    VolumeRegularization(opt.control_problem, mu=1.0, target_volume_rho=0.8, method='percentage_div')
+    VolumeRegularization(opt.control_problem, mu=0.2, target_volume_rho=0.8, method='percentage_div')
 ])
 
-opt.init_opt_problem(
+scalar_product_method = {
+    'method': 'Poincare-Steklov operator',
+    'lambda_lame': 1.0,  # it is very important here
+    'damping_factor': 0.2,  # it is very important here
+    'cell_tags': cell_tags,
+    'facet_tags': facet_tags,
+    'bry_free_markers': bry_free_markers,
+    'bry_fixed_markers': bry_fixed_markers,
+    'mu_fix': 1.0,
+    'mu_free': 1.0,
+    'use_inhomogeneous': True,
+    'inhomogeneous_exponent': 1.0,
+    'update_inhomogeneous': False
+}
+# scalar_product_method = {
+#     'method': 'default'
+# }
+opt.optimization_initiation(
     cost_functional_list=cost_functional_list,
-    cost_weights=cost_weights,
+    cost_weight=cost_weight,
     shapeRegularization=shape_regularization,
-    bry_free_markers=bry_free_markers,
-    bry_fixed_markers=bry_fixed_markers,
+    scalar_product_method=scalar_product_method
 )
 
+# ------ Check Whether PETSc Setting Valid
+# print(f"[Info]: Check PETSc Setting:")
+# opt.opt_problem.compute_gradient(
+#     opt.domain.comm,
+#     state_kwargs={'with_debug': True},
+#     adjoint_kwargs={'with_debug': True},
+#     gradient_kwargs={
+#         'with_debug': True,
+#         'A_assemble_method': 'Identity_row',
+#     }
+# )
+#
+# print(f"[Info]: Check Mesh Deformation Setting:")
+# is_intersections = opt.deformation_handler.detect_collision(opt.domain)
+# print(f"[Info]: is_intersections:{is_intersections}")
+# for measure_method in opt.deformation_handler.quality_measures.keys():
+#     qualitys = MeshQuality.estimate_mesh_quality(domain, measure_method)
+#     print(f"[Info]: {measure_method}: {np.min(qualitys)} -> {np.max(qualitys)}")
+
 # ----------------------------------------------------
+out_dict = {}
+for marker in output_markers:
+    out_dict[f"marker_{marker}"] = dolfinx.fem.form(dot(opt.u, opt.n_vec) * opt.ds(marker))
 logger_dicts = {
-    'outflow': {
-        'marker_5': dolfinx.fem.form(dot(opt.u, opt.n_vec) * opt.ds(5)),
-        'marker_6': dolfinx.fem.form(dot(opt.u, opt.n_vec) * opt.ds(6)),
-        'marker_7': dolfinx.fem.form(dot(opt.u, opt.n_vec) * opt.ds(7)),
-    },
-    'energy': {
-        'energy': dolfinx.fem.form(inner(opt.u, opt.u) * ufl.dx),
-    },
-    'energy_loss': {
-        'energy_loss': dolfinx.fem.form(inner(grad(opt.u), grad(opt.u)) * ufl.dx),
-    },
-    'volume': {
-        'volume': dolfinx.fem.form(dolfinx.fem.Constant(opt.domain, 1.0) * ufl.dx)
-    }
+    'outflow': out_dict,
+    'energy': {'energy': dolfinx.fem.form(inner(opt.u, opt.u) * ufl.dx)},
+    'energy_loss': {'energy_loss': dolfinx.fem.form(inner(grad(opt.u), grad(opt.u)) * ufl.dx)},
+    'volume': {'volume': dolfinx.fem.form(dolfinx.fem.Constant(opt.domain, 1.0) * ufl.dx)}
 }
-opt.set_logger_dicts(logger_dicts)
 
-opt.solve(record_dir=proj_dir, max_iter=150, with_debug=False)
+opt.solve(record_dir=proj_dir, logger_dicts=logger_dicts, max_iter=150, with_debug=False)
 
-opt.opt_problem.state_system.solve(domain.comm, with_debug=True)
+opt.opt_problem.state_system.solve(domain.comm, with_debug=False)
 for name in logger_dicts['outflow'].keys():
     print(f"{name}: {AssembleUtils.assemble_scalar(logger_dicts['outflow'][name])}")
 

@@ -30,18 +30,12 @@ model_xdmf = os.path.join(proj_dir, 'model.xdmf')
 # ------ create xdmf
 msh_file = os.path.join(proj_dir, 'model.msh')
 MeshUtils.msh_to_XDMF(
-    name='model',
-    msh_file=os.path.join(proj_dir, 'model.msh'),
-    output_file=model_xdmf,
-    dim=2
+    name='model', msh_file=os.path.join(proj_dir, 'model.msh'), output_file=model_xdmf, dim=2
 )
 # -------------------
 
 domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
-    file=model_xdmf,
-    mesh_name='model',
-    cellTag_name='model_cells',
-    facetTag_name='model_facets'
+    file=model_xdmf, mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets'
 )
 tdim = domain.topology.dim
 fdim = tdim - 1
@@ -223,5 +217,5 @@ u_res = up.sub(0).collapse()
 u_recorder.write_function(u_res, step)
 
 # MeshUtils.save_XDMF(os.path.join(proj_dir, 'last_model.xdmf'), domain, cell_tags, facet_tags)
-grid = VisUtils.convert_to_grid(domain)
-pyvista.save_meshio(os.path.join(proj_dir, 'last_model.stl'), grid)
+# grid = VisUtils.convert_to_grid(domain)
+# pyvista.save_meshio(os.path.join(proj_dir, 'last_model.stl'), grid)

@@ -48,7 +48,9 @@ Reference Link: https://petsc.org/release/manualpages/KSP/KSPConvergedReason/
 
 class LinearProblemSolver(object):
     @staticmethod
-    def create_petsc_solver(comm=MPI.COMM_WORLD, solver_setting: dict = None, A_mat: PETSc.Mat = None):
+    def create_petsc_solver(
+            comm=MPI.COMM_WORLD, solver_setting: dict = None, A_mat: PETSc.Mat = None
+    ):
         """
         find more info from: https://petsc4py.readthedocs.io/en/stable/manual/ksp/
         """
@@ -57,27 +59,19 @@ class LinearProblemSolver(object):
             return solver
 
         # ------- easy use
-        # solver.setType(solver_setting["ksp_type"])
-        # solver.getPC().setType(solver_setting["pc_type"])
+        # solver.setType(solver_setting.get("ksp_type", "preonly"))
+        # solver.getPC().setType(solver_setting.get("pc_type", "lu"))
+        # if "pc_factor_mat_solver_type" in solver_setting.keys():
+        #     solver.getPC().setFactorSolverType(solver_setting["pc_factor_mat_solver_type"])
+        # if "pc_hypre_mat_solver_type" in solver_setting.keys():
+        #     solver.getPC().setHYPREType(solver_setting["pc_hypre_mat_solver_type"])
+        # solver.setFromOptions()
 
         # ------ detail use
-        # solver.report = True
-        # opts = PETSc.Options()
+        opts = PETSc.Options()
         # option_prefix = solver.getOptionsPrefix()
-
-        # opts[f"{option_prefix}ksp_type"] = solver_setting.get("ksp_type", "preonly")
-        solver.setType(solver_setting.get("ksp_type", "preonly"))
-
-        # opts[f"{option_prefix}pc_type"] = solver_setting.get("pc_type", 'lu')
-        solver.getPC().setType(solver_setting.get("pc_type", "lu"))
-
-        if "pc_factor_mat_solver_type" in solver_setting.keys():
-            # opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
-            solver.getPC().setFactorSolverType(solver_setting["pc_factor_mat_solver_type"])
-
-        if "pc_hypre_mat_solver_type" in solver_setting.keys():
-            solver.getPC().setHYPREType(solver_setting["pc_hypre_mat_solver_type"])
-
+        for key, value in solver_setting.items():
+            opts.setValue(key, value)
         solver.setFromOptions()
 
         if A_mat is not None:

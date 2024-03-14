@@ -59,6 +59,7 @@ class AdjointProblem(object):
                 if kwargs.get('with_debug', False):
                     print(f"[DEBUG AdjointSystem {problem.name}]: max_error:{res_dict['max_error']:.6f} "
                           f"cost_time:{res_dict['cost_time']:.2f}")
+                    assert res_dict['max_error'] < 1e-6
 
             self.has_solution = True
         return self.has_solution

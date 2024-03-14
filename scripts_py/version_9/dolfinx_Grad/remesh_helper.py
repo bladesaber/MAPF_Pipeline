@@ -238,6 +238,9 @@ class MeshQuality(object):
             6. min_angle
             7. condition
         """
+
+        # TODO so unstable why?
+
         if isinstance(obj, dolfinx.mesh.Mesh):
             grid = VisUtils.convert_to_grid(obj, tdim, entities)
         else:
@@ -294,8 +297,10 @@ class MeshDeformationRunner(object):
         # ------
         if self.tdim == 2:
             self.volume_measure_method = 'area'
-        elif self.tdim == 2:
+        elif self.tdim == 3:
             self.volume_measure_method = 'volume'
+        else:
+            raise ValueError
 
         self.volume_change = volume_change
         self.validate_priori = False
@@ -404,7 +409,7 @@ class MeshDeformationRunner(object):
                 info += " |Validate Quality Fail"
                 return False, info
 
-        info += "Success"
+        info = "Success"
         return True, info
 
     def move_mesh_by_line_search(
@@ -424,7 +429,7 @@ class MeshDeformationRunner(object):
 
             displacement_np = direction_np * step_size
             valid_move_flag, info = self.move_mesh(displacement_np, **kwargs)
-            # print(f"[DEBUG MeshDeformationRunner] Success_flag:{success_flag} Info:{info}")
+            # print(f"[DEBUG MeshDeformationRunner] Success_flag:{valid_move_flag} Info:{info}")
 
             if valid_move_flag:
                 valid_cost_flag = True

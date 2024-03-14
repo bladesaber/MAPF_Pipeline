@@ -71,6 +71,7 @@ class StateProblem(object):
                 if kwargs.get('with_debug', False):
                     print(f"[DEBUG StateSystem {problem.name}]: max_error:{res_dict['max_error']:.6f} "
                           f"cost_time:{res_dict['cost_time']:.2f}")
+                    assert res_dict['max_error'] < 1e-6
 
             self.has_solution = True
 
