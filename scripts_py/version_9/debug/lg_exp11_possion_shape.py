@@ -49,7 +49,7 @@ boundary_marker = 3
 """
 Must Use Coordinate, The x of interpolate function of class(dolfinx.fem.Function) means the coordinate of Mesh
 """
-coodr = MeshUtils.define_coordinate(domain)
+coodr = MeshUtils.define_coordinate(domain)  # This is global coordinate
 f_exp = 2.5 * np.power(coodr[0] + 0.4 - np.power(coodr[1], 2), 2) + \
         np.power(coodr[0], 2) + np.power(coodr[1], 2) - 1
 
@@ -77,10 +77,7 @@ state_system = StateProblem(state_problems)
 
 # ------ Define Control problem
 control_problem = create_shape_problem(
-    domain=domain,
-    bcs_info=[],
-    lambda_lame=0.0,
-    damping_factor=0.0,
+    domain=domain, bcs_info=[],
     gradient_ksp_option={'ksp_type': 'preonly', 'pc_type': 'ksp'}
 )
 

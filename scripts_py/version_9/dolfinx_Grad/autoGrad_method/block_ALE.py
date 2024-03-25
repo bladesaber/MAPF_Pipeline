@@ -6,7 +6,7 @@ from Thirdparty.pyadjoint.pyadjoint import annotate_tape, get_working_tape, stop
 
 from .type_Mesh import Mesh
 from .type_Function import Function
-from ..petsc_utils import PETScUtils
+from ..sparse_utils import PETScUtils
 
 """
        block_variable

@@ -73,10 +73,7 @@ state_system = StateProblem(state_problems)
 
 # ------ Define Control problem
 control_problem = create_shape_problem(
-    domain=domain,
-    bcs_info=[],
-    lambda_lame=0.0,
-    damping_factor=0.0,
+    domain=domain, bcs_info=[],
     gradient_ksp_option={'ksp_type': 'preonly', 'pc_type': 'ksp'}
 )
 
@@ -171,7 +168,7 @@ while True:
     # print()
 
     if success_flag:
-        opt_problem.update_update_scalar_product(with_debug=False)
+        # opt_problem.update_update_scalar_product(with_debug=False)
         loss = opt_problem.evaluate_cost_functional(domain.comm, update_state=False)
         cur_loss_ctype.value = loss
 

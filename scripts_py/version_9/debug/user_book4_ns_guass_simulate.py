@@ -7,11 +7,11 @@ from functools import partial
 from ufl import grad, dot, inner, div
 import pyvista
 
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_simulators import FluidSimulator
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_simulator import FluidSimulator
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 
-proj_dir = '/home/admin123456/Desktop/work/topopt_exps/user_book5'
+proj_dir = '/home/admin123456/Desktop/work/topopt_exps/user_book7'
 MeshUtils.msh_to_XDMF(
     name='model', dim=3,
     msh_file=os.path.join(proj_dir, 'model.msh'), output_file=os.path.join(proj_dir, 'model.xdmf'),
@@ -21,9 +21,9 @@ domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
     mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets'
 )
 
-input_marker = 17
-output_markers = [18]
-bry_markers = [19, 20]
+input_marker = 56
+output_markers = [57]
+bry_markers = [58, 59]
 
 dt = 1 / 350.0
 dynamic_viscosity = 0.01
@@ -34,12 +34,8 @@ body_force = None
 def inflow_velocity_exp(x, tdim):
     num = x.shape[1]
     values = np.zeros((tdim, num))
-
-    # values[0] = 1.0
-
-    dist = 0.7 - np.sqrt(np.power(x[1] - 0.5, 2) + np.power(x[2] - 0.5, 2))
+    dist = 0.5 - np.sqrt(np.power(x[1] - 0.5, 2) + np.power(x[2] - 0.5, 2))
     values[0] = np.power(dist, 2.0) * 6.0
-
     return values
 
 

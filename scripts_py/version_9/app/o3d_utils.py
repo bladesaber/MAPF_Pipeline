@@ -10,6 +10,7 @@ import open3d as o3d
 import open3d.visualization.gui as gui
 import open3d.visualization.rendering as rendering
 
+
 class O3D_Utils(object):
     @staticmethod
     def createPCD(xyzs: np.array, colors: np.array = None) -> o3d.geometry.PointCloud:
@@ -103,6 +104,7 @@ class O3D_Utils(object):
         for widget in widget_list:
             hlayout.add_child(widget)
         return hlayout
+
 
 class AppWindow(object):
     MENU_QUIT = 1

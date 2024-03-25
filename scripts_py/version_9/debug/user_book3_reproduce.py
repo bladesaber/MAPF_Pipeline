@@ -7,7 +7,7 @@ from functools import partial
 import pyvista
 
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils, AssembleUtils
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shape_optimizer import FluidShapeOptSimple
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shapeOptimizer_simple import FluidShapeOptSimple
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import ScalarTrackingFunctional, IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization import ShapeRegularization, \
     VolumeRegularization
@@ -101,33 +101,64 @@ from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 #     return values
 
 # ------ Example 4
-proj_dir = '/home/admin123456/Desktop/work/topopt_exps/user_book5'
-# MeshUtils.msh_to_XDMF(
-#     name='model', dim=3,
-#     msh_file=os.path.join(proj_dir, 'model.msh'), output_file=os.path.join(proj_dir, 'model.xdmf'),
+# proj_dir = '/home/admin123456/Desktop/work/topopt_exps/user_book5'
+# # MeshUtils.msh_to_XDMF(
+# #     name='model', dim=3,
+# #     msh_file=os.path.join(proj_dir, 'model.msh'), output_file=os.path.join(proj_dir, 'model.xdmf'),
+# # )
+# domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
+#     file=os.path.join(proj_dir, 'model.xdmf'),
+#     mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets'
 # )
+# # grid = VisUtils.convert_to_grid(domain)
+# # plt = pyvista.Plotter()
+# # plt.add_mesh(grid, style='wireframe')
+# # plt.show()
+#
+# input_marker = 17
+# output_markers = [18]
+# bry_markers = [19, 20]
+# bry_fixed_markers = [17, 18, 19]
+# bry_free_markers = [20]
+# isStokeEqu = False
+# load_initiation = True
+#
+#
+# def inflow_velocity_exp(x, tdim):
+#     num = x.shape[1]
+#     values = np.zeros((tdim, num))
+#     dist = 0.7 - np.sqrt(np.power(x[1] - 0.5, 2) + np.power(x[2] - 0.5, 2))
+#     values[0] = np.power(dist, 2.0) * 6.0
+#     return values
+
+# ------ Example 5
+proj_dir = '/home/admin123456/Desktop/work/topopt_exps/user_book7'
+MeshUtils.msh_to_XDMF(
+    name='model', dim=3,
+    msh_file=os.path.join(proj_dir, 'model.msh'), output_file=os.path.join(proj_dir, 'model.xdmf'),
+)
 domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
     file=os.path.join(proj_dir, 'model.xdmf'),
     mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets'
 )
-# grid = VisUtils.convert_to_grid(domain)
-# plt = pyvista.Plotter()
-# plt.add_mesh(grid, style='wireframe')
-# plt.show()
 
-input_marker = 17
-output_markers = [18]
-bry_markers = [19, 20]
-bry_fixed_markers = [17, 18, 19]
-bry_free_markers = [20]
+input_marker = 56
+output_markers = [57]
+bry_markers = [58, 59]
+bry_fixed_markers = [56, 57, 58]
+bry_free_markers = [59]
 isStokeEqu = False
+beta_rho = 3.0 / 4.0
+deformation_lower = 1e-2
 load_initiation = True
+u_pickle_file = '/home/admin123456/Desktop/work/topopt_exps/user_book7/init_step_100/navier_stoke_u.pkl'
+p_pickle_file = '/home/admin123456/Desktop/work/topopt_exps/user_book7/init_step_100/navier_stoke_p.pkl'
 
 
 def inflow_velocity_exp(x, tdim):
     num = x.shape[1]
     values = np.zeros((tdim, num))
-    dist = 0.7 - np.sqrt(np.power(x[1] - 0.5, 2) + np.power(x[2] - 0.5, 2))
+    dist = 0.5 - np.sqrt(np.power(x[1] - 0.5, 2) + np.power(x[2] - 0.5, 2))
     values[0] = np.power(dist, 2.0) * 6.0
     return values
 
@@ -161,10 +192,7 @@ opt = FluidShapeOptSimple(
     deformation_cfg=deformation_cfg
 )
 if load_initiation:
-    opt.load_initiation_pickle(
-        u_pickle_file='/home/admin123456/Desktop/work/topopt_exps/user_book5/init_step_100/navier_stoke_u.pkl',
-        p_pickle_file='/home/admin123456/Desktop/work/topopt_exps/user_book5/init_step_100/navier_stoke_p.pkl'
-    )
+    opt.load_initiation_pickle(u_pickle_file=u_pickle_file, p_pickle_file=p_pickle_file)
 
 for marker in bry_markers:
     bc_value = dolfinx.fem.Function(opt.V, name=f"bry_u{marker}")
@@ -203,7 +231,7 @@ shape_regularization = ShapeRegularization([
     VolumeRegularization(
         opt.control_problem,
         mu=1.0,
-        target_volume_rho=0.9,
+        target_volume_rho=0.5,
         method='percentage_div'
     )
 ])
@@ -261,7 +289,7 @@ logger_dicts = {
     'volume': {'volume': dolfinx.fem.form(dolfinx.fem.Constant(opt.domain, 1.0) * ufl.dx)}
 }
 
-opt.solve(record_dir=proj_dir, logger_dicts=logger_dicts, max_iter=150, with_debug=True)
+opt.solve(record_dir=proj_dir, logger_dicts=logger_dicts, max_iter=150, with_debug=False)
 
 opt.opt_problem.state_system.solve(domain.comm, with_debug=False)
 for name in logger_dicts['outflow'].keys():

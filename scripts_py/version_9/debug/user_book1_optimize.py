@@ -6,7 +6,7 @@ from ufl import grad, dot, inner, div
 from functools import partial
 
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils, AssembleUtils
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shape_optimizer import FluidShapeOptSimple
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shapeOptimizer_simple import FluidShapeOptSimple
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import ScalarTrackingFunctional, IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization import ShapeRegularization, \
     VolumeRegularization

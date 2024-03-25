@@ -28,7 +28,7 @@ class VisUtils(object):
         self.plotter.show()
 
     @staticmethod
-    def convert_to_grid(domain: dolfinx.mesh.Mesh, tdim: int = None, entities=None) -> pyvista.DataSet:
+    def convert_to_grid(domain: dolfinx.mesh.Mesh, tdim: int = None, entities=None) -> pyvista.UnstructuredGrid:
         cells, cell_types, geometry = dolfinx.plot.vtk_mesh(domain, tdim, entities)
         grid = pyvista.UnstructuredGrid(cells, cell_types, geometry)
         return grid

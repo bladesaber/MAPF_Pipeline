@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import math
 
+
 class Shape_Utils(object):
     @staticmethod
     def create_BoxPcd(xmin, ymin, zmin, xmax, ymax, zmax, reso):
@@ -66,15 +67,15 @@ class Shape_Utils(object):
                     np.ones(shape=(uvs.shape[0], 1)) * height / 2.0,
                     uvs[:, 0:1],
                     uvs[:, 1:2],
-                    ], axis=1),
+                ], axis=1),
                 np.concatenate([
                     np.ones(shape=(uvs.shape[0], 1)) * -height / 2.0,
                     uvs[:, 0:1],
                     uvs[:, 1:2],
-                    ], axis=1),
+                ], axis=1),
             ]
 
-            for h_value in np.linspace(-height/2.0, height/2.0, hSteps):
+            for h_value in np.linspace(-height / 2.0, height / 2.0, hSteps):
                 hPcd = np.zeros(shape=(num, 3))
                 hPcd[:, 0] = h_value
                 hPcd[:, 1] = huv[:, 0]
@@ -87,15 +88,15 @@ class Shape_Utils(object):
                     uvs[:, 0:1],
                     np.ones(shape=(uvs.shape[0], 1)) * -height / 2.0,
                     uvs[:, 1:2],
-                    ], axis=1),
+                ], axis=1),
                 np.concatenate([
                     uvs[:, 0:1],
                     np.ones(shape=(uvs.shape[0], 1)) * height / 2.0,
                     uvs[:, 1:2],
-                    ], axis=1),
+                ], axis=1),
             ]
 
-            for h_value in np.linspace(-height/2.0, height/2.0, hSteps):
+            for h_value in np.linspace(-height / 2.0, height / 2.0, hSteps):
                 hPcd = np.zeros(shape=(num, 3))
                 hPcd[:, 0] = huv[:, 0]
                 hPcd[:, 1] = h_value
@@ -108,12 +109,12 @@ class Shape_Utils(object):
                     uvs[:, 0:1],
                     uvs[:, 1:2],
                     np.ones(shape=(uvs.shape[0], 1)) * -height / 2.0,
-                    ], axis=1),
+                ], axis=1),
                 np.concatenate([
                     uvs[:, 0:1],
                     uvs[:, 1:2],
                     np.ones(shape=(uvs.shape[0], 1)) * height / 2.0,
-                    ], axis=1),
+                ], axis=1),
             ]
 
             for h_value in np.linspace(-height / 2.0, height / 2.0, hSteps):
@@ -239,28 +240,28 @@ class Shape_Utils(object):
 
         pcds = []
         if direction[0] == 1:
-            for h_value in np.linspace(-height/2.0, height/2.0, hSteps):
+            for h_value in np.linspace(-height / 2.0, height / 2.0, hSteps):
                 pcds.append(np.concatenate([
                     np.ones(shape=(uvs.shape[0], 1)) * h_value,
                     uvs[:, 0:1],
                     uvs[:, 1:2],
-                    ], axis=1))
+                ], axis=1))
 
         elif direction[1] == 1:
-            for h_value in np.linspace(-height/2.0, height/2.0, hSteps):
+            for h_value in np.linspace(-height / 2.0, height / 2.0, hSteps):
                 pcds.append(np.concatenate([
                     uvs[:, 0:1],
                     np.ones(shape=(uvs.shape[0], 1)) * h_value,
                     uvs[:, 1:2],
-                    ], axis=1))
+                ], axis=1))
 
         elif direction[2] == 1:
-            for h_value in np.linspace(-height/2.0, height/2.0, hSteps):
+            for h_value in np.linspace(-height / 2.0, height / 2.0, hSteps):
                 pcds.append(np.concatenate([
                     uvs[:, 0:1],
                     uvs[:, 1:2],
                     np.ones(shape=(uvs.shape[0], 1)) * h_value,
-                    ], axis=1))
+                ], axis=1))
         else:
             raise ValueError
 
@@ -313,7 +314,7 @@ class Shape_Utils(object):
         return xyzs
 
     @staticmethod
-    def removePointOutBoundary(xyzs:np.array, xmin, xmax, ymin, ymax, zmin, zmax):
+    def removePointOutBoundary(xyzs: np.array, xmin, xmax, ymin, ymax, zmin, zmax):
         xyzs = xyzs[~(xyzs[:, 0] < xmin)]
         xyzs = xyzs[~(xyzs[:, 0] > xmax)]
         xyzs = xyzs[~(xyzs[:, 1] < ymin)]
@@ -325,7 +326,7 @@ class Shape_Utils(object):
 
 class GridEnv_Utils(object):
     @staticmethod
-    def obstacle_convert_grid(xyzs:np.array, scale):
+    def obstacle_convert_grid(xyzs: np.array, scale):
         scale_xyzs = xyzs * scale
         scale_xyzs = np.round(scale_xyzs, decimals=1)
         scale_xyzs = pd.DataFrame(scale_xyzs).drop_duplicates().values

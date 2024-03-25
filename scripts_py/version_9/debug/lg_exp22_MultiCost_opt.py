@@ -266,6 +266,7 @@ init_loss = opt_problem.evaluate_cost_functional(domain.comm, update_state=True)
 loss_storge_ctype = ctypes.c_double(init_loss)
 cost_converger = CostConvergeHandler(stat_num=25, warm_up_num=25, tol=5e-3, scale=1.0 / init_loss)
 
+
 def detect_cost_valid_func(tol_rho=0.05):
     loss = opt_problem.evaluate_cost_functional(domain.comm, update_state=True)
     is_valid = loss < loss_storge_ctype.value + np.abs(loss_storge_ctype.value) * tol_rho

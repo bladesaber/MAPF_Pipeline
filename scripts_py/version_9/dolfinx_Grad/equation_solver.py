@@ -12,7 +12,7 @@ from functools import partial
 import os
 import pandas as pd
 
-from .petsc_utils import PETScUtils
+from .sparse_utils import PETScUtils
 from .dolfinx_utils import AssembleUtils, BoundaryUtils
 
 """

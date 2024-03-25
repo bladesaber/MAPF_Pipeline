@@ -110,37 +110,41 @@ class AssembleUtils(object):
 
 class MeshUtils(object):
     @staticmethod
-    def msh_to_XDMF(msh_file: str, output_file: str, name, dim=3):
+    def msh_to_XDMF(msh_file: str, output_file: str, name, dim: int, mesh_dim: int = None):
         """
         msh_file: .msh, .gmsh2, .gmsh
         if operation fail, please check:
             if dim=3: whether all necessary volumes had been added to physical group
             if dim=2: whether all necessary surfaces had been added to physical group
+        params:
+            dim: dimension of model
+            mesh_dim: dimension of mesh
         """
         assert output_file.endswith('.xdmf')
+        if mesh_dim is None:
+            mesh_dim = dim
+
         mesh, cell_tags, facet_tags = gmshio.read_from_msh(msh_file, MPI.COMM_WORLD, gdim=dim)
         mesh.name = name
         cell_tags.name = f"{mesh.name}_cells"
         facet_tags.name = f"{mesh.name}_facets"
         with XDMFFile(mesh.comm, output_file, 'w') as f:
-            mesh.topology.create_connectivity(dim - 1, dim)
+            mesh.topology.create_connectivity(mesh_dim - 1, mesh_dim)
             f.write_mesh(mesh)
-            f.write_meshtags(
-                cell_tags, mesh.geometry,
-                # geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
-            )
-            f.write_meshtags(
-                facet_tags, mesh.geometry,
-                # geometry_xpath=f"/Xdmf/Domain/Grid[@Name='{mesh.name}']/Geometry"
-            )
+            f.write_meshtags(cell_tags, mesh.geometry)
+            f.write_meshtags(facet_tags, mesh.geometry)
 
     @staticmethod
-    def read_XDMF(file: str, mesh_name, cellTag_name, facetTag_name):
+    def read_XDMF(file: str, mesh_name, cellTag_name, facetTag_name, mesh_dim=None):
         assert file.endswith('.xdmf')
         with XDMFFile(MPI.COMM_WORLD, file, "r") as f:
             domain = f.read_mesh(name=mesh_name)
             cell_tags = f.read_meshtags(domain, name=cellTag_name)
-        domain.topology.create_connectivity(domain.topology.dim, domain.topology.dim - 1)
+
+        if mesh_dim is None:
+            mesh_dim = domain.topology.dim
+        domain.topology.create_connectivity(mesh_dim - 1, mesh_dim)
+
         # only after creating the connectivity, facet_tags can be extracted
         with XDMFFile(MPI.COMM_WORLD, file, "r") as f:
             facet_tags = f.read_meshtags(domain, name=facetTag_name)
@@ -148,7 +152,8 @@ class MeshUtils(object):
 
     @staticmethod
     def read_XDMFs(
-            mesh_xdmf: str, facet_xdmf: str, cell_xdmf: str, mesh_name: str, facet_name: str, cell_name: str
+            mesh_xdmf: str, facet_xdmf: str, cell_xdmf: str,
+            mesh_name: str, facet_name: str, cell_name: str, mesh_dim=None
     ):
         """
         Loading Sequence is Important:
@@ -161,7 +166,10 @@ class MeshUtils(object):
 
         with XDMFFile(MPI.COMM_WORLD, mesh_xdmf, "r") as f:
             domain = f.read_mesh(name=mesh_name)
-        domain.topology.create_connectivity(domain.topology.dim, domain.topology.dim - 1)
+
+        if mesh_dim is None:
+            mesh_dim = domain.topology.dim
+        domain.topology.create_connectivity(mesh_dim - 1, mesh_dim)
 
         with XDMFFile(MPI.COMM_WORLD, facet_xdmf, "r") as f:
             cell_tags = f.read_meshtags(domain, name=cell_name)

@@ -6,7 +6,7 @@ from functools import partial
 from ufl import grad, dot, inner, div
 import pyvista
 
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_simulators import FluidSimulator
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_simulator import FluidSimulator
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 

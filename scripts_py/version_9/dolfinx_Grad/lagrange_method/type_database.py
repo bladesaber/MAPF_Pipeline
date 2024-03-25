@@ -133,8 +133,6 @@ class ShapeDataBase(object):
     def __init__(
             self,
             domain: dolfinx.mesh.Mesh,
-            lambda_lame: float = 0.0,
-            damping_factor: float = 0.0,
             gradient_ksp_option: Dict = None,
     ):
         self.domain = domain
@@ -146,9 +144,6 @@ class ShapeDataBase(object):
 
         self.bcs: List[dolfinx.fem.DirichletBC] = []
         self.bcs_infos: List = []
-
-        self.lambda_lame = lambda_lame
-        self.damping_factor = damping_factor
 
         self.shape_grad = dolfinx.fem.Function(self.deformation_space, name='shape_grad')
 
@@ -240,11 +235,9 @@ def create_shape_problem(
             dolfinx.fem.DirichletBC, dolfinx.fem.FunctionSpaceBase,
             np.ndarray, Union[float, np.ndarray, dolfinx.fem.Function]
         ]],
-        lambda_lame: float = 0.0,
-        damping_factor: float = 0.0,
         gradient_ksp_option: Dict = None,
 ):
-    problem = ShapeDataBase(domain, lambda_lame, damping_factor, gradient_ksp_option)
+    problem = ShapeDataBase(domain, gradient_ksp_option)
     for bc, bc_V, bc_dofs, value_type in bcs_info:
         problem.add_bc(bc, bc_V, bc_dofs, value_type)
     return problem

@@ -252,7 +252,8 @@ class MeshQuality(object):
 
 class MeshDeformationRunner(object):
     def __init__(
-            self, domain: dolfinx.mesh.Mesh,
+            self,
+            domain: dolfinx.mesh.Mesh,
             volume_change: float = -1.0,
             quality_measures: Dict = {}
     ):
@@ -417,9 +418,16 @@ class MeshDeformationRunner(object):
             direction_np: np.ndarray,
             max_iter: int, init_stepSize=1.0, stepSize_lower=1e-4,
             detect_cost_valid_func: Callable = None,
-            with_debug_info=False, **kwargs
+            with_debug_info=False,
+            revert_move=False,
+            max_step_limit=None,
+            **kwargs
     ):
         step_size = init_stepSize
+        if max_step_limit is not None:
+            max_velocity = np.max(np.linalg.norm(direction_np, axis=1, ord=2))
+            step_size = max_step_limit / max_velocity * step_size
+
         iteration = 0
         success_flag = False
 
@@ -429,7 +437,8 @@ class MeshDeformationRunner(object):
 
             displacement_np = direction_np * step_size
             valid_move_flag, info = self.move_mesh(displacement_np, **kwargs)
-            # print(f"[DEBUG MeshDeformationRunner] Success_flag:{valid_move_flag} Info:{info}")
+            # if not valid_move_flag:
+            #     print(f"[DEBUG MeshDeformationRunner] Success_flag:{valid_move_flag} Info:{info}")
 
             if valid_move_flag:
                 valid_cost_flag = True
@@ -438,6 +447,8 @@ class MeshDeformationRunner(object):
 
                 if valid_cost_flag:
                     success_flag = True
+                    if revert_move:
+                        MeshUtils.move(self.domain, displacement_np * -1.0)  # revert mesh
                     break
 
                 else:
