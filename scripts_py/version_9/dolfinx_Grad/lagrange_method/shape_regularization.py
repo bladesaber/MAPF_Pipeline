@@ -49,8 +49,10 @@ class VolumeRegularization(object):
             shape_problem: ShapeDataBase,
             mu: float,
             target_volume_rho: float,
-            method: Literal['absolute_sub', 'percentage_div'] = 'absolute_sub'
+            method: Literal['absolute_sub', 'percentage_div'] = 'absolute_sub',
+            name='VolumeRegularization'
     ):
+        self.name = name
         self.mu = mu
         self.target_volume_rho = target_volume_rho
         self.shape_problem = shape_problem
@@ -120,8 +122,10 @@ class SurfaceRegularization(object):
             self,
             shape_problem: ShapeDataBase,
             mu: float,
-            target_surface_rho: float
+            target_surface_rho: float,
+            name='SurfaceRegularization'
     ):
+        self.name = name
         self.mu = mu
         self.target_surface_rho = target_surface_rho
         self.shape_problem = shape_problem
@@ -171,8 +175,10 @@ class BarycenterRegularization(object):
             self,
             shape_problem: ShapeDataBase,
             mu: float,
-            target_barycenter: np.ndarray
+            target_barycenter: np.ndarray,
+            name='BarycenterRegularization'
     ):
+        self.name = name
         self.shape_problem = shape_problem
         self.mu = mu
         self.target_barycenter = target_barycenter
@@ -295,8 +301,10 @@ class CurvatureRegularization(object):
             self,
             shape_problem: ShapeDataBase,
             mu: float,
-            ksp_option
+            ksp_option,
+            name='CurvatureRegularization'
     ):
+        self.name = name
         self.shape_problem = shape_problem
         self.mu = mu
         self.ksp_option = ksp_option

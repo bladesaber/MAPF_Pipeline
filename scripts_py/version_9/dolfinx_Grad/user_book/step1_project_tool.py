@@ -1,0 +1,167 @@
+import os
+import shutil
+import argparse
+from importlib import import_module
+import json
+import numpy as np
+import sys
+
+
+class ImportTool(object):
+    @staticmethod
+    def import_module(module_dir, module_name: str):
+        if module_name.endswith('.py'):
+            module_name = module_name.replace('.py', '')
+
+        sys.path.append(module_dir)
+        load_module = import_module(module_name)
+        return load_module
+
+    @staticmethod
+    def get_module_names(module):
+        return dir(module)
+
+    @staticmethod
+    def get_module_function(module, name):
+        if name not in ImportTool.get_module_names(module):
+            raise ValueError("[ERROR]: Non-Valid Module Function")
+        return getattr(module, name)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Fluid Tool")
+    parser.add_argument('--proj_dir', type=str, default=None)
+    parser.add_argument('--create_proj', type=int, default=0)
+    parser.add_argument('--create_obstacle', type=int, default=0)
+    parser.add_argument('--obstacle_name', type=str, default=None)
+    parser.add_argument('--obstacle_dir', type=str, default=None)
+    args = parser.parse_args()
+    return args
+
+
+def create_project(args):
+    if args.proj_dir is None:
+        print('[Info]: Param(Proj_dir) Is Not A Valid Path')
+        return
+
+    if os.path.exists(args.proj_dir):
+        shutil.rmtree(args.proj_dir)
+    os.mkdir(args.proj_dir)
+
+    open(os.path.join(args.proj_dir, 'model.geo'), 'w')  # create gmsh file
+    open(os.path.join(args.proj_dir, 'condition.py'), 'w')
+
+    simulate_cfg = {
+        'ipcs': {
+            'dt': 1 / 400.0,
+            'dynamic_viscosity': 0.01,
+            'density': 1.0,
+            'body_force': None,
+            'max_iter': 5000,
+            'log_iter': 100,
+            'tol': 5e-6,
+            'is_channel_fluid': True,
+            'trial_iter': 100,
+        },
+        'naiver_stoke': {
+            'Re': 100,
+            'ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
+        },
+        'stoke': {
+            'ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
+        },
+    }
+    optimize_cfg = {
+        'Re': 100,
+        'isStokeEqu': False,
+        'state_ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
+        'adjoint_ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
+        'gradient_ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
+        'u_initation_pickle': None,
+        'p_initation_pickle': None,
+        'deformation_cfg': {
+            'volume_change': 0.15,
+            'quality_measures': {
+                # max_angle is not support for 3D
+                # 'max_angle': {
+                #     'measure_type': 'max',
+                #     'tol_upper': 165.0,
+                #     'tol_lower': 0.0
+                # },
+                'min_angle': {
+                    'measure_type': 'min',
+                    'tol_upper': 180.0,
+                    'tol_lower': 15.0
+                }
+            }
+        },
+        'scalar_product_method': {
+            'method': 'Poincare-Steklov operator',
+            'lambda_lame': 1.0,  # it is very important here
+            'damping_factor': 0.2,  # it is very important here
+            'mu_fix': 1.0,
+            'mu_free': 1.0,
+            'use_inhomogeneous': False,
+            'inhomogeneous_exponent': 1.0,
+            'update_inhomogeneous': False
+        },
+        # 'scalar_product_method' : {'method': 'default'}
+        'max_step_limit': 0.1,
+        'max_iter': 100,
+        'opt_tol_rho': 0.02,
+        'point_radius': 0.1,
+        'init_stepSize': 1.0,
+        'stepSize_lower': 1e-4,
+        'conflict_cfg': {
+            'method': 'sigmoid_v1',
+            'c': 100,               # for sigmoid_v1
+            'break_range': 1e-02,   # for sigmoid_v1
+            'reso': 1e-03,          # for sigmoid_v1
+
+            # 'method': 'relu_v1',
+            # 'c': 100,               # for relu_v1
+            # 'lower': 1e-02,         # for relu_v1
+
+            'bbox_rho': 0.85,
+            'bbox_w_lower': 0.1,
+            'deformation_lower': 1e-2,
+        }
+    }
+    proj_cfg = {
+        'proj_dir': args.proj_dir,
+        'dim': None,
+        'input_markers': {},  # marker: function_name
+        'output_markers': [],
+        'bry_fix_markers': [],
+        'bry_free_markers': [],
+        'condition_package_name': 'condition.py',
+        'simulate_cfg': simulate_cfg,
+        'optimize_cfg': optimize_cfg,
+        'obstacle_dir': None,
+        'obstacle_names': []
+    }
+    with open(os.path.join(args.proj_dir, 'cfg.json'), 'w') as f:
+        json.dump(proj_cfg, f, indent=4)
+
+
+def create_obstacle_cfg(args):
+    assert (args.obstacle_name is not None) and (args.obstacle_dir is not None)
+
+    obs_cfg = {
+        'name': args.obstacle_name,
+        'file_format': 'vtu',
+        'dim': None,
+        'point_radius': 0.0,
+    }
+    with open(os.path.join(args.obstacle_dir, f"{args.obstacle_name}.json"), 'w') as f:
+        json.dump(obs_cfg, f, indent=4)
+
+
+if __name__ == '__main__':
+    args = parse_args()
+
+    if args.create_proj:
+        create_project(args)
+
+    if args.create_obstacle:
+        create_obstacle_cfg(args)

@@ -203,6 +203,9 @@ class ShapeGradientProblem(object):
         grad_forms_lhs = self.scalar_product(self.trial_u, self.test_v)
         self.shape_problem.set_gradient_eq_form(grad_forms_lhs, grad_forms_rhs)
 
+    def update_gradient_equations(self):
+        self._compute_gradient_equations()
+
     def _scalar_product(self, trial_u: ufl.Argument, test_v: ufl.Argument, method_info: Dict):
         if method_info['method'] == "default":
             lhs_form = inner((grad(trial_u)), (grad(test_v))) * ufl.dx + inner(trial_u, test_v) * ufl.dx

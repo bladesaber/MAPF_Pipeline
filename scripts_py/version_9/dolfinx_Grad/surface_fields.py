@@ -1,13 +1,17 @@
 import math
 import numpy as np
 import pyvista
-from typing import Union, Callable
+from typing import Union, Callable, Literal
 from sklearn.neighbors import KDTree
 import matplotlib.pyplot as plt
 from matplotlib import patches
 from sklearn.cluster import KMeans
+import ufl
+import dolfinx
 
 from .sparse_utils import ScipySparseUtils
+from .lagrange_method.type_database import ShapeDataBase
+from .dolfinx_utils import MeshUtils, AssembleUtils
 
 
 class PyVistaUtils(object):
@@ -100,7 +104,7 @@ class PyVistaUtils(object):
 
 class TopoLogyField(object):
     @staticmethod
-    def create_grid(grid_nums, width, bry_shift):
+    def _create_grid(grid_nums, width, bry_shift):
         grid_dim = grid_nums.shape[0]
         grids = np.meshgrid(*[np.arange(0, i, 1) for i in grid_nums])
         grids = [np.expand_dims(grid, axis=grid_dim) for grid in grids]
@@ -109,7 +113,7 @@ class TopoLogyField(object):
         return grids
 
     @staticmethod
-    def split_grid(centers: np.ndarray, width):
+    def _split_grid(centers: np.ndarray, width):
         center_dim = centers.shape[1]
         width = width * 0.5
         if center_dim == 2:
@@ -151,7 +155,7 @@ class TopoLogyField(object):
         scale_times = np.maximum(math.ceil(np.log2(np.power(bbox_num / 1000., 1. / pcd_dim))), 0.0)
         scale_width = bbox_width * np.power(2, scale_times)
         bry_cell_num = np.ceil(bry_dif / scale_width)
-        grid_centers = TopoLogyField.create_grid(bry_cell_num, scale_width, bry_min)
+        grid_centers = TopoLogyField._create_grid(bry_cell_num, scale_width, bry_min)
 
         while True:
             r = np.linalg.norm(np.ones(pcd_dim) * scale_width, ord=2)
@@ -168,7 +172,7 @@ class TopoLogyField(object):
             if scale_width <= bbox_width:
                 break
             scale_width = scale_width / 2.0
-            grid_centers = TopoLogyField.split_grid(grid_centers, scale_width)
+            grid_centers = TopoLogyField._split_grid(grid_centers, scale_width)
 
         model = KMeans(n_clusters=grid_centers.shape[0], init=grid_centers)
         labels = model.fit_predict(pcd)
@@ -176,8 +180,10 @@ class TopoLogyField(object):
         # TopoLogyField.grid_2d_plot(pcd, grid_centers, scale_width)
         # TopoLogyField.cluster_2d_plot(pcd, labels)
 
+        return labels
+
     @staticmethod
-    def grid_2d_plot(pcd: np.ndarray, grid_centers: np.ndarray, bbox_width):
+    def _grid_2d_plot(pcd: np.ndarray, grid_centers: np.ndarray, bbox_width):
         fig, ax = plt.subplots()
         plt.scatter(pcd[:, 0], pcd[:, 1], c='b', s=1.0)
         plt.scatter(grid_centers[:, 0], grid_centers[:, 1], c='r')
@@ -190,35 +196,69 @@ class TopoLogyField(object):
         plt.show()
 
     @staticmethod
-    def cluster_2d_plot(pcd: np.ndarray, labels: np.ndarray):
+    def _cluster_2d_plot(pcd: np.ndarray, labels: np.ndarray):
         for label in np.unique(labels):
             group_pcd = pcd[labels == label]
             plt.scatter(group_pcd[:, 0], group_pcd[:, 1], s=20.0)
         plt.show()
 
     @staticmethod
-    def sigmoid_fun(xs, center, c=1.0, invert=False):
+    def sigmoid_fun(xs, center, c=1.0, invert=False, exp_ops: Callable = np.exp):
         if invert:
-            return 1.0 / (1.0 + np.exp(1.0 * (xs - center) * c))
+            return 1.0 / (1.0 + exp_ops(1.0 * (xs - center) * c))
         else:
-            return 1.0 / (1.0 + np.exp(-1.0 * (xs - center) * c))
+            return 1.0 / (1.0 + exp_ops(-1.0 * (xs - center) * c))
 
     @staticmethod
-    def search_sigmoid_parameters(min_break, max_break, c=1.0, reso=1e-3):
+    def search_sigmoid_parameters(break_range, c=1.0, reso=1e-3):
         assert 0.0 < reso < 1.0
 
-        target_range = max_break - min_break
         min_limit = reso
         max_limit = 1.0 - reso
         while True:
             x_min_break = -1.0 * np.log2((1. - min_limit) / min_limit) / c
             x_max_break = -1.0 * np.log2((1. - max_limit) / max_limit) / c
             x_range = x_max_break - x_min_break
-            if x_range < target_range:
+            if x_range < break_range:
                 break
             else:
                 c += 1.0
         return c
+
+    @staticmethod
+    def relu_fun(xs, threshold, c, max_ops: Callable = np.maximum, invert=False):
+        if invert:
+            return max_ops(-1.0 * (xs - threshold), 0.0) * c
+        else:
+            return max_ops(xs - threshold, 0.0) * c
+
+    @staticmethod
+    def softplus_fun(xs, base, center, grad, invert=False, log_ops: Callable = np.log, exp_ops: Callable = np.exp):
+        if invert:
+            return log_ops(1 + exp_ops((xs + base - center) * -1.0 * grad))
+        else:
+            return log_ops(1 + exp_ops((xs + base - center) * grad))
+
+    @staticmethod
+    def search_softplus_parameters(grad, lower=1e-2, log_ops: Callable = np.log, exp_ops: Callable = np.exp):
+        base = log_ops(exp_ops(lower) - 1.) / grad
+        return base
+
+    @staticmethod
+    def dist_fun(center, coord, is_square=False, power_ops: Callable = np.power, sqrt_ops: Callable = np.sqrt):
+        if center.shape[0] == 2:
+            dist_square = power_ops(coord[0] - center[0], 2) \
+                          + power_ops(coord[1] - center[1], 2)
+        elif center.shape[0] == 3:
+            dist_square = power_ops(coord[0] - center[0], 2) \
+                          + power_ops(coord[1] - center[1], 2) \
+                          + power_ops(coord[2] - center[2], 2)
+        else:
+            raise NotImplementedError
+
+        if not is_square:
+            return sqrt_ops(dist_square)
+        return dist_square
 
 
 class RbfTopoLogyField(TopoLogyField):
@@ -391,3 +431,138 @@ class RbfTopoLogyField(TopoLogyField):
         # sdf_value = np.array(np.dot(a_mat.todense(), self.model_dict['coffe'].reshape((-1, 1))))
 
         return sdf_value
+
+
+class SparsePointsRegularization(TopoLogyField):
+    """
+    TODO:
+        sigmoid_v1:
+            1. c值过大时会导致求解失败
+            2. 优化有抖动，原因不明
+    """
+
+    def __init__(
+            self,
+            shape_problem: ShapeDataBase, opt_strategy_cfg: dict, mu: float,
+            name='SparsePointsRegularization'
+    ):
+        self.name = name
+        self.opt_strategy_cfg = opt_strategy_cfg
+        self.mu = mu
+        self.shape_problem = shape_problem
+        self.coord = MeshUtils.define_coordinate(self.shape_problem.domain)
+        self.test_v = ufl.TestFunction(self.shape_problem.deformation_space)
+
+        self.constant_empty = dolfinx.fem.Constant(self.shape_problem.domain, 0.0)
+        self.cost_form: ufl.Form = self.constant_empty * ufl.dx
+
+        if self.opt_strategy_cfg['method'] == 'sigmoid_v1':
+            if not self.opt_strategy_cfg.get('c', False):
+                self.opt_strategy_cfg['c'] = self.search_sigmoid_parameters(
+                    self.opt_strategy_cfg['break_range'], c=1.0, reso=self.opt_strategy_cfg['reso']
+                )
+
+        elif self.opt_strategy_cfg['method'] == 'relu_v1':
+            # self.opt_strategy_cfg['base'] = self.search_softplus_parameters(
+            #     grad=self.opt_strategy_cfg['c'], lower=self.opt_strategy_cfg['lower']
+            # )
+            pass
+
+        else:
+            raise NotImplementedError("[ERROR]: Non-Valid Method")
+
+    def update_expression(self, bbox_infos: dict, own_point_radius):
+        if len(bbox_infos) > 0:
+            cost_form = 0.0
+            for bbox_name in bbox_infos.keys():
+                info: dict = bbox_infos[bbox_name]
+                bbox_pcd = info['points']
+                obs_radius = info['obs_radius']
+
+                center = np.mean(bbox_pcd, axis=0)
+                center_to_point = np.max(np.linalg.norm(bbox_pcd - center, ord=2, axis=1))
+                radius = center_to_point + obs_radius + own_point_radius
+
+                dist = self.dist_fun(center, self.coord, is_square=False, sqrt_ops=ufl.sqrt)
+                if self.opt_strategy_cfg['method'] == 'sigmoid_v1':
+                    cost_form += self.sigmoid_fun(
+                        dist - radius, 0.0,
+                        c=self.opt_strategy_cfg['c'], invert=True, exp_ops=ufl.exp
+                    ) * ufl.dx
+
+                elif self.opt_strategy_cfg['method'] == 'relu_v1':
+                    # cost_form += self.softplus_fun(
+                    #     dist, base=self.opt_strategy_cfg['base'], center=radius, grad=self.opt_strategy_cfg['c'],
+                    #     invert=True, log_ops=ufl.ln, exp_ops=ufl.exp
+                    # ) * ufl.dx
+
+                    cost_form += self.relu_fun(
+                        dist, radius, c=self.opt_strategy_cfg['c'], max_ops=ufl.max_value, invert=True
+                    ) * ufl.dx
+
+                else:
+                    raise NotImplementedError
+
+                info.update({'obs_center': center, 'obs_conflict_length': radius})
+
+        else:
+            cost_form = self.constant_empty * ufl.dx
+
+        self.cost_form = cost_form
+
+    def compute_objective(self):
+        assert self.cost_form is not None
+        value = self.mu * AssembleUtils.assemble_scalar(dolfinx.fem.form(self.cost_form))
+        return value
+
+    def compute_shape_derivative(self):
+        shape_form = ufl.derivative(self.mu * self.cost_form, self.coord, self.test_v)
+        return shape_form
+
+    def update(self):
+        pass
+
+    @staticmethod
+    def _plot_bbox_meshes(bbox_infos, with_points=True, with_conflict_box=False):
+        random_colors = np.random.random((len(bbox_infos), 3))
+        meshes = []
+
+        for i, bbox_name in enumerate(bbox_infos.keys()):
+            info: dict = bbox_infos[bbox_name]
+            bbox_pcd = info['points']
+            n_points, pcd_ndim = bbox_pcd.shape
+
+            if pcd_ndim == 2:
+                bbox_pcd = np.concatenate([bbox_pcd, np.zeros((n_points, 1))], axis=1)
+
+            if with_points:
+                mesh = pyvista.PointSet(bbox_pcd)
+                mesh.point_data['color'] = np.ones((n_points, 3)) * random_colors[i, :]
+                meshes.append(mesh)
+
+            if with_conflict_box:
+                if pcd_ndim == 2:
+                    mesh = pyvista.Circle(info['obs_conflict_length'])
+                    xyz_center = np.zeros((3,))
+                    xyz_center[:2] = info['obs_center']
+                    mesh.translate(xyz_center, inplace=True)
+                else:
+                    mesh = pyvista.Sphere(radius=info['obs_conflict_length'], center=info['obs_center'])
+                meshes.append(mesh)
+        return meshes
+
+
+class LimitCenterRegularization(TopoLogyField):
+    pass
+
+
+class PoissonSigmoidField(object):
+    """
+    todo: 是不是改梯度为sigmoid梯度再做poisson更容易呢??
+    """
+    pass
+
+
+type_conflict_regulariztions = Union[
+    SparsePointsRegularization, LimitCenterRegularization
+]

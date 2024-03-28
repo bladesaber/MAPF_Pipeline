@@ -215,9 +215,9 @@ class FluidShapeOptSimple(object):
         cost_converger = CostConvergeHandler(stat_num=25, warm_up_num=25, tol=5e-3, scale=1.0 / init_loss)
 
         self.log_step(logger_dicts, log_recorder, u_recorder, step=0)
+        tol_rho = kwargs.get('opt_tol_rho', 0.05)
 
-        # -------
-        def detect_cost_valid_func(tol_rho=0.05):
+        def detect_cost_valid_func():
             loss = self.opt_problem.evaluate_cost_functional(
                 self.domain.comm, update_state=True, with_debug=kwargs.get('with_debug', False)
             )
@@ -252,7 +252,8 @@ class FluidShapeOptSimple(object):
 
             success_flag, stepSize = self.deformation_handler.move_mesh_by_line_search(
                 displacement_np, max_iter=10, init_stepSize=1.0, stepSize_lower=1e-3,
-                detect_cost_valid_func=detect_cost_valid_func
+                detect_cost_valid_func=detect_cost_valid_func,
+                max_step_limit=kwargs.get('max_step_limit', 0.1)
             )
 
             if success_flag:

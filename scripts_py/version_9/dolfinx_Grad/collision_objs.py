@@ -5,46 +5,47 @@ from sklearn.neighbors import KDTree
 import pyvista
 
 from .dolfinx_utils import MeshUtils
+from .surface_fields import TopoLogyField
 
 
 class MeshCollisionObj(object):
     def __init__(
             self,
-            domain: dolfinx.mesh.Mesh,
-            facet_tags: dolfinx.mesh.MeshTags,
-            cell_tags: dolfinx.mesh.MeshTags,
-            bry_markers: List[int]
+            name, domain: dolfinx.mesh.Mesh, facet_tags: dolfinx.mesh.MeshTags, cell_tags: dolfinx.mesh.MeshTags,
+            bry_markers: List[int], point_radius
     ):
+        self.name = name
         self.domain = domain
         self.facet_tags = facet_tags
         self.cell_tags = cell_tags
         self.tdim = domain.topology.dim
         self.fdim = self.tdim - 1
-        self.V = dolfinx.fem.VectorFunctionSpace(domain, ("CG", 1))
+        self.point_radius = point_radius
 
         bry_dofs = []
         for marker in bry_markers:
             bry_dofs.append(
                 MeshUtils.extract_entity_dofs(
-                    self.V, self.fdim, MeshUtils.extract_facet_entities(domain, facet_tags, marker)
+                    dolfinx.fem.VectorFunctionSpace(domain, ("CG", 1)), self.fdim,
+                    MeshUtils.extract_facet_entities(domain, facet_tags, marker)
                 ))
         self.bry_idxs = np.concatenate(bry_dofs, axis=-1)
+        self.n_points = self.bry_idxs.shape[0]
 
         self.bry_coords: np.ndarray = None
         self.tree: KDTree = None
 
-    def create_tree(self):
+    def update_tree(self):
+        if self.tree is not None:
+            del self.tree
+            self.tree = None
+            self.bry_coords = None
+
         self.bry_coords = self.domain.geometry.x[self.bry_idxs, :self.tdim]
         self.tree = KDTree(self.bry_coords)
 
-    def release_tree(self):
-        del self.tree
-        self.tree = None
-        self.bry_coords = None
-
     def query_radius_neighbors_from_xyz(
-            self, coords: np.ndarray, radius,
-            return_dist=False, count_only=False, sort_results=False
+            self, coords: np.ndarray, radius, return_dist=False, count_only=False, sort_results=False
     ):
         res = self.tree.query_radius(
             coords, r=radius,
@@ -59,41 +60,146 @@ class MeshCollisionObj(object):
     def get_bry_coords(self):
         return self.domain.geometry.x[self.bry_idxs, :self.tdim]
 
-    def find_conflict_bry_nodes(self, coords: np.ndarray, radius):
-        idxs, dists = self.query_radius_neighbors_from_xyz(coords=coords, radius=radius, return_dist=True)
-        idxs = np.concatenate(idxs, axis=-1)
-        idxs = np.unique(idxs)
-        idxs = self.bry_idxs[idxs]
+    def get_coords(self):
+        return self.domain.geometry.x[:, :self.tdim]
 
-        dists = np.concatenate(dists, axis=-1)
-        if dists.shape[0] > 0:
-            dist_min = np.min(dists)
+    def find_conflict_bry_nodes(self, obs_coords: np.ndarray, radius, with_dist=False):
+        """
+        Find the mesh boundary nodes which conflicted by obstacle
+        """
+        if with_dist:
+            idxs, dists = self.query_radius_neighbors_from_xyz(obs_coords, radius, return_dist=with_dist)
         else:
-            dist_min = np.inf
+            idxs = self.query_radius_neighbors_from_xyz(obs_coords, radius, return_dist=with_dist)
+        idxs = np.concatenate(idxs, axis=-1)
 
-        return idxs, dist_min
+        dist_min = np.inf
+        if idxs.shape[0] > 0:
+            idxs = np.unique(idxs)
+            idxs = self.bry_idxs[idxs]
+            if with_dist:
+                dists = np.concatenate(dists, axis=-1)
+                dist_min = np.min(dists)
 
-    def find_node_neighbors(self, coords: np.ndarray, radius):
-        relate_idxs = self.query_radius_neighbors_from_xyz(coords, radius)
-        relate_idxs = np.concatenate(relate_idxs)
-        relate_idxs = np.unique(relate_idxs)
-        relate_idxs = self.bry_idxs[relate_idxs]
-        return relate_idxs
+        if with_dist:
+            return idxs, dist_min
+        else:
+            return idxs
+
+    def approximate_extract(self, bbox_w, part_pcd_idxs: np.ndarray = None):
+        if part_pcd_idxs is None:
+            part_pcd_idxs = np.arange(0, self.n_points, 1)
+
+        labels = TopoLogyField.semi_octree_fit(self.get_coords()[part_pcd_idxs, :], bbox_w)
+        label_idxs_dict = {}
+        for label in np.unique(labels):
+            label_idxs_dict[label] = part_pcd_idxs[labels == label]
+        return label_idxs_dict
+
+    def find_conflict_bbox_infos(self, coords: np.ndarray, radius, bbox_w):
+        obs_idxs = self.find_conflict_bry_nodes(coords, radius, with_dist=False)
+        if obs_idxs.shape[0] == 0:
+            return {}
+
+        label_idxs_dict = self.approximate_extract(bbox_w, obs_idxs)
+        bbox_infos = {}
+        for label_idx in label_idxs_dict.keys():
+            bbox_infos[f"{self.name}_{label_idx}"] = {
+                'points': self.get_coords()[label_idxs_dict[label_idx], :],
+                'obs_radius': self.point_radius,
+                'bbox_w': bbox_w
+            }
+        return bbox_infos
 
 
 class ObstacleCollisionObj(object):
-    def __init__(self, coords: np.ndarray):
+    def __init__(self, name: str, coords: np.ndarray, point_radius, with_tree=False):
+        self.name = name
         self.coords: np.ndarray = coords
+        self.ndim = 3 if self.coords.shape[1] == 3 else 2
+        self.n_points = self.coords.shape[0]
+        self.point_radius = point_radius
 
-    def get_coords(self):
-        return self.coords
+        self.with_tree = with_tree
+        if with_tree:
+            self.tree = KDTree(self.coords)
 
-    def save_vtu(self, file: str):
-        if self.coords.shape[1] == 2:
-            coords = np.zeros((self.coords.shape[0], 3))
-            coords[:, :2] = self.coords
+    def approximate_extract(self, bbox_w, part_pcd_idxs: np.ndarray = None):
+        if part_pcd_idxs is None:
+            part_pcd_idxs = np.arange(0, self.n_points, 1)
+
+        labels = TopoLogyField.semi_octree_fit(self.coords[part_pcd_idxs, :], bbox_w)
+        label_idxs_dict = {}
+        for label in np.unique(labels):
+            label_idxs_dict[label] = part_pcd_idxs[labels == label]
+        return label_idxs_dict
+
+    def find_conflict_nodes(self, mesh_coords: np.ndarray, radius, with_dist=False):
+        if with_dist:
+            idxs, dists = self.tree.query_radius(mesh_coords, radius, return_distance=with_dist)
         else:
-            coords = self.coords
+            idxs = self.tree.query_radius(mesh_coords, radius, return_distance=with_dist)
+        idxs = np.concatenate(idxs, axis=-1)
 
+        dist_min = np.inf
+        if idxs.shape[0] > 0:
+            idxs = np.unique(idxs)
+            if with_dist:
+                dists = np.concatenate(dists, axis=-1)
+                dist_min = np.min(dists)
+
+        if with_dist:
+            return idxs, dist_min
+        else:
+            return idxs
+
+    def find_conflict_bbox_infos(self, mesh_coords: np.ndarray, radius, bbox_w):
+        obs_idxs = self.find_conflict_nodes(mesh_coords, radius, with_dist=False)
+        if obs_idxs.shape[0] == 0:
+            return {}
+
+        label_idxs_dict = self.approximate_extract(bbox_w, obs_idxs)
+        bbox_infos = {}
+        for label_idx in label_idxs_dict.keys():
+            bbox_infos[f"{self.name}_{label_idx}"] = {
+                'points': self.coords[label_idxs_dict[label_idx], :],
+                'obs_radius': self.point_radius,
+                'bbox_w': bbox_w
+            }
+        return bbox_infos
+
+    def _labels_plot(self, label_idxs_dict: dict):
+        color_map = np.random.random((len(label_idxs_dict), 3))
+        colors = np.zeros((self.n_points, 3))
+        for idx, label_idx in enumerate(label_idxs_dict.keys()):
+            colors[label_idxs_dict[label_idx], :] = color_map[idx]
+
+        if self.ndim == 2:
+            mesh = pyvista.PointSet(np.concatenate([self.coords, np.zeros((self.n_points, 1))], axis=1))
+        else:
+            mesh = pyvista.PointSet(self.coords)
+        mesh.point_data['color'] = colors
+
+        plt = pyvista.Plotter()
+        plt.add_mesh(mesh)
+        plt.show()
+
+    @staticmethod
+    def save_vtu(file: str, coords: np.ndarray):
+        if coords.shape[1] == 2:
+            coords = np.zeros((coords.shape[0], 3))
+            coords[:, :2] = coords
+        else:
+            coords = coords
         mesh = pyvista.PolyData(coords)
         pyvista.save_meshio(file, mesh)
+
+    @staticmethod
+    def load(name, point_radius, dim, file: str):
+        if file.endswith('.vtu'):
+            mesh = pyvista.read(file)
+            coords = mesh.points[:, :dim]
+        else:
+            raise NotImplementedError
+
+        return ObstacleCollisionObj(name, coords, point_radius, with_tree=True)
