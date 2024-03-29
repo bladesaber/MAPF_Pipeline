@@ -10,7 +10,7 @@ import json
 import pyvista
 
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shapeOpt_obstacle import FluidShapeFreeObsModel2
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shapeOpt_obstacle import FluidShapeRecombineModel
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization import ShapeRegularization, \
     VolumeRegularization
@@ -105,7 +105,7 @@ for opt_name in opt_dicts.keys():
         'stepSize_lower': optimize_cfg['stepSize_lower'],
     })
 
-    opt = FluidShapeFreeObsModel2(
+    opt = FluidShapeRecombineModel(
         name=opt_name, domain=domain, cell_tags=cell_tags, facet_tags=facet_tags,
         Re=optimize_cfg['Re'], bry_markers=bry_markers,
         isStokeEqu=optimize_cfg['isStokeEqu'],
@@ -216,57 +216,51 @@ if os.path.exists(tensorBoard_dir):
 os.mkdir(tensorBoard_dir)
 log_recorder = TensorBoardRecorder(tensorBoard_dir)
 
-FluidShapeFreeObsModel2.log_dict(log_recorder, log_list, 0)
+FluidShapeRecombineModel.log_dict(log_recorder, log_list, 0)
 
-step = 0
-run_flag = True
-while run_flag:
-    step += 1
 
-    displacement_weight = []
-    for cfg_name in opt_dicts.keys():
-        opt_dict = opt_dicts[cfg_name]
-        opt: FluidShapeFreeObsModel2 = opt_dict['opt']
-        res_dict = opt.single_solve(obs_objs=obs_objs, mesh_objs=[], step=step, with_debug=args.with_debug)
+def run_loop():
+    step = 0
+    while True:
+        step += 1
 
-        if not res_dict['state']:
-            run_flag = False
-            break
+        for name in opt_dicts.keys():
+            opt_dict = opt_dicts[name]
+            opt: FluidShapeRecombineModel = opt_dict['opt']
+            grad_res_dict = opt.single_solve(obs_objs=obs_objs, mesh_objs=[], step=step, with_debug=args.with_debug)
 
-        opt_dict['displacement'] = res_dict['displacement']
-        displacement_weight.append(np.abs(np.linalg.norm(res_dict['displacement'], ord=2, axis=1, keepdims=True)))
+            if not grad_res_dict['state']:
+                return {'state': False, 'info': '[INFO]: Grad Computation Fail'}
 
-    if not run_flag:
-        break
+            opt_dict.update({
+                'displacement': grad_res_dict['displacement'],
+                'loss': opt.solve_mapper['loss_storge'].value
+            })
 
-    displacement_weight = np.concatenate(displacement_weight, axis=1)
-    displacement_weight = displacement_weight / (displacement_weight.sum(axis=1, keepdims=True) + 1e-8)
+        diffusion = FluidShapeRecombineModel.merge_diffusion(opt_dicts, method='diffusion_loss_weight')
 
-    displacement_np = 0.0
-    for i, cfg_name in enumerate(opt_dicts.keys()):
-        displacement_np += displacement_weight[:, i: i + 1] * opt_dicts[cfg_name]['displacement']
+        log_list, is_converge, loss_list = [], True, []
+        for name in opt_dicts.keys():
+            opt: FluidShapeRecombineModel = opt_dicts[name]['opt']
+            move_res_dict = opt.move_mesh(diffusion)
 
-    log_list, is_converge = [], True
-    for cfg_name in opt_dicts.keys():
-        opt: FluidShapeFreeObsModel2 = opt_dicts[cfg_name]['opt']
-        res_dict = opt.move_mesh(displacement_np)
+            if not move_res_dict['state']:
+                return {'state': False, 'info': '[INFO]: Move Mesh Fail'}
 
-        if not res_dict['state']:
-            run_flag = False
-            break
+            is_converge = is_converge and move_res_dict['is_converge']
+            loss, log_dict = opt.update_opt_info(with_log_info=True, step=step)
+            log_list.append(log_dict)
+            loss_list.append(loss)
 
-        is_converge = is_converge and res_dict['is_converge']
-        log_dict = opt.update_opt_info(step)
-        log_list.append(log_dict)
+        FluidShapeRecombineModel.log_dict(log_recorder, log_list, step)
+        print(f"[###Info {step}] loss:{np.sum(loss_list):.8f}")
 
-    if not run_flag:
-        break
+        if is_converge:
+            return {'state': False, 'info': '[INFO]: Converge Success'}
 
-    FluidShapeFreeObsModel2.log_dict(log_recorder, log_list, step)
-    print(f"[INFO] Step:{step} finish")
+        if step > 100:
+            return {'state': False, 'info': '[INFO]: Out of Max Iteration'}
 
-    if is_converge:
-        break
 
-    if step > 50:
-        break
+res_dict = run_loop()
+print(res_dict['info'])

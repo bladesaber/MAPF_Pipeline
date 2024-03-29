@@ -249,9 +249,7 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
 
         return success_flag, step_size
 
-    def single_solve(
-            self, obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj], step: int, **kwargs
-    ):
+    def update_conflict_regularization(self, obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj]):
         bbox_infos = self.find_conflicted_bbox(obs_objs, mesh_objs, self.opt_strategy_cfg)
         self.conflict_regularization.update_expression(bbox_infos, self.mesh_obj.point_radius)
         self.opt_problem.gradient_system.update_gradient_equations()
@@ -265,6 +263,11 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
         #     plt.add_mesh(VisUtils.convert_to_grid(self.domain), style='wireframe')
         #     plt.show()
         # # ---------
+
+    def single_solve(
+            self, obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj], step: int, **kwargs
+    ):
+        self.update_conflict_regularization(obs_objs, mesh_objs)
 
         grad_flag, (direction_np, step_size) = self.get_shape_derivatives(
             self.solve_mapper['cost_valid_func'], **kwargs
@@ -301,17 +304,25 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
             raise NotImplementedError
 
         if res_dict['state']:
-            loss = self.opt_problem.evaluate_cost_functional(self.domain.comm, update_state=True)
-            self.solve_mapper['loss_storge'].value = loss
-
-            self.solve_mapper['u_recorder'].write_function(self.up.sub(0).collapse(), step)
-            log_dict = self.log_step(logger_dicts=self.solve_mapper['logger_dicts'])
-            log_dict.update({'loss': {f"{self.name}_loss": loss}})
+            loss, log_dict = self.update_opt_info(with_log_info=True, step=step)
             res_dict.update({'log_dict': log_dict})
-
             print(f"[###Info {step}] loss:{loss:.8f} step_size:{step_size}")
 
         return res_dict
+
+    def update_opt_info(self, with_log_info=True, step=None):
+        # --- Necessary Step
+        loss = self.opt_problem.evaluate_cost_functional(self.domain.comm, update_state=True)
+        self.solve_mapper['loss_storge'].value = loss
+
+        # --- Get Log Info
+        if with_log_info:
+            self.solve_mapper['u_recorder'].write_function(self.up.sub(0).collapse(), step)
+            log_dict = self.log_step(logger_dicts=self.solve_mapper['logger_dicts'])
+            log_dict.update({'loss': {f"{self.name}_loss": loss}})
+            return loss, log_dict
+
+        return loss
 
     def log_step(self, logger_dicts: dict):
         res_dict = {}
@@ -342,7 +353,7 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
                     raise ValueError("[ERROR]: Wrong Format")
 
             if len(data_cell) == 1:
-                log_recorder.write_scalar(tag_name, data_cell.values()[0], step)
+                log_recorder.write_scalar(tag_name, list(data_cell.values())[0], step)
             else:
                 log_recorder.write_scalars(tag_name, data_cell, step)
 
@@ -350,23 +361,11 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
         raise ValueError("[Error]: Depreciate For This Class.")
 
 
-class FluidShapeFreeObsModel2(FluidShapeFreeObsModel):
+class FluidShapeRecombineModel(FluidShapeFreeObsModel):
     def single_solve(
             self, obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj], step: int, **kwargs
     ):
-        bbox_infos = self.find_conflicted_bbox(obs_objs, mesh_objs, self.opt_strategy_cfg)
-        self.conflict_regularization.update_expression(bbox_infos, self.mesh_obj.point_radius)
-        self.opt_problem.gradient_system.update_gradient_equations()
-
-        # # ---------
-        # if len(bbox_infos) > 0:
-        #     plt = pyvista.Plotter()
-        #     vis_meshes = self.conflict_regularization._plot_bbox_meshes(bbox_infos, True, True)
-        #     for vis_mesh in vis_meshes:
-        #         plt.add_mesh(vis_mesh, style='wireframe')
-        #     plt.add_mesh(VisUtils.convert_to_grid(self.domain), style='wireframe')
-        #     plt.show()
-        # # ---------
+        self.update_conflict_regularization(obs_objs, mesh_objs)
 
         grad_flag, (direction_np, step_size) = self.get_shape_derivatives(
             self.solve_mapper['cost_valid_func'], **kwargs
@@ -396,25 +395,59 @@ class FluidShapeFreeObsModel2(FluidShapeFreeObsModel):
         MeshUtils.move(self.domain, displacement_np)
         is_intersections = self.deformation_handler.detect_collision(self.domain)
 
-        info = 'Success'
+        res_dict = {'state': not is_intersections}
         if is_intersections:
             MeshUtils.move(self.domain, displacement_np * -1.0)  # revert mesh
-            info = "Mesh Intersect"
-
-        res_dict = {'state': not is_intersections, 'info': info}
-        if not is_intersections:
+        else:
             self.mesh_obj.update_tree()
             max_deformation = np.max(np.linalg.norm(displacement_np, ord=2, axis=1))
             res_dict['is_converge'] = max_deformation < self.opt_strategy_cfg['deformation_lower']
-
         return res_dict
 
-    def update_opt_info(self, step):
-        loss = self.opt_problem.evaluate_cost_functional(self.domain.comm, update_state=True)
-        self.solve_mapper['loss_storge'].value = loss
+    @staticmethod
+    def merge_diffusion(opt_dicts: dict, method='diffusion_weight'):
+        if method == 'diffusion_weight':
+            weights = []
+            for name in opt_dicts.keys():
+                weights.append(np.abs(np.linalg.norm(opt_dicts[name]['displacement'], ord=2, axis=1, keepdims=True)))
+            weights = np.concatenate(weights, axis=1)
+            weights = weights / (weights.sum(axis=1, keepdims=True) + 1e-8)
 
-        self.solve_mapper['u_recorder'].write_function(self.up.sub(0).collapse(), step)
-        log_dict = self.log_step(logger_dicts=self.solve_mapper['logger_dicts'])
-        log_dict.update({'loss': {f"{self.name}_loss": loss}})
-        return log_dict
+        elif method == 'loss_weight':
+            weights = []
+            for name in opt_dicts.keys():
+                weights.append(opt_dicts[name]['loss'])
+            weights = np.array(weights)
+            weights = weights / weights.sum()
 
+        elif method == 'diffusion_loss_weight':
+            diffusion_weights = []
+            for name in opt_dicts.keys():
+                diffusion_weights.append(
+                    np.abs(np.linalg.norm(opt_dicts[name]['displacement'], ord=2, axis=1, keepdims=True))
+                )
+            diffusion_weights = np.concatenate(diffusion_weights, axis=1)
+            diffusion_weights = diffusion_weights / (diffusion_weights.sum(axis=1, keepdims=True) + 1e-8)
+
+            loss_weights = []
+            for name in opt_dicts.keys():
+                loss_weights.append(opt_dicts[name]['loss'])
+            loss_weights = np.array(loss_weights)
+            loss_weights = loss_weights / loss_weights.sum()
+
+            weights = diffusion_weights * loss_weights.reshape((1, -1))
+
+        else:
+            raise NotImplementedError("[ERROR]: Non-Valid Method")
+
+        diffusion = 0.0
+        if weights.ndim == 1:
+            for i, name in enumerate(opt_dicts.keys()):
+                diffusion += weights[i] * opt_dicts[name]['displacement']
+        elif weights.ndim == 2:
+            for i, name in enumerate(opt_dicts.keys()):
+                diffusion += weights[:, i: i + 1] * opt_dicts[name]['displacement']
+        else:
+            raise NotImplementedError("[ERROR]: Non-Valid Method")
+
+        return diffusion
