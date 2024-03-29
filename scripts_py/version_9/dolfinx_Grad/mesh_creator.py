@@ -10,7 +10,7 @@ About Boundary Mesh Size Control, Please ref:https://gmsh.info/doc/texinfo/gmsh.
     lc = 1e-1;
     Mesh.CharacteristicLengthExtendFromBoundary = 0;  // Necessary
     Field[1] = Distance;
-    // Field[1].NNodesByEdge = 5000;
+    Field[1].NNodesByEdge = 5000;
     // Field[1].CurvesList = {1,3};
     // Field[1].PointsList = {4};
     Field[1].SurfacesList = {22, 23};

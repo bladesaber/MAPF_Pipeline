@@ -6,7 +6,7 @@ import numpy as np
 import ctypes
 import pyvista
 
-from .fluid_shapeOptimizer_simple import FluidShapeOptSimple
+from .fluid_shapeOpt_simple import FluidShapeOptSimple
 from ..collision_objs import MeshCollisionObj, ObstacleCollisionObj
 from ..dolfinx_utils import MeshUtils
 from ..recorder_utils import VTKRecorder, TensorBoardRecorder
@@ -26,7 +26,7 @@ from ..surface_fields import type_conflict_regulariztions
 """
 
 
-class FluidShapeFreeObsModel1(FluidShapeOptSimple):
+class FluidShapeFreeObsModel(FluidShapeOptSimple):
     def __init__(
             self,
             name,
@@ -210,7 +210,7 @@ class FluidShapeFreeObsModel1(FluidShapeOptSimple):
             self,
             direction_np: np.ndarray, step_size: float,
             obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj],
-            opt_strategy_cfg: dict
+            opt_strategy_cfg: dict, revert_move=False
     ):
         while True:
             displacement_np = direction_np * step_size
@@ -236,6 +236,8 @@ class FluidShapeFreeObsModel1(FluidShapeOptSimple):
                         break
 
             if success_flag:
+                if revert_move:
+                    MeshUtils.move(self.domain, displacement_np * -1.0)
                 break
             else:
                 MeshUtils.move(self.domain, displacement_np * -1.0)
@@ -304,7 +306,7 @@ class FluidShapeFreeObsModel1(FluidShapeOptSimple):
 
             self.solve_mapper['u_recorder'].write_function(self.up.sub(0).collapse(), step)
             log_dict = self.log_step(logger_dicts=self.solve_mapper['logger_dicts'])
-            log_dict.update({'loss': loss})
+            log_dict.update({'loss': {f"{self.name}_loss": loss}})
             res_dict.update({'log_dict': log_dict})
 
             print(f"[###Info {step}] loss:{loss:.8f} step_size:{step_size}")
@@ -315,27 +317,21 @@ class FluidShapeFreeObsModel1(FluidShapeOptSimple):
         res_dict = {}
         for tag_name in logger_dicts.keys():
             log_dict = logger_dicts[tag_name]
-            if len(log_dict) == 1:
-                marker_name = list(log_dict.keys())[0]
-                value = AssembleUtils.assemble_scalar(log_dict[marker_name])
-                res_dict.update({marker_name: value})
-            else:
-                data_cell = {}
-                for marker_name in log_dict.keys():
-                    data_cell[marker_name] = AssembleUtils.assemble_scalar(log_dict[marker_name])
-                res_dict.update({tag_name: data_cell})
+
+            data_cell = {}
+            for marker_name in log_dict.keys():
+                data_cell[f"{self.name}_{marker_name}"] = AssembleUtils.assemble_scalar(log_dict[marker_name])
+            res_dict.update({tag_name: data_cell})
 
         res_dict.update({
-            'energy': AssembleUtils.assemble_scalar(self.energy_form),
-            'energy_loss': AssembleUtils.assemble_scalar(self.energy_loss_form),
-            'name': self.name
+            'energy': {f"{self.name}_energy": AssembleUtils.assemble_scalar(self.energy_form)},
+            'energy_loss': {f"{self.name}_energy_loss": AssembleUtils.assemble_scalar(self.energy_loss_form)}
         })
         return res_dict
 
     @staticmethod
     def log_dict(log_recorder: TensorBoardRecorder, res_dicts: List[dict], step):
         tag_names = list(res_dicts[0].keys())
-        tag_names.remove('name')
 
         for tag_name in tag_names:
             data_cell = {}
@@ -343,10 +339,82 @@ class FluidShapeFreeObsModel1(FluidShapeOptSimple):
                 if isinstance(res_dict[tag_name], dict):
                     data_cell.update(res_dict[tag_name])
                 else:
-                    data_cell[f"{res_dict['name']}_{tag_name}"] = res_dict[tag_name]
+                    raise ValueError("[ERROR]: Wrong Format")
 
             if len(data_cell) == 1:
+                log_recorder.write_scalar(tag_name, data_cell.values()[0], step)
+            else:
                 log_recorder.write_scalars(tag_name, data_cell, step)
 
     def solve(self, **kwargs):
-        raise NotImplementedError("[Error]: Depreciate For This Class.")
+        raise ValueError("[Error]: Depreciate For This Class.")
+
+
+class FluidShapeFreeObsModel2(FluidShapeFreeObsModel):
+    def single_solve(
+            self, obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj], step: int, **kwargs
+    ):
+        bbox_infos = self.find_conflicted_bbox(obs_objs, mesh_objs, self.opt_strategy_cfg)
+        self.conflict_regularization.update_expression(bbox_infos, self.mesh_obj.point_radius)
+        self.opt_problem.gradient_system.update_gradient_equations()
+
+        # # ---------
+        # if len(bbox_infos) > 0:
+        #     plt = pyvista.Plotter()
+        #     vis_meshes = self.conflict_regularization._plot_bbox_meshes(bbox_infos, True, True)
+        #     for vis_mesh in vis_meshes:
+        #         plt.add_mesh(vis_mesh, style='wireframe')
+        #     plt.add_mesh(VisUtils.convert_to_grid(self.domain), style='wireframe')
+        #     plt.show()
+        # # ---------
+
+        grad_flag, (direction_np, step_size) = self.get_shape_derivatives(
+            self.solve_mapper['cost_valid_func'], **kwargs
+        )
+        res_dict = {'state': False}
+        if self.opt_strategy_cfg['method'] == 'sigmoid_v1':
+            move_flag, step_size = self.safe_move(
+                direction_np=direction_np, step_size=step_size,
+                obs_objs=obs_objs, mesh_objs=mesh_objs,
+                opt_strategy_cfg=self.opt_strategy_cfg,
+                revert_move=True
+            )
+            res_dict.update({'state': move_flag, 'displacement': direction_np * step_size})
+
+        elif self.opt_strategy_cfg['method'] == 'relu_v1':
+            res_dict.update({'state': True, 'displacement': direction_np * step_size})
+
+        else:
+            raise NotImplementedError
+
+        return res_dict
+
+    def move_mesh(self, displacement_np):
+        if displacement_np.shape != self.deformation_handler.shape:
+            raise ValueError("[ERROR]: Shape UnCompatible")
+
+        MeshUtils.move(self.domain, displacement_np)
+        is_intersections = self.deformation_handler.detect_collision(self.domain)
+
+        info = 'Success'
+        if is_intersections:
+            MeshUtils.move(self.domain, displacement_np * -1.0)  # revert mesh
+            info = "Mesh Intersect"
+
+        res_dict = {'state': not is_intersections, 'info': info}
+        if not is_intersections:
+            self.mesh_obj.update_tree()
+            max_deformation = np.max(np.linalg.norm(displacement_np, ord=2, axis=1))
+            res_dict['is_converge'] = max_deformation < self.opt_strategy_cfg['deformation_lower']
+
+        return res_dict
+
+    def update_opt_info(self, step):
+        loss = self.opt_problem.evaluate_cost_functional(self.domain.comm, update_state=True)
+        self.solve_mapper['loss_storge'].value = loss
+
+        self.solve_mapper['u_recorder'].write_function(self.up.sub(0).collapse(), step)
+        log_dict = self.log_step(logger_dicts=self.solve_mapper['logger_dicts'])
+        log_dict.update({'loss': {f"{self.name}_loss": loss}})
+        return log_dict
+

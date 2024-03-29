@@ -10,7 +10,7 @@ import json
 import pyvista
 
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shapeOptimizer_Obstacle import FluidShapeFreeObsModel1
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shapeOpt_obstacle import FluidShapeFreeObsModel
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization import ShapeRegularization, \
     VolumeRegularization
@@ -98,7 +98,7 @@ opt_strategy_cfg.update({
     'stepSize_lower': optimize_cfg['stepSize_lower'],
 })
 
-opt = FluidShapeFreeObsModel1(
+opt = FluidShapeFreeObsModel(
     name='player1', domain=domain, cell_tags=cell_tags, facet_tags=facet_tags,
     Re=optimize_cfg['Re'], bry_markers=bry_markers,
     isStokeEqu=optimize_cfg['isStokeEqu'],
@@ -201,7 +201,9 @@ log_dict = opt.init_solve_cfg(
     logger_dicts=logger_dicts,
     with_debug=False
 )
-FluidShapeFreeObsModel1.log_dict(log_recorder, [log_dict], step=0)
+FluidShapeFreeObsModel.log_dict(log_recorder, [log_dict], step=0)
+
+# todo 需要新的优化迭代过程
 
 step = 0
 while True:
@@ -212,7 +214,7 @@ while True:
         break
 
     log_dict = res_dict['log_dict']
-    FluidShapeFreeObsModel1.log_dict(log_recorder, [log_dict], step=step)
+    FluidShapeFreeObsModel.log_dict(log_recorder, [log_dict], step=step)
 
     if res_dict['is_converge']:
         break
