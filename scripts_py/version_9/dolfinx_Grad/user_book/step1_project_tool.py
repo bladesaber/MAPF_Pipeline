@@ -2,20 +2,36 @@ import os
 import shutil
 import argparse
 from importlib import import_module
+from importlib import util as import_util
 import json
 import numpy as np
 import sys
 
 
 class ImportTool(object):
+    # @staticmethod
+    # def import_module(module_dir, module_name: str):
+    #     if module_name.endswith('.py'):
+    #         module_name = module_name.replace('.py', '')
+    #
+    #     if module_dir not in sys.path:
+    #         sys.path.append(module_dir)
+    #     load_module = import_module(module_name)
+    #     return load_module
+
     @staticmethod
     def import_module(module_dir, module_name: str):
-        if module_name.endswith('.py'):
-            module_name = module_name.replace('.py', '')
+        module_path = os.path.join(module_dir, module_name)
 
-        sys.path.append(module_dir)
-        load_module = import_module(module_name)
-        return load_module
+        # Load the module from the given path
+        spec = import_util.spec_from_file_location('module_name', module_path)
+        module = import_util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        # Add the module to sys.modules
+        sys.modules['module_name'] = module
+
+        return module
 
     @staticmethod
     def get_module_names(module):
@@ -27,11 +43,17 @@ class ImportTool(object):
             raise ValueError("[ERROR]: Non-Valid Module Function")
         return getattr(module, name)
 
+    @staticmethod
+    def remove_module(module_name):
+        sys.modules.pop(module_name)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Fluid Tool")
     parser.add_argument('--proj_dir', type=str, default=None)
-    parser.add_argument('--create_proj', type=int, default=0)
+    parser.add_argument('--create_cfg', type=int, default=0)
+    parser.add_argument('--with_recombine_cfg', type=int, default=0)
+
     parser.add_argument('--create_obstacle', type=int, default=0)
     parser.add_argument('--obstacle_name', type=str, default=None)
     parser.add_argument('--obstacle_dir', type=str, default=None)
@@ -63,7 +85,7 @@ def create_project(args):
             'is_channel_fluid': True,
             'trial_iter': 100,
         },
-        'naiver_stoke': {
+        'navier_stoke': {
             'Re': 100,
             'ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
         },
@@ -106,28 +128,47 @@ def create_project(args):
             'update_inhomogeneous': False
         },
         # 'scalar_product_method' : {'method': 'default'}
-        'max_step_limit': 0.1,
-        'max_iter': 100,
-        'opt_tol_rho': 0.02,
         'point_radius': 0.1,
-        'init_stepSize': 1.0,
-        'stepSize_lower': 1e-4,
-        'conflict_cfg': {
-            'method': 'sigmoid_v1',
-            'c': 100,               # for sigmoid_v1
-            'break_range': 1e-02,   # for sigmoid_v1
-            'reso': 1e-03,          # for sigmoid_v1
+        'run_strategy_cfg': {
+            'max_iter': 100,
+            'max_step_limit': 0.1,
+            'init_stepSize': 1.0,
+            'stepSize_lower': 1e-4,
+            'deformation_lower': 1e-2,
+            'loss_tol_rho': 0.02,
+            'beta_rho': 0.75,
+        },
+        'obs_avoid_cfg': {
+            # 'method': 'sigmoid_v1',  # for sigmoid_v1
+            # 'c': 100,                # for sigmoid_v1
+            # 'break_range': 1e-02,    # for sigmoid_v1
+            # 'reso': 1e-03,           # for sigmoid_v1
 
-            # 'method': 'relu_v1',
-            # 'c': 100,               # for relu_v1
-            # 'lower': 1e-02,         # for relu_v1
+            'method': 'relu_v1',  # for relu_v1
+            'c': 5,  # for relu_v1
+            'lower': 1e-02,  # for relu_v1
 
             'bbox_rho': 0.85,
             'bbox_w_lower': 0.1,
-            'deformation_lower': 1e-2,
-        }
+            'weight': 5.0
+        },
+        'cost_functions': [
+            {
+                'name': 'MiniumEnergy',
+                'weight': 1.0
+            }
+        ],
+        'regularization_functions': [
+            {
+                'name': 'VolumeRegularization',
+                'mu': 0.2,
+                'target_volume_rho': 0.6,
+                'method': 'percentage_div'
+            }
+        ],
     }
     proj_cfg = {
+        'name': None,
         'proj_dir': args.proj_dir,
         'dim': None,
         'input_markers': {},  # marker: function_name
@@ -143,12 +184,26 @@ def create_project(args):
     with open(os.path.join(args.proj_dir, 'cfg.json'), 'w') as f:
         json.dump(proj_cfg, f, indent=4)
 
+    if args.with_recombine_cfg:
+        recombine_cfg = {
+            'tag_name': None,
+            'proj_dir': args.proj_dir,
+            'recombine_cfgs': []
+        }
+
+        with open(os.path.join(args.proj_dir, 'recombine_cfg.json'), 'w') as f:
+            json.dump(recombine_cfg, f, indent=4)
+
 
 def create_obstacle_cfg(args):
     assert (args.obstacle_name is not None) and (args.obstacle_dir is not None)
 
+    if not os.path.exists(args.obstacle_dir):
+        os.mkdir(args.obstacle_dir)
+
     obs_cfg = {
         'name': args.obstacle_name,
+        'obstacle_dir': args.obstacle_dir,
         'file_format': 'vtu',
         'dim': None,
         'point_radius': 0.0,
@@ -160,7 +215,7 @@ def create_obstacle_cfg(args):
 if __name__ == '__main__':
     args = parse_args()
 
-    if args.create_proj:
+    if args.create_cfg:
         create_project(args)
 
     if args.create_obstacle:

@@ -435,19 +435,16 @@ class RbfTopoLogyField(TopoLogyField):
 
 class SparsePointsRegularization(TopoLogyField):
     """
-    TODO:
-        sigmoid_v1:
-            1. c值过大时会导致求解失败
-            2. 优化有抖动，原因不明
+    TODO: 优化有抖动，原因不明
     """
 
     def __init__(
             self,
-            shape_problem: ShapeDataBase, opt_strategy_cfg: dict, mu: float,
+            shape_problem: ShapeDataBase, cfg: dict, mu: float,
             name='SparsePointsRegularization'
     ):
         self.name = name
-        self.opt_strategy_cfg = opt_strategy_cfg
+        self.cfg = cfg
         self.mu = mu
         self.shape_problem = shape_problem
         self.coord = MeshUtils.define_coordinate(self.shape_problem.domain)
@@ -456,15 +453,15 @@ class SparsePointsRegularization(TopoLogyField):
         self.constant_empty = dolfinx.fem.Constant(self.shape_problem.domain, 0.0)
         self.cost_form: ufl.Form = self.constant_empty * ufl.dx
 
-        if self.opt_strategy_cfg['method'] == 'sigmoid_v1':
-            if not self.opt_strategy_cfg.get('c', False):
-                self.opt_strategy_cfg['c'] = self.search_sigmoid_parameters(
-                    self.opt_strategy_cfg['break_range'], c=1.0, reso=self.opt_strategy_cfg['reso']
+        if self.cfg['method'] == 'sigmoid_v1':
+            if not self.cfg.get('c', False):
+                self.cfg['c'] = self.search_sigmoid_parameters(
+                    self.cfg['break_range'], c=1.0, reso=self.cfg['reso']
                 )
 
-        elif self.opt_strategy_cfg['method'] == 'relu_v1':
-            # self.opt_strategy_cfg['base'] = self.search_softplus_parameters(
-            #     grad=self.opt_strategy_cfg['c'], lower=self.opt_strategy_cfg['lower']
+        elif self.cfg['method'] == 'relu_v1':
+            # self.cfg['base'] = self.search_softplus_parameters(
+            #     grad=self.cfg['c'], lower=self.cfg['lower']
             # )
             pass
 
@@ -484,20 +481,20 @@ class SparsePointsRegularization(TopoLogyField):
                 radius = center_to_point + obs_radius + own_point_radius
 
                 dist = self.dist_fun(center, self.coord, is_square=False, sqrt_ops=ufl.sqrt)
-                if self.opt_strategy_cfg['method'] == 'sigmoid_v1':
+                if self.cfg['method'] == 'sigmoid_v1':
                     cost_form += self.sigmoid_fun(
                         dist - radius, 0.0,
-                        c=self.opt_strategy_cfg['c'], invert=True, exp_ops=ufl.exp
+                        c=self.cfg['c'], invert=True, exp_ops=ufl.exp
                     ) * ufl.dx
 
-                elif self.opt_strategy_cfg['method'] == 'relu_v1':
+                elif self.cfg['method'] == 'relu_v1':
                     # cost_form += self.softplus_fun(
-                    #     dist, base=self.opt_strategy_cfg['base'], center=radius, grad=self.opt_strategy_cfg['c'],
+                    #     dist, base=self.cfg['base'], center=radius, grad=self.cfg['c'],
                     #     invert=True, log_ops=ufl.ln, exp_ops=ufl.exp
                     # ) * ufl.dx
 
                     cost_form += self.relu_fun(
-                        dist, radius, c=self.opt_strategy_cfg['c'], max_ops=ufl.max_value, invert=True
+                        dist, radius, c=self.cfg['c'], max_ops=ufl.max_value, invert=True
                     ) * ufl.dx
 
                 else:

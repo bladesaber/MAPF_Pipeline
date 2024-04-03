@@ -368,7 +368,7 @@ class NonLinearProblemSolver(object):
         # ------ newton setting
         if with_debug:
             tick0 = time.time()
-            solver.setConvergenceHistory()
+            # solver.setConvergenceHistory()
 
         solver.solve(None, uh.vector)
         uh.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
@@ -376,14 +376,14 @@ class NonLinearProblemSolver(object):
         res = {'res': uh}
 
         if with_debug:
-            convergence_history = solver.getConvergenceHistory()[0]
+            # convergence_history = solver.getConvergenceHistory()[0]
 
             res.update({
                 'mean_error': np.mean(np.abs(residual_vec)),
                 'max_error': np.max(np.abs(residual_vec)),
                 'norm_error': residual_vec.norm(),
                 'cost_time': time.time() - tick0,
-                'last_error': convergence_history[-1] if len(convergence_history) else 0
+                # 'last_error': convergence_history[-1] if len(convergence_history) else 0
             })
 
         solver.destroy()

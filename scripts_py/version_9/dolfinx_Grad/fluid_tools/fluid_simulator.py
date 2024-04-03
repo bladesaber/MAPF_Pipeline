@@ -33,10 +33,12 @@ def sigma(u, p, mu: dolfinx.fem.Constant):
 class FluidSimulator(object):
     def __init__(
             self,
+            name,
             domain: dolfinx.mesh.Mesh,
             cell_tags: dolfinx.mesh.MeshTags,
             facet_tags: dolfinx.mesh.MeshTags,
     ):
+        self.name = name
         self.domain = domain
         self.cell_tags = cell_tags
         self.facet_tags = facet_tags
@@ -56,6 +58,7 @@ class FluidSimulator(object):
         self.Q_mapping_space = dolfinx.fem.FunctionSpace(domain, ("CG", 1))
         self.n_vec = MeshUtils.define_facet_norm(domain)
         self.ds = MeshUtils.define_ds(domain, facet_tags)
+        self.dx = MeshUtils.define_dx(domain)
 
         self.equation_map = {}
 
@@ -64,10 +67,10 @@ class FluidSimulator(object):
         v, q = ufl.split(ufl.TestFunction(self.W))
         f = dolfinx.fem.Constant(self.domain, np.zeros(self.tdim))
         stoke_form = (
-                inner(grad(u), grad(v)) * ufl.dx
-                - p * div(v) * ufl.dx
-                - q * div(u) * ufl.dx
-                - inner(f, v) * ufl.dx
+                inner(grad(u), grad(v)) * self.dx
+                - p * div(v) * self.dx
+                - q * div(u) * self.dx
+                - inner(f, v) * self.dx
         )
         self.equation_map['stoke'] = {
             'lhs': ufl.lhs(stoke_form),
@@ -239,8 +242,10 @@ class FluidSimulator(object):
         res_dict = LinearProblemSolver.solve_by_petsc_form(
             comm=self.domain.comm,
             uh=up,
-            a_form=stoke_dict['lhs_form'],
-            L_form=stoke_dict['rhs_form'],
+            # a_form=stoke_dict['lhs_form'],
+            # L_form=stoke_dict['rhs_form'],
+            a_form=stoke_dict['lhs'],
+            L_form=stoke_dict['rhs'],
             bcs=stoke_dict['bcs'],
             ksp_option=ksp_option,
             **kwargs
@@ -669,3 +674,14 @@ class FluidSimulator(object):
             post_function=post_function,
             with_debug=with_debug
         )
+
+    def get_up(self, method):
+        if not self.equation_map.get(method, False):
+            raise ValueError("[ERROR]: Non-Valid Parameters")
+
+        if 'up' in self.equation_map[method]:
+            up: dolfinx.fem.Function = self.equation_map[method]['up']
+            u_n, p_n = ufl.split(up)
+        else:
+            u_n, p_n = self.equation_map[method]['u_n'], self.equation_map[method]['p_n']
+        return u_n, p_n

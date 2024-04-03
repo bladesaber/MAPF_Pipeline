@@ -20,13 +20,16 @@ from ..surface_fields import type_conflict_regulariztions
 # TODO
 """
 1. 计算变形度
-2. 根据变形度计算变形优先级
-3. 根据优先级依次变形
-4. 检测范围内干涉，固定这些干涉面
+2. 根据变形度计算变形优先级(X)
+3. 根据优先级产生权重场
+    （这是不够的，我觉得需要使用场来模拟一个虚拟的斥力,这个力对于大权重mesh为0，对于小权重mesh为斥力，即是小权重mesh让位，
+    但这不完备，因为大权重mesh不一定挤压小权重mesh）
+4. 多次尝试不同优先级顺序来平移mesh
+4. 检测范围内干涉，固定这些干涉面(错误)
 """
 
 
-class FluidShapeFreeObsModel(FluidShapeOptSimple):
+class FluidObstacleAvoidModel(FluidShapeOptSimple):
     def __init__(
             self,
             name,
@@ -37,8 +40,10 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
             bry_markers: List[int],
             deformation_cfg: Dict,
             point_radius: float,
-            opt_strategy_cfg: dict = None,
+            run_strategy_cfg: dict,
+            obs_avoid_cfg: dict,
             isStokeEqu=False,
+            tag_name: str = None,
     ):
         super().__init__(
             domain=domain,
@@ -51,38 +56,34 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
 
         self.name = name
         self.solve_mapper = {}
-        self.opt_strategy_cfg = self.parse_opt_strategy_cfg(opt_strategy_cfg)
-        self.mesh_obj = MeshCollisionObj(name, self.domain, self.facet_tags, self.cell_tags, bry_markers, point_radius)
+
+        self.tag_name = tag_name if (tag_name is not None) else name
+        self.mesh_obj = MeshCollisionObj(
+            self.tag_name, self.domain, self.facet_tags, self.cell_tags, bry_markers, point_radius
+        )
+        self.mesh_obj.update_tree()
+
         self.conflict_regularization: type_conflict_regulariztions = None
+        self.run_strategy_cfg, self.obs_avoid_cfg = self.parse_cfgs(run_strategy_cfg, obs_avoid_cfg)
 
     @staticmethod
     def scale_search_range(length, length_shift=0.0, length_scale=1.0):
         return (length + length_shift) * length_scale
 
     @staticmethod
-    def parse_opt_strategy_cfg(opt_strategy_cfg=None):
-        opt_strategy_cfg['method'] = opt_strategy_cfg.get('method', 'sigmoid_v1')
-        opt_strategy_cfg['opt_tol_rho'] = opt_strategy_cfg.get('opt_tol_rho', 0.01)
-        opt_strategy_cfg['max_step_limit'] = opt_strategy_cfg.get('max_step_limit', 0.1)
-        opt_strategy_cfg['deformation_lower'] = opt_strategy_cfg.get('deformation_lower', 1e-2)
+    def parse_cfgs(run_strategy_cfg, obs_avoid_cfg):
+        assert obs_avoid_cfg['bbox_rho'] < 1.0 and obs_avoid_cfg['bbox_w_lower'] > 0.0
 
-        opt_strategy_cfg['bbox_rho'] = opt_strategy_cfg.get('bbox_rho', 0.85)
-        opt_strategy_cfg['bbox_w_lower'] = opt_strategy_cfg.get('bbox_w_lower', -0.1)
-        assert opt_strategy_cfg['bbox_rho'] < 1.0 and opt_strategy_cfg['bbox_w_lower'] > 0.0
-
-        if opt_strategy_cfg['method'] == 'sigmoid_v1':
-            opt_strategy_cfg['beta_rho'] = opt_strategy_cfg.get('beta_rho', 0.75)
-            opt_strategy_cfg['length_shift'] = opt_strategy_cfg['max_step_limit']
-            opt_strategy_cfg['length_scale'] = 1.0
-
-        elif opt_strategy_cfg['method'] == 'relu_v1':
-            opt_strategy_cfg['length_shift'] = 0.0
-            opt_strategy_cfg['length_scale'] = 1.0
-
+        if obs_avoid_cfg['method'] == 'sigmoid_v1':
+            obs_avoid_cfg['length_shift'] = run_strategy_cfg['max_step_limit']
+            obs_avoid_cfg['length_scale'] = obs_avoid_cfg.get('length_scale', 1.0)
+        elif obs_avoid_cfg['method'] == 'relu_v1':
+            obs_avoid_cfg['length_shift'] = run_strategy_cfg['max_step_limit']
+            obs_avoid_cfg['length_scale'] = obs_avoid_cfg.get('length_scale', 1.0)
         else:
             raise NotImplementedError
 
-        return opt_strategy_cfg
+        return run_strategy_cfg, obs_avoid_cfg
 
     def get_shape_derivatives(self, detect_cost_valid_func: Callable, **kwargs):
         shape_grad: dolfinx.fem.Function = self.opt_problem.compute_gradient(
@@ -109,11 +110,11 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
 
         success_flag, step_size = self.deformation_handler.move_mesh_by_line_search(
             direction_np, max_iter=10,
-            init_stepSize=self.opt_strategy_cfg['init_stepSize'],
-            stepSize_lower=self.opt_strategy_cfg['stepSize_lower'],
+            init_stepSize=self.run_strategy_cfg['init_stepSize'],
+            stepSize_lower=self.run_strategy_cfg['stepSize_lower'],
             detect_cost_valid_func=detect_cost_valid_func,
-            revert_move=True,
-            max_step_limit=self.opt_strategy_cfg['max_step_limit']
+            max_step_limit=self.run_strategy_cfg['max_step_limit'],
+            revert_move=True
         )
 
         return success_flag, (direction_np, step_size)
@@ -141,14 +142,11 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
         init_loss = self.opt_problem.evaluate_cost_functional(self.domain.comm, update_state=False)
         loss_storge_ctype = ctypes.c_double(init_loss)
 
-        def detect_cost_valid_func():
+        def detect_cost_valid_func(tol=self.run_strategy_cfg['loss_tol_rho']):
             loss = self.opt_problem.evaluate_cost_functional(
                 self.domain.comm, update_state=True, with_debug=with_debug
             )
-            is_valid = (
-                    loss < loss_storge_ctype.value +
-                    np.abs(loss_storge_ctype.value) * self.opt_strategy_cfg['opt_tol_rho']
-            )
+            is_valid = loss < loss_storge_ctype.value + np.abs(loss_storge_ctype.value) * tol
             return is_valid
 
         log_dict = self.log_step(logger_dicts)
@@ -178,26 +176,27 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
         )
         self.conflict_regularization = conflict_regularization
 
-    def find_conflicted_bbox(
-            self, obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj], opt_strategy_cfg: dict
-    ):
+    def find_conflicted_bbox(self, obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj]):
         bbox_infos = {}
         for obs_obj in obs_objs:
             conflict_length = self.mesh_obj.point_radius + obs_obj.point_radius
             search_range = self.scale_search_range(
-                conflict_length, opt_strategy_cfg['length_shift'], opt_strategy_cfg['length_scale']
+                conflict_length, self.obs_avoid_cfg['length_shift'], self.obs_avoid_cfg['length_scale']
             )
-            bbox_w = np.maximum(conflict_length * opt_strategy_cfg['bbox_rho'], opt_strategy_cfg['bbox_w_lower'])
+            bbox_w = np.maximum(conflict_length * self.obs_avoid_cfg['bbox_rho'], self.obs_avoid_cfg['bbox_w_lower'])
 
             obs_bbox_infos = obs_obj.find_conflict_bbox_infos(self.mesh_obj.get_bry_coords(), search_range, bbox_w)
             bbox_infos.update(obs_bbox_infos)
 
         for other_mesh_obj in mesh_objs:
+            if other_mesh_obj.name == self.tag_name:
+                continue
+
             conflict_length = self.mesh_obj.point_radius + other_mesh_obj.point_radius
             search_range = self.scale_search_range(
-                conflict_length, opt_strategy_cfg['length_shift'], opt_strategy_cfg['length_scale']
+                conflict_length, self.obs_avoid_cfg['length_shift'], self.obs_avoid_cfg['length_scale']
             )
-            bbox_w = np.maximum(conflict_length * opt_strategy_cfg['bbox_rho'], opt_strategy_cfg['bbox_w_lower'])
+            bbox_w = np.maximum(conflict_length * self.obs_avoid_cfg['bbox_rho'], self.obs_avoid_cfg['bbox_w_lower'])
 
             mesh_bbox_infos = other_mesh_obj.find_conflict_bbox_infos(
                 self.mesh_obj.get_bry_coords(), search_range, bbox_w
@@ -209,8 +208,7 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
     def safe_move(
             self,
             direction_np: np.ndarray, step_size: float,
-            obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj],
-            opt_strategy_cfg: dict, revert_move=False
+            obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj], revert_move=False
     ):
         while True:
             displacement_np = direction_np * step_size
@@ -242,15 +240,15 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
             else:
                 MeshUtils.move(self.domain, displacement_np * -1.0)
 
-                step_size = step_size * opt_strategy_cfg['beta_rho']
+                step_size = step_size * self.run_strategy_cfg['beta_rho']
                 max_deformation = np.max(np.linalg.norm(step_size * direction_np, ord=2, axis=1))
-                if max_deformation < opt_strategy_cfg['deformation_lower']:
+                if max_deformation < self.run_strategy_cfg['deformation_lower']:
                     break
 
         return success_flag, step_size
 
     def update_conflict_regularization(self, obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj]):
-        bbox_infos = self.find_conflicted_bbox(obs_objs, mesh_objs, self.opt_strategy_cfg)
+        bbox_infos = self.find_conflicted_bbox(obs_objs, mesh_objs)
         self.conflict_regularization.update_expression(bbox_infos, self.mesh_obj.point_radius)
         self.opt_problem.gradient_system.update_gradient_equations()
 
@@ -276,32 +274,24 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
             return {'state': grad_flag}
 
         res_dict = {'state': False}
-        if self.opt_strategy_cfg['method'] == 'sigmoid_v1':
+        if self.obs_avoid_cfg['method'] == 'sigmoid_v1':
             move_flag, step_size = self.safe_move(
-                direction_np=direction_np, step_size=step_size,
-                obs_objs=obs_objs, mesh_objs=mesh_objs,
-                opt_strategy_cfg=self.opt_strategy_cfg
-            )
+                direction_np=direction_np, step_size=step_size, obs_objs=obs_objs, mesh_objs=mesh_objs,
+            )  # safe_move已包含update_tree()
+            res_dict.update({'state': move_flag})
 
-            max_deformation = np.max(np.linalg.norm(step_size * direction_np, ord=2, axis=1))
-            res_dict.update({
-                'state': move_flag,
-                'is_converge': max_deformation < self.opt_strategy_cfg['deformation_lower'],
-            })
-
-        elif self.opt_strategy_cfg['method'] == 'relu_v1':
+        elif self.obs_avoid_cfg['method'] == 'relu_v1':
             displacement_np = direction_np * step_size
             MeshUtils.move(self.domain, displacement_np)
             self.mesh_obj.update_tree()
 
-            max_deformation = np.max(np.linalg.norm(step_size * direction_np, ord=2, axis=1))
-            res_dict.update({
-                'state': True,
-                'is_converge': max_deformation < self.opt_strategy_cfg['deformation_lower'],
-            })
+            res_dict.update({'state': True})
 
         else:
             raise NotImplementedError
+
+        max_deformation = np.max(np.linalg.norm(step_size * direction_np, ord=2, axis=1))
+        res_dict.update({'is_converge': max_deformation < self.run_strategy_cfg['deformation_lower']})
 
         if res_dict['state']:
             loss, log_dict = self.update_opt_info(with_log_info=True, step=step)
@@ -331,7 +321,7 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
 
             data_cell = {}
             for marker_name in log_dict.keys():
-                data_cell[f"{self.name}_{marker_name}"] = AssembleUtils.assemble_scalar(log_dict[marker_name])
+                data_cell[marker_name] = AssembleUtils.assemble_scalar(log_dict[marker_name])
             res_dict.update({tag_name: data_cell})
 
         res_dict.update({
@@ -341,10 +331,8 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
         return res_dict
 
     @staticmethod
-    def log_dict(log_recorder: TensorBoardRecorder, res_dicts: List[dict], step):
-        tag_names = list(res_dicts[0].keys())
-
-        for tag_name in tag_names:
+    def write_log_tensorboard(log_recorder: TensorBoardRecorder, res_dicts: List[dict], step):
+        for tag_name in list(res_dicts[0].keys()):
             data_cell = {}
             for res_dict in res_dicts:
                 if isinstance(res_dict[tag_name], dict):
@@ -361,7 +349,7 @@ class FluidShapeFreeObsModel(FluidShapeOptSimple):
         raise ValueError("[Error]: Depreciate For This Class.")
 
 
-class FluidShapeRecombineModel(FluidShapeFreeObsModel):
+class FluidConditionalModel(FluidObstacleAvoidModel):
     def single_solve(
             self, obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj], step: int, **kwargs
     ):
@@ -371,67 +359,127 @@ class FluidShapeRecombineModel(FluidShapeFreeObsModel):
             self.solve_mapper['cost_valid_func'], **kwargs
         )
         res_dict = {'state': False}
-        if self.opt_strategy_cfg['method'] == 'sigmoid_v1':
+        if self.obs_avoid_cfg['method'] == 'sigmoid_v1':
             move_flag, step_size = self.safe_move(
-                direction_np=direction_np, step_size=step_size,
-                obs_objs=obs_objs, mesh_objs=mesh_objs,
-                opt_strategy_cfg=self.opt_strategy_cfg,
+                direction_np=direction_np, step_size=step_size, obs_objs=obs_objs, mesh_objs=mesh_objs,
                 revert_move=True
             )
-            res_dict.update({'state': move_flag, 'displacement': direction_np * step_size})
+            res_dict.update({'state': move_flag, 'diffusion': direction_np * step_size})
 
-        elif self.opt_strategy_cfg['method'] == 'relu_v1':
-            res_dict.update({'state': True, 'displacement': direction_np * step_size})
+        elif self.obs_avoid_cfg['method'] == 'relu_v1':
+            res_dict.update({'state': True, 'diffusion': direction_np * step_size})
 
         else:
             raise NotImplementedError
 
         return res_dict
 
-    def move_mesh(self, displacement_np):
-        if displacement_np.shape != self.deformation_handler.shape:
+    def move_mesh(self, diffusion: np.ndarray):
+        if diffusion.shape != self.deformation_handler.shape:
             raise ValueError("[ERROR]: Shape UnCompatible")
 
-        MeshUtils.move(self.domain, displacement_np)
+        MeshUtils.move(self.domain, diffusion)
         is_intersections = self.deformation_handler.detect_collision(self.domain)
 
         res_dict = {'state': not is_intersections}
         if is_intersections:
-            MeshUtils.move(self.domain, displacement_np * -1.0)  # revert mesh
+            MeshUtils.move(self.domain, diffusion * -1.0)  # revert mesh
         else:
-            self.mesh_obj.update_tree()
-            max_deformation = np.max(np.linalg.norm(displacement_np, ord=2, axis=1))
-            res_dict['is_converge'] = max_deformation < self.opt_strategy_cfg['deformation_lower']
+            max_deformation = np.max(np.linalg.norm(diffusion, ord=2, axis=1))
+            res_dict['is_converge'] = max_deformation < self.run_strategy_cfg['deformation_lower']
+        self.mesh_obj.update_tree()
         return res_dict
 
+
+class FluidShapeRecombineLayer(object):
+    def __init__(self, tag_name):
+        self.tag_name = tag_name
+        assert tag_name is not None
+
+        self.opt_dicts: Dict[str, FluidConditionalModel] = {}
+
+    def add_condition_opt(self, opt: FluidConditionalModel):
+        self.opt_dicts[opt.name] = opt
+
+    def single_solve(
+            self, obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj],
+            step: int, diffusion_method='diffusion_loss_weight', **kwargs
+    ):
+        res_dict = {}
+        for name in self.opt_dicts.keys():
+            opt = self.opt_dicts[name]
+            sub_res_dict = opt.single_solve(
+                obs_objs=obs_objs, mesh_objs=mesh_objs, step=step, with_debug=kwargs.get("with_debug", False)
+            )
+
+            if not sub_res_dict['state']:
+                return {'state': False}
+
+            res_dict[name] = {
+                'diffusion': sub_res_dict['diffusion'],
+                'loss': opt.solve_mapper['loss_storge'].value
+            }
+
+        diffusion = FluidShapeRecombineLayer.merge_diffusion(res_dict, method=diffusion_method)
+        return {'state': True, 'diffusion': diffusion}
+
+    def move_mesh(self, diffusion: np.ndarray):
+        is_converge = True
+        for name in self.opt_dicts.keys():
+            res_dict = self.opt_dicts[name].move_mesh(diffusion)
+            if not res_dict['state']:
+                return {'state': False}
+            is_converge = is_converge and res_dict['is_converge']
+        return {'state': True, 'is_converge': is_converge}
+
+    def update_opt_info(self, with_log_info=True, step=None):
+        if with_log_info:
+            log_list = []
+        loss_list = []
+
+        for name in self.opt_dicts.keys():
+            if with_log_info:
+                loss, log_dict = self.opt_dicts[name].update_opt_info(with_log_info=with_log_info, step=step)
+                log_list.append(log_dict)
+            else:
+                loss = self.opt_dicts[name].update_opt_info(with_log_info=with_log_info, step=step)
+            loss_list.append(loss)
+
+        if with_log_info:
+            return loss_list, log_list
+        else:
+            return loss_list
+
     @staticmethod
-    def merge_diffusion(opt_dicts: dict, method='diffusion_weight'):
+    def merge_diffusion(opt_res_dict: dict, method='diffusion_weight'):
         if method == 'diffusion_weight':
             weights = []
-            for name in opt_dicts.keys():
-                weights.append(np.abs(np.linalg.norm(opt_dicts[name]['displacement'], ord=2, axis=1, keepdims=True)))
+            for name in opt_res_dict.keys():
+                weights.append(
+                    np.abs(np.linalg.norm(opt_res_dict[name]['diffusion'], ord=2, axis=1, keepdims=True))
+                )
             weights = np.concatenate(weights, axis=1)
             weights = weights / (weights.sum(axis=1, keepdims=True) + 1e-8)
 
         elif method == 'loss_weight':
             weights = []
-            for name in opt_dicts.keys():
-                weights.append(opt_dicts[name]['loss'])
+            for name in opt_res_dict.keys():
+                weights.append(opt_res_dict[name]['loss'])
             weights = np.array(weights)
             weights = weights / weights.sum()
 
         elif method == 'diffusion_loss_weight':
             diffusion_weights = []
-            for name in opt_dicts.keys():
+            for name in opt_res_dict.keys():
                 diffusion_weights.append(
-                    np.abs(np.linalg.norm(opt_dicts[name]['displacement'], ord=2, axis=1, keepdims=True))
+                    np.abs(np.linalg.norm(opt_res_dict[name]['diffusion'], ord=2, axis=1, keepdims=True))
                 )
             diffusion_weights = np.concatenate(diffusion_weights, axis=1)
             diffusion_weights = diffusion_weights / (diffusion_weights.sum(axis=1, keepdims=True) + 1e-8)
 
             loss_weights = []
-            for name in opt_dicts.keys():
-                loss_weights.append(opt_dicts[name]['loss'])
+            for name in opt_res_dict.keys():
+                loss_weights.append(opt_res_dict[name]['loss'])
             loss_weights = np.array(loss_weights)
             loss_weights = loss_weights / loss_weights.sum()
 
@@ -442,11 +490,11 @@ class FluidShapeRecombineModel(FluidShapeFreeObsModel):
 
         diffusion = 0.0
         if weights.ndim == 1:
-            for i, name in enumerate(opt_dicts.keys()):
-                diffusion += weights[i] * opt_dicts[name]['displacement']
+            for i, name in enumerate(opt_res_dict.keys()):
+                diffusion += weights[i] * opt_res_dict[name]['diffusion']
         elif weights.ndim == 2:
-            for i, name in enumerate(opt_dicts.keys()):
-                diffusion += weights[:, i: i + 1] * opt_dicts[name]['displacement']
+            for i, name in enumerate(opt_res_dict.keys()):
+                diffusion += weights[:, i: i + 1] * opt_res_dict[name]['diffusion']
         else:
             raise NotImplementedError("[ERROR]: Non-Valid Method")
 
