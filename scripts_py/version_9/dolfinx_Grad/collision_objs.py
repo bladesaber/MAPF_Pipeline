@@ -196,10 +196,23 @@ class ObstacleCollisionObj(object):
 
     @staticmethod
     def load(name, point_radius, dim, file: str):
-        if file.endswith('.vtu'):
+        format = file.split('.')[-1]
+        if format in ['vtu', 'stl']:
             mesh = pyvista.read(file)
-            coords = mesh.points[:, :dim]
+            coords = np.array(mesh.points[:, :dim]).astype(float)
         else:
-            raise NotImplementedError
+            raise ValueError("[ERROR]: Non-Support Format")
 
         return ObstacleCollisionObj(name, coords, point_radius, with_tree=True)
+
+    @staticmethod
+    def remove_intersection_points(coords, mesh_objs: List[MeshCollisionObj], radius):
+        for mesh_obj in mesh_objs:
+            shell_radius = radius + mesh_obj.point_radius
+            idxs_list = mesh_obj.query_radius_neighbors_from_xyz(coords, shell_radius)
+            accept_idxs = np.ones(coords.shape[0], dtype=np.bool)
+            for i, idxs in enumerate(idxs_list):
+                if len(idxs) > 0:
+                    accept_idxs[i] = False
+            coords = coords[accept_idxs]
+        return coords

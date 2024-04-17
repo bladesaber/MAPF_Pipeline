@@ -145,6 +145,9 @@ class TopoLogyField(object):
         方法1：根据需求边长产生n个标准中心，KNN中心分类
         方法2：根据需求边长产生n个标准中心，对中心作radius搜索从而去除空中心，再做无监督分类
         """
+        if pcd.shape[0] == 1:
+            return np.array([0])
+
         bdy_max = np.max(pcd, axis=0)
         bry_min = np.min(pcd, axis=0)
         bry_dif = bdy_max - bry_min
@@ -152,6 +155,7 @@ class TopoLogyField(object):
         tree = KDTree(pcd)
 
         bbox_num = np.prod(np.ceil(bry_dif / bbox_width))
+
         scale_times = np.maximum(math.ceil(np.log2(np.power(bbox_num / 1000., 1. / pcd_dim))), 0.0)
         scale_width = bbox_width * np.power(2, scale_times)
         bry_cell_num = np.ceil(bry_dif / scale_width)

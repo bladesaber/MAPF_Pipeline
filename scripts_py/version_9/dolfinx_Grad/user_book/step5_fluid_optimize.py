@@ -21,7 +21,6 @@ from scripts_py.version_9.dolfinx_Grad.collision_objs import ObstacleCollisionOb
 from scripts_py.version_9.dolfinx_Grad.surface_fields import SparsePointsRegularization
 from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import ImportTool
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
-from scripts_py.version_9.dolfinx_Grad.recorder_utils import VTKRecorder
 
 
 def parse_args():
@@ -68,7 +67,8 @@ def load_obstacle(args):
 
             obs_obj = ObstacleCollisionObj.load(
                 obs_cfg['name'], point_radius=obs_cfg['point_radius'], dim=obs_cfg['dim'],
-                file=os.path.join(obs_cfg['obstacle_dir'], f"{obs_cfg['name']}.{obs_cfg['file_format']}")
+                # file=os.path.join(obs_cfg['obstacle_dir'], f"{obs_cfg['name']}.{obs_cfg['file_format']}")
+                file=os.path.join(obs_cfg['obstacle_dir'], obs_cfg['filter_obs'])
             )
             obs_objs.append(obs_obj)
         return obs_objs
@@ -208,16 +208,13 @@ def load_base_model(cfg: dict, args, tag_name=None):
     if not os.path.exists(record_dir):
         os.mkdir(record_dir)
 
-    opt.state_system.solve(opt.domain.comm, with_debug=True)
+    log_dict = opt.init_solve_cfg(
+        record_dir=record_dir,
+        logger_dicts=logger_dicts,
+        with_debug=args.with_debug
+    )
 
-    # log_dict = opt.init_solve_cfg(
-    #     record_dir=record_dir,
-    #     logger_dicts=logger_dicts,
-    #     with_debug=True
-    # )
-    #
-    # return opt, log_dict
-    return opt, None
+    return opt, log_dict
 
 
 def main():
@@ -226,6 +223,7 @@ def main():
 
     models: List[Union[FluidConditionalModel, FluidShapeRecombineLayer]] = []
     log_list = []
+    check_names = []
     for run_cfg_file in args.json_files:
         with open(run_cfg_file, 'r') as f:
             run_cfg: dict = json.load(f)
@@ -244,82 +242,87 @@ def main():
                 model.add_condition_opt(sub_model)
                 log_list.append(log_dict)
 
+        if model.name in check_names:
+            raise ValueError("[ERROR]: Duplicate Config Name")
+        else:
+            check_names.append(model.name)
+
         models.append(model)
 
-    # mesh_objs = []
-    # for model in models:
-    #     if isinstance(model, FluidConditionalModel):
-    #         mesh_objs.append(model.mesh_obj)
-    #     elif isinstance(model, FluidShapeRecombineLayer):
-    #         for name in model.opt_dicts.keys():
-    #             mesh_objs.append(model.opt_dicts[name].mesh_obj)
-    # obs_objs = load_obstacle(args)
-    #
-    # tensorBoard_dir = os.path.join(args.res_dir, 'log')
-    # if os.path.exists(tensorBoard_dir):
-    #     shutil.rmtree(tensorBoard_dir)
-    # os.mkdir(tensorBoard_dir)
-    # log_recorder = TensorBoardRecorder(tensorBoard_dir)
-    # FluidConditionalModel.write_log_tensorboard(log_recorder, log_list, 0)
+    mesh_objs = []
+    for model in models:
+        if isinstance(model, FluidConditionalModel):
+            mesh_objs.append(model.mesh_obj)
+        elif isinstance(model, FluidShapeRecombineLayer):
+            for name in model.opt_dicts.keys():
+                mesh_objs.append(model.opt_dicts[name].mesh_obj)
+    obs_objs = load_obstacle(args)
 
-    # step = 0
-    # best_loss_list: np.ndarray = None
-    # best_loss_tol = 0.05
-    # while True:
-    #     step += 1
-    #
-    #     loss_list, log_list, is_converge = [], [], True
-    #
-    #     res_dict = {}
-    #     for model in models:
-    #         grad_res_dict = model.single_solve(
-    #             obs_objs, mesh_objs=mesh_objs, step=step,
-    #             # diffusion_method='diffusion_loss_weight',
-    #             diffusion_method='loss_weight',
-    #             with_debug=args.with_debug
-    #         )
-    #         if not grad_res_dict['state']:
-    #             print(f"[INFO]: {model.tag_name} Grad Computation Fail")
-    #             return -1
-    #
-    #         res_dict[model.name] = grad_res_dict
-    #
-    #     for model in models:
-    #         grad_res_dict = res_dict[model.name]
-    #         move_res_dict = model.move_mesh(grad_res_dict['diffusion'])
-    #         if not move_res_dict['state']:
-    #             print(f"[INFO]: {model.tag_name} Move Mesh Fail")
-    #             return -1
-    #
-    #         loss, log_dict = model.update_opt_info(with_log_info=True, step=step)
-    #         is_converge = is_converge and move_res_dict['is_converge']
-    #
-    #         if isinstance(loss, List):
-    #             loss_list.extend(loss)
-    #             log_list.extend(log_dict)
-    #         else:
-    #             loss_list.append(loss)
-    #             log_list.append(log_dict)
-    #
-    #     FluidConditionalModel.write_log_tensorboard(log_recorder, log_list, step)
-    #     loss_list = np.array(loss_list)
-    #     loss_iter = np.sum(loss_list)
-    #
-    #     if best_loss_list is None:
-    #         best_loss_list = loss_list
-    #     else:
-    #         best_loss_list = np.minimum(best_loss_list, loss_list)
-    #
-    #     print(f"[###Info {step}] loss:{loss_iter:.8f}")
-    #
-    #     if is_converge:
-    #         break
-    #
-    #     if np.any(loss_list > best_loss_list * (1.0 + best_loss_tol)):
-    #         break
-    #
-    #     if step > 100:
-    #         break
+    tensorBoard_dir = os.path.join(args.res_dir, 'log')
+    if os.path.exists(tensorBoard_dir):
+        shutil.rmtree(tensorBoard_dir)
+    os.mkdir(tensorBoard_dir)
+    log_recorder = TensorBoardRecorder(tensorBoard_dir)
+    FluidConditionalModel.write_log_tensorboard(log_recorder, log_list, 0)
+
+    step = 0
+    best_loss_list: np.ndarray = None
+    best_loss_tol = 0.05
+    while True:
+        step += 1
+
+        loss_list, log_list, is_converge = [], [], True
+
+        res_dict = {}
+        for model in models:
+            grad_res_dict = model.single_solve(
+                obs_objs, mesh_objs=mesh_objs, step=step,
+                # diffusion_method='diffusion_loss_weight',
+                diffusion_method='loss_weight',
+                with_debug=args.with_debug
+            )
+            if not grad_res_dict['state']:
+                print(f"[INFO]: {model.tag_name} Grad Computation Fail")
+                return -1
+
+            res_dict[model.name] = grad_res_dict
+
+        for model in models:
+            grad_res_dict = res_dict[model.name]
+            move_res_dict = model.move_mesh(grad_res_dict['diffusion'])
+            if not move_res_dict['state']:
+                print(f"[INFO]: {model.tag_name} Move Mesh Fail")
+                return -1
+
+            loss, log_dict = model.update_opt_info(with_log_info=True, step=step)
+            is_converge = is_converge and move_res_dict['is_converge']
+
+            if isinstance(loss, List):
+                loss_list.extend(loss)
+                log_list.extend(log_dict)
+            else:
+                loss_list.append(loss)
+                log_list.append(log_dict)
+
+        FluidConditionalModel.write_log_tensorboard(log_recorder, log_list, step)
+        loss_list = np.array(loss_list)
+        loss_iter = np.sum(loss_list)
+
+        if best_loss_list is None:
+            best_loss_list = loss_list
+        else:
+            best_loss_list = np.minimum(best_loss_list, loss_list)
+
+        print(f"[###Info {step}] loss:{loss_iter:.8f}")
+
+        if is_converge:
+            break
+
+        if np.any(loss_list > best_loss_list * (1.0 + best_loss_tol)):
+            break
+
+        if step > 100:
+            break
 
 
 if __name__ == '__main__':

@@ -26,6 +26,8 @@ from ..surface_fields import type_conflict_regulariztions
     但这不完备，因为大权重mesh不一定挤压小权重mesh）
 4. 多次尝试不同优先级顺序来平移mesh
 4. 检测范围内干涉，固定这些干涉面(错误)
+
+所有cfg的name都不可重复
 """
 
 

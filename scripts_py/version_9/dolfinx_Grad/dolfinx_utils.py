@@ -309,7 +309,8 @@ class BoundaryUtils(object):
         """
         for bc in bcs:
             dofs, _ = bc._cpp_object.dof_indices()
-            a_mat.zeroRowsLocal(dofs, diag=1)
+            # zeroRowsLocal: zero selected row of matrix and insert scalar value to diag
+            a_mat.zeroRowsLocal(dofs, diag=1.0)
 
         # print(f"[Debug]apply_boundary_to_matrix_explicit: is A_mat Symmetric{a_mat.isSymmetric(1e-15)}")
 

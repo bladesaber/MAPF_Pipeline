@@ -11,6 +11,8 @@ from typing import List, Union
 from functools import partial
 import os
 import pandas as pd
+from scipy import sparse
+from scipy.sparse import linalg as sparse_linalg
 
 from .sparse_utils import PETScUtils
 from .dolfinx_utils import AssembleUtils, BoundaryUtils
@@ -220,6 +222,148 @@ class LinearProblemSolver(object):
 
         return res_dict
 
+    @staticmethod
+    def solve_by_scipy_form(
+            uh: dolfinx.fem.function.Function,
+            a_form: Union[ufl.Form, dolfinx.fem.Form],
+            L_form: Union[ufl.Form, dolfinx.fem.Form],
+            bcs: List[dolfinx.fem.DirichletBC],
+            ksp_option={'method': 'spsolve', 'params': {}},
+            **kwargs
+    ):
+        if isinstance(a_form, ufl.Form):
+            a_compile_form = dolfinx.fem.form(a_form)
+        else:
+            a_compile_form = a_form
+
+        if isinstance(L_form, ufl.Form):
+            b_compile_form = dolfinx.fem.form(L_form)
+        else:
+            b_compile_form = L_form
+
+        tick0 = time.time()
+        a_mat = AssembleUtils.assemble_mat(a_compile_form, bcs, method=kwargs.get('A_assemble_method', 'lift'))
+        a_mat: sparse.csr_matrix = PETScUtils.convert_mat_to_scipy(a_mat)
+        time_a_mat = time.time() - tick0
+
+        tick0 = time.time()
+        b_vec = AssembleUtils.assemble_vec(b_compile_form)
+        BoundaryUtils.apply_boundary_to_vec(b_vec, bcs, a_compile_form, clean_vec=False)
+        b_vec: np.ndarray = b_vec.array
+        time_b_vec = time.time() - tick0
+
+        if kwargs.get('record_mat_dir', False):
+            PETScUtils.save_data(a_mat, os.path.join(kwargs['record_mat_dir'], 'A_mat.dat'))
+            PETScUtils.save_data(b_vec, os.path.join(kwargs['record_mat_dir'], 'b_vec.dat'))
+
+        with_debug = kwargs.get('with_debug', False)
+        if with_debug:
+            tick0 = time.time()
+
+        exit_code = 0
+        if ksp_option['method'] == 'spsolve':
+            x = sparse_linalg.spsolve(a_mat, b_vec)
+
+        elif ksp_option['method'] == 'spsolve_triangular':
+            x = sparse_linalg.spsolve_triangular(a_mat, b_vec)
+
+        elif ksp_option['method'] == 'bicg':
+            x, exit_code = sparse_linalg.bicg(a_mat, b_vec, **ksp_option['params'])
+
+        elif ksp_option['method'] == 'bicgstab':
+            x, exit_code = sparse_linalg.bicgstab(a_mat, b_vec, **ksp_option['params'])
+
+        elif ksp_option['method'] == 'cg':
+            x, exit_code = sparse_linalg.cg(a_mat, b_vec, **ksp_option['params'])
+
+        elif ksp_option['method'] == 'cgs':
+            x, exit_code = sparse_linalg.cgs(a_mat, b_vec, **ksp_option['params'])
+
+        elif ksp_option['method'] == 'gmres':
+            x, exit_code = sparse_linalg.gmres(a_mat, b_vec, **ksp_option['params'])
+
+        elif ksp_option['method'] == 'lgmres':
+            x, exit_code = sparse_linalg.lgmres(a_mat, b_vec, **ksp_option['params'])
+
+        elif ksp_option['method'] == 'minres':
+            x, exit_code = sparse_linalg.minres(a_mat, b_vec, **ksp_option['params'])
+
+        elif ksp_option['method'] == 'qmr':
+            x, exit_code = sparse_linalg.qmr(a_mat, b_vec, **ksp_option['params'])
+
+        elif ksp_option['method'] == 'gcrotmk':
+            x, exit_code = sparse_linalg.gcrotmk(a_mat, b_vec, **ksp_option['params'])
+
+        elif ksp_option['method'] == 'tfqmr':
+            x, exit_code = sparse_linalg.tfqmr(a_mat, b_vec, **ksp_option['params'])
+
+        # elif ksp_option['method'] == 'lsqr':
+        #     x, istop, itn, residual = sparse_linalg.lsqr(a_mat, b_vec, **ksp_option['params'])[:4]
+        #
+        # elif ksp_option['method'] == 'lsmr':
+        #     x, istop, itn, residual = sparse_linalg.lsmr(a_mat, b_vec, **ksp_option['params'])[:4]
+
+        else:
+            raise ValueError('[ERROR]: Non-Valid Method')
+
+        assert exit_code == 0
+
+        res_dict = {}
+
+        if with_debug:
+            cost_time = time.time() - tick0
+
+            errors = a_mat.dot(x) - b_vec
+            mean_error = np.mean(np.abs(errors))
+            max_error = np.max(np.abs(errors))
+
+            res_dict.update({
+                'mean_error': mean_error,
+                'max_error': max_error,
+                'cost_time': cost_time,
+            })
+
+        uh.vector.x[:] = x
+        res_dict.update({
+            'res': uh,
+            'Amat_time': time_a_mat,
+            'bvec_time': time_b_vec
+        })
+
+        return res_dict
+
+    @staticmethod
+    def evaluate_equation_cost(
+            uh: dolfinx.fem.function.Function,
+            a_form: Union[ufl.Form, dolfinx.fem.Form],
+            L_form: Union[ufl.Form, dolfinx.fem.Form],
+            bcs: List[dolfinx.fem.DirichletBC],
+            **kwargs
+    ):
+        if isinstance(a_form, ufl.Form):
+            a_compile_form = dolfinx.fem.form(a_form)
+        else:
+            a_compile_form = a_form
+
+        if isinstance(L_form, ufl.Form):
+            b_compile_form = dolfinx.fem.form(L_form)
+        else:
+            b_compile_form = L_form
+
+        a_mat = AssembleUtils.assemble_mat(a_compile_form, bcs, method=kwargs.get('A_assemble_method', 'lift'))
+        b_vec = AssembleUtils.assemble_vec(b_compile_form)
+        BoundaryUtils.apply_boundary_to_vec(b_vec, bcs, a_compile_form, clean_vec=False)
+
+        errors = (a_mat * uh.vector).array - b_vec.array
+        mean_error = np.mean(np.abs(errors))
+        max_error = np.max(np.abs(errors))
+
+        res_dict = {
+            'mean_error': mean_error,
+            'max_error': max_error
+        }
+        return res_dict
+
 
 class NonlinearPdeHelper:
     @staticmethod
@@ -368,7 +512,7 @@ class NonLinearProblemSolver(object):
         # ------ newton setting
         if with_debug:
             tick0 = time.time()
-            # solver.setConvergenceHistory()
+            solver.setConvergenceHistory()
 
         solver.solve(None, uh.vector)
         uh.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
@@ -376,7 +520,8 @@ class NonLinearProblemSolver(object):
         res = {'res': uh}
 
         if with_debug:
-            # convergence_history = solver.getConvergenceHistory()[0]
+            convergence_history = solver.getConvergenceHistory()[0]
+            # print('debug: convergence_history: ', convergence_history)
 
             res.update({
                 'mean_error': np.mean(np.abs(residual_vec)),
@@ -393,6 +538,37 @@ class NonLinearProblemSolver(object):
         PETSc.garbage_cleanup()
 
         return res
+
+    @staticmethod
+    def evaluate_equation_cost(
+            uh: dolfinx.fem.function.Function,
+            lhs_form: ufl.Form,
+            bcs: List[dolfinx.fem.DirichletBC],
+            jacobi_form: ufl.Form = None, **kwargs
+    ):
+        if jacobi_form is None:
+            jacobi_form = ufl.derivative(lhs_form, uh, ufl.TrialFunction(uh.function_space))
+        dFdu_dolfinx = dolfinx.fem.form(jacobi_form)
+
+        lhs_form_dolfin = dolfinx.fem.form(lhs_form)
+
+        # ------ recompute residual since solution change
+        rhs_vec: PETSc.Vec = AssembleUtils.assemble_vec(lhs_form_dolfin)
+
+        # ------ apply boundary function to residual
+        petsc.apply_lifting(rhs_vec, [dFdu_dolfinx], bcs=[bcs], x0=[uh.vector], scale=-1.0)
+        rhs_vec.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+        petsc.set_bc(rhs_vec, bcs, uh.vector, -1.0)
+
+        errors = rhs_vec.array
+        max_error = np.max(np.abs(errors))
+        # max_error = rhs_vec.norm()
+        # print(f'debug: evaluate cost {max_error}')
+
+        res_dict = {
+            'max_error': max_error
+        }
+        return res_dict
 
 
 def find_linear_ksp_option(

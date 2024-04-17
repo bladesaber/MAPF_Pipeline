@@ -13,6 +13,7 @@ from ..recorder_utils import VTKRecorder, TensorBoardRecorder
 from ..dolfinx_utils import MeshUtils, AssembleUtils, BoundaryUtils
 from ..equation_solver import LinearProblemSolver, NonLinearProblemSolver
 from ..vis_mesh_utils import VisUtils
+from ..other_simulator_convert import CrossSimulatorUtil
 
 
 def epsilon(u: Union[dolfinx.fem.Function, ufl.Argument]):
@@ -98,13 +99,7 @@ class FluidSimulator(object):
             'up': up
         }
 
-    def define_ipcs_equation(
-            self,
-            dt: float,
-            dynamic_viscosity: float,
-            density: float,
-            is_channel_fluid: bool
-    ):
+    def define_ipcs_equation(self, dt: float, dynamic_viscosity: float, density: float, is_channel_fluid: bool):
         dt = dt
         k = dolfinx.fem.Constant(self.domain, dt)  # time step
         mu = dolfinx.fem.Constant(self.domain, dynamic_viscosity)
@@ -468,7 +463,13 @@ class FluidSimulator(object):
             p_n.vector.aypx(0.0, p_.vector)
 
             if post_function is not None:
-                sub_stop = post_function(self, step, simulator_dir)
+                post_res_dict = post_function(self, step, simulator_dir)
+                sub_stop = post_res_dict['state']
+                if post_res_dict.get('error', False):
+                    log_recorder.write_scalar('error', post_res_dict['error'], step=step)
+                if post_res_dict.get('evaluate_cost', False):
+                    log_recorder.write_scalar('evaluate_cost', post_res_dict['evaluate_cost'], step=step)
+
             else:
                 sub_stop = False
 
@@ -530,6 +531,8 @@ class FluidSimulator(object):
                 else:
                     print('[Debug] Time Step May Be Too Small')
                 break
+
+        return {'is_converge': is_converge, 'step': step}
 
     @staticmethod
     def update_ipcs_dict(info_dict: dict, orig_dict: dict):
@@ -640,17 +643,80 @@ class FluidSimulator(object):
             up.x.array[self.V_to_W_dofs] = u_array
             up.x.array[self.Q_to_W_dofs] = p_array
 
-    def find_navier_stoke_initiation(self, proj_dir, max_iter, log_iter, trial_iter, ksp_option, with_debug=False):
+    def load_function(self, fun_V_txt: str, fun_Q_txt: str):
+        coords_vec, values_vec = [], []
+        with open(fun_V_txt, 'r') as f:
+            for line in f.readlines():
+                pass
+        coords_vec = np.array(coords_vec)
+        values_vec = np.array(values_vec)
+        fun_vec = CrossSimulatorUtil.convert_simple_base_function(self.domain, coords_vec, values_vec, r=1e-4)
+
+        coords_scalar, values_scalar = [], []
+        with open(fun_Q_txt, 'r') as f:
+            for line in f.readlines():
+                pass
+        coords_scalar = np.array(coords_scalar)
+        values_scalar = np.array(values_scalar)
+        fun_scalar = CrossSimulatorUtil.convert_simple_base_function(self.domain, coords_scalar, values_scalar, r=1e-4)
+
+        if not self.equation_map.get('ipcs', False):
+            return
+        else:
+            u_n: dolfinx.fem.Function = self.equation_map['ipcs']['u_n']
+            p_n: dolfinx.fem.Function = self.equation_map['ipcs']['p_n']
+            u_n.interpolate(fun_vec)
+            p_n.interpolate(fun_scalar)
+
+        if not self.equation_map.get('stoke', False):
+            return
+        else:
+            u_n_temp = dolfinx.fem.Function(self.V)
+            u_n_temp.interpolate(fun_vec)
+
+            p_n_temp = dolfinx.fem.Function(self.Q)
+            p_n_temp.interpolate(fun_scalar)
+
+            up: dolfinx.fem.Function = self.equation_map['stoke']['up']
+            up.x.array[self.V_to_W_dofs] = u_n_temp.x.array
+            up.x.array[self.Q_to_W_dofs] = p_n_temp.x.array
+
+        if not self.equation_map.get('navier_stoke', False):
+            return
+        else:
+            u_n_temp = dolfinx.fem.Function(self.V)
+            u_n_temp.interpolate(fun_vec)
+
+            p_n_temp = dolfinx.fem.Function(self.Q)
+            p_n_temp.interpolate(fun_scalar)
+
+            up: dolfinx.fem.Function = self.equation_map['navier_stoke']['up']
+            up.x.array[self.V_to_W_dofs] = u_n_temp.x.array
+            up.x.array[self.Q_to_W_dofs] = p_n_temp.x.array
+
+    def find_navier_stoke_initiation(
+            self, proj_dir, max_iter, log_iter, trial_iter, ksp_option, with_debug=False, **kwargs
+    ):
         def post_function(sim: FluidSimulator, step: int, simulator_dir):
             if step % trial_iter == 0:
                 u_n, p_n = self.equation_map['ipcs']['u_n'], self.equation_map['ipcs']['p_n']
                 guass_up = self.merge_funs(u_n, p_n)
 
+                # ------ for debug
+                up = self.equation_map['navier_stoke']['up']
+                lhs_form = self.equation_map['navier_stoke']['lhs']
+                jacobi_form = ufl.derivative(lhs_form, up, ufl.TrialFunction(up.function_space))
+                evaluate_cost_dict = NonLinearProblemSolver.evaluate_equation_cost(
+                    uh=up, lhs_form=lhs_form, bcs=self.equation_map['navier_stoke']['bcs'], jacobi_form=jacobi_form
+                )
+                evaluate_cost = evaluate_cost_dict['max_error']
+                # ------
+
                 res_dict = self.simulate_navier_stoke(
                     proj_dir=proj_dir, name='navierStoke',
                     guass_up=guass_up,
                     ksp_option=ksp_option,
-                    logger_dicts={},
+                    logger_dicts=kwargs.get('ns_logger_dicts', {}),
                     with_debug=True  # Must Be True
                 )
 
@@ -662,18 +728,31 @@ class FluidSimulator(object):
                     os.mkdir(step_dir)
                     self.save_result_to_pickle(step_dir)
                     print(f"[Info FluidSimulator] Find Valid Initiation At {step} step with Error {max_error}")
-                    return True
+                    return {
+                        'state': True, 'error': max_error,
+                        'evaluate_cost': evaluate_cost
+                    }
                 else:
                     print(f"[Info FluidSimulator] Fail to Find Initiation At {step} step with Error {max_error}")
-                    return False
+                    return {
+                        'state': False, 'error': max_error,
+                        'evaluate_cost': evaluate_cost
+                    }
 
-        self.simulate_ipcs(
+            return {'state': False}
+
+        res = self.simulate_ipcs(
             proj_dir=proj_dir, name='ipcs', max_iter=max_iter, log_iter=log_iter,
-            tol=None, data_convergence={},
+            tol=kwargs.get('tol', None),
+            data_convergence=kwargs.get('data_convergence', {}),
             pre_function=None,
             post_function=post_function,
-            with_debug=with_debug
+            with_debug=with_debug,
+            logger_dicts=kwargs.get('logger_dicts', {}),
         )
+
+        if res['is_converge']:
+            post_function(self, step=res['step'], simulator_dir=None)
 
     def get_up(self, method):
         if not self.equation_map.get(method, False):

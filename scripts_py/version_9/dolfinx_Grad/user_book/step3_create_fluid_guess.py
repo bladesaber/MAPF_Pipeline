@@ -87,11 +87,48 @@ def find_guess_up(cfg, args):
         if not os.path.exists(record_dir):
             os.mkdir(record_dir)
 
+        # ------ prepare ipcs log dict
+        u_n, p_n = simulator.get_up('ipcs')
+        inflow_dict = {}
+        for marker in input_markers:
+            inflow_dict[f"inflow_{marker}_p"] = dolfinx.fem.form(p_n * simulator.ds(marker))
+        outflow_dict = {}
+        for marker in output_markers:
+            outflow_dict[f"outflow_{marker}_v"] = dolfinx.fem.form(dot(u_n, simulator.n_vec) * simulator.ds(marker))
+        ipcs_logger_dicts = {'inflow': inflow_dict, 'outflow': outflow_dict}
+
+        # ------ prepare data convergence log
+        ipcs_data_convergence = {}
+        for marker in input_markers:
+            ipcs_data_convergence[f"inflow_{marker}_p"] = {
+                'form': dolfinx.fem.form(p_n * simulator.ds(marker)), 'cur_value': 0.0, 'old_value': 0.0
+            }
+        for marker in output_markers:
+            ipcs_data_convergence[f"outflow_{marker}_v"] = {
+                'form': dolfinx.fem.form(dot(u_n, simulator.n_vec) * simulator.ds(marker)),
+                'cur_value': 0.0, 'old_value': 0.0
+            }
+
+        # ------ prepare navier stoke log dict
+        u_n, p_n = simulator.get_up('navier_stoke')
+        inflow_dict = {}
+        for marker in input_markers:
+            inflow_dict[f"inflow_{marker}_p"] = dolfinx.fem.form(p_n * simulator.ds(marker))
+        outflow_dict = {}
+        for marker in output_markers:
+            outflow_dict[f"outflow_{marker}_v"] = dolfinx.fem.form(dot(u_n, simulator.n_vec) * simulator.ds(marker))
+        ns_logger_dicts = {'inflow': inflow_dict, 'outflow': outflow_dict}
+
+        # ------ run
         simulator.find_navier_stoke_initiation(
             proj_dir=record_dir, max_iter=ipcs_cfg['max_iter'], log_iter=ipcs_cfg['log_iter'],
             trial_iter=ipcs_cfg['trial_iter'],
             ksp_option=navier_stoke_cfg['ksp_option'],
-            with_debug=True
+            with_debug=True,
+            logger_dicts=ipcs_logger_dicts,
+            ns_logger_dicts=ns_logger_dicts,
+            data_convergence=ipcs_data_convergence,
+            tol=ipcs_cfg['tol']
         )
 
 

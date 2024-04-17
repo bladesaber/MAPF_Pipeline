@@ -11,9 +11,12 @@ from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import ImportTool
 
 
-# TODO 当加载多个json时非线性结果不对，原因不明，第一个是对的，后面都是错的,stoke也一样，以stoke为参考吧
-# todo ImportTool.import_module(run_cfg['proj_dir'], run_cfg['condition_package_name'])有歧义
-# todo 有两个condition_package_name的库,似乎是了，是inflow_velocity_exp_fake重名了
+# todo
+#   1.引用其他求解软件的结果，然后用特定阶的有限元方法来插值作为init
+#   2.引用其他求解器例如scipy
+#   3.网格划分可能是比较大的影响因素
+#   4.改用其他精确解方法
+#   5.改用其他粗糙解方法
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Fluid Simulation Tool")
@@ -45,12 +48,6 @@ def simulate(cfg, args, **kwargs):
             output_file=os.path.join(run_cfg['proj_dir'], 'model.xdmf')
         )
     condition_module = ImportTool.import_module(run_cfg['proj_dir'], run_cfg['condition_package_name'])
-
-    # print(run_cfg['proj_dir'], run_cfg['condition_package_name'])
-    # print(dir(condition_module))
-    # if kwargs['debug'] == 0:
-    #     print('ffffffffffffffffffffff')
-    #     return
 
     for run_cfg in run_cfgs:
         domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
@@ -112,8 +109,6 @@ def simulate(cfg, args, **kwargs):
         logger_dicts = {
             'inflow': inflow_dict,
             'outflow': outflow_dict,
-            # 'energy': {'energy': dolfinx.fem.form(inner(u_n, u_n) * ufl.dx)},
-            # 'energy_loss': {'energy_loss': dolfinx.fem.form(inner(grad(u_n), grad(u_n)) * ufl.dx)}
         }
 
         record_dir = os.path.join(run_cfg['proj_dir'], f"{run_cfg['name']}_record")

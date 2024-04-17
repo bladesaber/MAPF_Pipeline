@@ -29,7 +29,8 @@ class ImportTool(object):
         spec.loader.exec_module(module)
 
         # Add the module to sys.modules
-        sys.modules['module_name'] = module
+        module_name_base = module_name.replace('.py', '')
+        sys.modules[module_name_base] = module
 
         return module
 
