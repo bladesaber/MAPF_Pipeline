@@ -9,16 +9,17 @@ import argparse
 from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_simulator import FluidSimulator
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import ImportTool
-from scripts_py.version_9.dolfinx_Grad.equation_solver import LinearProblemSolver
+from scripts_py.version_9.dolfinx_Grad.equation_solver import LinearProblemSolver, NonLinearProblemSolver
+from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
+from scripts_py.version_9.dolfinx_Grad.recorder_utils import VTKRecorder, XDMFRecorder
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Fluid Simulation Tool")
-    parser.add_argument('--json_file', type=str, default=[])
+    parser.add_argument('--json_file', type=str, default=None)
     parser.add_argument('--simulate_method', type=str, default=None)
-    parser.add_argument('--init_mesh', type=int, default=0)
-    parser.add_argument('--velocity_file', type=str, default=None)
-    parser.add_argument('--pressure_file', type=str, default=None)
+    parser.add_argument('--csv_file', type=str, default=None)
+    parser.add_argument('--save_dir', type=str, default=None)
     args = parser.parse_args()
     return args
 
@@ -32,12 +33,6 @@ def main():
     with open(args.json_file, 'r') as f:
         run_cfg = json.load(f)
 
-    if args.init_mesh:
-        MeshUtils.msh_to_XDMF(
-            name='model', dim=run_cfg['dim'],
-            msh_file=os.path.join(run_cfg['proj_dir'], 'model.msh'),
-            output_file=os.path.join(run_cfg['proj_dir'], 'model.xdmf')
-        )
     condition_module = ImportTool.import_module(run_cfg['proj_dir'], run_cfg['condition_package_name'])
 
     domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
@@ -80,25 +75,72 @@ def main():
         bc_value = dolfinx.fem.Function(simulator.Q, name=f"outflow_p_{marker}")
         simulator.add_boundary(value=bc_value, marker=marker, is_velocity=False)
 
-    simulator.load_function(fun_V_txt=args.velocity_file, fun_Q_txt=args.pressure_file)
+    # simulator.load_result(csv_file=args.csv_file)
+    simulator.load_initiation_pickle(
+        u_pickle_file='/home/admin123456/Desktop/work/topopt_exps/user_proj_7/mesh_A_tst/mesh_A_record/simulate_ipcs/res_pkl/ipcs_u.pkl',
+        p_pickle_file='/home/admin123456/Desktop/work/topopt_exps/user_proj_7/mesh_A_tst/mesh_A_record/simulate_ipcs/res_pkl/ipcs_p.pkl'
+    )
 
     up: dolfinx.fem.Function = simulator.equation_map[simulate_method]['up']
+    # vel_recorder = VTKRecorder(os.path.join(args.save_dir, 'velocity.pvd'))
+    # vel_recorder.write_function(up.sub(0).collapse(), step=0)
+    # pressure_recorder = VTKRecorder(os.path.join(args.save_dir, 'pressure.pvd'))
+    # pressure_recorder.write_function(up.sub(1).collapse(), step=0)
 
     if simulate_method == 'navier_stoke':
-        lhs_form = dolfinx.fem.form(simulator.equation_map['navier_stoke']['lhs'])
-        bcs = simulator.equation_map['navier_stoke']['bcs']
-        res_dict = LinearProblemSolver.evaluate_equation_cost(up, a_form=lhs_form, L_form=None, bcs=bcs)
+        res_dict = NonLinearProblemSolver.equation_investigation(
+            lhs_form=simulator.equation_map['navier_stoke']['lhs'],
+            bcs=simulator.equation_map['navier_stoke']['bcs'],
+            uh=up
+        )
 
     elif simulate_method == 'stoke':
-        lhs_form = dolfinx.fem.form(simulator.equation_map['stoke']['lhs_form'])
-        rhs_form = dolfinx.fem.form(simulator.equation_map['stoke']['rhs_form'])
-        bcs = simulator.equation_map['stoke']['bcs']
-        res_dict = LinearProblemSolver.evaluate_equation_cost(up, a_form=lhs_form, L_form=rhs_form, bcs=bcs)
+        res_dict = LinearProblemSolver.equation_investigation(
+            a_form=simulator.equation_map['stoke']['lhs_form'],
+            L_form=simulator.equation_map['stoke']['rhs_form'],
+            bcs=simulator.equation_map['stoke']['bcs'],
+            uh=up
+        )
 
     else:
         return -1
 
-    print(res_dict)
+    info = '[INFO] InitEnv '
+    for key in res_dict.keys():
+        info += f"{key}:{res_dict[key]} "
+    print(info)
+
+    if simulate_method == 'navier_stoke':
+        res_dict = simulator.simulate_navier_stoke(
+            proj_dir=args.save_dir, name='NS',
+            snes_setting=simulate_cfg['snes_setting'], ksp_option=simulate_cfg['ksp_option'],
+            with_debug=True
+        )
+
+    else:
+        simulator.simulate_stoke(
+            proj_dir=args.save_dir, name='Stoke', ksp_option=simulate_cfg['ksp_option'], with_debug=True
+        )
+
+    if simulate_method == 'navier_stoke':
+        res_dict = NonLinearProblemSolver.equation_investigation(
+            lhs_form=dolfinx.fem.form(simulator.equation_map['navier_stoke']['lhs']),
+            bcs=simulator.equation_map['navier_stoke']['bcs'],
+            uh=up
+        )
+
+    else:
+        res_dict = LinearProblemSolver.equation_investigation(
+            a_form=dolfinx.fem.form(simulator.equation_map['stoke']['lhs_form']),
+            L_form=dolfinx.fem.form(simulator.equation_map['stoke']['rhs_form']),
+            bcs=simulator.equation_map['stoke']['bcs'],
+            uh=up
+        )
+
+    info = '[INFO] FinalEnv '
+    for key in res_dict.keys():
+        info += f"{key}:{res_dict[key]} "
+    print(info)
 
 
 if __name__ == '__main__':

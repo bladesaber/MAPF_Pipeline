@@ -46,6 +46,8 @@ class FluidObstacleAvoidModel(FluidShapeOptSimple):
             obs_avoid_cfg: dict,
             isStokeEqu=False,
             tag_name: str = None,
+            velocity_order: int = 2,
+            pressure_order: int = 1,
     ):
         super().__init__(
             domain=domain,
@@ -53,7 +55,9 @@ class FluidObstacleAvoidModel(FluidShapeOptSimple):
             facet_tags=facet_tags,
             Re=Re,
             deformation_cfg=deformation_cfg,
-            isStokeEqu=isStokeEqu
+            isStokeEqu=isStokeEqu,
+            velocity_order=velocity_order,
+            pressure_order=pressure_order
         )
 
         self.name = name

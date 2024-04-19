@@ -30,6 +30,8 @@ class AssembleUtils(object):
         Ref: https://jsdokken.com/FEniCS23-tutorial/src/lifting.html
         Identity_row: 这是原始方法，但会导致A_mat不在对称，致使求解困难，很大部分的求解器不再适用
         """
+        assert method in ['Identity_row', 'lift']
+
         if method == 'Identity_row':
             if A_mat is None:
                 A_mat = dolfinx.fem.petsc.assemble_matrix(a_form, diagonal=diagonal)
@@ -289,14 +291,17 @@ class BoundaryUtils(object):
     @staticmethod
     def apply_boundary_to_vec(
             b_vec: PETSc.Vec, bcs: list[dolfinx.fem.DirichletBC], a_form: dolfinx.fem.form,
-            clean_vec: bool = False, scalar_forward=True,
+            clean_vec: bool = False, scalar_forward=True, method='lift'
     ):
+        assert method in ['Identity_row', 'lift']
+
         if clean_vec:
             with b_vec.localForm() as loc_b:
                 loc_b.set(0)
 
-        dolfinx.fem.apply_lifting(b_vec, [a_form], [bcs])
-        b_vec.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
+        if method == 'lift':
+            dolfinx.fem.apply_lifting(b_vec, [a_form], [bcs])
+            b_vec.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
         dolfinx.fem.set_bc(b_vec, bcs)
 
         if scalar_forward:

@@ -9,6 +9,7 @@ from sklearn.neighbors import KDTree
 
 from .vis_mesh_utils import VisUtils
 
+
 class XDMFRecorder(object):
     def __init__(self, file: str, comm=None):
         assert file.endswith('.xdmf')
@@ -145,4 +146,3 @@ class RefDataRecorder(object):
                 return self.ref_grid[name][convert_seq]
         else:
             return self.ref_grid[name]
-

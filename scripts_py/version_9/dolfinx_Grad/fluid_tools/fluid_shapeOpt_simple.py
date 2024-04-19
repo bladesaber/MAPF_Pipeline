@@ -35,6 +35,8 @@ class FluidShapeOptSimple(object):
             Re: float,
             deformation_cfg: Dict,
             isStokeEqu=False,
+            velocity_order: int = 2,
+            pressure_order: int = 1,
     ):
         """
         Re: Reynolds number
@@ -45,11 +47,13 @@ class FluidShapeOptSimple(object):
         self.facet_tags = facet_tags
         self.tdim = self.domain.topology.dim
         self.fdim = self.tdim - 1
+        self.velocity_order = velocity_order
+        self.pressure_order = pressure_order
 
         self.W = dolfinx.fem.FunctionSpace(
             domain, ufl.MixedElement([
-                ufl.VectorElement("Lagrange", domain.ufl_cell(), 2),
-                ufl.FiniteElement("Lagrange", domain.ufl_cell(), 1)
+                ufl.VectorElement("Lagrange", domain.ufl_cell(), velocity_order),
+                ufl.FiniteElement("Lagrange", domain.ufl_cell(), pressure_order)
             ])
         )
         self.W0, self.W1 = self.W.sub(0), self.W.sub(1)
@@ -130,6 +134,7 @@ class FluidShapeOptSimple(object):
             state_ksp_option={'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
             adjoint_ksp_option={'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
             gradient_ksp_option={'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
+            snes_option={}
     ):
         self.state_system = StateProblem([
             create_state_problem(
@@ -140,7 +145,8 @@ class FluidShapeOptSimple(object):
                 is_linear=self.is_linear_state,
                 bcs_info=self.bcs_info_state,
                 state_ksp_option=state_ksp_option,
-                adjoint_ksp_option=adjoint_ksp_option
+                adjoint_ksp_option=adjoint_ksp_option,
+                snes_option=snes_option
             )
         ])
 

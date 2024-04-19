@@ -43,7 +43,7 @@ class AdjointProblem(object):
             adjoint_eq_form_rhs = ufl.rhs(adjoint_eq_form)
             problem.set_adjoint_eq_form(adjoint_eq_form, adjoint_eq_form_lhs, adjoint_eq_form_rhs)
 
-    def solve(self, comm, **kwargs):
+    def solve(self, comm, check_converged=True, **kwargs):
         if not self.has_solution:
             for problem in self.state_problems:
                 res_dict = LinearProblemSolver.solve_by_petsc_form(
@@ -55,6 +55,10 @@ class AdjointProblem(object):
                     ksp_option=problem.adjoint_ksp_option,
                     **kwargs
                 )
+
+                if check_converged:
+                    if not LinearProblemSolver.is_converged(res_dict['converged_reason']):
+                        raise ValueError(f"[ERROR] Adjoint Problem KSP Fail Converge {res_dict['converged_reason']}")
 
                 if kwargs.get('with_debug', False):
                     print(f"[DEBUG AdjointSystem {problem.name}]: max_error:{res_dict['max_error']:.6f} "

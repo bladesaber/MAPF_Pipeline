@@ -51,7 +51,7 @@ class ControlGradientProblem(object):
 
             self.control_problems.set_gradient_eq_form(control.name, grad_forms_lhs, grad_forms_rhs)
 
-    def solve(self, comm, **kwargs):
+    def solve(self, comm, check_converged=True, **kwargs):
         if not self.has_solution:
             for control in self.control_problems.controls:
                 control_name = control.name
@@ -72,6 +72,10 @@ class ControlGradientProblem(object):
                     ksp_option=ksp_option,
                     **kwargs
                 )
+
+                if check_converged:
+                    if not LinearProblemSolver.is_converged(res_dict['converged_reason']):
+                        raise ValueError(f"[ERROR] Gradient KSP  Fail Converge {res_dict['converged_reason']}")
 
             self.has_solution = True
         return self.has_solution
@@ -288,7 +292,7 @@ class ShapeGradientProblem(object):
 
         return lhs_form
 
-    def solve(self, comm, **kwargs):
+    def solve(self, comm, check_converged=True, **kwargs):
         if not self.has_solution:
             self.shape_regulariztions.update()
 
@@ -321,6 +325,10 @@ class ShapeGradientProblem(object):
             #     **kwargs
             # )
             # # ------
+
+            if check_converged:
+                if not LinearProblemSolver.is_converged(res_dict['converged_reason']):
+                    raise ValueError(f"[ERROR] Gradient KSP  Fail Converge {res_dict['converged_reason']}")
 
             if kwargs.get('with_debug', False):
                 print(f"[DEBUG GradientSystem]: max_error:{res_dict['max_error']:.8f} "

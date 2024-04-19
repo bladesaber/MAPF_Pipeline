@@ -33,7 +33,7 @@ class StateProblem(object):
 
             problem.set_state_eq_form(eqs_form=state_eq_form, lhs=state_eq_form_lhs, rhs=state_eq_form_rhs)
 
-    def solve(self, comm, **kwargs):
+    def solve(self, comm, check_converged=True, **kwargs):
         if not self.has_solution:
             for problem in self.state_problems:
                 if problem.is_linear:
@@ -46,6 +46,10 @@ class StateProblem(object):
                         ksp_option=problem.state_ksp_option,
                         **kwargs
                     )
+
+                    if check_converged:
+                        if not LinearProblemSolver.is_converged(res_dict['converged_reason']):
+                            raise ValueError(f"[ERROR] State KSP  Fail Converge {res_dict['converged_reason']}")
 
                 else:
                     jacobi_form = kwargs.get('jacobi_form', None)
@@ -64,9 +68,14 @@ class StateProblem(object):
                         jacobi_form=jacobi_form,
                         bcs=problem.bcs,
                         comm=comm,
+                        snes_setting=problem.snes_option,
                         ksp_option=problem.state_ksp_option,
                         **kwargs
                     )
+
+                    if check_converged:
+                        if not NonLinearProblemSolver.is_converged(res_dict['converged_reason']):
+                            raise ValueError(f"[ERROR] State SNES Fail Converge {res_dict['converged_reason']}")
 
                 if kwargs.get('with_debug', False):
                     print(f"[DEBUG StateSystem {problem.name}]: max_error:{res_dict['max_error']:.6f} "

@@ -89,6 +89,7 @@ def create_project(args):
         'navier_stoke': {
             'Re': 100,
             'ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
+            'snes_option': {},
         },
         'stoke': {
             'ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
@@ -100,6 +101,7 @@ def create_project(args):
         'state_ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
         'adjoint_ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
         'gradient_ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
+        'snes_option': {},
         'u_initation_pickle': None,
         'p_initation_pickle': None,
         'deformation_cfg': {

@@ -132,6 +132,7 @@ def load_base_model(cfg: dict, args, tag_name=None):
         opt.add_control_boundary(bc_value, marker)
 
     opt.state_initiation(
+        snes_option=opt_cfg['snes_option'],
         state_ksp_option=opt_cfg['state_ksp_option'],
         adjoint_ksp_option=opt_cfg['adjoint_ksp_option'],
         gradient_ksp_option=opt_cfg['gradient_ksp_option'],

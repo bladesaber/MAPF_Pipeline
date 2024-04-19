@@ -1,3 +1,4 @@
+import shutil
 import dolfinx
 import ufl
 import os
@@ -10,19 +11,25 @@ from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_simulator import FluidS
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import ImportTool
 
-
 # todo
-#   1.引用其他求解软件的结果，然后用特定阶的有限元方法来插值作为init
-#   2.引用其他求解器例如scipy
-#   3.网格划分可能是比较大的影响因素
-#   4.改用其他精确解方法
-#   5.改用其他粗糙解方法
+"""
+1.引用其他求解软件的结果，然后用特定阶的有限元方法来插值作为init
+2.引用其他求解器例如scipy
+3.网格划分可能是比较大的影响因素
+4.改用其他精确解方法
+5.改用其他粗糙解方法
+
+6.仿真与梯度求解分离，梯度求解用一阶
+7.仿真可能用二阶或者独立出去
+"""
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Fluid Simulation Tool")
     parser.add_argument('--json_files', type=str, nargs='+', default=[])
     parser.add_argument('--simulate_method', type=str, default=None)
     parser.add_argument('--init_mesh', type=int, default=0)
+    parser.add_argument('--save_result_pkl', type=int, default=0)
     args = parser.parse_args()
     return args
 
@@ -126,26 +133,36 @@ def simulate(cfg, args, **kwargs):
                     'form': dolfinx.fem.form(dot(u_n, simulator.n_vec) * simulator.ds(marker)),
                     'cur_value': 0.0, 'old_value': 0.0
                 }
-            simulator.simulate_ipcs(
+            res_dict = simulator.simulate_ipcs(
                 proj_dir=record_dir, name='ipcs',
                 log_iter=simulate_cfg['log_iter'], max_iter=simulate_cfg['max_iter'], tol=simulate_cfg['tol'],
                 data_convergence=data_convergence, logger_dicts=logger_dicts, with_debug=True
             )
 
         elif simulate_method == 'navier_stoke':
-            simulator.simulate_navier_stoke(
-                proj_dir=record_dir, name='NS', ksp_option=simulate_cfg['ksp_option'], logger_dicts=logger_dicts,
+            res_dict = simulator.simulate_navier_stoke(
+                proj_dir=record_dir, name='NS',
+                snes_setting=simulate_cfg['snes_option'],
+                ksp_option=simulate_cfg['ksp_option'],
+                logger_dicts=logger_dicts,
                 with_debug=True
             )
 
         elif simulate_method == 'stoke':
-            simulator.simulate_stoke(
+            res_dict = simulator.simulate_stoke(
                 proj_dir=record_dir, name='Stoke', ksp_option=simulate_cfg['ksp_option'], logger_dicts=logger_dicts,
                 with_debug=True,
                 record_mat_dir=os.path.join(run_cfg['proj_dir'], 'debug_dir')
             )
         else:
             return -1
+
+        if args.save_result_pkl:
+            save_dir = os.path.join(res_dict['simulator_dir'], 'res_pkl')
+            if os.path.exists(save_dir):
+                shutil.rmtree(save_dir)
+            os.mkdir(save_dir)
+            simulator.save_result_to_pickle(save_dir)
 
 
 def main():

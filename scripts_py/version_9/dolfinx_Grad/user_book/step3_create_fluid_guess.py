@@ -123,12 +123,13 @@ def find_guess_up(cfg, args):
         simulator.find_navier_stoke_initiation(
             proj_dir=record_dir, max_iter=ipcs_cfg['max_iter'], log_iter=ipcs_cfg['log_iter'],
             trial_iter=ipcs_cfg['trial_iter'],
+            snes_setting=navier_stoke_cfg['snes_option'],
             ksp_option=navier_stoke_cfg['ksp_option'],
             with_debug=True,
             logger_dicts=ipcs_logger_dicts,
             ns_logger_dicts=ns_logger_dicts,
             data_convergence=ipcs_data_convergence,
-            tol=ipcs_cfg['tol']
+            tol=ipcs_cfg['tol'],
         )
 
 
