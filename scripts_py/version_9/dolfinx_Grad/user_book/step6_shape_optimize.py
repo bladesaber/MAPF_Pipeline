@@ -3,7 +3,7 @@ import shutil
 import numpy as np
 import dolfinx
 import ufl
-from ufl import grad, dot, inner, div
+from ufl import grad, dot, inner, div, sqrt
 from functools import partial
 import argparse
 import json
@@ -11,7 +11,7 @@ import pyvista
 from typing import List, Union
 
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shapeOpt_obstacle import FluidConditionalModel, \
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shape_opt import FluidConditionalModel, \
     FluidShapeRecombineLayer
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization import ShapeRegularization, \
@@ -21,6 +21,13 @@ from scripts_py.version_9.dolfinx_Grad.collision_objs import ObstacleCollisionOb
 from scripts_py.version_9.dolfinx_Grad.surface_fields import SparsePointsRegularization
 from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import ImportTool
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
+from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
+
+"""
+为什么有优化效果但实际形状与预期差距这么大：
+1. 说明优化路径不唯一
+2. 仿真粒度太大，导致仿真结果断裂
+"""
 
 
 def parse_args():
@@ -78,7 +85,7 @@ def load_obstacle(args):
 
 def load_base_model(cfg: dict, args, tag_name=None):
     domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
-        file=os.path.join(cfg['proj_dir'], 'model.xdmf'),
+        file=os.path.join(cfg['proj_dir'], cfg['xdmf_file']),
         mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets'
     )
     input_markers = [int(marker) for marker in cfg['input_markers'].keys()]
@@ -96,6 +103,12 @@ def load_base_model(cfg: dict, args, tag_name=None):
         condition_inflow_dict[marker] = partial(inflow_fun, tdim=cfg['dim'])
 
     opt_cfg = cfg['optimize_cfg']
+
+    opt_save_dir = os.path.join(cfg['proj_dir'], 'opt_result')
+    if os.path.exists(opt_save_dir):
+        shutil.rmtree(opt_save_dir)
+    os.mkdir(opt_save_dir)
+
     opt = FluidConditionalModel(
         name=cfg['name'], domain=domain, cell_tags=cell_tags, facet_tags=facet_tags,
         Re=opt_cfg['Re'], bry_markers=bry_markers,
@@ -104,44 +117,44 @@ def load_base_model(cfg: dict, args, tag_name=None):
         run_strategy_cfg=opt_cfg['run_strategy_cfg'],
         obs_avoid_cfg=opt_cfg['obs_avoid_cfg'],
         isStokeEqu=opt_cfg['isStokeEqu'],
-        tag_name=tag_name
+        tag_name=tag_name,
+        simulate_velocity_order=2, simulate_pressure_order=1,
+        optimize_velocity_order=2, optimize_pressure_order=1,
+        save_opt_cfg={
+            'orig_msh_file': os.path.join(cfg['proj_dir'], cfg['msh_file']), 'save_dir': opt_save_dir
+        }
     )
 
     if args.load_guess_res:
-        opt.load_initiation_pickle(
-            u_pickle_file=cfg['velocity_init_pkl'],
-            p_pickle_file=cfg['pressure_init_pkl'],
+        opt.load_result(
+            file_info={'u_pkl_file': cfg['velocity_init_pkl'], 'p_pkl_file': cfg['pressure_init_pkl']}, load_type='pkl'
         )
 
     # --- define boundary conditions
     for marker in bry_markers:
-        bc_value = dolfinx.fem.Function(opt.V, name=f"bry_u{marker}")
-        opt.add_state_boundary(bc_value, marker, is_velocity=True)
+        opt.add_state_boundary(name=f"bry_u{marker}", value=0.0, marker=marker, is_velocity=True)
 
     for marker in condition_inflow_dict.keys():
-        inflow_value = dolfinx.fem.Function(opt.V, name='inflow_u')
-        inflow_value.interpolate(condition_inflow_dict[marker])
-        opt.add_state_boundary(value=inflow_value, marker=marker, is_velocity=True)
+        opt.add_state_boundary(
+            name='inflow_u', value=condition_inflow_dict[marker], marker=marker, is_velocity=True
+        )
 
     for marker in output_markers:
-        bc_out_value = dolfinx.fem.Function(opt.Q, name=f"outflow_p_{marker}")
-        opt.add_state_boundary(bc_out_value, marker, is_velocity=False)
+        opt.add_state_boundary(f"outflow_p_{marker}", value=0.0, marker=marker, is_velocity=False)
 
     for marker in bry_fixed_markers:
-        bc_value = dolfinx.fem.Function(opt.V_S, name=f"fix_bry_shape_{marker}")
-        opt.add_control_boundary(bc_value, marker)
+        opt.add_control_boundary(name=f"fix_bry_shape_{marker}", value=0.0, marker=marker)
 
     opt.state_initiation(
         snes_option=opt_cfg['snes_option'],
+        snes_criterion=opt_cfg['snes_criterion'],
         state_ksp_option=opt_cfg['state_ksp_option'],
         adjoint_ksp_option=opt_cfg['adjoint_ksp_option'],
         gradient_ksp_option=opt_cfg['gradient_ksp_option'],
     )
 
     # --- define cost functions
-    cost_functional_list = []
-    cost_weights = {}
-
+    cost_functional_list, cost_weights = [], {}
     for cost_cfg in opt_cfg['cost_functions']:
         if cost_cfg['name'] == 'MiniumEnergy':
             cost_functional_list.append(
@@ -193,15 +206,26 @@ def load_base_model(cfg: dict, args, tag_name=None):
         conflict_regularization=conflict_regularization
     )
 
-    inflow_dict = {}
+    force_dict, pressure_dict, norm_flow_dict, flow_dict = {}, {}, {}, {}
     for marker in input_markers:
-        inflow_dict[f"p_{marker}_{opt.name}"] = dolfinx.fem.form(opt.p * opt.ds(marker))
-    outflow_dict = {}
+        force_dict[f"force_{marker}_{opt.name}"] = dolfinx.fem.form(opt.p * opt.ds(marker))
+
+        area_value = AssembleUtils.assemble_scalar(
+            dolfinx.fem.form(dolfinx.fem.Constant(opt.domain, 1.0) * opt.ds(marker))
+        )
+        pressure_dict[f"pressure_{marker}_{opt.name}"] = dolfinx.fem.form((1.0 / area_value) * opt.p * opt.ds(marker))
+
+        flow_dict[f"flow_{marker}_{opt.name}"] = dolfinx.fem.form(sqrt(dot(opt.u, opt.u)) * opt.ds(marker))
+
     for marker in output_markers:
-        outflow_dict[f"v_{marker}_{opt.name}"] = dolfinx.fem.form(dot(opt.u, opt.n_vec) * opt.ds(marker))
+        norm_flow_dict[f"normFlow_{marker}_{opt.name}"] = dolfinx.fem.form(dot(opt.u, opt.n_vec) * opt.ds(marker))
+        flow_dict[f"flow_{marker}_{opt.name}"] = dolfinx.fem.form(sqrt(dot(opt.u, opt.u)) * opt.ds(marker))
+
     logger_dicts = {
-        'inflow_pressure': inflow_dict,
-        'outflow_velocity': outflow_dict,
+        'force': force_dict,
+        'norm_flow': norm_flow_dict,
+        'pressure': pressure_dict,
+        'flow': flow_dict,
         'volume': {f"volume_{opt.name}": dolfinx.fem.form(dolfinx.fem.Constant(opt.domain, 1.0) * ufl.dx)}
     }
 
@@ -209,7 +233,7 @@ def load_base_model(cfg: dict, args, tag_name=None):
     if not os.path.exists(record_dir):
         os.mkdir(record_dir)
 
-    log_dict = opt.init_solve_cfg(
+    log_dict = opt.init_optimize_state(
         record_dir=record_dir,
         logger_dicts=logger_dicts,
         with_debug=args.with_debug
@@ -259,11 +283,11 @@ def main():
                 mesh_objs.append(model.opt_dicts[name].mesh_obj)
     obs_objs = load_obstacle(args)
 
-    tensorBoard_dir = os.path.join(args.res_dir, 'log')
-    if os.path.exists(tensorBoard_dir):
-        shutil.rmtree(tensorBoard_dir)
-    os.mkdir(tensorBoard_dir)
-    log_recorder = TensorBoardRecorder(tensorBoard_dir)
+    tensor_board_dir = os.path.join(args.res_dir, 'log')
+    if os.path.exists(tensor_board_dir):
+        shutil.rmtree(tensor_board_dir)
+    os.mkdir(tensor_board_dir)
+    log_recorder = TensorBoardRecorder(tensor_board_dir)
     FluidConditionalModel.write_log_tensorboard(log_recorder, log_list, 0)
 
     step = 0
@@ -276,10 +300,9 @@ def main():
 
         res_dict = {}
         for model in models:
-            grad_res_dict = model.single_solve(
-                obs_objs, mesh_objs=mesh_objs, step=step,
-                # diffusion_method='diffusion_loss_weight',
-                diffusion_method='loss_weight',
+            grad_res_dict = model.compute_iteration_deformation(
+                obs_objs=obs_objs, mesh_objs=mesh_objs, step=step,
+                diffusion_method='diffusion_loss_weight',
                 with_debug=args.with_debug
             )
             if not grad_res_dict['state']:
@@ -295,7 +318,7 @@ def main():
                 print(f"[INFO]: {model.tag_name} Move Mesh Fail")
                 return -1
 
-            loss, log_dict = model.update_opt_info(with_log_info=True, step=step)  # todo 这里加优先级
+            loss, log_dict = model.update_optimize_state(with_log_info=True, step=step)  # todo 这里加优先级
             is_converge = is_converge and move_res_dict['is_converge']
 
             if isinstance(loss, List):
@@ -324,6 +347,9 @@ def main():
 
         if step > 100:
             break
+
+    for model in models:
+        model.save_msh(args.with_debug)
 
 
 if __name__ == '__main__':

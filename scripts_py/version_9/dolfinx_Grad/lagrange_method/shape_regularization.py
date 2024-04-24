@@ -112,6 +112,9 @@ class VolumeRegularization(object):
             raise NotImplementedError
         self.volume_dif.value = volume_dif
 
+    def update_weight(self, mu):
+        self.mu = mu
+
 
 class SurfaceRegularization(object):
     """
@@ -168,6 +171,9 @@ class SurfaceRegularization(object):
         current_surface = self._compute_surface()
         surface_dif = current_surface - self.target_surface
         self.surface_dif.value = surface_dif
+
+    def update_weight(self, mu):
+        self.mu = mu
 
 
 class BarycenterRegularization(object):
@@ -291,6 +297,9 @@ class BarycenterRegularization(object):
         if self.tdim == 3:
             self.cur_barycenter_z.value = cur_barycenter_np[3]
 
+    def update_weight(self, mu):
+        self.mu = mu
+
 
 class CurvatureRegularization(object):
     """
@@ -370,6 +379,9 @@ class CurvatureRegularization(object):
     def update(self):
         self._compute_curvature()
 
+    def update_weight(self, mu):
+        self.mu = mu
+
 
 type_regulariztions = Union[
     VolumeRegularization, SurfaceRegularization, BarycenterRegularization, CurvatureRegularization
@@ -395,3 +407,9 @@ class ShapeRegularization(object):
     def update(self):
         for term in self.regularization_list:
             term.update()
+
+    def get_cost_info(self) -> List:
+        cost_info = []
+        for term in self.regularization_list:
+            cost_info.append((term.name, term.compute_objective()))
+        return cost_info

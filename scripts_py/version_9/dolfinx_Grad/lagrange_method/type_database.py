@@ -19,6 +19,7 @@ class GovDataBase(object):
             state_ksp_option: KspOption = None,
             adjoint_ksp_option: KspOption = None,
             snes_option: KspOption = None,
+            snes_criterion: KspOption = None
     ):
         self.name = name
 
@@ -36,6 +37,7 @@ class GovDataBase(object):
 
         if not self.is_linear:
             self.snes_option = snes_option if snes_option is not None else {}
+            self.snes_criterion = snes_criterion if snes_criterion is not None else {}
 
     def set_state_eq_form(self, eqs_form: ufl.Form, lhs: ufl.Form, rhs: Union[ufl.Form, float]):
         self.state_eq_form = eqs_form
@@ -211,8 +213,14 @@ def create_state_problem(
         state_ksp_option: KspOption = None,
         adjoint_ksp_option: KspOption = None,
         snes_option: KspOption = None,
+        snes_criterion: KspOption = None
 ):
-    problem = GovDataBase(name, F_form, state, adjoint, is_linear, state_ksp_option, adjoint_ksp_option)
+    problem = GovDataBase(
+        name, F_form, state, adjoint,
+        is_linear=is_linear,
+        state_ksp_option=state_ksp_option, adjoint_ksp_option=adjoint_ksp_option,
+        snes_option=snes_option, snes_criterion=snes_criterion
+    )
     for bc, bc_V, bc_dofs, value_type in bcs_info:
         problem.add_bc(bc, bc_V, bc_dofs, value_type)
 

@@ -428,9 +428,7 @@ class MeshDeformationRunner(object):
             max_velocity = np.max(np.linalg.norm(direction_np, axis=1, ord=2))
             if max_velocity > max_step_limit:
                 step_size = max_step_limit / max_velocity * step_size
-
-                # todo: unreasonable here, step size can not be too small, why
-                # direction_np = direction_np * (max_step_limit / max_velocity)
+                # direction_np = direction_np * (max_step_limit / max_velocity)  # todo why unstable
 
         iteration = 0
         success_flag = False

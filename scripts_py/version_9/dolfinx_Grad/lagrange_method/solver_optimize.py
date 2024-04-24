@@ -89,6 +89,16 @@ class OptimalControlProblem(object):
         for cost_func in self.cost_functional_list:
             cost_func.update()
 
+    def get_cost_info(self, comm, update_state: bool, **kwargs) -> List:
+        if update_state:
+            self.state_system.has_solution = False
+            has_solution = self.state_system.solve(comm, **kwargs)
+
+        cost_info = []
+        for func in self.cost_functional_list:
+            cost_info.append((func.name, func.evaluate()))
+        return cost_info
+
 
 class OptimalShapeProblem(OptimalControlProblem):
     def __init__(
@@ -145,16 +155,17 @@ class OptimalShapeProblem(OptimalControlProblem):
             state_kwargs: Dict = {},
             adjoint_kwargs: Dict = {},
             gradient_kwargs: Dict = {},
-            scalar_product_kwrags: Dict = {}
+            scalar_product_kwrags: Dict = {},
+            update_state=True, update_adjoint=True
     ):
         self.update_update_scalar_product(**scalar_product_kwrags)
 
-        self.state_system.has_solution = False
+        self.state_system.has_solution = not update_state
         has_solution = self.state_system.solve(comm, **state_kwargs)
 
         self.update_cost_funcs()
 
-        self.adjoint_system.has_solution = False
+        self.adjoint_system.has_solution = not update_adjoint
         has_solution = self.adjoint_system.solve(comm, **adjoint_kwargs)
 
         self.gradient_system.has_solution = False
@@ -168,3 +179,15 @@ class OptimalShapeProblem(OptimalControlProblem):
     def update_cost_funcs(self):
         for cost_func in self.cost_functional_list:
             cost_func.update()
+
+    def get_cost_info(self, comm, update_state: bool, **kwargs) -> List:
+        if update_state:
+            self.state_system.has_solution = False
+            has_solution = self.state_system.solve(comm, **kwargs)
+
+        cost_info = []
+        for func in self.cost_functional_list:
+            cost_info.append((func.name, func.evaluate()))
+        cost_info.extend(self.shape_regulariztions.get_cost_info())
+        return cost_info
+

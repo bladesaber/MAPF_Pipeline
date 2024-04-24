@@ -15,9 +15,8 @@ class CrossSimulatorUtil(object):
     @staticmethod
     def convert_to_simple_function(
             domain: dolfinx.mesh.Mesh, coords: np.ndarray,
-            value_list: List[np.ndarray],
-            r=1e-3
-    ):
+            value_list: List[np.ndarray], r=1e-3
+    ) -> List[dolfinx.fem.Function]:
         tree = KDTree(coords)
         idxs_list, dists_list = tree.query_radius(domain.geometry.x, r=r, return_distance=True)
         coord_idxs = []

@@ -58,3 +58,8 @@ class CostWeightHandler(object):
     def get_weight(self, name):
         return self.tag_weight[name]
 
+    def get_cost(self, name):
+        cost_sum = self.tag_costs[name]
+        num = self.tag_nums[name]
+        return cost_sum, num
+

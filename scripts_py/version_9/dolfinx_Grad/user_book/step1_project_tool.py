@@ -88,8 +88,24 @@ def create_project(args):
         },
         'navier_stoke': {
             'Re': 100,
-            'ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
-            'snes_option': {},
+            'ksp_option': {
+                'ksp_type': 'preonly',
+                'pc_type': 'lu',
+                'pc_factor_mat_solver_type': 'mumps'
+            },
+            'snes_option': {
+                'snes_type': 'newtonls',
+                'snes_linesearch_type': 'bt',
+                'snes_linesearch_order': 1,
+                'snes_linesearch_maxstep': 1e4,
+                'snes_linesearch_damping': 0.5,
+                'snes_linesearch_minlambda': 1e-2
+            },
+            'criterion': {
+                'rtol': 1e-6,
+                'atol': 1e-6,
+                'max_it': 1e3
+            }
         },
         'stoke': {
             'ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
@@ -98,12 +114,22 @@ def create_project(args):
     optimize_cfg = {
         'Re': 100,
         'isStokeEqu': False,
+        'snes_option': {
+            'snes_type': 'newtonls',
+            'snes_linesearch_type': 'bt',
+            'snes_linesearch_order': 1,
+            'snes_linesearch_maxstep': 1e4,
+            'snes_linesearch_damping': 0.5,
+            'snes_linesearch_minlambda': 1e-2
+        },
+        'snes_criterion': {
+            'rtol': 1e-6,
+            'atol': 1e-6,
+            'max_it': 1e3
+        },
         'state_ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
         'adjoint_ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
         'gradient_ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
-        'snes_option': {},
-        'u_initation_pickle': None,
-        'p_initation_pickle': None,
         'deformation_cfg': {
             'volume_change': 0.15,
             'quality_measures': {
@@ -173,6 +199,8 @@ def create_project(args):
     proj_cfg = {
         'name': None,
         'proj_dir': args.proj_dir,
+        "msh_file": "model.msh",
+        "xdmf_file": "model.xdmf",
         'dim': None,
         'input_markers': {},  # marker: function_name
         'output_markers': [],
@@ -181,6 +209,11 @@ def create_project(args):
         'condition_package_name': 'condition.py',
         'simulate_cfg': simulate_cfg,
         'optimize_cfg': optimize_cfg,
+        'velocity_init_pkl': None,
+        'pressure_init_pkl': None,
+        "velocity_opt_pkl": None,
+        "pressure_opt_pkl": None,
+        "opt_xdmf_file": None,
         'obstacle_dir': None,
         'obstacle_names': []
     }

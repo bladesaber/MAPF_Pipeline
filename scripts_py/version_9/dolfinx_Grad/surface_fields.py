@@ -6,6 +6,7 @@ from sklearn.neighbors import KDTree
 import matplotlib.pyplot as plt
 from matplotlib import patches
 from sklearn.cluster import KMeans
+
 import ufl
 import dolfinx
 
@@ -113,9 +114,9 @@ class TopoLogyField(object):
         return grids
 
     @staticmethod
-    def _split_grid(centers: np.ndarray, width):
+    def _split_grid(centers: np.ndarray, box_width):
         center_dim = centers.shape[1]
-        width = width * 0.5
+        width = box_width * 0.5
         if center_dim == 2:
             shifts = [
                 np.array([width, width]), np.array([-width, width]),
@@ -155,21 +156,20 @@ class TopoLogyField(object):
         tree = KDTree(pcd)
 
         bbox_num = np.prod(np.ceil(bry_dif / bbox_width))
-
         scale_times = np.maximum(math.ceil(np.log2(np.power(bbox_num / 1000., 1. / pcd_dim))), 0.0)
         scale_width = bbox_width * np.power(2, scale_times)
         bry_cell_num = np.ceil(bry_dif / scale_width)
         grid_centers = TopoLogyField._create_grid(bry_cell_num, scale_width, bry_min)
 
         while True:
-            r = np.linalg.norm(np.ones(pcd_dim) * scale_width, ord=2)
+            r = np.linalg.norm(np.ones(pcd_dim) * scale_width * 0.6, ord=2)  # scale 0.6 since python float error
             neighbor_set = tree.query_radius(grid_centers, r=r)
             valid_centers = []
             for neighbor_idxs, grid_center in zip(neighbor_set, grid_centers):
                 if len(neighbor_idxs) == 0:
                     continue
                 center_difs = np.abs(pcd[neighbor_idxs, :] - grid_center)
-                if np.any(np.max(center_difs, axis=1) <= scale_width / 2.0):
+                if np.any(np.max(center_difs, axis=1) <= scale_width / 2.0 * 1.1):  # scale 1.1 since python float error
                     valid_centers.append(grid_center)
             grid_centers = np.array(valid_centers)
 
@@ -178,11 +178,13 @@ class TopoLogyField(object):
             scale_width = scale_width / 2.0
             grid_centers = TopoLogyField._split_grid(grid_centers, scale_width)
 
-        model = KMeans(n_clusters=grid_centers.shape[0], init=grid_centers)
+        # cause by python float error
+        n_clusters = np.minimum(grid_centers.shape[0], pcd.shape[0])
+        model = KMeans(n_clusters=n_clusters, init=grid_centers[:n_clusters, :])
         labels = model.fit_predict(pcd)
 
-        # TopoLogyField.grid_2d_plot(pcd, grid_centers, scale_width)
-        # TopoLogyField.cluster_2d_plot(pcd, labels)
+        # TopoLogyField._grid_2d_plot(pcd, grid_centers, scale_width)
+        # TopoLogyField._cluster_2d_plot(pcd, labels)
 
         return labels
 
@@ -522,6 +524,9 @@ class SparsePointsRegularization(TopoLogyField):
 
     def update(self):
         pass
+
+    def update_weight(self, mu):
+        self.mu = mu
 
     @staticmethod
     def _plot_bbox_meshes(bbox_infos, with_points=True, with_conflict_box=False):

@@ -3,13 +3,14 @@ import dolfinx
 import ufl
 import os
 from functools import partial
-from ufl import grad, dot, inner
+from ufl import grad, dot, inner, sqrt
 import json
 import argparse
 
 from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_simulator import FluidSimulator
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import ImportTool
+from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
 
 # todo
 """
@@ -18,9 +19,6 @@ from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import Impor
 3.网格划分可能是比较大的影响因素
 4.改用其他精确解方法
 5.改用其他粗糙解方法
-
-6.仿真与梯度求解分离，梯度求解用一阶
-7.仿真可能用二阶或者独立出去
 """
 
 
@@ -29,7 +27,8 @@ def parse_args():
     parser.add_argument('--json_files', type=str, nargs='+', default=[])
     parser.add_argument('--simulate_method', type=str, default=None)
     parser.add_argument('--init_mesh', type=int, default=0)
-    parser.add_argument('--save_result_pkl', type=int, default=0)
+    parser.add_argument('--xdmf_tag', type=str, default=None)
+    parser.add_argument('--save_result', type=int, default=0)
     args = parser.parse_args()
     return args
 
@@ -49,16 +48,20 @@ def simulate(cfg, args, **kwargs):
     # ------ init global parameter
     run_cfg = run_cfgs[0]
     if args.init_mesh:
+        assert args.xdmf_tag is not None
         MeshUtils.msh_to_XDMF(
             name='model', dim=run_cfg['dim'],
-            msh_file=os.path.join(run_cfg['proj_dir'], 'model.msh'),
-            output_file=os.path.join(run_cfg['proj_dir'], 'model.xdmf')
+            msh_file=os.path.join(run_cfg['proj_dir'], run_cfg['msh_file']),
+            output_file=os.path.join(run_cfg['proj_dir'], run_cfg['xdmf_file'])
         )
+    if args.xdmf_tag is not None:
+        assert args.init_mesh == 0
+
     condition_module = ImportTool.import_module(run_cfg['proj_dir'], run_cfg['condition_package_name'])
 
     for run_cfg in run_cfgs:
         domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
-            file=os.path.join(run_cfg['proj_dir'], 'model.xdmf'),
+            file=os.path.join(run_cfg['proj_dir'], run_cfg[args.xdmf_tag]),
             mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets'
         )
 
@@ -93,29 +96,36 @@ def simulate(cfg, args, **kwargs):
 
         # ------ define boundary
         for marker in bry_markers:
-            bc_value = dolfinx.fem.Function(simulator.V, name=f"bry_u{marker}")
-            simulator.add_boundary(value=bc_value, marker=marker, is_velocity=True)
+            simulator.add_boundary(name=f"bry_u{marker}", value=0.0, marker=marker, is_velocity=True)
 
         for marker in condition_inflow_dict.keys():
-            inflow_value = dolfinx.fem.Function(simulator.V, name='inflow_u')
-            inflow_value.interpolate(condition_inflow_dict[marker])
-            simulator.add_boundary(value=inflow_value, marker=marker, is_velocity=True)
+            simulator.add_boundary(
+                name='inflow_u', value=condition_inflow_dict[marker], marker=marker, is_velocity=True
+            )
 
         for marker in output_markers:
-            bc_value = dolfinx.fem.Function(simulator.Q, name=f"outflow_p_{marker}")
-            simulator.add_boundary(value=bc_value, marker=marker, is_velocity=False)
+            simulator.add_boundary(f"outflow_p_{marker}", value=0.0, marker=marker, is_velocity=False)
 
         # ------ define log dict
         u_n, p_n = simulator.get_up(simulate_method)
-        inflow_dict = {}
+        force_dict, pressure_dict, norm_flow_dict, flow_dict = {}, {}, {}, {}
+
         for marker in input_markers:
-            inflow_dict[f"inflow_{marker}_p"] = dolfinx.fem.form(p_n * simulator.ds(marker))
-        outflow_dict = {}
+            force_dict[f"force_{marker}"] = dolfinx.fem.form(p_n * simulator.ds(marker))
+            area_value = AssembleUtils.assemble_scalar(
+                dolfinx.fem.form(dolfinx.fem.Constant(simulator.domain, 1.0) * simulator.ds(marker))
+            )
+            pressure_dict[f"pressure_{marker}"] = dolfinx.fem.form((1.0 / area_value) * p_n * simulator.ds(marker))
+
         for marker in output_markers:
-            outflow_dict[f"outflow_{marker}_v"] = dolfinx.fem.form(dot(u_n, simulator.n_vec) * simulator.ds(marker))
+            norm_flow_dict[f"normFlow_{marker}"] = dolfinx.fem.form(dot(u_n, simulator.n_vec) * simulator.ds(marker))
+            flow_dict[f"flow_{marker}"] = dolfinx.fem.form(sqrt(dot(u_n, u_n)) * simulator.ds(marker))
+
         logger_dicts = {
-            'inflow': inflow_dict,
-            'outflow': outflow_dict,
+            'force': force_dict,
+            'norm_flow': norm_flow_dict,
+            'pressure': pressure_dict,
+            'flow': flow_dict,
         }
 
         record_dir = os.path.join(run_cfg['proj_dir'], f"{run_cfg['name']}_record")
@@ -133,23 +143,24 @@ def simulate(cfg, args, **kwargs):
                     'form': dolfinx.fem.form(dot(u_n, simulator.n_vec) * simulator.ds(marker)),
                     'cur_value': 0.0, 'old_value': 0.0
                 }
-            res_dict = simulator.simulate_ipcs(
+            res_dict = simulator.run_ipcs_process(
                 proj_dir=record_dir, name='ipcs',
                 log_iter=simulate_cfg['log_iter'], max_iter=simulate_cfg['max_iter'], tol=simulate_cfg['tol'],
                 data_convergence=data_convergence, logger_dicts=logger_dicts, with_debug=True
             )
 
         elif simulate_method == 'navier_stoke':
-            res_dict = simulator.simulate_navier_stoke(
+            res_dict = simulator.run_navier_stoke_process(
                 proj_dir=record_dir, name='NS',
-                snes_setting=simulate_cfg['snes_option'],
+                snes_option=simulate_cfg['snes_option'],
+                snes_criterion=simulate_cfg['criterion'],
                 ksp_option=simulate_cfg['ksp_option'],
                 logger_dicts=logger_dicts,
                 with_debug=True
             )
 
         elif simulate_method == 'stoke':
-            res_dict = simulator.simulate_stoke(
+            res_dict = simulator.run_stoke_process(
                 proj_dir=record_dir, name='Stoke', ksp_option=simulate_cfg['ksp_option'], logger_dicts=logger_dicts,
                 with_debug=True,
                 record_mat_dir=os.path.join(run_cfg['proj_dir'], 'debug_dir')
@@ -157,12 +168,12 @@ def simulate(cfg, args, **kwargs):
         else:
             return -1
 
-        if args.save_result_pkl:
+        if args.save_result:
             save_dir = os.path.join(res_dict['simulator_dir'], 'res_pkl')
             if os.path.exists(save_dir):
                 shutil.rmtree(save_dir)
             os.mkdir(save_dir)
-            simulator.save_result_to_pickle(save_dir)
+            simulator.save_result(save_dir, methods=['ipcs'])
 
 
 def main():

@@ -19,14 +19,6 @@ from ..surface_fields import type_conflict_regulariztions
 
 # TODO
 """
-1. 计算变形度
-2. 根据变形度计算变形优先级(X)
-3. 根据优先级产生权重场
-    （这是不够的，我觉得需要使用场来模拟一个虚拟的斥力,这个力对于大权重mesh为0，对于小权重mesh为斥力，即是小权重mesh让位，
-    但这不完备，因为大权重mesh不一定挤压小权重mesh）
-4. 多次尝试不同优先级顺序来平移mesh
-4. 检测范围内干涉，固定这些干涉面(错误)
-
 所有cfg的name都不可重复
 """
 
@@ -110,7 +102,7 @@ class FluidObstacleAvoidModel(FluidShapeOptSimple):
         # # ------ Just For Debug
         # grid = VisUtils.convert_to_grid(self.domain)
         # grid['grad_test'] = direction_np
-        # VisUtils.show_arrow_from_grid(grid, 'grad_test', scale=1.0).show()
+        # VisUtils.show_arrow_from_grid(grid, 'grad_test', scale=0.5).show()
         # raise ValueError
         # # ------
 

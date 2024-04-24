@@ -70,5 +70,6 @@ def main():
         with open(obs_cfg_file, 'w') as f:
             json.dump(obs_cfg, f, indent=4)
 
+
 if __name__ == '__main__':
     main()

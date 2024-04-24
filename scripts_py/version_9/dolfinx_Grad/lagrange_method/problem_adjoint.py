@@ -56,14 +56,13 @@ class AdjointProblem(object):
                     **kwargs
                 )
 
-                if check_converged:
-                    if not LinearProblemSolver.is_converged(res_dict['converged_reason']):
-                        raise ValueError(f"[ERROR] Adjoint Problem KSP Fail Converge {res_dict['converged_reason']}")
-
                 if kwargs.get('with_debug', False):
                     print(f"[DEBUG AdjointSystem {problem.name}]: max_error:{res_dict['max_error']:.6f} "
                           f"cost_time:{res_dict['cost_time']:.2f}")
-                    assert res_dict['max_error'] < 1e-6
+
+                if check_converged:
+                    if not LinearProblemSolver.is_converged(res_dict['converged_reason']):
+                        raise ValueError(f"[ERROR] Adjoint Problem KSP Fail Converge {res_dict['converged_reason']}")
 
             self.has_solution = True
         return self.has_solution

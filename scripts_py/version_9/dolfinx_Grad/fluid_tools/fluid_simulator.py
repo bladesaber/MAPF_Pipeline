@@ -14,7 +14,7 @@ from ..recorder_utils import VTKRecorder, TensorBoardRecorder
 from ..dolfinx_utils import MeshUtils, AssembleUtils, BoundaryUtils
 from ..equation_solver import LinearProblemSolver, NonLinearProblemSolver
 from ..vis_mesh_utils import VisUtils
-from ..other_simulator_convert import CrossSimulatorUtil
+from ..simulator_convert import CrossSimulatorUtil
 
 
 def epsilon(u: Union[dolfinx.fem.Function, ufl.Argument]):
@@ -158,17 +158,28 @@ class FluidSimulator(object):
             'L3_form': L3_form,
         }
 
-    def add_boundary(self, value: dolfinx.fem.Function, marker: int, is_velocity: bool):
+    @staticmethod
+    def get_boundary_function(name: str, value: Union[float, int, Callable], function_space):
+        fun = dolfinx.fem.Function(function_space, name=name)
+        if isinstance(value, (float, int)):
+            fun.x.array[:] = value
+        else:
+            fun.interpolate(value)
+        return fun
+
+    def add_boundary(self, name: str, value: Union[float, int, Callable], marker: int, is_velocity: bool):
         if self.equation_map.get('ipcs', False):
             if is_velocity:
-                bc_dofs = MeshUtils.extract_entity_dofs(
+                bc_value = self.get_boundary_function(name, value, self.V)
+                bc_dof = MeshUtils.extract_entity_dofs(
                     self.V, self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
                 )
             else:
-                bc_dofs = MeshUtils.extract_entity_dofs(
+                bc_value = self.get_boundary_function(name, value, self.Q)
+                bc_dof = MeshUtils.extract_entity_dofs(
                     self.Q, self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
                 )
-            bc = dolfinx.fem.dirichletbc(value, bc_dofs)
+            bc = dolfinx.fem.dirichletbc(bc_value, bc_dof)
 
             if is_velocity:
                 if 'bcs_velocity' in self.equation_map['ipcs'].keys():
@@ -184,15 +195,17 @@ class FluidSimulator(object):
 
         if self.equation_map.get('navier_stoke', False):
             if is_velocity:
-                bc_dofs = MeshUtils.extract_entity_dofs(
+                bc_value = self.get_boundary_function(name, value, self.V)
+                bc_dof = MeshUtils.extract_entity_dofs(
                     (self.W0, self.V), self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
                 )
-                bc = dolfinx.fem.dirichletbc(value, bc_dofs, self.W0)
+                bc = dolfinx.fem.dirichletbc(bc_value, bc_dof, self.W0)
             else:
-                bc_dofs = MeshUtils.extract_entity_dofs(
+                bc_value = self.get_boundary_function(name, value, self.Q)
+                bc_dof = MeshUtils.extract_entity_dofs(
                     (self.W1, self.Q), self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
                 )
-                bc = dolfinx.fem.dirichletbc(value, bc_dofs, self.W1)
+                bc = dolfinx.fem.dirichletbc(bc_value, bc_dof, self.W1)
 
             if 'bcs' in self.equation_map['navier_stoke'].keys():
                 self.equation_map['navier_stoke']['bcs'].append(bc)
@@ -201,41 +214,24 @@ class FluidSimulator(object):
 
         if self.equation_map.get('stoke', False):
             if is_velocity:
-                bc_dofs = MeshUtils.extract_entity_dofs(
+                bc_value = self.get_boundary_function(name, value, self.V)
+                bc_dof = MeshUtils.extract_entity_dofs(
                     (self.W0, self.V), self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
                 )
-                bc = dolfinx.fem.dirichletbc(value, bc_dofs, self.W0)
+                bc = dolfinx.fem.dirichletbc(bc_value, bc_dof, self.W0)
             else:
-                bc_dofs = MeshUtils.extract_entity_dofs(
+                bc_value = self.get_boundary_function(name, value, self.Q)
+                bc_dof = MeshUtils.extract_entity_dofs(
                     (self.W1, self.Q), self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
                 )
-                bc = dolfinx.fem.dirichletbc(value, bc_dofs, self.W1)
+                bc = dolfinx.fem.dirichletbc(bc_value, bc_dof, self.W1)
 
             if 'bcs' in self.equation_map['stoke'].keys():
                 self.equation_map['stoke']['bcs'].append(bc)
             else:
                 self.equation_map['stoke']['bcs'] = [bc]
 
-    def simulate_stoke(
-            self,
-            proj_dir, name,
-            ksp_option={'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
-            logger_dicts={},
-            **kwargs
-    ):
-        if not self.equation_map.get('stoke', False):
-            return
-
-        simulator_dir = os.path.join(proj_dir, f"simulate_{name}")
-        if os.path.exists(simulator_dir):
-            shutil.rmtree(simulator_dir)
-        os.mkdir(simulator_dir)
-
-        u_recorder = VTKRecorder(file=os.path.join(simulator_dir, 'velocity.pvd'))
-        p_recorder = VTKRecorder(file=os.path.join(simulator_dir, 'pressure.pvd'))
-        data_json = {}
-
-        # -----------------------------------------
+    def simulate_stoke_equation(self, ksp_option, **kwargs):
         stoke_dict = self.equation_map['stoke']
         up: dolfinx.fem.Function = stoke_dict['up']
 
@@ -254,6 +250,31 @@ class FluidSimulator(object):
             print(f"[DEBUG FluidSimulator Stoke]: "
                   f"max_error:{res_dict['max_error']:.8f} cost_time:{res_dict['cost_time']:.2f}")
 
+        return res_dict
+
+    def run_stoke_process(
+            self,
+            proj_dir, name,
+            ksp_option={'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
+            logger_dicts={},
+            **kwargs
+    ):
+        if not self.equation_map.get('stoke', False):
+            return
+
+        simulator_dir = os.path.join(proj_dir, f"simulate_{name}")
+        if os.path.exists(simulator_dir):
+            shutil.rmtree(simulator_dir)
+        os.mkdir(simulator_dir)
+
+        u_recorder = VTKRecorder(file=os.path.join(simulator_dir, 'velocity.pvd'))
+        p_recorder = VTKRecorder(file=os.path.join(simulator_dir, 'pressure.pvd'))
+        data_json = {}
+
+        res_dict = self.simulate_stoke_equation(ksp_option, **kwargs)
+
+        stoke_dict = self.equation_map['stoke']
+        up: dolfinx.fem.Function = stoke_dict['up']
         u_recorder.write_function(up.sub(0).collapse(), step=0)
         p_recorder.write_function(up.sub(1).collapse(), step=0)
 
@@ -273,13 +294,42 @@ class FluidSimulator(object):
             json.dump(data_json, f, indent=4)
 
         res_dict['simulator_dir'] = simulator_dir
+
         return res_dict
 
-    def simulate_navier_stoke(
+    def simulate_navier_stoke_equation(
+            self, snes_option: dict, ksp_option: dict, criterion: dict,
+            guess_up: dolfinx.fem.Function = None,
+            **kwargs
+    ):
+        nstoke_dict = self.equation_map['navier_stoke']
+        up: dolfinx.fem.Function = nstoke_dict['up']
+
+        if guess_up is not None:
+            up.vector.aypx(0.0, guess_up.vector)
+
+        jacobi_form = ufl.derivative(
+            nstoke_dict['lhs'], up, ufl.TrialFunction(up.function_space)
+        )
+        res_dict = NonLinearProblemSolver.solve_by_petsc(
+            comm=self.domain.comm,
+            F_form=nstoke_dict['lhs'], uh=up, jacobi_form=jacobi_form, bcs=nstoke_dict['bcs'],
+            snes_setting=snes_option, ksp_option=ksp_option, criterion=criterion,
+            **kwargs
+        )
+
+        if kwargs.get('with_debug', False):
+            print(f"[DEBUG FluidSimulator Navier Stoke]: max_error:{res_dict['max_error']:.8f}"
+                  f" residual:{res_dict['last_error']}"
+                  f" cost_time:{res_dict['cost_time']:.2f}")
+
+        return res_dict
+
+    def run_navier_stoke_process(
             self,
             proj_dir, name,
-            guass_up: dolfinx.fem.Function = None,
-            snes_setting: dict = {},
+            guess_up: dolfinx.fem.Function = None,
+            snes_option: dict = {}, snes_criterion={},
             ksp_option={'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
             logger_dicts={},
             **kwargs
@@ -296,26 +346,12 @@ class FluidSimulator(object):
         p_recorder = VTKRecorder(file=os.path.join(simulator_dir, 'pressure.pvd'))
         data_json = {}
 
-        # -----------------------------------------
+        res_dict = self.simulate_navier_stoke_equation(
+            snes_option, ksp_option, snes_criterion, guess_up=guess_up, **kwargs
+        )
+
         nstoke_dict = self.equation_map['navier_stoke']
         up: dolfinx.fem.Function = nstoke_dict['up']
-
-        if guass_up is not None:
-            up.vector.aypx(0.0, guass_up.vector)
-
-        jacobi_form = ufl.derivative(
-            nstoke_dict['lhs'], up, ufl.TrialFunction(up.function_space)
-        )
-        res_dict = NonLinearProblemSolver.solve_by_petsc(
-            F_form=nstoke_dict['lhs'], uh=up, jacobi_form=jacobi_form, bcs=nstoke_dict['bcs'],
-            comm=self.domain.comm, snes_setting=snes_setting, ksp_option=ksp_option,
-            **kwargs
-        )
-
-        if kwargs.get('with_debug', False):
-            print(f"[DEBUG FluidSimulator Navier Stoke]: max_error:{res_dict['max_error']:.8f} "
-                  f"cost_time:{res_dict['cost_time']:.2f}")
-
         u_recorder.write_function(up.sub(0).collapse(), step=0)
         p_recorder.write_function(up.sub(1).collapse(), step=0)
 
@@ -337,51 +373,7 @@ class FluidSimulator(object):
         res_dict['simulator_dir'] = simulator_dir
         return res_dict
 
-    def ipcs_initiation(self):
-        if not self.equation_map.get('ipcs', False):
-            return
-
-        ipcs_dict: dict = self.equation_map['ipcs']
-
-        A1 = AssembleUtils.assemble_mat(ipcs_dict['a1_form'], bcs=ipcs_dict['bcs_velocity'])
-        b1 = AssembleUtils.create_vector(ipcs_dict['L1_form'])
-        solver1 = LinearProblemSolver.create_petsc_solver(
-            comm=self.domain.comm, A_mat=A1,
-            solver_setting={
-                'ksp_type': PETSc.KSP.Type.BCGS, 'pc_type': PETSc.PC.Type.HYPRE,
-                'pc_hypre_mat_solver_type': 'boomeramg'
-            },
-        )
-        self.update_ipcs_dict(
-            info_dict={'A1': A1, 'b1': b1, 'solver1': solver1}, orig_dict=ipcs_dict
-        )
-
-        A2 = AssembleUtils.assemble_mat(ipcs_dict['a2_form'], bcs=ipcs_dict['bcs_pressure'])
-        b2 = AssembleUtils.create_vector(ipcs_dict['L2_form'])
-        solver2 = LinearProblemSolver.create_petsc_solver(
-            comm=self.domain.comm, A_mat=A2,
-            solver_setting={
-                'ksp_type': PETSc.KSP.Type.BCGS, 'pc_type': PETSc.PC.Type.HYPRE,
-                'pc_hypre_mat_solver_type': 'boomeramg'
-            }
-        )
-        self.update_ipcs_dict(
-            info_dict={'A2': A2, 'b2': b2, 'solver2': solver2}, orig_dict=ipcs_dict
-        )
-
-        A3 = AssembleUtils.assemble_mat(ipcs_dict['a3_form'], bcs=[])
-        b3 = AssembleUtils.create_vector(ipcs_dict['L3_form'])
-        solver3 = LinearProblemSolver.create_petsc_solver(
-            comm=self.domain.comm, A_mat=A3,
-            solver_setting={
-                'ksp_type': PETSc.KSP.Type.CG, 'pc_type': PETSc.PC.Type.SOR,
-            }
-        )
-        self.update_ipcs_dict(
-            info_dict={'A3': A3, 'b3': b3, 'solver3': solver3}, orig_dict=ipcs_dict
-        )
-
-    def simulate_ipcs(
+    def run_ipcs_process(
             self,
             proj_dir, name,
             max_iter, log_iter, tol,
@@ -412,25 +404,48 @@ class FluidSimulator(object):
         os.mkdir(tensorBoard_dir)
         log_recorder = TensorBoardRecorder(tensorBoard_dir)
 
-        # ---------------------------------------------------
-        self.ipcs_initiation()
-
-        ipcs_dict = self.equation_map['ipcs']
-        A1, b1, solver1 = ipcs_dict['A1'], ipcs_dict['b1'], ipcs_dict['solver1']
-        A2, b2, solver2 = ipcs_dict['A2'], ipcs_dict['b2'], ipcs_dict['solver2']
-        A3, b3, solver3 = ipcs_dict['A3'], ipcs_dict['b3'], ipcs_dict['solver3']
+        # ------ Step 1: init environment
+        ipcs_dict: dict = self.equation_map['ipcs']
         a1_form, L1_form = ipcs_dict['a1_form'], ipcs_dict['L1_form']
         a2_form, L2_form = ipcs_dict['a2_form'], ipcs_dict['L2_form']
         a3_form, L3_form = ipcs_dict['a3_form'], ipcs_dict['L3_form']
         bcs_velocity, bcs_pressure = ipcs_dict['bcs_velocity'], ipcs_dict['bcs_pressure']
         u_n, p_n, u_, p_ = ipcs_dict['u_n'], ipcs_dict['p_n'], ipcs_dict['u_'], ipcs_dict['p_']
 
-        if update_inflow_condition is None:
-            def update_inflow_condition(t: float):
-                pass
+        A1 = AssembleUtils.assemble_mat(a1_form, bcs=bcs_velocity)
+        b1 = AssembleUtils.create_vector(L1_form)
+        solver1 = LinearProblemSolver.create_petsc_solver(
+            comm=self.domain.comm, A_mat=A1,
+            solver_setting={
+                'ksp_type': PETSc.KSP.Type.BCGS,
+                'pc_type': PETSc.PC.Type.HYPRE,
+                'pc_hypre_mat_solver_type': 'boomeramg'
+            }
+        )
 
-        t = 0
-        step = 0
+        A2 = AssembleUtils.assemble_mat(a2_form, bcs=bcs_pressure)
+        b2 = AssembleUtils.create_vector(L2_form)
+        solver2 = LinearProblemSolver.create_petsc_solver(
+            comm=self.domain.comm, A_mat=A2,
+            solver_setting={
+                'ksp_type': PETSc.KSP.Type.BCGS,
+                'pc_type': PETSc.PC.Type.HYPRE,
+                'pc_hypre_mat_solver_type': 'boomeramg'
+            }
+        )
+
+        A3 = AssembleUtils.assemble_mat(a3_form, bcs=[])
+        b3 = AssembleUtils.create_vector(L3_form)
+        solver3 = LinearProblemSolver.create_petsc_solver(
+            comm=self.domain.comm, A_mat=A3,
+            solver_setting={
+                'ksp_type': PETSc.KSP.Type.CG,
+                'pc_type': PETSc.PC.Type.SOR
+            }
+        )
+
+        # ------ Step 2: compuatation begin
+        t, step = 0, 0
         while True:
             step += 1
             t += ipcs_dict['dt']
@@ -438,7 +453,8 @@ class FluidSimulator(object):
             if pre_function is not None:
                 pre_function(self, step)
 
-            update_inflow_condition(t)
+            if update_inflow_condition is not None:
+                update_inflow_condition(t)
 
             # ------ Step 1: Tentative velocity step
             if not ipcs_dict['is_channel_fluid']:
@@ -475,11 +491,6 @@ class FluidSimulator(object):
             if post_function is not None:
                 post_res_dict = post_function(self, step, simulator_dir)
                 sub_stop = post_res_dict['state']
-                if post_res_dict.get('error', False):
-                    log_recorder.write_scalar('error', post_res_dict['error'], step=step)
-                if post_res_dict.get('evaluate_cost', False):
-                    log_recorder.write_scalar('evaluate_cost', post_res_dict['evaluate_cost'], step=step)
-
             else:
                 sub_stop = False
 
@@ -544,26 +555,17 @@ class FluidSimulator(object):
 
         return {'is_converge': is_converge, 'step': step, 'simulator_dir': simulator_dir}
 
-    @staticmethod
-    def update_ipcs_dict(info_dict: dict, orig_dict: dict):
-        for key in info_dict.keys():
-            if key in list(orig_dict.keys()):
-                orig_dict[key].destroy()
-                del orig_dict[key]
-        orig_dict.update(info_dict)
-
-    def merge_funs(self, fun_V: dolfinx.fem.Function, fun_Q: dolfinx.fem.Function, fun_W: dolfinx.fem.Function = None):
+    def merge_up(self, fun_V: dolfinx.fem.Function, fun_Q: dolfinx.fem.Function, fun_W: dolfinx.fem.Function = None):
         assert (fun_V.function_space == self.V) and (fun_Q.function_space == self.Q)
         if fun_W is not None:
             assert fun_W.function_space == self.W
         else:
             fun_W = dolfinx.fem.Function(self.W)
-
         fun_W.x.array[self.V_to_W_dofs] = fun_V.x.array
         fun_W.x.array[self.Q_to_W_dofs] = fun_Q.x.array
         return fun_W
 
-    def split_funs(
+    def split_up(
             self, fun_W: dolfinx.fem.Function, fun_V: dolfinx.fem.Function = None, fun_Q: dolfinx.fem.Function = None
     ):
         assert fun_W.function_space == self.W
@@ -582,126 +584,159 @@ class FluidSimulator(object):
 
         return fun_V, fun_Q
 
-    def save_result_to_pickle(self, save_dir: str):
-        if not self.equation_map.get('ipcs', False):
-            pass
+    def get_up(self, method):
+        if not self.equation_map.get(method, False):
+            raise ValueError("[ERROR]: Non-Valid Parameters")
+        if 'up' in self.equation_map[method]:
+            up: dolfinx.fem.Function = self.equation_map[method]['up']
+            u_n, p_n = ufl.split(up)
         else:
-            u_n: dolfinx.fem.Function = self.equation_map['ipcs']['u_n']
-            p_n: dolfinx.fem.Function = self.equation_map['ipcs']['p_n']
-            with open(os.path.join(save_dir, 'ipcs_u.pkl'), 'wb') as f:
-                pickle.dump(u_n.x.array, f)
-            with open(os.path.join(save_dir, 'ipcs_p.pkl'), 'wb') as f:
-                pickle.dump(p_n.x.array, f)
+            u_n, p_n = self.equation_map[method]['u_n'], self.equation_map[method]['p_n']
+        return u_n, p_n
 
-        if not self.equation_map.get('stoke', False):
-            pass
-        else:
-            up: dolfinx.fem.Function = self.equation_map['stoke']['up']
-            u_n = up.sub(0).collapse()
-            p_n = up.sub(1).collapse()
-            with open(os.path.join(save_dir, 'stoke_u.pkl'), 'wb') as f:
-                pickle.dump(u_n.x.array, f)
-            with open(os.path.join(save_dir, 'stoke_p.pkl'), 'wb') as f:
-                pickle.dump(p_n.x.array, f)
+    def save_result(self, save_dir: str, methods: List[str], save_type='pkl'):
+        for method in methods:
+            if method == 'ipcs' and self.equation_map.get('ipcs', False):
+                if save_type == 'pkl':
+                    with open(os.path.join(save_dir, 'ipcs_u.pkl'), 'wb') as f:
+                        pickle.dump(self.equation_map['ipcs']['u_n'].x.array, f)
+                    with open(os.path.join(save_dir, 'ipcs_p.pkl'), 'wb') as f:
+                        pickle.dump(self.equation_map['ipcs']['p_n'].x.array, f)
 
-        if not self.equation_map.get('navier_stoke', False):
-            pass
-        else:
+            if method == 'navier_stoke' and self.equation_map.get('navier_stoke', False):
+                if save_type == 'pkl':
+                    with open(os.path.join(save_dir, 'navier_stoke_u.pkl'), 'wb') as f:
+                        pickle.dump(self.equation_map['navier_stoke']['up'].sub(0).collapse().x.array, f)
+                    with open(os.path.join(save_dir, 'navier_stoke_p.pkl'), 'wb') as f:
+                        pickle.dump(self.equation_map['navier_stoke']['up'].sub(1).collapse().x.array, f)
+
+            if method == 'stoke' and self.equation_map.get('stoke', False):
+                if save_type == 'pkl':
+                    with open(os.path.join(save_dir, 'stoke_u.pkl'), 'wb') as f:
+                        pickle.dump(self.equation_map['stoke']['up'].sub(0).collapse().x.array, f)
+                    with open(os.path.join(save_dir, 'stoke_p.pkl'), 'wb') as f:
+                        pickle.dump(self.equation_map['stoke']['up'].sub(1).collapse().x.array, f)
+
+    def load_result(self, file_info: dict, load_type='pkl'):
+        """
+        only support navier stoke
+        """
+        if load_type == 'pkl':
+            with open(file_info['u_pkl_file'], 'rb') as f:
+                u_array = pickle.load(f)
+            with open(file_info['p_pkl_file'], 'rb') as f:
+                p_array = pickle.load(f)
+
             up: dolfinx.fem.Function = self.equation_map['navier_stoke']['up']
-            u_n = up.sub(0).collapse()
-            p_n = up.sub(1).collapse()
-            with open(os.path.join(save_dir, 'navier_stoke_u.pkl'), 'wb') as f:
-                pickle.dump(u_n.x.array, f)
-            with open(os.path.join(save_dir, 'navier_stoke_p.pkl'), 'wb') as f:
-                pickle.dump(p_n.x.array, f)
+            up.x.array[self.V_to_W_dofs] = u_array
+            up.x.array[self.Q_to_W_dofs] = p_array
 
-    def load_result(self, csv_file: str):
-        assert csv_file.endswith('.csv')
-        df = pd.read_csv(csv_file, index_col=0)
+        elif load_type == 'csv':
+            df = pd.read_csv(file_info['csv_file'], index_col=0)
 
+            if self.tdim == 2:
+                coords = df[['coord_x', 'coord_y']].values
+                vel = df[['vel_x', 'vel_y']].values
+            elif self.tdim == 3:
+                coords = df[['coord_x', 'coord_y', 'coord_z']].values
+                vel = df[['vel_x', 'vel_y', 'vel_z']].values
+            else:
+                raise ValueError("[ERROR]: Non-Valid Mesh")
+            pressure = df['pressure'].values
+
+            vel_fun, pressure_fun = CrossSimulatorUtil.convert_to_simple_function(
+                self.domain, coords=coords, value_list=[vel, pressure],
+            )
+
+            if self.equation_map.get('ipcs', False):
+                self.equation_map['ipcs']['u_n'].interpolate(vel_fun)
+                self.equation_map['ipcs']['p_n'].interpolate(pressure_fun)
+
+            if self.equation_map.get('stoke', False):
+                u_n_temp = dolfinx.fem.Function(self.V)
+                u_n_temp.interpolate(vel_fun)
+                p_n_temp = dolfinx.fem.Function(self.Q)
+                p_n_temp.interpolate(pressure_fun)
+
+                up: dolfinx.fem.Function = self.equation_map['stoke']['up']
+                up.x.array[self.V_to_W_dofs] = u_n_temp.x.array
+                up.x.array[self.Q_to_W_dofs] = p_n_temp.x.array
+
+            if self.equation_map.get('navier_stoke', False):
+                u_n_temp = dolfinx.fem.Function(self.V)
+                u_n_temp.interpolate(vel_fun)
+                p_n_temp = dolfinx.fem.Function(self.Q)
+                p_n_temp.interpolate(pressure_fun)
+
+                up: dolfinx.fem.Function = self.equation_map['navier_stoke']['up']
+                up.x.array[self.V_to_W_dofs] = u_n_temp.x.array
+                up.x.array[self.Q_to_W_dofs] = p_n_temp.x.array
+
+    def convert_result_to_csv(self, u_fun: dolfinx.fem.Function, p_fun: dolfinx.fem.Function):
+        u_map = dolfinx.fem.Function(self.V_mapping_space)
+        u_map.interpolate(u_fun)
+        p_map = dolfinx.fem.Function(self.Q_mapping_space)
+        p_map.interpolate(p_fun)
+
+        df = pd.DataFrame()
         if self.tdim == 2:
-            coords = df[['coord_x', 'coord_y']].values
-            vel = df[['vel_x', 'vel_y']].values
-        elif self.tdim == 3:
-            coords = df[['coord_x', 'coord_y', 'coord_z']].values
-            vel = df[['vel_x', 'vel_y', 'vel_z']].values
+            df[['coord_x', 'coord_y']] = self.domain.geometry.x[:, :2].copy()
+            df[['vel_x', 'vel_y']] = u_map.x.array.reshape((-1, 2))
         else:
-            raise ValueError("[ERROR]: Non-Valid Mesh")
+            df[['coord_x', 'coord_y', 'coord_z']] = self.domain.geometry.x[:, :3].copy()
+            df[['vel_x', 'vel_y', 'vel_z']] = u_map.x.array.reshape((-1, 3))
+        df['pressure'] = p_map.x.array
 
-        pressure = df['pressure'].values
+        return df
 
-        vel_fun, pressure_fun = CrossSimulatorUtil.convert_to_simple_function(
-            self.domain, coords=coords, value_list=[vel, pressure],
-        )
-
-        if self.equation_map.get('ipcs', False):
-            u_n: dolfinx.fem.Function = self.equation_map['ipcs']['u_n']
-            p_n: dolfinx.fem.Function = self.equation_map['ipcs']['p_n']
-            u_n.interpolate(vel_fun)
-            p_n.interpolate(pressure_fun)
-
-        if self.equation_map.get('stoke', False):
-            u_n_temp = dolfinx.fem.Function(self.V)
-            u_n_temp.interpolate(vel_fun)
-
-            p_n_temp = dolfinx.fem.Function(self.Q)
-            p_n_temp.interpolate(pressure_fun)
-
-            up: dolfinx.fem.Function = self.equation_map['stoke']['up']
-            up.x.array[self.V_to_W_dofs] = u_n_temp.x.array
-            up.x.array[self.Q_to_W_dofs] = p_n_temp.x.array
-
-        if self.equation_map.get('navier_stoke', False):
-            u_n_temp = dolfinx.fem.Function(self.V)
-            u_n_temp.interpolate(vel_fun)
-
-            p_n_temp = dolfinx.fem.Function(self.Q)
-            p_n_temp.interpolate(pressure_fun)
-
-            up: dolfinx.fem.Function = self.equation_map['navier_stoke']['up']
-            up.x.array[self.V_to_W_dofs] = u_n_temp.x.array
-            up.x.array[self.Q_to_W_dofs] = p_n_temp.x.array
-
-        return vel_fun, pressure_fun
-
-    def load_initiation_pickle(self, u_pickle_file: str, p_pickle_file: str):
-        with open(u_pickle_file, 'rb') as f:
-            u_array = pickle.load(f)
-        with open(p_pickle_file, 'rb') as f:
-            p_array = pickle.load(f)
-
-        up: dolfinx.fem.Function = self.equation_map['navier_stoke']['up']
-        up.x.array[self.V_to_W_dofs] = u_array
-        up.x.array[self.Q_to_W_dofs] = p_array
+    def estimate_equation_lost(self, method):
+        if method == 'stoke':
+            res_dict = LinearProblemSolver.equation_investigation(
+                a_form=dolfinx.fem.form(self.equation_map['stoke']['lhs_form']),
+                L_form=dolfinx.fem.form(self.equation_map['stoke']['rhs_form']),
+                bcs=self.equation_map['stoke']['bcs'],
+                uh=self.equation_map['stoke']['up']
+            )
+        elif method == 'navier_stoke':
+            res_dict = NonLinearProblemSolver.equation_investigation(
+                lhs_form=dolfinx.fem.form(self.equation_map['navier_stoke']['lhs']),
+                bcs=self.equation_map['navier_stoke']['bcs'],
+                uh=self.equation_map['navier_stoke']['up']
+            )
+        else:
+            raise ValueError('[ERROR]: Non-Valid method')
+        return res_dict
 
     def find_navier_stoke_initiation(
-            self, proj_dir, max_iter, log_iter, trial_iter, snes_setting, ksp_option, with_debug=False, **kwargs
+            self,
+            proj_dir, max_iter, log_iter, trial_iter,
+            snes_option, ksp_option, snes_criterion, with_debug=False, **kwargs
     ):
         def post_function(sim: FluidSimulator, step: int, simulator_dir):
             if step % trial_iter == 0:
-                u_n, p_n = self.equation_map['ipcs']['u_n'], self.equation_map['ipcs']['p_n']
-                guass_up = self.merge_funs(u_n, p_n)
-
-                res_dict = self.simulate_navier_stoke(
-                    proj_dir=proj_dir, name='navierStoke',
-                    guass_up=guass_up,
-                    snes_setting=snes_setting,
+                guess_up = self.merge_up(self.equation_map['ipcs']['u_n'], self.equation_map['ipcs']['p_n'])
+                res_dict = self.run_navier_stoke_process(
+                    proj_dir=proj_dir, name='NS',
+                    guess_up=guess_up,
+                    snes_option=snes_option,
+                    snes_criterion=snes_criterion,
                     ksp_option=ksp_option,
                     logger_dicts=kwargs.get('ns_logger_dicts', {}),
                     with_debug=True,  # Must Be True
+                    with_monitor=False,
                 )
 
                 converged_code = res_dict['converged_reason']
                 converged_error = res_dict['max_error']
                 if (
                         NonLinearProblemSolver.is_converged(converged_code)
-                        # and (converged_error < 1e-3)
+                        and (converged_error < 1e-6)
                 ):
                     step_dir = os.path.join(proj_dir, f"init_step_{step}")
                     if os.path.exists(step_dir):
                         shutil.rmtree(step_dir)
                     os.mkdir(step_dir)
-                    self.save_result_to_pickle(step_dir)
+                    self.save_result(step_dir, methods=['navier_stoke'])
                     print(f"[Info FluidSimulator] found SNES_code:{converged_code} error:{converged_error}")
                     return {'state': True}
                 else:
@@ -710,7 +745,7 @@ class FluidSimulator(object):
 
             return {'state': False}
 
-        res_dict = self.simulate_ipcs(
+        res_dict = self.run_ipcs_process(
             proj_dir=proj_dir, name='ipcs', max_iter=max_iter, log_iter=log_iter,
             tol=kwargs.get('tol', None),
             data_convergence=kwargs.get('data_convergence', {}),
@@ -720,22 +755,9 @@ class FluidSimulator(object):
             logger_dicts=kwargs.get('logger_dicts', {}),
         )
 
-        if res_dict['is_converge']:
-            post_function(self, step=res_dict['step'], simulator_dir=None)
-
         save_dir = os.path.join(res_dict['simulator_dir'], 'res_pkl')
-        if os.path.exists(save_dir):
-            shutil.rmtree(save_dir)
         os.mkdir(save_dir)
-        self.save_result_to_pickle(save_dir)
+        self.save_result(save_dir, methods=['ipcs'])
 
-    def get_up(self, method):
-        if not self.equation_map.get(method, False):
-            raise ValueError("[ERROR]: Non-Valid Parameters")
-
-        if 'up' in self.equation_map[method]:
-            up: dolfinx.fem.Function = self.equation_map[method]['up']
-            u_n, p_n = ufl.split(up)
-        else:
-            u_n, p_n = self.equation_map[method]['u_n'], self.equation_map[method]['p_n']
-        return u_n, p_n
+        # if res_dict['is_converge']:
+        #     post_function(self, step=res_dict['step'], simulator_dir=None)

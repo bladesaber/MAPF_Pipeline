@@ -147,7 +147,10 @@ class LinearProblemSolver(object):
         solver.solve(b_vec, res_vec)
         res_vec.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
 
-        res_dict = {'res': res_vec}
+        res_dict = {
+            'res': res_vec,
+            'converged_reason': solver.getConvergedReason()
+        }
 
         if with_debug:
             cost_time = time.time() - tick0
@@ -164,8 +167,7 @@ class LinearProblemSolver(object):
                 'max_error': max_error,
                 'cost_time': cost_time,
                 'convergence_reason': convergence_reason,
-                'iter_num': iter_num,
-                'converged_reason': solver.getConvergedReason()
+                'iter_num': iter_num
             })
             # if res_dict['converged_reason'] < 0:
             #     raise ValueError(f"[ERROR]: KSP Converge Fail Code {res_dict['converged_reason']}")
@@ -408,7 +410,7 @@ class LinearProblemSolver(object):
 
     @staticmethod
     def is_converged(KSP_code: int):
-        return KSP_code in [1, 9, 2, 3, 7]
+        return KSP_code in [1, 9, 2, 3, 7, 4]
 
 
 class NonlinearPdeHelper:
@@ -469,6 +471,7 @@ class NonLinearProblemSolver(object):
             comm=MPI.COMM_WORLD,
             snes_setting: dict = {},
             ksp_setting: dict = {},
+            criterion={},
             **kwargs
     ):
         """
@@ -511,7 +514,7 @@ class NonLinearProblemSolver(object):
 
         solver = PETSc.SNES().create(comm)
         solver.setTolerances(
-            rtol=kwargs.pop('rtol', 1e-6), atol=kwargs.pop('atol', 1e-6), max_it=kwargs.pop('max_it', 1000),
+            rtol=criterion.get('rtol', 1e-6), atol=criterion.get('atol', 1e-6), max_it=criterion.get('max_it', 1000),
         )
 
         # ------ snes setting
@@ -595,6 +598,7 @@ class NonLinearProblemSolver(object):
             jacobi_form: ufl.Form, bcs: List[dolfinx.fem.DirichletBC],
             comm=MPI.COMM_WORLD,
             snes_setting: dict = {},
+            criterion={},
             ksp_option={},
             with_debug=False, **kwargs
     ):
@@ -629,14 +633,15 @@ class NonLinearProblemSolver(object):
         )
 
         solver = NonLinearProblemSolver.create_petsc_solver(
-            comm=comm, snes_setting=snes_setting, ksp_setting=ksp_option, **kwargs
+            comm=comm, snes_setting=snes_setting, ksp_setting=ksp_option, criterion=criterion, **kwargs
         )
         solver.setObjective(obj_func)
         solver.setFunction(residual_func, residual_vec)
         solver.setJacobian(jacobi_func, jacobi_mat, P=None)
 
         # ------ Just For Debug
-        # solver.setMonitor(lambda _, it, residual: print(f"Iter:{it} residual:{residual}"))
+        if kwargs.get('with_monitor', False):
+            solver.setMonitor(lambda _, it, residual: print(f"Iter:{it} residual:{residual}"))
         # NonLinearProblemSolver.view_solver(solver)
 
         # ------ newton setting
@@ -647,7 +652,11 @@ class NonLinearProblemSolver(object):
         solver.solve(None, uh.vector)
         uh.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
 
-        res_dict = {'res': uh}
+        res_dict = {
+            'res': uh,
+            'converged_reason': solver.getConvergedReason(),
+            'iteration_number': solver.getIterationNumber(),
+        }
 
         if with_debug:
             convergence_history = solver.getConvergenceHistory()[0]
@@ -659,8 +668,6 @@ class NonLinearProblemSolver(object):
                 'cost_time': time.time() - tick0,
                 'converged_history': convergence_history,
                 'last_error': convergence_history[-1] if len(convergence_history) else 0.0,
-                'converged_reason': solver.getConvergedReason(),
-                'iteration_number': solver.getIterationNumber(),
             })
             # if res_dict['converged_reason'] < 0:
             #     raise ValueError(f"[ERROR]: SNES Converge Fail Code {res_dict['converged_reason']}")
@@ -680,22 +687,6 @@ class NonLinearProblemSolver(object):
             uh: dolfinx.fem.function.Function = None,
             **kwargs
     ):
-        if kwargs.get('record_mat_dir', False):
-            # todo 不确认非线性等式转为线性表述是否合理，应该不合理
-            lhs_mat_form = ufl.replace(lhs_form, {uh, ufl.TrialFunction(uh.function_space)})
-            lhs_mat_form_dolfin = dolfinx.fem.form(lhs_mat_form)
-
-            a_mat: PETSc.Mat = AssembleUtils.assemble_mat(
-                lhs_mat_form_dolfin, bcs=bcs, method=kwargs.get('A_assemble_method', 'lift')
-            )
-            b_vec: PETSc.Vec = a_mat.getVecRight()
-            BoundaryUtils.apply_boundary_to_vec(
-                b_vec, bcs, lhs_mat_form_dolfin, clean_vec=False, method=kwargs.get('A_assemble_method', 'lift')
-            )
-
-            PETScUtils.save_data(a_mat, os.path.join(kwargs['record_mat_dir'], 'A_mat.dat'))
-            PETScUtils.save_data(b_vec, os.path.join(kwargs['record_mat_dir'], 'b_vec.dat'))
-
         if uh is not None:
             lhs_form_dolfin = dolfinx.fem.form(lhs_form)
             lhs_vec: PETSc.Vec = AssembleUtils.assemble_vec(lhs_form_dolfin)
