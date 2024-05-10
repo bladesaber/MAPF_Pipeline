@@ -7,19 +7,11 @@ from ufl import grad, dot, inner, sqrt
 import json
 import argparse
 
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_simulator import FluidSimulator
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.dolfin_simulator import FluidSimulator
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import ImportTool
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
-
-# todo
-"""
-1.引用其他求解软件的结果，然后用特定阶的有限元方法来插值作为init
-2.引用其他求解器例如scipy
-3.网格划分可能是比较大的影响因素
-4.改用其他精确解方法
-5.改用其他粗糙解方法
-"""
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.openfoam_simulator import OpenFoamSimulator
 
 
 def parse_args():
@@ -33,7 +25,7 @@ def parse_args():
     return args
 
 
-def simulate(cfg, args, **kwargs):
+def dolfin_simulate(cfg, args, **kwargs):
     simulate_method = args.simulate_method
 
     run_cfgs = []
@@ -54,8 +46,6 @@ def simulate(cfg, args, **kwargs):
             msh_file=os.path.join(run_cfg['proj_dir'], run_cfg['msh_file']),
             output_file=os.path.join(run_cfg['proj_dir'], run_cfg['xdmf_file'])
         )
-    if args.xdmf_tag is not None:
-        assert args.init_mesh == 0
 
     condition_module = ImportTool.import_module(run_cfg['proj_dir'], run_cfg['condition_package_name'])
 
@@ -173,17 +163,47 @@ def simulate(cfg, args, **kwargs):
             if os.path.exists(save_dir):
                 shutil.rmtree(save_dir)
             os.mkdir(save_dir)
-            simulator.save_result(save_dir, methods=['ipcs'])
+            simulator.save_result(save_dir, methods=[args.simulate_method])
+
+
+def openfoam_simulate(cfg, args, **kwargs):
+    run_cfgs = []
+    if cfg.get('recombine_cfgs', False):
+        for simulate_cfg_name in cfg['recombine_cfgs']:
+            with open(os.path.join(cfg['proj_dir'], simulate_cfg_name), 'r') as f:
+                run_cfgs.append(json.load(f))
+    else:
+        run_cfgs = [cfg.copy()]
+    del cfg
+
+    for run_cfg in run_cfgs:
+        simulator = OpenFoamSimulator(run_cfg)
+
+        record_dir = os.path.join(run_cfg['proj_dir'], f"{run_cfg['name']}_record")
+        if not os.path.exists(record_dir):
+            os.mkdir(record_dir)
+
+        tmp_dir = os.path.join(record_dir, 'simulate_openfoam')
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
+        os.mkdir(tmp_dir)
+
+        simulator.run_simulate(
+            tmp_dir, orig_msh_file=os.path.join(run_cfg['proj_dir'], run_cfg['msh_file']), convert_msh2=True
+        )
 
 
 def main():
     args = parse_args()
-    assert args.simulate_method in ['ipcs', 'navier_stoke', 'stoke']
 
     for i, json_file in enumerate(args.json_files):
         with open(json_file, 'r') as f:
             cfg: dict = json.load(f)
-            simulate(cfg, args, debug=i)
+
+            if args.simulate_method in ['ipcs', 'navier_stoke', 'stoke']:
+                dolfin_simulate(cfg, args, debug=i)
+            else:
+                openfoam_simulate(cfg, args)
 
 
 if __name__ == '__main__':

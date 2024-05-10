@@ -19,21 +19,10 @@ from ..lagrange_method.shape_regularization import ShapeRegularization
 from ..remesh_helper import MeshDeformationRunner
 from ..optimizer_utils import CostConvergeHandler, CostWeightHandler
 from ..vis_mesh_utils import VisUtils
-from .fluid_simulator import FluidSimulator
+from .dolfin_simulator import FluidSimulator
 from ..collision_objs import MeshCollisionObj, ObstacleCollisionObj
 from ..surface_fields import type_conflict_regulariztions
 from ..remesh_helper import ReMesher
-
-# todo
-"""
-6.仿真与梯度求解分离，梯度求解用一阶
-7.仿真可能用二阶或者独立出去
-
-1.改 fluid_shape_opt代码
-2.改 step5代码
-3.测试更多 Nonlinear 方法
-4.评测其他求解的 equation cost
-"""
 
 
 class FluidConditionalModel(object):

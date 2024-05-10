@@ -7,7 +7,7 @@ from functools import partial
 import pyvista
 
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils, AssembleUtils
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shapeOpt_simple import FluidShapeOptSimple
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shapeOpt_simple_tst import FluidShapeOptSimple
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import ScalarTrackingFunctional, IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization import ShapeRegularization, \
     VolumeRegularization

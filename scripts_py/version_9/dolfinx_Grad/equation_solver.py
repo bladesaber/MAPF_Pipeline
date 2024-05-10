@@ -6,6 +6,7 @@ from mpi4py import MPI
 import time
 from dolfinx.fem.petsc import LinearProblem
 from dolfinx.nls.petsc import NewtonSolver
+from dolfinx import log
 from dolfinx.fem import petsc
 import ufl
 from typing import List, Union
@@ -557,24 +558,23 @@ class NonLinearProblemSolver(object):
         solver = NewtonSolver(comm, problem)
 
         # ------ ksp setting
-        ksp = solver.krylov_solver
+        ksp: PETSc.KSP = solver.krylov_solver
 
-        ksp.setType(ksp_option.get("ksp_type", "preonly"))
-        ksp.getPC().setType(ksp_option.get("pc_type", "lu"))
-
-        if "pc_factor_mat_solver_type" in ksp_option.keys():
-            ksp.getPC().setFactorSolverType(ksp_option["pc_factor_mat_solver_type"])
-
-        if "pc_hypre_mat_solver_type" in ksp_option.keys():
-            ksp.getPC().setHYPREType(ksp_option["pc_hypre_mat_solver_type"])
+        opts = PETSc.Options()
+        option_prefix = ksp.getOptionsPrefix()
+        for key, value in ksp_option.items():
+            opts[f"{option_prefix}{key}"] = value
+        ksp.setFromOptions()
 
         # ------ newton setting
         solver.convergence_criterion = 'incremental'
-        solver.rtol = kwargs.pop('rtol', 1e-10)
-        solver.atol = kwargs.pop('atol', 1e-10)
+        solver.rtol = kwargs.pop('rtol', 1e-6)
+        solver.atol = kwargs.pop('atol', 1e-6)
         solver.max_it = kwargs.pop('max_it', 1000)
+        solver.report = True
 
         if with_debug:
+            log.set_log_level(log.LogLevel.INFO)
             tick0 = time.time()
 
         n_times, is_converg = solver.solve(uh)

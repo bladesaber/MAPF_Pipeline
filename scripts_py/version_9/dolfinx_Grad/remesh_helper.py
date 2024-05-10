@@ -83,6 +83,9 @@ class ReMesher(object):
             orig_msh_file: str, new_msh_file: str,
             domain: dolfinx.mesh.Mesh, dim: int, vertex_indices: np.ndarray[np.int32]
     ):
+        """
+        only support msh version 4
+        """
         assert orig_msh_file.endswith('.msh')
         assert new_msh_file.endswith('.msh')
 

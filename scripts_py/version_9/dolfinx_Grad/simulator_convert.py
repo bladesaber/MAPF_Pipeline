@@ -2,8 +2,10 @@ import numpy as np
 import dolfinx
 from sklearn.neighbors import KDTree
 import h5py
-from typing import List
+from typing import List, Union
 import pandas as pd
+import subprocess
+import os
 
 """
 Gmsh -> Ansys Fluent: bdf格式
@@ -14,8 +16,7 @@ Ansys Fluent -> Gmsh: cgns格式
 class CrossSimulatorUtil(object):
     @staticmethod
     def convert_to_simple_function(
-            domain: dolfinx.mesh.Mesh, coords: np.ndarray,
-            value_list: List[np.ndarray], r=1e-3
+            domain: dolfinx.mesh.Mesh, coords: np.ndarray, value_list: List[np.ndarray], r=1e-3
     ) -> List[dolfinx.fem.Function]:
         tree = KDTree(coords)
         idxs_list, dists_list = tree.query_radius(domain.geometry.x, r=r, return_distance=True)
@@ -44,13 +45,15 @@ class CrossSimulatorUtil(object):
 
         return fun_list
 
+
+class FluentUtils(object):
     @staticmethod
     def read_hdf5(file: str) -> h5py.File:
         assert file.split('.')[-1] in ['cgns', 'hdf5']
         return h5py.File(file)
 
     @staticmethod
-    def read_data_from_hdf5(data_h5: h5py.File, tag_sequence: List[str]):
+    def read_data(data_h5: h5py.File, tag_sequence: List[str]):
         data = data_h5
         for tag in tag_sequence:
             data = data[tag]
@@ -108,7 +111,8 @@ class CrossSimulatorUtil(object):
                 res_dict[tag] = vel
 
             elif tag == 'pressure':
-                pressure = np.array(data['Base']['Zone']['FlowSolution.N:1']['Pressure'][' data']).reshape((-1, 1))
+                pressure = np.array(data['Base']['Zone']['FlowSolution.N:1']['PressureStagnation'][' data']).reshape(
+                    (-1, 1))
                 res_dict[tag] = pressure
 
             else:
@@ -135,3 +139,344 @@ class CrossSimulatorUtil(object):
             df.to_csv(save_csv_file)
 
         return res_dict
+
+
+class OpenFoamUtils(object):
+    @staticmethod
+    def exec_cmd(code: str):
+        res = subprocess.run(code, shell=True, check=True)
+        return res
+
+    @staticmethod
+    def get_msh_version_change_code(orig_msh: str, target_msh: str, version_format='msh2'):
+        code = f"gmsh {orig_msh} -save -format {version_format} -o {target_msh};"
+        return code
+
+    @staticmethod
+    def get_gmsh2foam_code(proj_dir: str, msh_file, with_cd_dir=False):
+        assert os.path.exists(proj_dir) and os.path.isdir(proj_dir)
+        system_dir = os.path.join(proj_dir, 'system')
+        assert os.path.exists(os.path.join(system_dir, 'controlDict'))
+        code = ""
+        if with_cd_dir:
+            code += f"cd {proj_dir}; "
+        code += f"gmshToFoam {msh_file};"
+        return code
+
+    @staticmethod
+    def get_simulation_code(proj_dir: str, run_code='foamRun;', with_cd_dir=False):
+        assert os.path.exists(proj_dir) and os.path.isdir(proj_dir)
+        assert os.path.exists(os.path.join(proj_dir, 'system'))
+        assert os.path.exists(os.path.join(proj_dir, 'constant'))
+        code = ""
+        if with_cd_dir:
+            code += f"cd {proj_dir}; "
+        code += run_code
+        return code
+
+    @staticmethod
+    def get_foam2vtk_code(proj_dir: str, with_cd_dir=False):
+        code = ""
+        if with_cd_dir:
+            code += f"cd {proj_dir}; "
+        code += f"foamToVTK -ascii -latestTime -allPatches;"
+        return code
+
+    @staticmethod
+    def convert_dict2content(arg_dict: dict, layer=0, with_wrap=True):
+        content = []
+        tab_count = " " * layer * 4
+        for key, value in arg_dict.items():
+            if isinstance(value, (str, int, float)):
+                if with_wrap:
+                    content.append(f"{tab_count}{key} {value};\n")
+                else:
+                    content.append(f"{tab_count}{key} {value};")
+
+            elif isinstance(value, dict):
+                content.append(f"{tab_count}{key}\n{tab_count}{{")
+                sub_content = OpenFoamUtils.convert_dict2content(value, layer + 1, with_wrap=False)
+                content.extend(sub_content)
+                content.append(f"{tab_count}}}\n")
+            else:
+                raise ValueError("[ERROR] Non-Valid dict value")
+        return content
+
+    default_controlDict = {
+        'application': 'foamRun',
+        'solver': 'incompressibleFluid',
+        'startFrom': 'latestTime',
+        'startTime': 0,
+        'stopAt': 'endTime',
+        'endTime': 100,
+        'deltaT': 1,
+        'writeControl': 'timeStep',
+        'writeInterval': 1,
+        'purgeWrite': 0,
+        'writeFormat': 'ascii',
+        'writePrecision': 6,
+        'writeCompression': 'off',
+        'timeFormat': 'general',
+        'timePrecision': 6,
+        'runTimeModifiable': 'true'
+    }
+
+    default_fvSchemes = {
+        'ddtSchemes': {
+            'default': 'steadyState',
+        },
+        'gradSchemes': {
+            'default': 'Gauss linear'
+        },
+        'divSchemes': {
+            'default': 'none',
+            'div(phi,U)': 'bounded Gauss linearUpwind grad(U)',
+            'div(phi,k)': 'bounded Gauss limitedLinear 1',
+            'div(phi,epsilon)': 'bounded Gauss limitedLinear 1',
+            'div(phi,omega)': 'bounded Gauss limitedLinear 1',
+            'div(phi,v2)': 'bounded Gauss limitedLinear 1',
+            'div((nuEff*dev2(T(grad(U)))))': 'Gauss linear',
+            'div(nonlinearStress)': 'Gauss linear'
+        },
+        'laplacianSchemes': {
+            'default': 'Gauss linear corrected'
+        },
+        'interpolationSchemes': {
+            'default': 'linear'
+        },
+        'snGradSchemes': {
+            'default': 'corrected'
+        },
+        'wallDist': {
+            'method': 'meshWave'
+        }
+    }
+
+    default_fvSolution = {
+        'solvers': {
+            'p': {
+                'solver': 'GAMG',
+                'tolerance': 1e-06,
+                'relTol': 0.1,
+                'smoother': 'GaussSeidel'
+            },
+            'pcorr': {
+                'solver': 'GAMG',
+                'tolerance': 1e-06,
+                'relTol': 0,
+                'moother': 'GaussSeidel'
+            },
+            '"(U|k|epsilon|omega|f|v2)"': {
+                'solver': 'smoothSolver',
+                'smoother': 'symGaussSeidel',
+                'tolerance': 1e-05,
+                'relTol': 0.1
+            }
+        },
+        'SIMPLE': {
+            'nNonOrthogonalCorrectors': 0,
+            'consistent': 'yes',
+            'residualControl': {
+                'p': 1e-2,
+                'U': 1e-3,
+                '"(k|epsilon|omega|f|v2)"': 1e-3
+            }
+        },
+        'relaxationFactors': {
+            'equations': {
+                'U': 0.9,
+                '".*"': 0.9
+            }
+        }
+    }
+
+    default_physicalProperties = {
+        'viscosityModel': 'constant',
+        'nu': '[0 2 -1 0 0 0 0] 1e-05'
+    }
+
+    default_momentumTransport = {
+        'simulationType': 'RAS',
+        'RAS': {
+            'model': 'kEpsilon',
+            'turbulence': 'on',
+            'printCoeffs': 'on',
+            'viscosityModel': 'Newtonian'
+        }
+    }
+
+    example_U_property = {
+        'dimensions': '[0 1 -1 0 0 0 0]',
+        'internalField': 'uniform (0 0 0)',
+        'boundaryField': {
+            'inlet': {
+                'type': 'fixedValue',
+                'value': 'uniform (10 0 0)'
+            },
+            'outlet': {
+                'type': 'zeroGradient'
+            },
+            'wall': {
+                'type': 'noSlip'
+            },
+        }
+    }
+
+    example_p_property = {
+        'dimensions': '[0 2 -2 0 0 0 0]',
+        'internalField': 'uniform 0',
+        'boundaryField': {
+            'inlet': {
+                'type': 'zeroGradient',
+            },
+            'outlet': {
+                'type': 'fixedValue',
+                'value': 'uniform 0'
+            },
+            'wall': {
+                'type': 'zeroGradient'
+            },
+        }
+    }
+
+    example_nut_property = {
+        'dimensions': '[0 2 -1 0 0 0 0]',
+        'internalField': 'uniform 0',
+        'boundaryField': {
+            'inlet': {
+                'type': 'calculated',
+                'value': 'uniform 0'
+            },
+            'outlet': {
+                'type': 'calculated',
+                'value': 'uniform 0'
+            },
+            'wall': {
+                'type': 'nutkWallFunction',
+                'value': 'uniform 0'
+            },
+        }
+    }
+
+    example_k_property = {
+        'dimensions': '[0 2 -2 0 0 0 0]',
+        'internalField': 'uniform 0.375',
+        'boundaryField': {
+            'inlet': {
+                'type': 'fixedValue',
+                'value': 'uniform 0.375'
+            },
+            'outlet': {
+                'type': 'zeroGradient'
+            },
+            'wall': {
+                'type': 'kqRWallFunction',
+                'value': 'uniform 0.375'
+            },
+        }
+    }
+
+    example_epsilon_property = {
+        'dimensions': '[0 2 -3 0 0 0 0]',
+        'internalField': 'uniform 14.855',
+        'boundaryField': {
+            'inlet': {
+                'type': 'fixedValue',
+                'value': 'uniform 14.855'
+            },
+            'outlet': {
+                'type': 'zeroGradient'
+            },
+            'wall': {
+                'type': 'epsilonWallFunction',
+                'value': 'uniform 14.855'
+            },
+        }
+    }
+
+    example_f_property = {
+        'dimensions': '[0 0 -1 0 0 0 0]',
+        'internalField': 'uniform 0',
+        'boundaryField': {
+            'inlet': {
+                'type': 'zeroGradient'
+            },
+            'outlet': {
+                'type': 'zeroGradient'
+            },
+            'wall': {
+                'type': 'fWallFunction',
+                'value': 'uniform 0'
+            },
+        }
+    }
+
+    @staticmethod
+    def create_foam_file(
+            proj_dir: str, location: Union[str, int, float],
+            class_name: str, object_name: str, arg_dict: dict
+    ):
+        """
+        object_name: such as controlDict
+        """
+        if isinstance(location, str):
+            assert location in ['system', 'constant']
+
+        location_dir = os.path.join(proj_dir, str(location))
+        if not os.path.exists(location_dir):
+            os.mkdir(location_dir)
+
+        content = [
+            "/*--------------------------------*- C++ -*----------------------------------*\\",
+            "  =========                 |",
+            "  \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox",
+            "   \\\\    /   O peration     | Website:  https://openfoam.org",
+            "    \\\\  /    A nd           | Version:  dev",
+            "     \\\\/     M anipulation  |",
+            "\*---------------------------------------------------------------------------*/",
+            "FoamFile\n{",
+            "    format      ascii;",
+            f"    class       {class_name};",
+            f"    location    \"{location}\";",
+            f"    object      {object_name};",
+            "}",
+            "// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n"
+        ]
+        content.extend(OpenFoamUtils.convert_dict2content(arg_dict))
+        with open(os.path.join(location_dir, object_name), 'w') as f:
+            content = '\n'.join(content)
+            f.write(content)
+
+    @staticmethod
+    def modify_boundary_type(proj_dir: str, modify_dict: dict):
+        boundary_file = os.path.join(proj_dir, 'constant/polyMesh', 'boundary')
+        content = []
+        modify_flag, modify_type = False, None
+        with open(boundary_file, 'r') as f:
+            lines = f.readlines()
+            for line_txt in lines:
+                line_strip = line_txt.strip()
+                if line_strip in modify_dict.keys():
+                    modify_flag = True
+                    modify_type = modify_dict[line_strip]
+                    content.append(line_txt)
+                    continue
+
+                if modify_flag:
+                    words = line_strip.split(' ')
+                    if words[0] == 'type':
+                        line_txt = line_txt.replace(words[-1].replace(';', ''), modify_type)
+                        modify_flag = False
+
+                content.append(line_txt)
+
+        with open(boundary_file, 'w') as f:
+            f.write(''.join(content))
+
+    @staticmethod
+    def get_unit_scale_code(proj_dir: str, scale, with_cd_dir=False):
+        code = ""
+        if with_cd_dir:
+            code += f"cd {proj_dir}; "
+        code += f"transformPoints \"scale={scale}\";"
+        return code

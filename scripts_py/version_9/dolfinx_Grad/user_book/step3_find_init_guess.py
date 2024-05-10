@@ -8,7 +8,7 @@ import pyvista
 import argparse
 import json
 
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_simulator import FluidSimulator
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.dolfin_simulator import FluidSimulator
 from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import ImportTool
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.equation_solver import NonLinearProblemSolver

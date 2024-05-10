@@ -6,7 +6,7 @@ import numpy as np
 import ctypes
 import pyvista
 
-from .fluid_shapeOpt_simple import FluidShapeOptSimple
+from .fluid_shapeOpt_simple_tst import FluidShapeOptSimple
 from ..collision_objs import MeshCollisionObj, ObstacleCollisionObj
 from ..dolfinx_utils import MeshUtils
 from ..recorder_utils import VTKRecorder, TensorBoardRecorder
@@ -16,12 +16,6 @@ from ..vis_mesh_utils import VisUtils
 from ..lagrange_method.cost_functions import CostFunctional_types
 from ..lagrange_method.shape_regularization import ShapeRegularization
 from ..surface_fields import type_conflict_regulariztions
-
-# TODO
-"""
-所有cfg的name都不可重复
-"""
-
 
 class FluidObstacleAvoidModel(FluidShapeOptSimple):
     def __init__(

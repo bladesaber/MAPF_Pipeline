@@ -4,11 +4,13 @@ import os
 import shutil
 import ufl
 from ufl import sym, grad, nabla_grad, dot, inner, div, Identity
+from ufl import algebra
 from typing import List, Union, Dict, Callable
 from petsc4py import PETSc
 import json
 import pickle
 import pandas as pd
+from dolfinx import geometry
 
 from ..recorder_utils import VTKRecorder, TensorBoardRecorder
 from ..dolfinx_utils import MeshUtils, AssembleUtils, BoundaryUtils
@@ -92,16 +94,29 @@ class FluidSimulator(object):
         v, q = ufl.split(ufl.TestFunction(self.W))
         f = dolfinx.fem.Constant(self.domain, np.zeros(self.tdim))
         nu = dolfinx.fem.Constant(self.domain, 1. / Re)
-        navier_stoke_form = (
+
+        conservation_form = (
                 nu * inner(grad(u), grad(v)) * ufl.dx
                 + inner(grad(u) * u, v) * ufl.dx
                 - inner(p, div(v)) * ufl.dx
-                + inner(div(u), q) * ufl.dx
                 - inner(f, v) * ufl.dx
         )
+        continue_form = inner(div(u), q) * ufl.dx
+        navier_stoke_form = conservation_form + continue_form
+
+        # navier_stoke_form = (
+        #         nu * inner(grad(u), grad(v)) * ufl.dx
+        #         + inner(grad(u) * u, v) * ufl.dx
+        #         - inner(p, div(v)) * ufl.dx
+        #         + inner(div(u), q) * ufl.dx
+        #         - inner(f, v) * ufl.dx
+        # )
+
         self.equation_map['navier_stoke'] = {
             'lhs': navier_stoke_form,
-            'up': up
+            'up': up,
+            'conservation_form': conservation_form,
+            'continue_form': continue_form
         }
 
     def define_ipcs_equation(self, dt: float, dynamic_viscosity: float, density: float, is_channel_fluid: bool):
@@ -317,6 +332,12 @@ class FluidSimulator(object):
             snes_setting=snes_option, ksp_option=ksp_option, criterion=criterion,
             **kwargs
         )
+
+        # res_dict = NonLinearProblemSolver.solve_by_dolfinx(
+        #     F_form=nstoke_dict['lhs'], uh=up, bcs=nstoke_dict['bcs'],
+        #     comm=self.domain.comm, ksp_option=ksp_option,
+        #     with_debug=True
+        # )
 
         if kwargs.get('with_debug', False):
             print(f"[DEBUG FluidSimulator Navier Stoke]: max_error:{res_dict['max_error']:.8f}"
@@ -761,3 +782,14 @@ class FluidSimulator(object):
 
         # if res_dict['is_converge']:
         #     post_function(self, step=res_dict['step'], simulator_dir=None)
+
+    @staticmethod
+    def eval_point(uh: dolfinx.fem.Function, points: np.ndarray, domain: dolfinx.mesh.Mesh):
+        bb_tree = geometry.bb_tree(domain, domain.topology.dim)
+        cell_candidates = geometry.compute_collisions_points(bb_tree, points)
+        colliding_cells = geometry.compute_colliding_cells(domain, cell_candidates, points)
+        cells = []
+        for i in range(points.shape[0]):
+            cells.append(colliding_cells.links(i)[0])
+        res = uh.eval(points, cells).reshape(-1)
+        return res

@@ -11,7 +11,7 @@ import pyvista
 from typing import List, Union
 
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shapeOpt_obstacle import FluidConditionalModel, \
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_shapeOpt_obstacle_tst import FluidConditionalModel, \
     FluidShapeRecombineLayer
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.shape_regularization import ShapeRegularization, \

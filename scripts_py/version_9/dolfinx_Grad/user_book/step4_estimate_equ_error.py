@@ -6,8 +6,9 @@ from functools import partial
 from ufl import grad, dot, inner, sqrt
 import json
 import argparse
+import numpy as np
 
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_simulator import FluidSimulator
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.dolfin_simulator import FluidSimulator
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import ImportTool
 from scripts_py.version_9.dolfinx_Grad.equation_solver import LinearProblemSolver, NonLinearProblemSolver
@@ -152,6 +153,15 @@ def estimate_error_dolfinx(json_file, args):
         res_dict = simulator.estimate_equation_lost(method=simulate_method)
         print(f"[INFO] {run_cfg['name']} Navier Stoke Equation Error:{res_dict['max_error']}")
 
+        conservation_vec = AssembleUtils.assemble_vec(
+            dolfinx.fem.form(simulator.equation_map['navier_stoke']['conservation_form'])
+        )
+        continue_vec = AssembleUtils.assemble_vec(
+            dolfinx.fem.form(simulator.equation_map['navier_stoke']['continue_form'])
+        )
+        print(f"[INFO]: conservation_max: {np.max(np.abs(conservation_vec.array))}")
+        print(f"[INFO]: continue_max: {np.max(np.abs(continue_vec.array))}")
+
 
 def estimate_error_fluent(json_file, args):
     simulate_method = 'navier_stoke'
@@ -254,22 +264,23 @@ def estimate_error_fluent(json_file, args):
         pressure_recorder = VTKRecorder(os.path.join(save_dir, 'pressure.pvd'))
         pressure_recorder.write_function(up.sub(1).collapse(), step=0)
 
-        # print('\n[INFO]: Recompute')
-        # opt_cfg = run_cfg['optimize_cfg']
-        # simulator.simulate_navier_stoke_equation(
-        #     snes_option=opt_cfg['snes_option'],
-        #     ksp_option=opt_cfg['state_ksp_option'],
-        #     criterion=opt_cfg['snes_criterion'],
-        #     with_debug=True, with_monitor=True
-        # )
-        #
-        # for tag_name in logger_dicts:
-        #     print(f"{tag_name}:")
-        #     for name in logger_dicts[tag_name]:
-        #         print(f"---{name}: {AssembleUtils.assemble_scalar(logger_dicts[tag_name][name])}")
-        #
-        # res_dict = simulator.estimate_equation_lost(method=simulate_method)
-        # print(f"[INFO] {run_cfg['name']} Navier Stoke Equation Error:{res_dict['max_error']}")
+        print('\n[INFO]: Recompute')
+        opt_cfg = run_cfg['optimize_cfg']
+        res_dict = simulator.simulate_navier_stoke_equation(
+            snes_option=opt_cfg['snes_option'],
+            ksp_option=opt_cfg['state_ksp_option'],
+            criterion=opt_cfg['snes_criterion'],
+            with_debug=True, with_monitor=True,
+            A_assemble_method='Identity_row'
+        )
+
+        for tag_name in logger_dicts:
+            print(f"{tag_name}:")
+            for name in logger_dicts[tag_name]:
+                print(f"---{name}: {AssembleUtils.assemble_scalar(logger_dicts[tag_name][name])}")
+
+        res_dict = simulator.estimate_equation_lost(method=simulate_method)
+        print(f"[INFO] {run_cfg['name']} Navier Stoke Equation Error:{res_dict['max_error']}")
 
 
 def main():

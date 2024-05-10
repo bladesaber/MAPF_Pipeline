@@ -1,11 +1,11 @@
 import os
 import shutil
 import argparse
-from importlib import import_module
 from importlib import util as import_util
 import json
-import numpy as np
 import sys
+
+from scripts_py.version_9.dolfinx_Grad.simulator_convert import OpenFoamUtils
 
 
 class ImportTool(object):
@@ -54,6 +54,7 @@ def parse_args():
     parser.add_argument('--proj_dir', type=str, default=None)
     parser.add_argument('--create_cfg', type=int, default=0)
     parser.add_argument('--with_recombine_cfg', type=int, default=0)
+    parser.add_argument('--simulate_method', type=str, nargs='+', default=['ipcs', 'navier_stoke'])
 
     parser.add_argument('--create_obstacle', type=int, default=0)
     parser.add_argument('--obstacle_name', type=str, default=None)
@@ -74,8 +75,9 @@ def create_project(args):
     open(os.path.join(args.proj_dir, 'model.geo'), 'w')  # create gmsh file
     open(os.path.join(args.proj_dir, 'condition.py'), 'w')
 
-    simulate_cfg = {
-        'ipcs': {
+    simulate_cfg = {}
+    if 'ipcs' in args.simulate_method:
+        simulate_cfg['ipcs'] = {
             'dt': 1 / 400.0,
             'dynamic_viscosity': 0.01,
             'density': 1.0,
@@ -85,8 +87,10 @@ def create_project(args):
             'tol': 5e-6,
             'is_channel_fluid': True,
             'trial_iter': 100,
-        },
-        'navier_stoke': {
+        }
+
+    if 'navier_stoke' in args.simulate_method:
+        simulate_cfg['navier_stoke'] = {
             'Re': 100,
             'ksp_option': {
                 'ksp_type': 'preonly',
@@ -106,11 +110,81 @@ def create_project(args):
                 'atol': 1e-6,
                 'max_it': 1e3
             }
-        },
-        'stoke': {
+        }
+
+    if 'stoke' in args.simulate_method:
+        simulate_cfg['stoke'] = {
             'ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
-        },
-    }
+        }
+
+    if 'openfoam' in args.simulate_method:
+        simulate_cfg['openfoam'] = {
+            'configuration': {
+                'controlDict': {
+                    'location': 'system',
+                    'class_name': 'dictionary',
+                    'args': OpenFoamUtils.default_controlDict
+                },
+                'fvSchemes': {
+                    'location': 'system',
+                    'class_name': 'dictionary',
+                    'args': OpenFoamUtils.default_fvSchemes
+                },
+                'fvSolution': {
+                    'location': 'system',
+                    'class_name': 'dictionary',
+                    'args': OpenFoamUtils.default_fvSolution
+                },
+                'physicalProperties': {
+                    'location': 'constant',
+                    'class_name': 'dictionary',
+                    'args': OpenFoamUtils.default_physicalProperties
+                },
+                'momentumTransport': {
+                    'location': 'constant',
+                    'class_name': 'dictionary',
+                    'args': OpenFoamUtils.default_momentumTransport
+                },
+                'U': {
+                    'location': 0,
+                    'class_name': 'volVectorField',
+                    'args': OpenFoamUtils.example_U_property
+                },
+                'p': {
+                    'location': 0,
+                    'class_name': 'volScalarField',
+                    'args': OpenFoamUtils.example_p_property
+                },
+                'omega': {
+                    'location': 0,
+                    'class_name': 'volScalarField',
+                    'args': OpenFoamUtils.example_omega_property
+                },
+                'nut': {
+                    'location': 0,
+                    'class_name': 'volScalarField',
+                    'args': OpenFoamUtils.example_nut_property
+                },
+                'k': {
+                    'location': 0,
+                    'class_name': 'volScalarField',
+                    'args': OpenFoamUtils.example_k_property
+                },
+                'f': {
+                    'location': 0,
+                    'class_name': 'volScalarField',
+                    'args': OpenFoamUtils.example_f_property
+                },
+                'epsilon': {
+                    'location': 0,
+                    'class_name': 'volScalarField',
+                    'args': OpenFoamUtils.example_epsilon_property
+                }
+            },
+            'modify_type_dict': None,
+            'unit_scale': None
+        }
+
     optimize_cfg = {
         'Re': 100,
         'isStokeEqu': False,
