@@ -2,6 +2,7 @@ import numpy as np
 import dolfinx
 import os
 import shutil
+import pyvista
 import ufl
 from ufl import sym, grad, nabla_grad, dot, inner, div, Identity
 from typing import List, Union, Dict, Tuple, Callable
@@ -19,11 +20,18 @@ from ..lagrange_method.shape_regularization import ShapeRegularization
 from ..remesh_helper import MeshDeformationRunner
 from ..optimizer_utils import CostConvergeHandler, CostWeightHandler
 from ..vis_mesh_utils import VisUtils
-from .dolfin_simulator import FluidSimulator
+from .dolfin_simulator import DolfinSimulator
+from .openfoam_simulator import OpenFoamSimulator
 from ..collision_objs import MeshCollisionObj, ObstacleCollisionObj
 from ..surface_fields import type_conflict_regulariztions
 from ..remesh_helper import ReMesher
+from ..simulator_convert import CrossSimulatorUtil
 
+
+# todo
+#  1.是不是使用不同的弹性密度能更凸显有效的变形而不是体积变形
+#  2.平衡流量要做测试
+#  3.网格被攻击了，remesh操作可能不可少
 
 class FluidConditionalModel(object):
     """
@@ -33,80 +41,65 @@ class FluidConditionalModel(object):
 
     def __init__(
             self,
-            name: str,
-            domain: dolfinx.mesh.Mesh,
-            cell_tags: dolfinx.mesh.MeshTags,
-            facet_tags: dolfinx.mesh.MeshTags,
-            Re: float,
             bry_markers: List[int],
             deformation_cfg: Dict,
             point_radius: float,
             run_strategy_cfg: dict,
             obs_avoid_cfg: dict,
-            isStokeEqu=False,
-            simulate_velocity_order: int = 2,
-            simulate_pressure_order: int = 1,
-            optimize_velocity_order: int = 1,
-            optimize_pressure_order: int = 1,
+            simulator: Union[OpenFoamSimulator],
+            nu_value: float,
+            save_opt_cfg: dict,
+            velocity_order: int = 1,
+            pressure_order: int = 1,
+            nu_order: int = 1,
             tag_name: str = None,
             regularization_filter=['SparsePointsRegularization'],
-            save_opt_cfg: dict = None,
     ):
-        self.simulator = FluidSimulator(
-            name, domain, cell_tags, facet_tags, simulate_velocity_order, simulate_pressure_order
-        )
-        if isStokeEqu:
-            self.simulator.define_stoke_equation()
-        else:
-            self.simulator.define_navier_stoke_equation(Re)
-
+        self.simulator = simulator
         self.name = self.simulator.name
         self.domain = self.simulator.domain
         self.cell_tags = self.simulator.cell_tags
         self.facet_tags = self.simulator.facet_tags
         self.tdim, self.fdim = self.simulator.tdim, self.simulator.fdim
-        self.n_vec = self.simulator.n_vec
-        self.ds = self.simulator.ds
+        self.n_vec = MeshUtils.define_facet_norm(self.domain)
+        self.ds = MeshUtils.define_ds(self.domain, self.facet_tags)
 
         self.W = dolfinx.fem.FunctionSpace(
-            domain, ufl.MixedElement([
-                ufl.VectorElement("Lagrange", domain.ufl_cell(), optimize_velocity_order),
-                ufl.FiniteElement("Lagrange", domain.ufl_cell(), optimize_pressure_order)
+            self.domain, ufl.MixedElement([
+                ufl.VectorElement("Lagrange", self.domain.ufl_cell(), velocity_order),
+                ufl.FiniteElement("Lagrange", self.domain.ufl_cell(), pressure_order)
             ])
         )
         self.W0, self.W1 = self.W.sub(0), self.W.sub(1)
         self.V, self.V_to_W_dofs = self.W0.collapse()
         self.Q, self.Q_to_W_dofs = self.W1.collapse()
-        self.V_mapping_space = dolfinx.fem.VectorFunctionSpace(domain, ("CG", 1))
-        self.Q_mapping_space = dolfinx.fem.FunctionSpace(domain, ("CG", 1))
+        self.V_mapping_space = dolfinx.fem.VectorFunctionSpace(self.domain, ("CG", 1))
+        self.Q_mapping_space = dolfinx.fem.FunctionSpace(self.domain, ("CG", 1))
+        self.nu_function_space = dolfinx.fem.FunctionSpace(self.domain, ("CG", nu_order))
 
         self.up = dolfinx.fem.Function(self.W, name='state')
         self.u, self.p = ufl.split(self.up)
         self.vq = dolfinx.fem.Function(self.W, name='adjoint')
         v, q = ufl.split(self.vq)
-        f = dolfinx.fem.Constant(domain, np.zeros(self.tdim))
-        self.nu = dolfinx.fem.Constant(domain, 1. / Re)
-
-        if isStokeEqu:
-            self.F_form = (
-                    self.nu * inner(grad(self.u), grad(v)) * ufl.dx
-                    - self.p * div(v) * ufl.dx
-                    - q * div(self.u) * ufl.dx
-                    - inner(f, v) * ufl.dx
-            )
-            self.is_linear_state = True
+        f = dolfinx.fem.Constant(self.domain, np.zeros(self.tdim))
+        if isinstance(self.simulator, DolfinSimulator):
+            self.nu = dolfinx.fem.Constant(self.domain, nu_value)
+        elif isinstance(self.simulator, OpenFoamSimulator):
+            self.nu = dolfinx.fem.Function(self.nu_function_space)
+            self.nu.x.array[:] = nu_value
         else:
-            self.F_form = (
-                    self.nu * inner(grad(self.u), grad(v)) * ufl.dx
-                    + inner(grad(self.u) * self.u, v) * ufl.dx
-                    - inner(self.p, div(v)) * ufl.dx
-                    + inner(div(self.u), q) * ufl.dx
-                    - inner(f, v) * ufl.dx
-            )
-            self.is_linear_state = False
+            raise ValueError("[ERROR]: Non-Valid Simulator")
+        self.nu_value = nu_value
+
+        self.F_form = (
+                self.nu * inner(grad(self.u), grad(v)) * ufl.dx
+                + inner(grad(self.u) * self.u, v) * ufl.dx
+                - inner(self.p, div(v)) * ufl.dx
+                + inner(div(self.u), q) * ufl.dx
+                - inner(f, v) * ufl.dx
+        )
 
         self.V_S = dolfinx.fem.FunctionSpace(self.domain, self.domain.ufl_domain().ufl_coordinate_element())
-
         self.energy_loss_form = dolfinx.fem.form(ufl.inner(grad(self.u), grad(self.u)) * ufl.dx)
 
         self.bcs_info_state = []
@@ -115,12 +108,10 @@ class FluidConditionalModel(object):
         self.control_problem: ShapeDataBase = None
         self.cost_weight: dict = {}
         self.opt_problem: OptimalShapeProblem = None
-        self.deformation_handler = MeshDeformationRunner(
-            self.domain, **deformation_cfg
-        )
+        self.deformation_handler = MeshDeformationRunner(self.domain, **deformation_cfg)
 
         # ------ conflict relative
-        self.tag_name = tag_name if (tag_name is not None) else name
+        self.tag_name = tag_name if (tag_name is not None) else self.name
         self.mesh_obj = MeshCollisionObj(
             self.tag_name, self.domain, self.facet_tags, self.cell_tags, bry_markers, point_radius
         )
@@ -132,11 +123,10 @@ class FluidConditionalModel(object):
         self.run_strategy_cfg, self.obs_avoid_cfg = self.check_cfg(run_strategy_cfg, obs_avoid_cfg)
         self.regularization_filter = regularization_filter
 
-        if save_opt_cfg is not None:
-            self.save_opt_cfg = save_opt_cfg
-            self.save_opt_cfg['vertex_indices'] = ReMesher.reconstruct_vertex_indices(
-                orig_msh_file=self.save_opt_cfg['orig_msh_file'], domain=self.domain
-            )
+        self.save_opt_cfg = save_opt_cfg
+        self.save_opt_cfg['vertex_indices'] = ReMesher.reconstruct_vertex_indices(
+            orig_msh_file=self.save_opt_cfg['orig_msh_file'], domain=self.domain
+        )
 
     def check_cfg(self, run_strategy_cfg, obs_avoid_cfg):
         assert obs_avoid_cfg['bbox_rho'] < 1.0 and obs_avoid_cfg['bbox_w_lower'] > 0.0
@@ -151,17 +141,15 @@ class FluidConditionalModel(object):
         return run_strategy_cfg, obs_avoid_cfg
 
     def add_state_boundary(self, name: str, value: Union[float, int, Callable], marker: int, is_velocity: bool):
-        self.simulator.add_boundary(name, value, marker, is_velocity)
-
         if is_velocity:
-            bc_value = FluidSimulator.get_boundary_function(name, value, self.V)
+            bc_value = DolfinSimulator.get_boundary_function(name, value, self.V)
             bc_dof = MeshUtils.extract_entity_dofs(
                 (self.W0, self.V), self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
             )
             bc = dolfinx.fem.dirichletbc(bc_value, bc_dof, self.W0)
             self.bcs_info_state.append((bc, self.W0, bc_dof, bc_value))
         else:
-            bc_value = FluidSimulator.get_boundary_function(name, value, self.Q)
+            bc_value = DolfinSimulator.get_boundary_function(name, value, self.Q)
             bc_dof = MeshUtils.extract_entity_dofs(
                 (self.W1, self.Q), self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
             )
@@ -169,7 +157,7 @@ class FluidConditionalModel(object):
             self.bcs_info_state.append((bc, self.W1, bc_dof, bc_value))
 
     def add_control_boundary(self, name: str, value: Union[float, int, Callable], marker: int):
-        bc_value = FluidSimulator.get_boundary_function(name, value, self.V_S)
+        bc_value = DolfinSimulator.get_boundary_function(name, value, self.V_S)
         bc_dof = MeshUtils.extract_entity_dofs(
             self.V_S, self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
         )
@@ -189,7 +177,7 @@ class FluidConditionalModel(object):
                 F_form=self.F_form,
                 state=self.up,
                 adjoint=self.vq,
-                is_linear=self.is_linear_state,
+                is_linear=False,
                 bcs_info=self.bcs_info_state,
                 state_ksp_option=state_ksp_option,
                 adjoint_ksp_option=adjoint_ksp_option,
@@ -328,17 +316,8 @@ class FluidConditionalModel(object):
         return success_flag, step_size
 
     # ------------ gradient related functions
-    def compute_simulation(self, check_converged=True, **kwargs):
-        if self.is_linear_state:
-            res_dict = self.simulator.simulate_stoke_equation(
-                self.opt_problem.state_system.state_problems[0].state_ksp_option, **kwargs
-            )
-
-            if check_converged:
-                if not LinearProblemSolver.is_converged(res_dict['converged_reason']):
-                    raise ValueError(f"[ERROR] State Problem SENS Fail Converge {res_dict['converged_reason']}")
-
-        else:
+    def compute_simulation(self, **kwargs):
+        if isinstance(self.simulator, DolfinSimulator):
             res_dict = self.simulator.simulate_navier_stoke_equation(
                 snes_option=self.state_system.state_problems[0].snes_option,
                 criterion=self.state_system.state_problems[0].snes_criterion,
@@ -346,34 +325,61 @@ class FluidConditionalModel(object):
                 guess_up=None,
                 **kwargs
             )
+            if not NonLinearProblemSolver.is_converged(res_dict['converged_reason']):
+                raise ValueError(f"[ERROR] State Problem KSP Fail Converge {res_dict['converged_reason']}")
 
-            if check_converged:
-                if not NonLinearProblemSolver.is_converged(res_dict['converged_reason']):
-                    raise ValueError(f"[ERROR] State Problem KSP Fail Converge {res_dict['converged_reason']}")
+            # ------ convert simulator result to TaylorHood
+            simulator_up: dolfinx.fem.Function = self.simulator.equation_map['navier_stoke']['up']
+            u_fun, p_fun = simulator_up.sub(0).collapse(), simulator_up.sub(1).collapse()
 
-        # ------ convert simulator result to TaylorHood
-        simulator_up: dolfinx.fem.Function = self.simulator.equation_map['navier_stoke']['up']
-        u_fun, p_fun = simulator_up.sub(0).collapse(), simulator_up.sub(1).collapse()
+            u_tmp, p_tmp = dolfinx.fem.Function(self.V), dolfinx.fem.Function(self.Q)
+            u_tmp.interpolate(u_fun)
+            p_tmp.interpolate(p_fun)
 
-        u_tmp, p_tmp = dolfinx.fem.Function(self.V), dolfinx.fem.Function(self.Q)
-        u_tmp.interpolate(u_fun)
-        p_tmp.interpolate(p_fun)
+        elif isinstance(self.simulator, OpenFoamSimulator):
+            tmp_dir = os.path.join(self.simulator.cache_dir, 'openfoam_simulation')
+            if os.path.exists(tmp_dir):
+                shutil.rmtree(tmp_dir)
+            os.mkdir(tmp_dir)
+
+            new_msh_file = os.path.join(tmp_dir, 'model.msh')
+            ReMesher.convert_domain_to_new_msh(
+                self.save_opt_cfg['orig_msh_file'], new_msh_file,
+                self.domain, self.tdim, self.save_opt_cfg['vertex_indices']
+            )
+            res = self.simulator.run_simulate_process(tmp_dir, new_msh_file, True)
+            res_vtk: pyvista.UnstructuredGrid = res['res_vtk']
+
+            v_fun, p_fun, nut_fun = CrossSimulatorUtil.convert_to_simple_function(
+                self.domain, coords=res_vtk.points, value_list=[
+                    res_vtk.point_data['U'], res_vtk.point_data['p'], res_vtk.point_data['nut']
+                ]
+            )
+            u_tmp, p_tmp = dolfinx.fem.Function(self.V), dolfinx.fem.Function(self.Q)
+            u_tmp.interpolate(v_fun)
+            p_tmp.interpolate(p_fun)
+            self.nu.vector.aypx(0.0, nut_fun.vector)
+            self.nu.x.array[:] = self.nu.x.array + self.nu_value
+
+            shutil.rmtree(tmp_dir)
+            del nut_fun
+
+        else:
+            raise ValueError("[ERROR]: Non-Valid Simulator")
 
         self.up.x.array[self.V_to_W_dofs] = u_tmp.x.array.copy()
         self.up.x.array[self.Q_to_W_dofs] = p_tmp.x.array.copy()
         del u_tmp, p_tmp
 
         # grid = VisUtils.convert_to_grid(self.domain)
-        # VisUtils.show_arrow_res_vtk(grid, self.up.sub(0).collapse(), self.V, scale=1.0).show()
+        # VisUtils.show_arrow_res_vtk(grid, self.up.sub(0).collapse(), self.V, scale=0.001).show()
 
     def compute_shape_deformation(
             self,
-            detect_cost_valid_func: Callable,
-            obs_objs: List[ObstacleCollisionObj],
-            mesh_objs: List[MeshCollisionObj],
+            detect_cost_valid_func: Callable, obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj],
             **kwargs
     ):
-        self.compute_simulation(check_converged=True, **kwargs)
+        self.compute_simulation(**kwargs)
         shape_grad: dolfinx.fem.Function = self.opt_problem.compute_gradient(
             self.domain.comm,
             state_kwargs={'with_debug': kwargs.get('with_debug', False)},
@@ -390,10 +396,9 @@ class FluidConditionalModel(object):
         direction_np = np.zeros(self.domain.geometry.x.shape)
         direction_np[:, :self.tdim] = shape_grad_np.reshape((-1, self.tdim))
 
-        if self.run_strategy_cfg.get('gradient_norm_lower', -1.0) > 0.0:
-            norm_mean = np.mean(np.linalg.norm(direction_np, axis=1))
-            if norm_mean < self.run_strategy_cfg['gradient_norm_lower']:
-                direction_np = direction_np * self.run_strategy_cfg['gradient_norm_lower'] / norm_mean
+        norm_max = np.max(np.linalg.norm(direction_np, axis=1))
+        if norm_max > self.run_strategy_cfg['max_step_limit']:
+            direction_np = direction_np * self.run_strategy_cfg['max_step_limit'] / norm_max
 
         # # ------ Just For Debug
         # grid = VisUtils.convert_to_grid(self.domain)
@@ -438,7 +443,7 @@ class FluidConditionalModel(object):
         u_recorder = VTKRecorder(os.path.join(simulate_dir, 'simulate_u.pvd'))
 
         # ------ Step 2: Init Calculation and log first step
-        self.compute_simulation(check_converged=True, with_debug=with_debug)
+        self.compute_simulation(with_debug=with_debug)
 
         for regularization_term in self.opt_problem.shape_regulariztions.regularization_list:
             if regularization_term.name in self.regularization_filter:
@@ -463,11 +468,12 @@ class FluidConditionalModel(object):
         loss_storge_ctype = ctypes.c_double(init_loss)
 
         def detect_cost_valid_func(tol=self.run_strategy_cfg['loss_tol_rho']):
-            self.compute_simulation(check_converged=True, with_debug=with_debug)
+            self.compute_simulation(with_debug=with_debug)
             loss = self.opt_problem.evaluate_cost_functional(
                 self.domain.comm, update_state=False, with_debug=with_debug
             )
             is_valid = loss < loss_storge_ctype.value + np.abs(loss_storge_ctype.value) * tol
+            # print('Debug_remove: ', loss, is_valid)
             return is_valid
 
         self.solver_vars.update({
@@ -508,12 +514,14 @@ class FluidConditionalModel(object):
         else:
             max_deformation = np.max(np.linalg.norm(diffusion, ord=2, axis=1))
             res_dict['is_converge'] = max_deformation < self.run_strategy_cfg['deformation_lower']
+
         self.mesh_obj.update_tree()
         return res_dict
 
     def update_optimize_state(self, step, with_log_info=True):
         # --- Necessary Step
-        loss = self.opt_problem.evaluate_cost_functional(self.domain.comm, update_state=True)
+        # self.compute_simulation()
+        loss = self.opt_problem.evaluate_cost_functional(self.domain.comm, update_state=False)
         self.solver_vars['loss_storge'].value = loss
 
         # --- Get Log Info
@@ -599,23 +607,6 @@ class FluidConditionalModel(object):
                 log_recorder.write_scalar(tag_name, list(data_cell.values())[0], step)
             else:
                 log_recorder.write_scalars(tag_name, data_cell, step)
-
-    def load_result(self, file_info, load_type):
-        self.simulator.load_result(file_info, load_type)
-
-        simulator_up: dolfinx.fem.Function = self.simulator.equation_map['navier_stoke']['up']
-        u_fun, p_fun = simulator_up.sub(0).collapse(), simulator_up.sub(1).collapse()
-
-        u_tmp, p_tmp = dolfinx.fem.Function(self.V), dolfinx.fem.Function(self.Q)
-        u_tmp.interpolate(u_fun)
-        p_tmp.interpolate(p_fun)
-
-        self.up.x.array[self.V_to_W_dofs] = u_tmp.x.array.copy()
-        self.up.x.array[self.Q_to_W_dofs] = p_tmp.x.array.copy()
-        del u_tmp, p_tmp
-
-        # grid = VisUtils.convert_to_grid(self.domain)
-        # VisUtils.show_arrow_res_vtk(grid, self.up.sub(0).collapse(), self.V, scale=0.1).show()
 
     def save_msh(self, with_debug):
         print('[INFO]: Saving Result')

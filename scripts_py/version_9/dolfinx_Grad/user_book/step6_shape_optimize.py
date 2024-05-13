@@ -1,3 +1,10 @@
+"""
+Note
+    1.边界层导致会导致网格不均衡，优化时不要划分边界层
+    2.相对于Poincare-Steklov operator，default方法更稳定
+    3.所有网格大小越均匀，稳定性越高
+"""
+
 import os
 import shutil
 import numpy as np
@@ -22,12 +29,8 @@ from scripts_py.version_9.dolfinx_Grad.surface_fields import SparsePointsRegular
 from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import ImportTool
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
-
-"""
-为什么有优化效果但实际形状与预期差距这么大：
-1. 说明优化路径不唯一
-2. 仿真粒度太大，导致仿真结果断裂
-"""
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.dolfin_simulator import DolfinSimulator
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.openfoam_simulator import OpenFoamSimulator
 
 
 def parse_args():
@@ -38,6 +41,7 @@ def parse_args():
     parser.add_argument('--with_obstacle', type=int, default=0)
     parser.add_argument('--obstacle_json_files', type=str, nargs='+', default=[])
     parser.add_argument('--res_dir', type=str, default=None)
+    parser.add_argument('--simulate_method', type=str, default=None)
     args = parser.parse_args()
     return args
 
@@ -83,11 +87,68 @@ def load_obstacle(args):
     return []
 
 
+def load_simulator(
+        run_cfg: dict, args,
+        domain: dolfinx.mesh.Mesh, cell_tags: dolfinx.mesh.MeshTags, facet_tags: dolfinx.mesh.MeshTags,
+        velocity_order: int = 2, pressure_order: int = 1,
+):
+    if args.simulate_method == 'navier_stoke':
+        condition_module = ImportTool.import_module(run_cfg['proj_dir'], run_cfg['condition_package_name'])
+        input_markers = [int(marker) for marker in run_cfg['input_markers'].keys()]
+        output_markers = run_cfg['output_markers']
+        bry_markers = run_cfg['bry_free_markers'] + run_cfg['bry_fix_markers']
+
+        condition_inflow_dict = {}
+        for marker in input_markers:
+            marker_fun_name = run_cfg['input_markers'][str(marker)]
+            inflow_fun = ImportTool.get_module_function(condition_module, marker_fun_name)
+            condition_inflow_dict[marker] = partial(inflow_fun, tdim=run_cfg['dim'])
+
+        simulator = DolfinSimulator(run_cfg['name'], domain, cell_tags, facet_tags, velocity_order, pressure_order)
+        simulate_cfg = run_cfg['simulate_cfg']['navier_stoke']
+        simulator.define_navier_stoke_equation(nu_value=simulate_cfg['kinematic_viscosity_nu'])
+
+        # ------ define boundary
+        for marker in bry_markers:
+            simulator.add_boundary(f"bry_u{marker}", value=0.0, marker=marker, is_velocity=True)
+
+        for marker in condition_inflow_dict.keys():
+            simulator.add_boundary('inflow_u', value=condition_inflow_dict[marker], marker=marker, is_velocity=True)
+
+        for marker in output_markers:
+            simulator.add_boundary(f"outflow_p_{marker}", value=0.0, marker=marker, is_velocity=False)
+
+        if args.load_guess_res:
+            simulator.load_result(
+                file_info={
+                    'u_pkl_file': run_cfg['velocity_init_pkl'], 'p_pkl_file': run_cfg['pressure_init_pkl']
+                },
+                load_type='pkl'
+            )
+
+    elif args.simulate_method == 'openfoam':
+        simulator = OpenFoamSimulator(
+            run_cfg['name'], domain, cell_tags, facet_tags, run_cfg['simulate_cfg']['openfoam']
+        )
+
+    else:
+        raise ValueError("[ERROR]: Non-Valid Simulator")
+
+    return simulator
+
+
 def load_base_model(cfg: dict, args, tag_name=None):
     domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
         file=os.path.join(cfg['proj_dir'], cfg['xdmf_file']),
         mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets'
     )
+
+    simulator = load_simulator(cfg, args, domain, cell_tags, facet_tags)
+    opt_save_dir = os.path.join(cfg['proj_dir'], 'opt_result')
+    if os.path.exists(opt_save_dir):
+        shutil.rmtree(opt_save_dir)
+    os.mkdir(opt_save_dir)
+
     input_markers = [int(marker) for marker in cfg['input_markers'].keys()]
     output_markers = cfg['output_markers']
     bry_markers = cfg['bry_free_markers'] + cfg['bry_fix_markers']
@@ -103,41 +164,27 @@ def load_base_model(cfg: dict, args, tag_name=None):
         condition_inflow_dict[marker] = partial(inflow_fun, tdim=cfg['dim'])
 
     opt_cfg = cfg['optimize_cfg']
-
-    opt_save_dir = os.path.join(cfg['proj_dir'], 'opt_result')
-    if os.path.exists(opt_save_dir):
-        shutil.rmtree(opt_save_dir)
-    os.mkdir(opt_save_dir)
-
     opt = FluidConditionalModel(
-        name=cfg['name'], domain=domain, cell_tags=cell_tags, facet_tags=facet_tags,
-        Re=opt_cfg['Re'], bry_markers=bry_markers,
+        bry_markers=bry_markers,
         deformation_cfg=opt_cfg['deformation_cfg'],
         point_radius=opt_cfg['point_radius'],
         run_strategy_cfg=opt_cfg['run_strategy_cfg'],
         obs_avoid_cfg=opt_cfg['obs_avoid_cfg'],
-        isStokeEqu=opt_cfg['isStokeEqu'],
+        simulator=simulator,
+        nu_value=opt_cfg['kinematic_viscosity'],
         tag_name=tag_name,
-        simulate_velocity_order=2, simulate_pressure_order=1,
-        optimize_velocity_order=2, optimize_pressure_order=1,
+        velocity_order=2, pressure_order=1,
         save_opt_cfg={
             'orig_msh_file': os.path.join(cfg['proj_dir'], cfg['msh_file']), 'save_dir': opt_save_dir
         }
     )
-
-    if args.load_guess_res:
-        opt.load_result(
-            file_info={'u_pkl_file': cfg['velocity_init_pkl'], 'p_pkl_file': cfg['pressure_init_pkl']}, load_type='pkl'
-        )
 
     # --- define boundary conditions
     for marker in bry_markers:
         opt.add_state_boundary(name=f"bry_u{marker}", value=0.0, marker=marker, is_velocity=True)
 
     for marker in condition_inflow_dict.keys():
-        opt.add_state_boundary(
-            name='inflow_u', value=condition_inflow_dict[marker], marker=marker, is_velocity=True
-        )
+        opt.add_state_boundary('inflow_u', value=condition_inflow_dict[marker], marker=marker, is_velocity=True)
 
     for marker in output_markers:
         opt.add_state_boundary(f"outflow_p_{marker}", value=0.0, marker=marker, is_velocity=False)
@@ -158,15 +205,10 @@ def load_base_model(cfg: dict, args, tag_name=None):
     for cost_cfg in opt_cfg['cost_functions']:
         if cost_cfg['name'] == 'MiniumEnergy':
             cost_functional_list.append(
-                IntegralFunction(
-                    domain=opt.domain,
-                    form=inner(grad(opt.u), grad(opt.u)) * ufl.dx,
-                    name=cost_cfg['name']
-                )
+                IntegralFunction(domain=opt.domain, form=inner(grad(opt.u), grad(opt.u)) * ufl.dx, name='MiniumEnergy')
             )
         else:
             raise ValueError("[ERROR]: Non-Valid Method")
-
         cost_weights[cost_cfg['name']] = cost_cfg['weight']
 
     # --- define regularization
@@ -175,10 +217,8 @@ def load_base_model(cfg: dict, args, tag_name=None):
         if regularization_cfg['name'] == 'VolumeRegularization':
             shape_regularization_list.append(
                 VolumeRegularization(
-                    opt.control_problem,
-                    mu=regularization_cfg['mu'],
-                    target_volume_rho=regularization_cfg['target_volume_rho'],
-                    method=regularization_cfg['method'],
+                    opt.control_problem, mu=regularization_cfg['mu'],
+                    target_volume_rho=regularization_cfg['target_volume_rho'], method=regularization_cfg['method'],
                 )
             )
         else:
@@ -206,26 +246,18 @@ def load_base_model(cfg: dict, args, tag_name=None):
         conflict_regularization=conflict_regularization
     )
 
-    force_dict, pressure_dict, norm_flow_dict, flow_dict = {}, {}, {}, {}
+    pressure_dict, norm_flow_dict = {}, {}
     for marker in input_markers:
-        force_dict[f"force_{marker}_{opt.name}"] = dolfinx.fem.form(opt.p * opt.ds(marker))
-
         area_value = AssembleUtils.assemble_scalar(
             dolfinx.fem.form(dolfinx.fem.Constant(opt.domain, 1.0) * opt.ds(marker))
         )
         pressure_dict[f"pressure_{marker}_{opt.name}"] = dolfinx.fem.form((1.0 / area_value) * opt.p * opt.ds(marker))
 
-        flow_dict[f"flow_{marker}_{opt.name}"] = dolfinx.fem.form(sqrt(dot(opt.u, opt.u)) * opt.ds(marker))
-
     for marker in output_markers:
         norm_flow_dict[f"normFlow_{marker}_{opt.name}"] = dolfinx.fem.form(dot(opt.u, opt.n_vec) * opt.ds(marker))
-        flow_dict[f"flow_{marker}_{opt.name}"] = dolfinx.fem.form(sqrt(dot(opt.u, opt.u)) * opt.ds(marker))
 
     logger_dicts = {
-        'force': force_dict,
-        'norm_flow': norm_flow_dict,
-        'pressure': pressure_dict,
-        'flow': flow_dict,
+        'norm_flow': norm_flow_dict, 'pressure': pressure_dict,
         'volume': {f"volume_{opt.name}": dolfinx.fem.form(dolfinx.fem.Constant(opt.domain, 1.0) * ufl.dx)}
     }
 
@@ -271,7 +303,6 @@ def main():
             raise ValueError("[ERROR]: Duplicate Config Name")
         else:
             check_names.append(model.name)
-
         models.append(model)
 
     mesh_objs = []
@@ -297,12 +328,10 @@ def main():
         step += 1
 
         loss_list, log_list, is_converge = [], [], True
-
         res_dict = {}
         for model in models:
             grad_res_dict = model.compute_iteration_deformation(
-                obs_objs=obs_objs, mesh_objs=mesh_objs, step=step,
-                diffusion_method='diffusion_loss_weight',
+                obs_objs=obs_objs, mesh_objs=mesh_objs, step=step, diffusion_method='diffusion_loss_weight',
                 with_debug=args.with_debug
             )
             if not grad_res_dict['state']:
@@ -348,8 +377,8 @@ def main():
         if step > 100:
             break
 
-    for model in models:
-        model.save_msh(args.with_debug)
+        for model in models:
+            model.save_msh(args.with_debug)
 
 
 if __name__ == '__main__':

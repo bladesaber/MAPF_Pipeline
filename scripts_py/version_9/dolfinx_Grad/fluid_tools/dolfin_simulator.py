@@ -11,6 +11,7 @@ import json
 import pickle
 import pandas as pd
 from dolfinx import geometry
+import pyvista
 
 from ..recorder_utils import VTKRecorder, TensorBoardRecorder
 from ..dolfinx_utils import MeshUtils, AssembleUtils, BoundaryUtils
@@ -34,7 +35,7 @@ def sigma(u, p, mu: dolfinx.fem.Constant):
     return 2.0 * mu * epsilon(u) - p * Identity(len(u))
 
 
-class FluidSimulator(object):
+class DolfinSimulator(object):
     def __init__(
             self,
             name,
@@ -43,6 +44,7 @@ class FluidSimulator(object):
             facet_tags: dolfinx.mesh.MeshTags,
             velocity_order: int = 2,
             pressure_order: int = 1,
+            nu_order: int = 1
     ):
         self.name = name
         self.domain = domain
@@ -64,6 +66,7 @@ class FluidSimulator(object):
         self.Q, self.Q_to_W_dofs = self.W1.collapse()
         self.V_mapping_space = dolfinx.fem.VectorFunctionSpace(domain, ("CG", 1))
         self.Q_mapping_space = dolfinx.fem.FunctionSpace(domain, ("CG", 1))
+        self.nu_function_space = dolfinx.fem.FunctionSpace(domain, ("CG", nu_order))
         self.n_vec = MeshUtils.define_facet_norm(domain)
         self.ds = MeshUtils.define_ds(domain, facet_tags)
         self.dx = MeshUtils.define_dx(domain)
@@ -88,35 +91,30 @@ class FluidSimulator(object):
             'up': dolfinx.fem.Function(self.W)
         }
 
-    def define_navier_stoke_equation(self, Re):
+    def define_navier_stoke_equation(self, nu_value, constant_nu=True):
         up = dolfinx.fem.Function(self.W, name='state')
         u, p = ufl.split(up)
         v, q = ufl.split(ufl.TestFunction(self.W))
         f = dolfinx.fem.Constant(self.domain, np.zeros(self.tdim))
-        nu = dolfinx.fem.Constant(self.domain, 1. / Re)
+        if constant_nu:
+            nu = dolfinx.fem.Constant(self.domain, nu_value)
+        else:
+            nu = dolfinx.fem.Function(self.nu_function_space)
+            nu.x.array[:] = nu_value
 
-        conservation_form = (
+        navier_stoke_form = (
                 nu * inner(grad(u), grad(v)) * ufl.dx
                 + inner(grad(u) * u, v) * ufl.dx
                 - inner(p, div(v)) * ufl.dx
+                + inner(div(u), q) * ufl.dx
                 - inner(f, v) * ufl.dx
         )
-        continue_form = inner(div(u), q) * ufl.dx
-        navier_stoke_form = conservation_form + continue_form
-
-        # navier_stoke_form = (
-        #         nu * inner(grad(u), grad(v)) * ufl.dx
-        #         + inner(grad(u) * u, v) * ufl.dx
-        #         - inner(p, div(v)) * ufl.dx
-        #         + inner(div(u), q) * ufl.dx
-        #         - inner(f, v) * ufl.dx
-        # )
 
         self.equation_map['navier_stoke'] = {
             'lhs': navier_stoke_form,
             'up': up,
-            'conservation_form': conservation_form,
-            'continue_form': continue_form
+            'nu': nu,
+            'nu_constant': nu_value
         }
 
     def define_ipcs_equation(self, dt: float, dynamic_viscosity: float, density: float, is_channel_fluid: bool):
@@ -271,8 +269,7 @@ class FluidSimulator(object):
             self,
             proj_dir, name,
             ksp_option={'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
-            logger_dicts={},
-            **kwargs
+            logger_dicts={}, **kwargs
     ):
         if not self.equation_map.get('stoke', False):
             return
@@ -314,8 +311,7 @@ class FluidSimulator(object):
 
     def simulate_navier_stoke_equation(
             self, snes_option: dict, ksp_option: dict, criterion: dict,
-            guess_up: dolfinx.fem.Function = None,
-            **kwargs
+            guess_up: dolfinx.fem.Function = None, **kwargs
     ):
         nstoke_dict = self.equation_map['navier_stoke']
         up: dolfinx.fem.Function = nstoke_dict['up']
@@ -665,33 +661,35 @@ class FluidSimulator(object):
                 raise ValueError("[ERROR]: Non-Valid Mesh")
             pressure = df['pressure'].values
 
-            vel_fun, pressure_fun = CrossSimulatorUtil.convert_to_simple_function(
+            v_fun, p_fun = CrossSimulatorUtil.convert_to_simple_function(
                 self.domain, coords=coords, value_list=[vel, pressure],
             )
+            u_n_temp = dolfinx.fem.Function(self.V)
+            u_n_temp.interpolate(v_fun)
+            p_n_temp = dolfinx.fem.Function(self.Q)
+            p_n_temp.interpolate(p_fun)
 
-            if self.equation_map.get('ipcs', False):
-                self.equation_map['ipcs']['u_n'].interpolate(vel_fun)
-                self.equation_map['ipcs']['p_n'].interpolate(pressure_fun)
+            up: dolfinx.fem.Function = self.equation_map['navier_stoke']['up']
+            up.x.array[self.V_to_W_dofs] = u_n_temp.x.array
+            up.x.array[self.Q_to_W_dofs] = p_n_temp.x.array
 
-            if self.equation_map.get('stoke', False):
-                u_n_temp = dolfinx.fem.Function(self.V)
-                u_n_temp.interpolate(vel_fun)
-                p_n_temp = dolfinx.fem.Function(self.Q)
-                p_n_temp.interpolate(pressure_fun)
-
-                up: dolfinx.fem.Function = self.equation_map['stoke']['up']
-                up.x.array[self.V_to_W_dofs] = u_n_temp.x.array
-                up.x.array[self.Q_to_W_dofs] = p_n_temp.x.array
-
-            if self.equation_map.get('navier_stoke', False):
-                u_n_temp = dolfinx.fem.Function(self.V)
-                u_n_temp.interpolate(vel_fun)
-                p_n_temp = dolfinx.fem.Function(self.Q)
-                p_n_temp.interpolate(pressure_fun)
-
-                up: dolfinx.fem.Function = self.equation_map['navier_stoke']['up']
-                up.x.array[self.V_to_W_dofs] = u_n_temp.x.array
-                up.x.array[self.Q_to_W_dofs] = p_n_temp.x.array
+        elif load_type == 'vtk':
+            res_vtk: pyvista.UnstructuredGrid = pyvista.read(file_info['vtk_file'])
+            v_fun, p_fun, nut_fun = CrossSimulatorUtil.convert_to_simple_function(
+                self.domain, coords=res_vtk.points, value_list=[
+                    res_vtk.point_data['U'], res_vtk.point_data['p'], res_vtk.point_data['nut']
+                ]
+            )
+            u_n_temp = dolfinx.fem.Function(self.V)
+            u_n_temp.interpolate(v_fun)
+            p_n_temp = dolfinx.fem.Function(self.Q)
+            p_n_temp.interpolate(p_fun)
+            up: dolfinx.fem.Function = self.equation_map['navier_stoke']['up']
+            up.x.array[self.V_to_W_dofs] = u_n_temp.x.array
+            up.x.array[self.Q_to_W_dofs] = p_n_temp.x.array
+            nu: dolfinx.fem.Function = self.equation_map['navier_stoke']['nu']
+            nu.vector.aypx(0.0, nut_fun.vector)
+            nu.x.array[:] = nu.x.array + self.equation_map['navier_stoke']['nu_constant']
 
     def convert_result_to_csv(self, u_fun: dolfinx.fem.Function, p_fun: dolfinx.fem.Function):
         u_map = dolfinx.fem.Function(self.V_mapping_space)
@@ -733,7 +731,7 @@ class FluidSimulator(object):
             proj_dir, max_iter, log_iter, trial_iter,
             snes_option, ksp_option, snes_criterion, with_debug=False, **kwargs
     ):
-        def post_function(sim: FluidSimulator, step: int, simulator_dir):
+        def post_function(sim: DolfinSimulator, step: int, simulator_dir):
             if step % trial_iter == 0:
                 guess_up = self.merge_up(self.equation_map['ipcs']['u_n'], self.equation_map['ipcs']['p_n'])
                 res_dict = self.run_navier_stoke_process(

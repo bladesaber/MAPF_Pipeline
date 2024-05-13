@@ -8,7 +8,7 @@ import pyvista
 import argparse
 import json
 
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.dolfin_simulator import FluidSimulator
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.dolfin_simulator import DolfinSimulator
 from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import ImportTool
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.equation_solver import NonLinearProblemSolver
@@ -63,7 +63,7 @@ def find_guess_up(json_file, args):
             inflow_fun = ImportTool.get_module_function(condition_module, marker_fun_name)
             condition_inflow_dict[marker] = partial(inflow_fun, tdim=run_cfg['dim'])
 
-        simulator = FluidSimulator(run_cfg['name'], domain, cell_tags, facet_tags)
+        simulator = DolfinSimulator(run_cfg['name'], domain, cell_tags, facet_tags)
 
         # ------ prepare ipcs
         if args.ipcs_or_initGuess == 'ipcs':
@@ -99,7 +99,7 @@ def find_guess_up(json_file, args):
 
         # ------ prepare navier stoke
         navier_stoke_cfg = run_cfg['simulate_cfg']['navier_stoke']
-        simulator.define_navier_stoke_equation(Re=navier_stoke_cfg['Re'])
+        simulator.define_navier_stoke_equation(nu_value=navier_stoke_cfg['kinematic_viscosity_nu'])
 
         u_n, p_n = simulator.get_up('navier_stoke')
         inflow_dict = {}

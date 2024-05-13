@@ -91,7 +91,7 @@ def create_project(args):
 
     if 'navier_stoke' in args.simulate_method:
         simulate_cfg['navier_stoke'] = {
-            'Re': 100,
+            'kinematic_viscosity_nu': 0.01,
             'ksp_option': {
                 'ksp_type': 'preonly',
                 'pc_type': 'lu',
@@ -155,11 +155,6 @@ def create_project(args):
                     'class_name': 'volScalarField',
                     'args': OpenFoamUtils.example_p_property
                 },
-                'omega': {
-                    'location': 0,
-                    'class_name': 'volScalarField',
-                    'args': OpenFoamUtils.example_omega_property
-                },
                 'nut': {
                     'location': 0,
                     'class_name': 'volScalarField',
@@ -181,13 +176,18 @@ def create_project(args):
                     'args': OpenFoamUtils.example_epsilon_property
                 }
             },
+            'k-Epsilon_args': {
+                'abs_velocity_U': None,
+                'characteristic_length_L': None,
+                'kinematic_viscosity': None,
+            },
             'modify_type_dict': None,
-            'unit_scale': None
+            'unit_scale': None,
+            'cache_dir': None
         }
 
     optimize_cfg = {
-        'Re': 100,
-        'isStokeEqu': False,
+        'kinematic_viscosity': 0.01,
         'snes_option': {
             'snes_type': 'newtonls',
             'snes_linesearch_type': 'bt',

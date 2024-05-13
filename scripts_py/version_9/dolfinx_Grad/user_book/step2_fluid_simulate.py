@@ -7,7 +7,7 @@ from ufl import grad, dot, inner, sqrt
 import json
 import argparse
 
-from scripts_py.version_9.dolfinx_Grad.fluid_tools.dolfin_simulator import FluidSimulator
+from scripts_py.version_9.dolfinx_Grad.fluid_tools.dolfin_simulator import DolfinSimulator
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.user_book.step1_project_tool import ImportTool
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
@@ -19,7 +19,8 @@ def parse_args():
     parser.add_argument('--json_files', type=str, nargs='+', default=[])
     parser.add_argument('--simulate_method', type=str, default=None)
     parser.add_argument('--init_mesh', type=int, default=0)
-    parser.add_argument('--xdmf_tag', type=str, default=None)
+    parser.add_argument('--msh_tag', type=str, default='msh_file')
+    parser.add_argument('--xdmf_tag', type=str, default='xdmf_file')
     parser.add_argument('--save_result', type=int, default=0)
     args = parser.parse_args()
     return args
@@ -43,8 +44,8 @@ def dolfin_simulate(cfg, args, **kwargs):
         assert args.xdmf_tag is not None
         MeshUtils.msh_to_XDMF(
             name='model', dim=run_cfg['dim'],
-            msh_file=os.path.join(run_cfg['proj_dir'], run_cfg['msh_file']),
-            output_file=os.path.join(run_cfg['proj_dir'], run_cfg['xdmf_file'])
+            msh_file=os.path.join(run_cfg['proj_dir'], run_cfg[args.msh_tag]),
+            output_file=os.path.join(run_cfg['proj_dir'], run_cfg[args.xdmf_tag])
         )
 
     condition_module = ImportTool.import_module(run_cfg['proj_dir'], run_cfg['condition_package_name'])
@@ -65,7 +66,7 @@ def dolfin_simulate(cfg, args, **kwargs):
             inflow_fun = ImportTool.get_module_function(condition_module, marker_fun_name)
             condition_inflow_dict[marker] = partial(inflow_fun, tdim=run_cfg['dim'])
 
-        simulator = FluidSimulator(run_cfg['name'], domain, cell_tags, facet_tags)
+        simulator = DolfinSimulator(run_cfg['name'], domain, cell_tags, facet_tags)
 
         if simulate_method == 'ipcs':
             simulate_cfg = run_cfg['simulate_cfg']['ipcs']
@@ -77,7 +78,7 @@ def dolfin_simulate(cfg, args, **kwargs):
             )
         elif simulate_method == 'navier_stoke':
             simulate_cfg = run_cfg['simulate_cfg']['navier_stoke']
-            simulator.define_navier_stoke_equation(Re=simulate_cfg['Re'])
+            simulator.define_navier_stoke_equation(nu_value=simulate_cfg['kinematic_viscosity_nu'])
         elif simulate_method == 'stoke':
             simulate_cfg = run_cfg['simulate_cfg']['stoke']
             simulator.define_stoke_equation()
@@ -89,9 +90,7 @@ def dolfin_simulate(cfg, args, **kwargs):
             simulator.add_boundary(name=f"bry_u{marker}", value=0.0, marker=marker, is_velocity=True)
 
         for marker in condition_inflow_dict.keys():
-            simulator.add_boundary(
-                name='inflow_u', value=condition_inflow_dict[marker], marker=marker, is_velocity=True
-            )
+            simulator.add_boundary('inflow_u', value=condition_inflow_dict[marker], marker=marker, is_velocity=True)
 
         for marker in output_markers:
             simulator.add_boundary(f"outflow_p_{marker}", value=0.0, marker=marker, is_velocity=False)
@@ -118,6 +117,7 @@ def dolfin_simulate(cfg, args, **kwargs):
             'flow': flow_dict,
         }
 
+        # ------ run simulate
         record_dir = os.path.join(run_cfg['proj_dir'], f"{run_cfg['name']}_record")
         if not os.path.exists(record_dir):
             os.mkdir(record_dir)
@@ -158,6 +158,7 @@ def dolfin_simulate(cfg, args, **kwargs):
         else:
             return -1
 
+        # ------ save result
         if args.save_result:
             save_dir = os.path.join(res_dict['simulator_dir'], 'res_pkl')
             if os.path.exists(save_dir):
@@ -176,8 +177,23 @@ def openfoam_simulate(cfg, args, **kwargs):
         run_cfgs = [cfg.copy()]
     del cfg
 
+    run_cfg = run_cfgs[0]
+    if args.init_mesh:
+        assert args.xdmf_tag is not None
+        MeshUtils.msh_to_XDMF(
+            name='model', dim=run_cfg['dim'],
+            msh_file=os.path.join(run_cfg['proj_dir'], run_cfg[args.msh_tag]),
+            output_file=os.path.join(run_cfg['proj_dir'], run_cfg[args.xdmf_tag])
+        )
+
     for run_cfg in run_cfgs:
-        simulator = OpenFoamSimulator(run_cfg)
+        domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
+            file=os.path.join(run_cfg['proj_dir'], run_cfg[args.xdmf_tag]),
+            mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets'
+        )
+        simulator = OpenFoamSimulator(
+            run_cfg['name'], domain, cell_tags, facet_tags, run_cfg['simulate_cfg']['openfoam']
+        )
 
         record_dir = os.path.join(run_cfg['proj_dir'], f"{run_cfg['name']}_record")
         if not os.path.exists(record_dir):
@@ -188,8 +204,8 @@ def openfoam_simulate(cfg, args, **kwargs):
             shutil.rmtree(tmp_dir)
         os.mkdir(tmp_dir)
 
-        simulator.run_simulate(
-            tmp_dir, orig_msh_file=os.path.join(run_cfg['proj_dir'], run_cfg['msh_file']), convert_msh2=True
+        simulator.run_simulate_process(
+            tmp_dir, orig_msh_file=os.path.join(run_cfg['proj_dir'], run_cfg[args.msh_tag]), convert_msh2=True
         )
 
 

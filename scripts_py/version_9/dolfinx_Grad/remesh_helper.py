@@ -46,15 +46,28 @@ class ReMesher(object):
             f.write(f"Mesh.MeshSizeMin = {minSize};\n")
 
     @staticmethod
-    def save_remesh_msh_geo(stl_file: str, geo_file: str, minSize: float, maxSize: float):
-        assert stl_file.endswith('.msh')
-        assert geo_file.endswith('.geo')
+    def get_remesh_msh_geo(msh_file: str, origin_geo: str, new_geo: str, new_msh: str = None):
+        with open(new_geo, "w") as file:
+            file.write(f"Merge \"{msh_file}\";\n")
+            file.write("CreateGeometry;\n")
+            file.write("\n")
 
-        with open(geo_file, 'w') as f:
-            f.write(f"Merge '{stl_file}';\n")
-            f.write("CreateGeometry;\n")
-            f.write(f"Mesh.MeshSizeMax = {maxSize};\n")
-            f.write(f"Mesh.MeshSizeMin = {minSize};\n")
+            with open(origin_geo, "r") as f:
+                for line in f:
+                    if line[0].islower():
+                        file.write(line)
+                    if line[:5] == "Field":
+                        file.write(line)
+                    if line[:16] == "Background Field":
+                        file.write(line)
+                    if line[:19] == "BoundaryLayer Field":
+                        file.write(line)
+                    if line[:5] == "Mesh.":
+                        file.write(line)
+
+        if new_msh is not None:
+            code = f"gmsh {new_geo} -3 -o {new_msh}"
+            return code
 
     @staticmethod
     def reconstruct_vertex_indices(orig_msh_file: str, domain: dolfinx.mesh.Mesh, check=False):
@@ -357,7 +370,6 @@ class MeshDeformationRunner(object):
 
         min_det = min_det - 1.0
         max_det = max_det - 1.0
-
         is_valid = (min_det >= -volume_change) and (max_det <= volume_change)
         return is_valid
 
@@ -427,11 +439,11 @@ class MeshDeformationRunner(object):
             **kwargs
     ):
         step_size = init_stepSize
-        if max_step_limit is not None:
-            max_velocity = np.max(np.linalg.norm(direction_np, axis=1, ord=2))
-            if max_velocity > max_step_limit:
-                step_size = max_step_limit / max_velocity * step_size
-                # direction_np = direction_np * (max_step_limit / max_velocity)  # todo why unstable
+        # if max_step_limit is not None:
+        #     max_velocity = np.max(np.linalg.norm(direction_np, axis=1, ord=2))
+        #     if max_velocity > max_step_limit:
+        #         step_size = max_step_limit / max_velocity * step_size
+        #         # direction_np = direction_np * (max_step_limit / max_velocity)
 
         iteration = 0
         success_flag = False

@@ -15,25 +15,47 @@ Add source /opt/openfoam11/etc/bashrc to ~/.bashrc and update
 7. in GMSH, please use Netgen to optimize the mesh, original mesh can usually be divergence
 """
 
-import numpy as mp
+import numpy as np
 import pandas as pd
 import os
 import json
 import shutil
 import pyvista
+import dolfinx
+from sklearn.neighbors import KDTree
 
 from scripts_py.version_9.dolfinx_Grad.simulator_convert import OpenFoamUtils
 
 
 class OpenFoamSimulator(object):
-    def __init__(self, cfg: dict):
-        self.cfg = cfg
-        self.openfoam_cfg: dict = self.cfg['simulate_cfg']['openfoam']
+    def __init__(
+            self,
+            name,
+            domain: dolfinx.mesh.Mesh,
+            cell_tags: dolfinx.mesh.MeshTags,
+            facet_tags: dolfinx.mesh.MeshTags,
+            openfoam_cfg: dict
+    ):
+        self.name = name
+        self.domain = domain
+        self.cell_tags = cell_tags
+        self.facet_tags = facet_tags
+        self.tdim = self.domain.topology.dim
+        self.fdim = self.tdim - 1
+        self.openfoam_cfg: dict = openfoam_cfg
+        self.cache_dir = self.openfoam_cfg['cache_dir']
+        self.k, self.epsilon, self.Re = self.compute_k_epsilon(
+            U=self.openfoam_cfg['k-Epsilon_args']['abs_velocity_U'],
+            L=self.openfoam_cfg['k-Epsilon_args']['characteristic_length_L'],
+            viscosity=self.openfoam_cfg['k-Epsilon_args']['kinematic_viscosity']
+        )
+        print(f"[INFO]: guess Reynold Number: {self.Re}, k:{self.k}, epsilon:{self.epsilon}")
 
-    def run_simulate(self, tmp_dir, orig_msh_file, convert_msh2=False):
+    def run_simulate_process(self, tmp_dir, orig_msh_file, convert_msh2=False):
         # ------ Step 1: process msh file
         msh_file = os.path.join(tmp_dir, 'model.msh')
-        shutil.copy(orig_msh_file, msh_file)
+        if orig_msh_file != msh_file:
+            shutil.copy(orig_msh_file, msh_file)
         if convert_msh2:
             OpenFoamUtils.exec_cmd(OpenFoamUtils.get_msh_version_change_code(msh_file, msh_file))
 
@@ -58,7 +80,10 @@ class OpenFoamSimulator(object):
             ))
 
         # ------ Step 6: run simulation
-        OpenFoamUtils.exec_cmd(OpenFoamUtils.get_simulation_code(tmp_dir, run_code='foamRun', with_cd_dir=True))
+        # >> run.log will close the output
+        OpenFoamUtils.exec_cmd(OpenFoamUtils.get_simulation_code(
+            tmp_dir, run_code='foamRun >> simulate.log', with_cd_dir=True
+        ))
 
         # ------ Step 7: convert result to VTK
         OpenFoamUtils.exec_cmd(OpenFoamUtils.get_foam2vtk_code(tmp_dir, with_cd_dir=True))
@@ -72,3 +97,13 @@ class OpenFoamSimulator(object):
                 success_flag = True
 
         return {'state': success_flag, 'res_vtk': res_vtk}
+
+    @staticmethod
+    def compute_k_epsilon(U, L, viscosity):
+        l = L * 0.07
+        Re = np.abs(U) * L / viscosity
+        I = 0.16 * np.power(Re, -1./8.)
+        k = 3./2. * np.power(U * I, 2)
+        C_u = 0.09
+        epsilon = np.power(C_u, 0.75) * np.power(k, 1.5) / l
+        return k, epsilon, Re
