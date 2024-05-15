@@ -473,7 +473,13 @@ class FluidConditionalModel(object):
                 self.domain.comm, update_state=False, with_debug=with_debug
             )
             is_valid = loss < loss_storge_ctype.value + np.abs(loss_storge_ctype.value) * tol
-            # print('Debug_remove: ', loss, is_valid)
+
+            loss_infos = self.opt_problem.get_cost_info(self.domain.comm, update_state=False)
+            loss_info_str = "[INFO]: "
+            for loss_name, loss_value in loss_infos:
+                loss_info_str += f"{loss_name}:{loss_value:.10f} "
+            print(loss_info_str)
+
             return is_valid
 
         self.solver_vars.update({

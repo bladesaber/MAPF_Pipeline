@@ -34,7 +34,9 @@ class OpenFoamSimulator(object):
             domain: dolfinx.mesh.Mesh,
             cell_tags: dolfinx.mesh.MeshTags,
             facet_tags: dolfinx.mesh.MeshTags,
-            openfoam_cfg: dict
+            openfoam_cfg: dict,
+            remove_conda_env=False,
+            conda_sh='~/anaconda3/etc/profile.d/conda.sh'
     ):
         self.name = name
         self.domain = domain
@@ -44,6 +46,17 @@ class OpenFoamSimulator(object):
         self.fdim = self.tdim - 1
         self.openfoam_cfg: dict = openfoam_cfg
         self.cache_dir = self.openfoam_cfg['cache_dir']
+        self.remove_conda_env = remove_conda_env
+        self.conda_sh = conda_sh
+
+        if self.openfoam_cfg['configuration'].get('decomposeParDict'):
+            self.run_parallel = True
+            self.num_of_threats = int(
+                self.openfoam_cfg['configuration']['decomposeParDict']['args']['numberOfSubdomains']
+            )
+        else:
+            self.run_parallel = False
+
         self.k, self.epsilon, self.Re = self.compute_k_epsilon(
             U=self.openfoam_cfg['k-Epsilon_args']['abs_velocity_U'],
             L=self.openfoam_cfg['k-Epsilon_args']['characteristic_length_L'],
@@ -81,9 +94,13 @@ class OpenFoamSimulator(object):
 
         # ------ Step 6: run simulation
         # >> run.log will close the output
-        OpenFoamUtils.exec_cmd(OpenFoamUtils.get_simulation_code(
-            tmp_dir, run_code='foamRun >> simulate.log', with_cd_dir=True
-        ))
+        if self.run_parallel:
+            OpenFoamUtils.exec_cmd(OpenFoamUtils.get_simulation_parallel_code(
+                tmp_dir, num_of_process=self.num_of_threats, with_cd_dir=True,
+                remove_conda_env=self.remove_conda_env, conda_sh=self.conda_sh
+            ))
+        else:
+            OpenFoamUtils.exec_cmd(OpenFoamUtils.get_simulation_code(tmp_dir, with_cd_dir=True))
 
         # ------ Step 7: convert result to VTK
         OpenFoamUtils.exec_cmd(OpenFoamUtils.get_foam2vtk_code(tmp_dir, with_cd_dir=True))

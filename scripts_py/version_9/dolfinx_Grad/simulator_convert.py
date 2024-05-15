@@ -181,14 +181,43 @@ class OpenFoamUtils(object):
         return code
 
     @staticmethod
-    def get_simulation_code(proj_dir: str, run_code='foamRun;', with_cd_dir=False):
+    def get_simulation_code(proj_dir: str, run_code='foamRun', with_cd_dir=False):
         assert os.path.exists(proj_dir) and os.path.isdir(proj_dir)
         assert os.path.exists(os.path.join(proj_dir, 'system'))
         assert os.path.exists(os.path.join(proj_dir, 'constant'))
         code = ""
         if with_cd_dir:
             code += f"cd {proj_dir}; "
-        code += run_code
+        code += f"{run_code} >> simulate.log;"
+        return code
+
+    @staticmethod
+    def get_simulation_parallel_code(
+            proj_dir: str, num_of_process: int, run_code='foamRun', with_cd_dir=False,
+            remove_conda_env=False, conda_sh: str = None
+    ):
+        """
+        Please deactivate conda environment
+        """
+        assert os.path.exists(proj_dir) and os.path.isdir(proj_dir)
+        assert os.path.exists(os.path.join(proj_dir, 'system'))
+        assert os.path.exists(os.path.join(proj_dir, 'constant'))
+        code = ""
+        if with_cd_dir:
+            code += f"cd {proj_dir}; "
+        code += 'decomposePar >> decomposePar.log; '
+
+        if remove_conda_env:
+            assert conda_sh is not None
+            # In linux bash, source has been replaced by .
+            # code += f"source {conda_sh}; conda deactivate; echo $CONDA_DEFAULT_ENV; "
+            code += f". {conda_sh}; conda deactivate; echo $CONDA_DEFAULT_ENV >> debug_conda.log; "
+
+        run_code = run_code.replace(';', '')
+        code += f'mpiexec -np {num_of_process} {run_code} -parallel >> simulate.log; '
+
+        code += 'reconstructPar -latestTime >> reconstructPar.log;'
+
         return code
 
     @staticmethod
@@ -321,6 +350,23 @@ class OpenFoamUtils(object):
             'printCoeffs': 'on',
             'viscosityModel': 'Newtonian'
         }
+    }
+
+    default_decomposeParDict = {
+        'numberOfSubdomains': 8,
+        'method': 'hierarchical',
+        'simpleCoeffs': {
+            'n': '(4 2 1)'
+        },
+        'hierarchicalCoeffs': {
+            'n': '(4 2 1)',
+            'order': 'xyz'
+        },
+        'manualCoeffs': {
+            'dataFile': '\"\"'
+        },
+        'distributed': 'no',
+        'roots': '( )'
     }
 
     example_U_property = {

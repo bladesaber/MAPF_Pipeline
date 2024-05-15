@@ -32,6 +32,13 @@ from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
 from scripts_py.version_9.dolfinx_Grad.fluid_tools.dolfin_simulator import DolfinSimulator
 from scripts_py.version_9.dolfinx_Grad.fluid_tools.openfoam_simulator import OpenFoamSimulator
 
+# todo
+#   0.先做目标函数平衡
+#   1.先做平衡流量
+#   2.再做多场景
+#   3.再做多体障碍回避
+#   4.修正多个体优化迭代过程
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Find Good Naiver Stoke Initiation")
@@ -128,7 +135,8 @@ def load_simulator(
 
     elif args.simulate_method == 'openfoam':
         simulator = OpenFoamSimulator(
-            run_cfg['name'], domain, cell_tags, facet_tags, run_cfg['simulate_cfg']['openfoam']
+            run_cfg['name'], domain, cell_tags, facet_tags, run_cfg['simulate_cfg']['openfoam'],
+            remove_conda_env=True
         )
 
     else:
@@ -173,7 +181,8 @@ def load_base_model(cfg: dict, args, tag_name=None):
         simulator=simulator,
         nu_value=opt_cfg['kinematic_viscosity'],
         tag_name=tag_name,
-        velocity_order=2, pressure_order=1,
+        velocity_order=2,
+        pressure_order=1,
         save_opt_cfg={
             'orig_msh_file': os.path.join(cfg['proj_dir'], cfg['msh_file']), 'save_dir': opt_save_dir
         }
@@ -337,7 +346,6 @@ def main():
             if not grad_res_dict['state']:
                 print(f"[INFO]: {model.tag_name} Grad Computation Fail")
                 return -1
-
             res_dict[model.name] = grad_res_dict
 
         for model in models:
@@ -374,7 +382,7 @@ def main():
         if np.any(loss_list > best_loss_list * (1.0 + best_loss_tol)):
             break
 
-        if step > 100:
+        if step > 300:
             break
 
         for model in models:

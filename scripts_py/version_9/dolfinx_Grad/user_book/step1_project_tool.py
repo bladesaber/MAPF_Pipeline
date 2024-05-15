@@ -135,6 +135,11 @@ def create_project(args):
                     'class_name': 'dictionary',
                     'args': OpenFoamUtils.default_fvSolution
                 },
+                'decomposeParDict': {
+                    'location': 'system',
+                    'class_name': 'dictionary',
+                    'args': OpenFoamUtils.default_decomposeParDict
+                },
                 'physicalProperties': {
                     'location': 'constant',
                     'class_name': 'dictionary',

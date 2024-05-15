@@ -192,7 +192,8 @@ def openfoam_simulate(cfg, args, **kwargs):
             mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets'
         )
         simulator = OpenFoamSimulator(
-            run_cfg['name'], domain, cell_tags, facet_tags, run_cfg['simulate_cfg']['openfoam']
+            run_cfg['name'], domain, cell_tags, facet_tags, run_cfg['simulate_cfg']['openfoam'],
+            remove_conda_env=True
         )
 
         record_dir = os.path.join(run_cfg['proj_dir'], f"{run_cfg['name']}_record")
