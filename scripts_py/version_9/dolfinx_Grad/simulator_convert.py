@@ -149,8 +149,9 @@ class OpenFoamUtils(object):
         return res
 
     @staticmethod
-    def get_msh_version_change_code(orig_msh: str, target_msh: str, version_format='msh2'):
-        code = f"gmsh {orig_msh} -save -format {version_format} -o {target_msh} >> version_convert.log;"
+    def get_msh_version_change_code(proj_dir: str, orig_msh: str, target_msh: str, version_format='msh2'):
+        code = f"cd {proj_dir}; "
+        code += f"gmsh {orig_msh} -save -format {version_format} -o {target_msh} >> version_convert.log;"
         return code
 
     @staticmethod
@@ -159,41 +160,35 @@ class OpenFoamUtils(object):
         return code
 
     @staticmethod
-    def get_gmsh2foam_code(proj_dir: str, msh_file, with_cd_dir=False):
+    def get_gmsh2foam_code(proj_dir: str, msh_file):
         assert os.path.exists(proj_dir) and os.path.isdir(proj_dir)
         system_dir = os.path.join(proj_dir, 'system')
         assert os.path.exists(os.path.join(system_dir, 'controlDict'))
-        code = ""
-        if with_cd_dir:
-            code += f"cd {proj_dir}; "
+        code = f"cd {proj_dir}; "
         code += f"gmshToFoam {msh_file} >> convertMesh.log;"
         return code
 
     @staticmethod
-    def get_vtk2foam_code(proj_dir: str, vtk_file, with_cd_dir=False):
+    def get_vtk2foam_code(proj_dir: str, vtk_file):
         assert os.path.exists(proj_dir) and os.path.isdir(proj_dir)
         system_dir = os.path.join(proj_dir, 'system')
         assert os.path.exists(os.path.join(system_dir, 'controlDict'))
-        code = ""
-        if with_cd_dir:
-            code += f"cd {proj_dir}; "
+        code = f"cd {proj_dir}; "
         code += f"vtkUnstructuredToFoam {vtk_file} >> convertMesh.log;"
         return code
 
     @staticmethod
-    def get_simulation_code(proj_dir: str, run_code='foamRun', with_cd_dir=False):
+    def get_simulation_code(proj_dir: str, run_code='foamRun'):
         assert os.path.exists(proj_dir) and os.path.isdir(proj_dir)
         assert os.path.exists(os.path.join(proj_dir, 'system'))
         assert os.path.exists(os.path.join(proj_dir, 'constant'))
-        code = ""
-        if with_cd_dir:
-            code += f"cd {proj_dir}; "
+        code = f"cd {proj_dir}; "
         code += f"{run_code} >> simulate.log;"
         return code
 
     @staticmethod
     def get_simulation_parallel_code(
-            proj_dir: str, num_of_process: int, run_code='foamRun', with_cd_dir=False,
+            proj_dir: str, num_of_process: int, run_code='foamRun',
             remove_conda_env=False, conda_sh: str = None
     ):
         """
@@ -202,9 +197,8 @@ class OpenFoamUtils(object):
         assert os.path.exists(proj_dir) and os.path.isdir(proj_dir)
         assert os.path.exists(os.path.join(proj_dir, 'system'))
         assert os.path.exists(os.path.join(proj_dir, 'constant'))
-        code = ""
-        if with_cd_dir:
-            code += f"cd {proj_dir}; "
+
+        code = f"cd {proj_dir}; "
         code += 'decomposePar >> decomposePar.log; '
 
         if remove_conda_env:
@@ -213,7 +207,6 @@ class OpenFoamUtils(object):
             # code += f"source {conda_sh}; conda deactivate; echo $CONDA_DEFAULT_ENV; "
             code += f". {conda_sh}; conda deactivate; echo $CONDA_DEFAULT_ENV >> debug_conda.log; "
 
-        run_code = run_code.replace(';', '')
         code += f'mpiexec -np {num_of_process} {run_code} -parallel >> simulate.log; '
 
         code += 'reconstructPar -latestTime >> reconstructPar.log;'
@@ -221,10 +214,8 @@ class OpenFoamUtils(object):
         return code
 
     @staticmethod
-    def get_foam2vtk_code(proj_dir: str, with_cd_dir=False):
-        code = ""
-        if with_cd_dir:
-            code += f"cd {proj_dir}; "
+    def get_foam2vtk_code(proj_dir: str):
+        code = f"cd {proj_dir}; "
         code += f"foamToVTK -ascii -latestTime -allPatches >> output_result.log;"
         return code
 
@@ -319,7 +310,7 @@ class OpenFoamUtils(object):
         },
         'SIMPLE': {
             'nNonOrthogonalCorrectors': 0,
-            'consistent': 'yes',
+            'consistent': 'no',
             'residualControl': {
                 'p': 1e-2,
                 'U': 1e-3,
@@ -356,10 +347,12 @@ class OpenFoamUtils(object):
         'numberOfSubdomains': 8,
         'method': 'hierarchical',
         'simpleCoeffs': {
-            'n': '(4 2 1)'
+            'n': '(4 2 1)',
+            'delta': 0.001
         },
         'hierarchicalCoeffs': {
             'n': '(4 2 1)',
+            'delta': 0.001,
             'order': 'xyz'
         },
         'manualCoeffs': {
@@ -540,12 +533,84 @@ class OpenFoamUtils(object):
             f.write(''.join(content))
 
     @staticmethod
-    def get_unit_scale_code(proj_dir: str, scale, with_cd_dir=False):
-        code = ""
-        if with_cd_dir:
-            code += f"cd {proj_dir}; "
+    def get_unit_scale_code(proj_dir: str, scale):
+        code = f"cd {proj_dir}; "
         code += f"transformPoints \"scale={scale}\";"
         return code
+
+    @staticmethod
+    def create_snappy_blockMesh(
+            self, location_dir, xmin, ymin, zmin, xmax, ymax, zmax, grid_x, grid_y, grid_z,
+            scale=1.0, padding=0.1
+    ):
+        content = [
+            "/*--------------------------------*- C++ -*----------------------------------*\\",
+            "  =========                 |",
+            "  \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox",
+            "   \\\\    /   O peration     | Website:  https://openfoam.org",
+            "    \\\\  /    A nd           | Version:  dev",
+            "     \\\\/     M anipulation  |",
+            "\*---------------------------------------------------------------------------*/",
+            "FoamFile\n{",
+            "    format      ascii;",
+            f"    class       dictionary;",
+            f"    location    \"system\";",
+            f"    object      blockMeshDict;",
+            "}",
+            "// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n"
+        ]
+        xmin, ymin, zmin = xmin - padding, ymin - padding, zmin - padding
+        xmax, ymax, zmax = xmax + padding, ymax + padding, zmax + padding
+
+        content.extend([
+            f"scale {scale};\n",
+            'vertices\n(',
+            f"  ({xmin} {ymin} {zmin})",
+            f"  ({xmax} {ymin} {zmin})",
+            f"  ({xmax} {ymax} {zmin})",
+            f"  ({xmin} {ymax} {zmin})",
+            f"  ({xmin} {ymin} {zmax})",
+            f"  ({xmax} {ymin} {zmax})",
+            f"  ({xmax} {ymax} {zmax})",
+            f"  ({xmin} {ymax} {zmax})",
+            ');\n',
+            'blocks\n(',
+            '   hex(0 1 2 3 4 5 6 7)'
+            f"  ({grid_x} {grid_y} {grid_z})  simpleGrading  (1 1 1)",
+            ');\n',
+            'boundary\n(',
+            '    xMin{\n        type patch;\n        faces ( (0 3 7 4) );\n    }\n',
+            '    xMax{\n        type patch;\n        faces ( (1 2 6 5) );\n    }\n',
+            '    yMin{\n        type patch;\n        faces ( (0 1 5 4) );\n    }\n',
+            '    yMax{\n        type patch;\n        faces ( (3 7 6 2) );\n    }\n',
+            '    zMin{\n        type patch;\n        faces ( (0 1 2 3) );\n    }\n',
+            '    zMax{\n        type patch;\n        faces ( (4 5 6 7) );\n    }',
+            ');'
+        ])
+
+        with open(os.path.join(location_dir, 'blockMeshDict'), 'w') as f:
+            content = '\n'.join(content)
+            f.write(content)
+
+    @staticmethod
+    def create_snappyHexMeshDict(castellated_dict: dict, snap_dict: dict, add_layers_dict: dict):
+        content = [
+            "/*--------------------------------*- C++ -*----------------------------------*\\",
+            "  =========                 |",
+            "  \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox",
+            "   \\\\    /   O peration     | Website:  https://openfoam.org",
+            "    \\\\  /    A nd           | Version:  dev",
+            "     \\\\/     M anipulation  |",
+            "\*---------------------------------------------------------------------------*/",
+            "FoamFile\n{",
+            "    format      ascii;",
+            f"    class       dictionary;",
+            f"    location    \"system\";",
+            f"    object      snappyHexMeshDict;",
+            "}",
+            "// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n"
+        ]
+        raise NotImplementedError()
 
     @staticmethod
     def create_sample_file(proj_dir: str, sample_points: np.ndarray, sample_fields: List[str]):

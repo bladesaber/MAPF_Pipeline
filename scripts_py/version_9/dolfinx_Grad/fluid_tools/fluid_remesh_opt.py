@@ -24,8 +24,12 @@ from .dolfin_simulator import DolfinSimulator
 from .openfoam_simulator import OpenFoamSimulator
 from ..collision_objs import MeshCollisionObj, ObstacleCollisionObj
 from ..surface_fields import type_conflict_regulariztions
-from ..remesh_helper import ReMesher
 from ..simulator_convert import CrossSimulatorUtil
+from ..remesh_helper import ReMesher
+
+from ..lagrange_method.cost_functions import IntegralFunction
+from ..lagrange_method.shape_regularization import ShapeRegularization, VolumeRegularization
+from ..surface_fields import SparsePointsRegularization
 
 
 class FluidConditionalModel(object):
@@ -36,14 +40,18 @@ class FluidConditionalModel(object):
 
     def __init__(
             self,
+            input_markers: List[int],
+            output_markers: List[int],
+            bry_fixed_markers: List[int],
+            bry_free_markers: List[int],
             bry_markers: List[int],
             deformation_cfg: Dict,
             point_radius: float,
             run_strategy_cfg: dict,
             obs_avoid_cfg: dict,
-            simulator: Union[OpenFoamSimulator],
+            simulator: OpenFoamSimulator,
             nu_value: float,
-            mesh_file_cfg: dict,
+            opt_cfg: dict,
             velocity_order: int = 1,
             pressure_order: int = 1,
             nu_order: int = 1,
@@ -52,6 +60,50 @@ class FluidConditionalModel(object):
     ):
         self.simulator = simulator
         self.name = self.simulator.name
+        self.tag_name = tag_name if (tag_name is not None) else self.name
+
+        self.nu_value = nu_value
+        self.deformation_cfg = deformation_cfg
+        self.velocity_order = velocity_order
+        self.pressure_order = pressure_order
+        self.nu_order = nu_order
+        self.point_radius = point_radius
+
+        self.input_markers = input_markers
+        self.output_markers = output_markers
+        self.bry_fixed_markers = bry_fixed_markers
+        self.bry_free_markers = bry_free_markers
+        self.bry_markers = bry_markers
+
+        self.run_strategy_cfg, self.obs_avoid_cfg = self.check_cfg(run_strategy_cfg, obs_avoid_cfg)
+        self.regularization_filter = regularization_filter
+        self.reMesh_dir = opt_cfg['remesh_dir']
+        assert self.reMesh_dir is not None
+
+        self.solver_vars = {}
+        self.bcs_state_data = {}
+        self.bcs_control_data = {}
+        self.opt_cfg = opt_cfg
+        self.mesh_file_cfg = {}
+
+    def check_cfg(self, run_strategy_cfg, obs_avoid_cfg):
+        assert obs_avoid_cfg['bbox_rho'] < 1.0 and obs_avoid_cfg['bbox_w_lower'] > 0.0
+        if obs_avoid_cfg['method'] == 'sigmoid_v1':
+            obs_avoid_cfg['length_shift'] = run_strategy_cfg['max_step_limit']
+            obs_avoid_cfg['length_scale'] = obs_avoid_cfg.get('length_scale', 1.0)
+        elif obs_avoid_cfg['method'] == 'relu_v1':
+            obs_avoid_cfg['length_shift'] = run_strategy_cfg['max_step_limit']
+            obs_avoid_cfg['length_scale'] = obs_avoid_cfg.get('length_scale', 1.0)
+        else:
+            raise NotImplementedError
+        return run_strategy_cfg, obs_avoid_cfg
+
+    def re_init_simulator(
+            self, domain: dolfinx.mesh.Mesh, cell_tags: dolfinx.mesh.MeshTags, facet_tags: dolfinx.mesh.MeshTags
+    ):
+        self.simulator.re_init(domain, cell_tags, facet_tags)
+
+    def re_init(self, mesh_file_cfg):
         self.domain = self.simulator.domain
         self.cell_tags = self.simulator.cell_tags
         self.facet_tags = self.simulator.facet_tags
@@ -61,8 +113,8 @@ class FluidConditionalModel(object):
 
         self.W = dolfinx.fem.FunctionSpace(
             self.domain, ufl.MixedElement([
-                ufl.VectorElement("Lagrange", self.domain.ufl_cell(), velocity_order),
-                ufl.FiniteElement("Lagrange", self.domain.ufl_cell(), pressure_order)
+                ufl.VectorElement("Lagrange", self.domain.ufl_cell(), self.velocity_order),
+                ufl.FiniteElement("Lagrange", self.domain.ufl_cell(), self.pressure_order)
             ])
         )
         self.W0, self.W1 = self.W.sub(0), self.W.sub(1)
@@ -70,21 +122,15 @@ class FluidConditionalModel(object):
         self.Q, self.Q_to_W_dofs = self.W1.collapse()
         self.V_mapping_space = dolfinx.fem.VectorFunctionSpace(self.domain, ("CG", 1))
         self.Q_mapping_space = dolfinx.fem.FunctionSpace(self.domain, ("CG", 1))
-        self.nu_function_space = dolfinx.fem.FunctionSpace(self.domain, ("CG", nu_order))
+        self.nu_function_space = dolfinx.fem.FunctionSpace(self.domain, ("CG", self.nu_order))
 
         self.up = dolfinx.fem.Function(self.W, name='state')
         self.u, self.p = ufl.split(self.up)
         self.vq = dolfinx.fem.Function(self.W, name='adjoint')
         v, q = ufl.split(self.vq)
         f = dolfinx.fem.Constant(self.domain, np.zeros(self.tdim))
-        if isinstance(self.simulator, DolfinSimulator):
-            self.nu = dolfinx.fem.Constant(self.domain, nu_value)
-        elif isinstance(self.simulator, OpenFoamSimulator):
-            self.nu = dolfinx.fem.Function(self.nu_function_space)
-            self.nu.x.array[:] = nu_value
-        else:
-            raise ValueError("[ERROR]: Non-Valid Simulator")
-        self.nu_value = nu_value
+        self.nu = dolfinx.fem.Function(self.nu_function_space)
+        self.nu.x.array[:] = self.nu_value
 
         self.F_form = (
                 self.nu * inner(grad(self.u), grad(v)) * ufl.dx
@@ -103,61 +149,183 @@ class FluidConditionalModel(object):
         self.control_problem: ShapeDataBase = None
         self.cost_weight: dict = {}
         self.opt_problem: OptimalShapeProblem = None
-        self.deformation_handler = MeshDeformationRunner(self.domain, **deformation_cfg)
+        self.deformation_handler = MeshDeformationRunner(self.domain, **self.deformation_cfg)
 
         # ------ conflict relative
-        self.tag_name = tag_name if (tag_name is not None) else self.name
         self.mesh_obj = MeshCollisionObj(
-            self.tag_name, self.domain, self.facet_tags, self.cell_tags, bry_markers, point_radius
+            self.tag_name, self.domain, self.facet_tags, self.cell_tags, self.bry_markers, self.point_radius
         )
         self.mesh_obj.update_tree()
         self.conflict_regularization: type_conflict_regulariztions = None
 
-        # ------ solving parameters
-        self.solver_vars = {}
-        self.run_strategy_cfg, self.obs_avoid_cfg = self.check_cfg(run_strategy_cfg, obs_avoid_cfg)
-        self.regularization_filter = regularization_filter
-
-        self.mesh_file_cfg = mesh_file_cfg
+        self.mesh_file_cfg.update(mesh_file_cfg)
         self.mesh_file_cfg['vertex_indices'] = ReMesher.reconstruct_vertex_indices(
             orig_msh_file=self.mesh_file_cfg['msh_file'], domain=self.domain
         )
 
-    def check_cfg(self, run_strategy_cfg, obs_avoid_cfg):
-        assert obs_avoid_cfg['bbox_rho'] < 1.0 and obs_avoid_cfg['bbox_w_lower'] > 0.0
-        if obs_avoid_cfg['method'] == 'sigmoid_v1':
-            obs_avoid_cfg['length_shift'] = run_strategy_cfg['max_step_limit']
-            obs_avoid_cfg['length_scale'] = obs_avoid_cfg.get('length_scale', 1.0)
-        elif obs_avoid_cfg['method'] == 'relu_v1':
-            obs_avoid_cfg['length_shift'] = run_strategy_cfg['max_step_limit']
-            obs_avoid_cfg['length_scale'] = obs_avoid_cfg.get('length_scale', 1.0)
-        else:
-            raise NotImplementedError
-        return run_strategy_cfg, obs_avoid_cfg
+    def re_define_problem(self):
+        # ------ Problem define
+        self.state_initiation(
+            snes_option=self.opt_cfg['snes_option'],
+            snes_criterion=self.opt_cfg['snes_criterion'],
+            state_ksp_option=self.opt_cfg['state_ksp_option'],
+            adjoint_ksp_option=self.opt_cfg['adjoint_ksp_option'],
+            gradient_ksp_option=self.opt_cfg['gradient_ksp_option'],
+        )
+
+        # --- define cost functions
+        cost_functional_list, cost_weights = [], {}
+        for cost_cfg in self.opt_cfg['cost_functions']:
+            if cost_cfg['name'] == 'MiniumEnergy':
+                cost_functional_list.append(
+                    IntegralFunction(
+                        domain=self.domain, form=inner(grad(self.u), grad(self.u)) * ufl.dx, name='MiniumEnergy'
+                    )
+                )
+            else:
+                raise ValueError("[ERROR]: Non-Valid Method")
+            cost_weights[cost_cfg['name']] = cost_cfg['weight']
+
+        # --- define regularization
+        shape_regularization_list = []
+        for regularization_cfg in self.opt_cfg['regularization_functions']:
+            if regularization_cfg['name'] == 'VolumeRegularization':
+                shape_regularization_list.append(
+                    VolumeRegularization(
+                        self.control_problem, mu=regularization_cfg['mu'],
+                        target_volume_rho=regularization_cfg['target_volume_rho'], method=regularization_cfg['method'],
+                    )
+                )
+            else:
+                raise ValueError("[ERROR]: Non-Valid Method")
+        shape_regularization = ShapeRegularization(shape_regularization_list)
+
+        conflict_regularization = SparsePointsRegularization(
+            self.control_problem, cfg=self.opt_cfg['obs_avoid_cfg'], mu=self.opt_cfg['obs_avoid_cfg']['weight']
+        )
+
+        scalar_product_method: dict = self.opt_cfg['scalar_product_method']
+        if scalar_product_method['method'] == 'Poincare-Steklov operator':
+            scalar_product_method.update({
+                'cell_tags': self.cell_tags,
+                'facet_tags': self.facet_tags,
+                'bry_free_markers': self.bry_free_markers,
+                'bry_fixed_markers': self.bry_fixed_markers,
+            })
+
+        self.optimization_initiation(
+            cost_functional_list=cost_functional_list,
+            cost_weight=cost_weights,
+            shapeRegularization=shape_regularization,
+            scalar_product_method=scalar_product_method,
+            conflict_regularization=conflict_regularization
+        )
+
+    def re_init_boundary(self):
+        for name in self.bcs_state_data.keys():
+            bc_info = self.bcs_state_data[name]
+            if bc_info['is_velocity']:
+                bc_value = DolfinSimulator.get_boundary_function(name, bc_info['value'], self.V)
+                bc_dof = MeshUtils.extract_entity_dofs(
+                    (self.W0, self.V), self.fdim,
+                    MeshUtils.extract_facet_entities(self.domain, self.facet_tags, bc_info['marker'])
+                )
+                bc = dolfinx.fem.dirichletbc(bc_value, bc_dof, self.W0)
+                self.bcs_info_state.append((bc, self.W0, bc_dof, bc_value))
+            else:
+                bc_value = DolfinSimulator.get_boundary_function(name, bc_info['value'], self.Q)
+                bc_dof = MeshUtils.extract_entity_dofs(
+                    (self.W1, self.Q), self.fdim,
+                    MeshUtils.extract_facet_entities(self.domain, self.facet_tags, bc_info['marker'])
+                )
+                bc = dolfinx.fem.dirichletbc(bc_value, bc_dof, self.W1)
+                self.bcs_info_state.append((bc, self.W1, bc_dof, bc_value))
+
+        for name in self.bcs_control_data.keys():
+            bc_info = self.bcs_control_data[name]
+            bc_value = DolfinSimulator.get_boundary_function(name, bc_info['value'], self.V_S)
+            bc_dof = MeshUtils.extract_entity_dofs(
+                self.V_S, self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, bc_info['marker'])
+            )
+            bc = dolfinx.fem.dirichletbc(bc_value, bc_dof, None)
+            self.bcs_info_control.append((bc, self.V_S, bc_dof, bc_value))
+
+    def re_init_optimize_state(self):
+        pressure_dict, norm_flow_dict = {}, {}
+        for marker in self.input_markers:
+            area_value = AssembleUtils.assemble_scalar(
+                dolfinx.fem.form(dolfinx.fem.Constant(self.domain, 1.0) * self.ds(marker))
+            )
+            pressure_dict[f"pressure_{marker}_{self.name}"] = (
+                dolfinx.fem.form((1.0 / area_value) * self.p * self.ds(marker))
+            )
+
+        for marker in self.output_markers:
+            norm_flow_dict[f"normFlow_{marker}_{self.name}"] = (
+                dolfinx.fem.form(dot(self.u, self.n_vec) * self.ds(marker))
+            )
+
+        logger_dicts = {
+            'norm_flow': norm_flow_dict, 'pressure': pressure_dict,
+            'volume': {f"volume_{self.name}": dolfinx.fem.form(dolfinx.fem.Constant(self.domain, 1.0) * ufl.dx)}
+        }
+
+        self.compute_simulation()
+        for regularization_term in self.opt_problem.shape_regulariztions.regularization_list:
+            if regularization_term.name in self.regularization_filter:
+                continue
+            cost_value = regularization_term.compute_objective() / regularization_term.mu
+            regularization_term.update_weight(regularization_term.mu / cost_value)
+            print(f"[Info] Regularization Weight {regularization_term.name}: "
+                  f"cost:{cost_value} weight:{regularization_term.mu}")
+
+        weight_handler = CostWeightHandler()
+        for cost_func in self.opt_problem.cost_functional_list:
+            weight_handler.add_cost(cost_func.name, cost_func.evaluate())
+        weight_handler.compute_weight(self.cost_weight)
+        for cost_func in self.opt_problem.cost_functional_list:
+            cost_func.update_scale(weight_handler.get_weight(cost_func.name))
+            cost_value, cost_num = weight_handler.get_cost(cost_func.name)
+            print(f"[Info] Cost Weight {cost_func.name}: "
+                  f"cost:{cost_value} num:{cost_num} weight:{cost_func.weight_value}")
+
+        init_loss = self.opt_problem.evaluate_cost_functional(self.domain.comm, update_state=False)
+        print(f"[INFO] Init loss: {init_loss}")
+        loss_storge_ctype = ctypes.c_double(init_loss)
+
+        def detect_cost_valid_func(tol=self.run_strategy_cfg['loss_tol_rho']):
+            self.compute_simulation()
+            loss = self.opt_problem.evaluate_cost_functional(self.domain.comm, update_state=False)
+            is_valid = loss < loss_storge_ctype.value + np.abs(loss_storge_ctype.value) * tol
+
+            loss_infos = self.opt_problem.get_cost_info(self.domain.comm, update_state=False)
+            loss_info_str = "[INFO]: "
+            for loss_name, loss_value in loss_infos:
+                loss_info_str += f"{loss_name}:{loss_value:.10f} "
+            print(loss_info_str)
+
+            return is_valid
+
+        self.solver_vars.update({
+            'loss_storge': loss_storge_ctype,
+            'cost_valid_func': detect_cost_valid_func,
+            'logger_dicts': logger_dicts,
+        })
+
+    def init_recorder(self, record_dir):
+        # ------ Step 1: Create Record Directory
+        simulate_dir = os.path.join(record_dir, 'simulate')
+        if os.path.exists(simulate_dir):
+            shutil.rmtree(simulate_dir)
+        os.mkdir(simulate_dir)
+        u_recorder = VTKRecorder(os.path.join(simulate_dir, 'simulate_u.pvd'))
+        self.solver_vars.update({'u_recorder': u_recorder})
 
     def add_state_boundary(self, name: str, value: Union[float, int, Callable], marker: int, is_velocity: bool):
-        if is_velocity:
-            bc_value = DolfinSimulator.get_boundary_function(name, value, self.V)
-            bc_dof = MeshUtils.extract_entity_dofs(
-                (self.W0, self.V), self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
-            )
-            bc = dolfinx.fem.dirichletbc(bc_value, bc_dof, self.W0)
-            self.bcs_info_state.append((bc, self.W0, bc_dof, bc_value))
-        else:
-            bc_value = DolfinSimulator.get_boundary_function(name, value, self.Q)
-            bc_dof = MeshUtils.extract_entity_dofs(
-                (self.W1, self.Q), self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
-            )
-            bc = dolfinx.fem.dirichletbc(bc_value, bc_dof, self.W1)
-            self.bcs_info_state.append((bc, self.W1, bc_dof, bc_value))
+        self.bcs_state_data[name] = {'value': value, 'marker': marker, 'is_velocity': is_velocity}
 
     def add_control_boundary(self, name: str, value: Union[float, int, Callable], marker: int):
-        bc_value = DolfinSimulator.get_boundary_function(name, value, self.V_S)
-        bc_dof = MeshUtils.extract_entity_dofs(
-            self.V_S, self.fdim, MeshUtils.extract_facet_entities(self.domain, self.facet_tags, marker)
-        )
-        bc = dolfinx.fem.dirichletbc(bc_value, bc_dof, None)
-        self.bcs_info_control.append((bc, self.V_S, bc_dof, bc_value))
+        self.bcs_control_data[name] = {'value': value, 'marker': marker}
 
     def state_initiation(
             self,
@@ -312,55 +480,32 @@ class FluidConditionalModel(object):
 
     # ------------ gradient related functions
     def compute_simulation(self, **kwargs):
-        if isinstance(self.simulator, DolfinSimulator):
-            res_dict = self.simulator.simulate_navier_stoke_equation(
-                snes_option=self.state_system.state_problems[0].snes_option,
-                criterion=self.state_system.state_problems[0].snes_criterion,
-                ksp_option=self.state_system.state_problems[0].state_ksp_option,
-                guess_up=None,
-                **kwargs
-            )
-            if not NonLinearProblemSolver.is_converged(res_dict['converged_reason']):
-                raise ValueError(f"[ERROR] State Problem KSP Fail Converge {res_dict['converged_reason']}")
-
-            # ------ convert simulator result to TaylorHood
-            simulator_up: dolfinx.fem.Function = self.simulator.equation_map['navier_stoke']['up']
-            u_fun, p_fun = simulator_up.sub(0).collapse(), simulator_up.sub(1).collapse()
-
-            u_tmp, p_tmp = dolfinx.fem.Function(self.V), dolfinx.fem.Function(self.Q)
-            u_tmp.interpolate(u_fun)
-            p_tmp.interpolate(p_fun)
-
-        elif isinstance(self.simulator, OpenFoamSimulator):
-            tmp_dir = os.path.join(self.simulator.cache_dir, 'openfoam_simulation')
-            if os.path.exists(tmp_dir):
-                shutil.rmtree(tmp_dir)
-            os.mkdir(tmp_dir)
-
-            new_msh_file = os.path.join(tmp_dir, 'model.msh')
-            ReMesher.convert_domain_to_new_msh(
-                self.mesh_file_cfg['msh_file'], new_msh_file,
-                self.domain, self.tdim, self.mesh_file_cfg['vertex_indices']
-            )
-            res = self.simulator.run_simulate_process(tmp_dir, new_msh_file, convert_msh2=True, with_debug=True)
-            res_vtk: pyvista.UnstructuredGrid = res['res_vtk']
-
-            v_fun, p_fun, nut_fun = CrossSimulatorUtil.convert_to_simple_function(
-                self.domain, coords=res_vtk.points, value_list=[
-                    res_vtk.point_data['U'], res_vtk.point_data['p'], res_vtk.point_data['nut']
-                ]
-            )
-            u_tmp, p_tmp = dolfinx.fem.Function(self.V), dolfinx.fem.Function(self.Q)
-            u_tmp.interpolate(v_fun)
-            p_tmp.interpolate(p_fun)
-            self.nu.vector.aypx(0.0, nut_fun.vector)
-            self.nu.x.array[:] = self.nu.x.array + self.nu_value
-
+        tmp_dir = os.path.join(self.simulator.cache_dir, 'openfoam_simulation')
+        if os.path.exists(tmp_dir):
             shutil.rmtree(tmp_dir)
-            del nut_fun
+        os.mkdir(tmp_dir)
 
-        else:
-            raise ValueError("[ERROR]: Non-Valid Simulator")
+        new_msh_file = os.path.join(tmp_dir, 'model.msh')
+        ReMesher.convert_domain_to_new_msh(
+            self.mesh_file_cfg['msh_file'], new_msh_file,
+            self.domain, self.tdim, self.mesh_file_cfg['vertex_indices']
+        )
+        res = self.simulator.run_simulate_process(tmp_dir, new_msh_file, convert_msh2=True, with_debug=True)
+        res_vtk: pyvista.UnstructuredGrid = res['res_vtk']
+
+        v_fun, p_fun, nut_fun = CrossSimulatorUtil.convert_to_simple_function(
+            self.domain, coords=res_vtk.points, value_list=[
+                res_vtk.point_data['U'], res_vtk.point_data['p'], res_vtk.point_data['nut']
+            ]
+        )
+        u_tmp, p_tmp = dolfinx.fem.Function(self.V), dolfinx.fem.Function(self.Q)
+        u_tmp.interpolate(v_fun)
+        p_tmp.interpolate(p_fun)
+        self.nu.vector.aypx(0.0, nut_fun.vector)
+        self.nu.x.array[:] = self.nu.x.array + self.nu_value
+
+        shutil.rmtree(tmp_dir)
+        del nut_fun
 
         self.up.x.array[self.V_to_W_dofs] = u_tmp.x.array.copy()
         self.up.x.array[self.Q_to_W_dofs] = p_tmp.x.array.copy()
@@ -423,71 +568,12 @@ class FluidConditionalModel(object):
             stepSize_lower=self.run_strategy_cfg['stepSize_lower'],
             detect_cost_valid_func=detect_cost_valid_func,
             max_step_limit=self.run_strategy_cfg['max_step_limit'],
-            revert_move=True,
-            with_debug_info=True
+            revert_move=True
         )
 
         return success_flag, (direction_np, step_size)
 
     # ------------ iteration related functions
-    def init_optimize_state(self, record_dir, logger_dicts={}, with_debug=False):
-        # ------ Step 1: Create Record Directory
-        simulate_dir = os.path.join(record_dir, 'simulate')
-        if os.path.exists(simulate_dir):
-            shutil.rmtree(simulate_dir)
-        os.mkdir(simulate_dir)
-        u_recorder = VTKRecorder(os.path.join(simulate_dir, 'simulate_u.pvd'))
-
-        # ------ Step 2: Init Calculation and log first step
-        self.compute_simulation(with_debug=with_debug)
-
-        for regularization_term in self.opt_problem.shape_regulariztions.regularization_list:
-            if regularization_term.name in self.regularization_filter:
-                continue
-            cost_value = regularization_term.compute_objective() / regularization_term.mu
-            regularization_term.update_weight(regularization_term.mu / cost_value)
-            print(f"[Info] Regularization Weight {regularization_term.name}: "
-                  f"cost:{cost_value} weight:{regularization_term.mu}")
-
-        weight_handler = CostWeightHandler()
-        for cost_func in self.opt_problem.cost_functional_list:
-            weight_handler.add_cost(cost_func.name, cost_func.evaluate())
-        weight_handler.compute_weight(self.cost_weight)
-        for cost_func in self.opt_problem.cost_functional_list:
-            cost_func.update_scale(weight_handler.get_weight(cost_func.name))
-            cost_value, cost_num = weight_handler.get_cost(cost_func.name)
-            print(f"[Info] Cost Weight {cost_func.name}: "
-                  f"cost:{cost_value} num:{cost_num} weight:{cost_func.weight_value}")
-
-        init_loss = self.opt_problem.evaluate_cost_functional(self.domain.comm, update_state=False)
-        print(f"[INFO] Init loss: {init_loss}")
-        loss_storge_ctype = ctypes.c_double(init_loss)
-
-        def detect_cost_valid_func(tol=self.run_strategy_cfg['loss_tol_rho']):
-            self.compute_simulation(with_debug=with_debug)
-            loss = self.opt_problem.evaluate_cost_functional(
-                self.domain.comm, update_state=False, with_debug=with_debug
-            )
-            is_valid = loss < loss_storge_ctype.value + np.abs(loss_storge_ctype.value) * tol
-
-            loss_infos = self.opt_problem.get_cost_info(self.domain.comm, update_state=False)
-            loss_info_str = "[INFO]: "
-            for loss_name, loss_value in loss_infos:
-                loss_info_str += f"{loss_name}:{loss_value:.10f} "
-            print(loss_info_str)
-
-            return is_valid
-
-        self.solver_vars.update({
-            'u_recorder': u_recorder,
-            'loss_storge': loss_storge_ctype,
-            'cost_valid_func': detect_cost_valid_func,
-            'logger_dicts': logger_dicts,
-        })
-        log_dict = self.log_step(logger_dicts, step=0)
-
-        return log_dict
-
     def compute_iteration_deformation(
             self, obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj], step: int, **kwargs
     ):
@@ -632,122 +718,37 @@ class FluidConditionalModel(object):
         with open(os.path.join(save_dir, 'pressure.pkl'), 'wb') as f:
             pickle.dump(self.up.sub(1).collapse().x.array, f)
 
+    def re_mesh(self, iteration):
+        sub_dir = os.path.join(self.reMesh_dir, f"remesh_{iteration}")
+        if os.path.exists(sub_dir):
+            shutil.rmtree(sub_dir)
+        os.mkdir(sub_dir)
 
-class FluidShapeRecombineLayer(object):
-    def __init__(self, tag_name):
-        self.tag_name = tag_name
-        assert tag_name is not None
+        cur_msh = os.path.join(sub_dir, "current.msh")
+        ReMesher.convert_domain_to_new_msh(
+            orig_msh_file=self.mesh_file_cfg['msh_file'], new_msh_file=cur_msh,
+            domain=self.domain, dim=self.tdim, vertex_indices=self.mesh_file_cfg['vertex_indices']
+        )
 
-        self.opt_dicts: Dict[str, FluidConditionalModel] = {}
+        new_geo = os.path.join(sub_dir, f"remesh_{iteration}.geo")
+        new_msh = os.path.join(sub_dir, f"remesh_{iteration}.msh")
+        new_xdmf = os.path.join(sub_dir, f"remesh_{iteration}.xdmf")
 
-    @property
-    def name(self):
-        return self.tag_name
+        ReMesher.save_remesh_msh_geo(
+            orig_msh=cur_msh, origin_geo=self.mesh_file_cfg['geo_file'], new_geo=new_geo
+        )
+        ReMesher.geo2msh(new_geo, new_msh, with_netgen_opt=True)
+        assert os.path.exists(new_msh)
 
-    def add_condition_opt(self, opt: FluidConditionalModel):
-        self.opt_dicts[opt.name] = opt
+        MeshUtils.msh_to_XDMF(name='model', dim=self.tdim, msh_file=new_msh, output_file=new_xdmf)
+        domain, cell_tags, facet_tags = MeshUtils.read_XDMF(
+            file=new_xdmf, mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets'
+        )
 
-    def compute_iteration_deformation(
-            self,
-            obs_objs: List[ObstacleCollisionObj], mesh_objs: List[MeshCollisionObj],
-            step: int, diffusion_method='diffusion_loss_weight', **kwargs
-    ):
-        res_dict_list = {}
-        for name in self.opt_dicts.keys():
-            opt = self.opt_dicts[name]
-            res_dict = opt.compute_iteration_deformation(obs_objs, mesh_objs, step=step, **kwargs)
-            if not res_dict['state']:
-                return {'state': False}
+        self.re_init_simulator(domain, cell_tags, facet_tags)
+        self.re_init(mesh_file_cfg={'geo_file': new_geo, 'msh_file': new_msh})
+        self.re_init_boundary()
+        self.re_define_problem()
+        self.re_init_optimize_state()
 
-            res_dict_list[name] = {
-                'diffusion': res_dict['diffusion'],
-                'loss': opt.solver_vars['loss_storge'].value
-            }
-
-        diffusion = FluidShapeRecombineLayer.merge_diffusion(res_dict_list, method=diffusion_method)
-        return {'state': True, 'diffusion': diffusion}
-
-    def move_mesh(self, diffusion: np.ndarray):
-        is_converge = True
-        for i, name in enumerate(self.opt_dicts.keys()):
-            if i == 0:
-                res_dict = self.opt_dicts[name].move_mesh(diffusion, check_intersection=True)
-            else:
-                res_dict = self.opt_dicts[name].move_mesh(diffusion, check_intersection=False)
-            if not res_dict['state']:
-                return {'state': False}
-
-            is_converge = is_converge and res_dict['is_converge']
-
-        return {'state': True, 'is_converge': is_converge}
-
-    def update_optimize_state(self, with_log_info=True, step=None):
-        if with_log_info:
-            log_list = []
-        loss_list = []
-
-        for name in self.opt_dicts.keys():
-            if with_log_info:
-                loss, log_dict = self.opt_dicts[name].update_optimize_state(with_log_info=with_log_info, step=step)
-                log_list.append(log_dict)
-            else:
-                loss = self.opt_dicts[name].update_optimize_state(with_log_info=with_log_info, step=step)
-            loss_list.append(loss)
-
-        if with_log_info:
-            return loss_list, log_list
-        else:
-            return loss_list
-
-    @staticmethod
-    def merge_diffusion(opt_res_dict: dict, method='diffusion_weight'):
-        if method == 'diffusion_weight':
-            weights = []
-            for name in opt_res_dict.keys():
-                weights.append(
-                    np.abs(np.linalg.norm(opt_res_dict[name]['diffusion'], ord=2, axis=1, keepdims=True))
-                )
-            weights = np.concatenate(weights, axis=1)
-            weights = weights / (weights.sum(axis=1, keepdims=True) + 1e-8)
-
-        elif method == 'loss_weight':
-            weights = []
-            for name in opt_res_dict.keys():
-                weights.append(opt_res_dict[name]['loss'])
-            weights = np.array(weights)
-            weights = weights / weights.sum()
-
-        elif method == 'diffusion_loss_weight':
-            diffusion_weights = []
-            for name in opt_res_dict.keys():
-                diffusion_weights.append(
-                    np.abs(np.linalg.norm(opt_res_dict[name]['diffusion'], ord=2, axis=1, keepdims=True))
-                )
-            diffusion_weights = np.concatenate(diffusion_weights, axis=1)
-            diffusion_weights = diffusion_weights / (diffusion_weights.sum(axis=1, keepdims=True) + 1e-8)
-
-            loss_weights = []
-            for name in opt_res_dict.keys():
-                loss_weights.append(opt_res_dict[name]['loss'])
-            loss_weights = np.array(loss_weights)
-            loss_weights = loss_weights / loss_weights.sum()
-
-            weights = diffusion_weights * loss_weights.reshape((1, -1))
-
-        else:
-            raise NotImplementedError("[ERROR]: Non-Valid Method")
-
-        diffusion = 0.0
-        if weights.ndim == 1:
-            for i, name in enumerate(opt_res_dict.keys()):
-                diffusion += weights[i] * opt_res_dict[name]['diffusion']
-        elif weights.ndim == 2:
-            for i, name in enumerate(opt_res_dict.keys()):
-                diffusion += weights[:, i: i + 1] * opt_res_dict[name]['diffusion']
-        else:
-            raise NotImplementedError("[ERROR]: Non-Valid Method")
-
-        return diffusion
-
-    def save_msh(self):
-        self.opt_dicts[self.opt_dicts.keys()[0]].save_msh()
+        print(f"[Info]: new msh_file:{new_msh}")

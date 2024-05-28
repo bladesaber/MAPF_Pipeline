@@ -324,7 +324,7 @@ class CurvatureRegularization(object):
 
         self.kappa_curvature = dolfinx.fem.Function(self.shape_problem.deformation_space)
         self.n = MeshUtils.define_facet_norm(self.shape_problem.domain)
-        self.coodr = MeshUtils.define_coordinate(self.shape_problem.domain)
+        self.coord = MeshUtils.define_coordinate(self.shape_problem.domain)
         self.ds = MeshUtils.define_ds(self.shape_problem.domain)
 
         self.a_curvature_form = ufl.inner(
@@ -333,7 +333,7 @@ class CurvatureRegularization(object):
         ) * self.ds
 
         self.l_curvature_form = ufl.inner(
-            t_grad(self.coodr, self.n),
+            t_grad(self.coord, self.n),
             t_grad(ufl.TestFunction(self.shape_problem.deformation_space), self.n),
         ) * self.ds
 
@@ -344,7 +344,7 @@ class CurvatureRegularization(object):
             identity = ufl.Identity(self.shape_problem.domain.geometry.dim)
 
             shape_form = self.mu * ufl.inner(
-                (identity - (t_grad(self.coodr, self.n) + (t_grad(self.coodr, self.n)).T)) * t_grad(self.test_v,
+                (identity - (t_grad(self.coord, self.n) + (t_grad(self.coord, self.n)).T)) * t_grad(self.test_v,
                                                                                                     self.n),
                 t_grad(self.kappa_curvature, self.n)
             ) * self.ds + 0.5 * t_div(self.test_v, self.n) * t_div(self.kappa_curvature, self.n) * self.ds
@@ -357,7 +357,7 @@ class CurvatureRegularization(object):
         value = 0.0
 
         if self.is_active:
-            self._compute_curvature(self.shape_problem.domain.comm)
+            self._compute_curvature()
 
             curvature_val = AssembleUtils.assemble_scalar(dolfinx.fem.form(
                 ufl.inner(self.kappa_curvature, self.kappa_curvature) * self.ds

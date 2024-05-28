@@ -20,8 +20,10 @@ def parse_args():
     parser.add_argument('--simulate_method', type=str, default=None)
     parser.add_argument('--init_mesh', type=int, default=0)
     parser.add_argument('--msh_tag', type=str, default='msh_file')
+    parser.add_argument('--geo_tag', type=str, default='geo_file')
     parser.add_argument('--xdmf_tag', type=str, default='xdmf_file')
     parser.add_argument('--save_result', type=int, default=0)
+    parser.add_argument('--openfoam_remesh', type=int, default=0)
     args = parser.parse_args()
     return args
 
@@ -205,9 +207,18 @@ def openfoam_simulate(cfg, args, **kwargs):
             shutil.rmtree(tmp_dir)
         os.mkdir(tmp_dir)
 
-        simulator.run_simulate_process(
-            tmp_dir, orig_msh_file=os.path.join(run_cfg['proj_dir'], run_cfg[args.msh_tag]), convert_msh2=True
-        )
+        if args.openfoam_remesh:
+            simulator.run_robust_simulate_process(
+                tmp_dir,
+                orig_msh=os.path.join(run_cfg['proj_dir'], run_cfg[args.msh_tag]),
+                orig_geo=os.path.join(run_cfg['proj_dir'], run_cfg[args.geo_tag]),
+                with_debug=True
+            )
+        else:
+            simulator.run_simulate_process(
+                tmp_dir, orig_msh_file=os.path.join(run_cfg['proj_dir'], run_cfg[args.msh_tag]),
+                convert_msh2=True, with_debug=True
+            )
 
 
 def main():

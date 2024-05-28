@@ -188,10 +188,12 @@ def create_project(args):
             },
             'modify_type_dict': None,
             'unit_scale': None,
-            'cache_dir': None
+            'cache_dir': None,
+            'geo_tag': None
         }
 
     optimize_cfg = {
+        'remesh_dir': None,
         'kinematic_viscosity': 0.01,
         'snes_option': {
             'snes_type': 'newtonls',
@@ -278,6 +280,7 @@ def create_project(args):
     proj_cfg = {
         'name': None,
         'proj_dir': args.proj_dir,
+        "geo_file": "model.geo",
         "msh_file": "model.msh",
         "xdmf_file": "model.xdmf",
         'dim': None,

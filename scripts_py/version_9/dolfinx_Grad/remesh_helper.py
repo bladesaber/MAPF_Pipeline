@@ -46,9 +46,9 @@ class ReMesher(object):
             f.write(f"Mesh.MeshSizeMin = {minSize};\n")
 
     @staticmethod
-    def get_remesh_msh_geo(msh_file: str, origin_geo: str, new_geo: str, new_msh: str = None):
+    def save_remesh_msh_geo(orig_msh: str, origin_geo: str, new_geo: str, with_hexahedron=False):
         with open(new_geo, "w") as file:
-            file.write(f"Merge \"{msh_file}\";\n")
+            file.write(f"Merge \"{orig_msh}\";\n")
             file.write("CreateGeometry;\n")
             file.write("\n")
 
@@ -64,10 +64,29 @@ class ReMesher(object):
                         file.write(line)
                     if line[:5] == "Mesh.":
                         file.write(line)
+                    if line[:2] == "/*":
+                        file.write(line)
+                    if line[:2] == "*/":
+                        file.write(line)
+                    if line[:2] == "//":
+                        file.write(line)
 
-        if new_msh is not None:
-            code = f"gmsh {new_geo} -3 -o {new_msh}"
-            return code
+            if with_hexahedron:
+                file.write('Mesh.Algorithm = 8;\n')
+                file.write('Mesh.Algorithm3D = 1;\n')
+                file.write('Mesh.RecombinationAlgorithm = 1;\n')
+                file.write('Mesh.RecombineAll = 1;\n')
+                file.write('Mesh.Recombine3DAll = 1;\n')
+                file.write('Mesh.SubdivisionAlgorithm = 2;\n')
+
+    @staticmethod
+    def geo2msh(proj_dir: str, geo_file: str, msh_file: str, msh_format='msh4', with_netgen_opt=False):
+        code = f"cd {proj_dir}; "
+        if with_netgen_opt:
+            code += f"gmsh {geo_file} -3 -optimize_netgen -format {msh_format} -o {msh_file} >> remesh.log;"
+        else:
+            code += f"gmsh {geo_file} -3 -format {msh_format} -o {msh_file} >> remesh.log;"
+        subprocess.run(code, shell=True)
 
     @staticmethod
     def reconstruct_vertex_indices(orig_msh_file: str, domain: dolfinx.mesh.Mesh, check=False):
@@ -165,29 +184,6 @@ class ReMesher(object):
 
         gmsh_cmd_list = ["gmsh", geo_file, f"-{int(dim):d}", "-o", msh_file]
         subprocess.run(gmsh_cmd_list, check=True, stdout=subprocess.DEVNULL)
-
-    @staticmethod
-    def remesh_run(
-            domain: Union[dolfinx.mesh.Mesh, pyvista.UnstructuredGrid],
-            vertex_indices: np.ndarray[np.int32],
-            orig_msh_file: str,
-            minSize: float, maxSize: float, dim: int,
-            save_dir: str, model_name: str, tmp_dir: str = None
-    ):
-        with TemporaryDirectory() as tmp_dir:
-            tmp_msh_file = os.path.join(tmp_dir, f"{model_name}_orig.msh")
-            ReMesher.convert_domain_to_new_msh(orig_msh_file, tmp_msh_file, domain, dim, vertex_indices)
-
-            tmp_geo_file = os.path.join(tmp_dir, f"{model_name}_tmp.geo")
-            ReMesher.save_remesh_msh_geo(tmp_msh_file, tmp_geo_file, minSize=minSize, maxSize=maxSize)
-
-            msh_file = os.path.join(save_dir, f"{model_name}.msh")
-            ReMesher.generate_msh_from_geo(tmp_geo_file, msh_file, dim=dim)
-
-            xdmf_file = os.path.join(save_dir, f"{model_name}.xdmf")
-            MeshUtils.msh_to_XDMF(msh_file, output_file=xdmf_file, name=model_name, dim=dim)
-
-        return msh_file, xdmf_file
 
 
 class MeshQuality(object):
@@ -450,6 +446,7 @@ class MeshDeformationRunner(object):
 
         while True:
             if step_size < stepSize_lower:
+                info = '| Reach Step Limit'
                 break
 
             displacement_np = direction_np * step_size
@@ -476,10 +473,12 @@ class MeshDeformationRunner(object):
             iteration += 1
 
             if iteration > max_iter:
+                # info = '| Reach Max Iteration'
                 break
 
         if with_debug_info:
-            print(f"[DEBUG MeshDeformationRunner] Success_flag:{success_flag} Info:{info}")
+            if not success_flag:
+                print(f"[DEBUG MeshDeformationRunner] Success_flag:{success_flag} {info}")
 
         return success_flag, step_size
 

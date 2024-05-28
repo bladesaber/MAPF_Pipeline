@@ -3,6 +3,8 @@ Note
     1.边界层导致会导致网格不均衡，优化时不要划分边界层
     2.相对于Poincare-Steklov operator，default方法更稳定
     3.所有网格大小越均匀，稳定性越高
+    4.使用OpenMPI时不要使用Tensorboard与Paraview
+    5.虽然不同目标损失的loss值一样，但其梯度量级可以是不同的
 """
 
 import os
@@ -14,7 +16,6 @@ from ufl import grad, dot, inner, div, sqrt
 from functools import partial
 import argparse
 import json
-import pyvista
 from typing import List, Union
 
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
@@ -32,16 +33,20 @@ from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
 from scripts_py.version_9.dolfinx_Grad.fluid_tools.dolfin_simulator import DolfinSimulator
 from scripts_py.version_9.dolfinx_Grad.fluid_tools.openfoam_simulator import OpenFoamSimulator
 
+
 # todo
-#   0.先做目标函数平衡
-#   1.先做平衡流量
-#   2.再做多场景
-#   3.再做多体障碍回避
-#   4.修正多个体优化迭代过程
+#   -1.球通道优化示例
+#   0.各个mesh的仿真 -- RDV4 Fail,考虑使用阀块通道
+#   1.单Mesh平衡流量
+#   2.单Mesh多场景
+#   3.单Mesh回避
+#   4.多个体混合测试，修正多个体迭代过程，收敛体不变形，非收敛体变形，直至所有体收敛结束
+#   5.网格攻击与openfoam稳定性(仿真器与求解器的Mesh不匹配可能导致边界面不匹配，这个方法很危险)
+#   6.做一个Top-Down的项目例子
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Find Good Naiver Stoke Initiation")
+    parser = argparse.ArgumentParser(description="Fluid FLow Optimization")
     parser.add_argument('--json_files', type=str, nargs='+', default=[])
     parser.add_argument('--with_debug', type=int, default=0)
     parser.add_argument('--load_guess_res', type=int, default=0)
@@ -183,9 +188,11 @@ def load_base_model(cfg: dict, args, tag_name=None):
         tag_name=tag_name,
         velocity_order=2,
         pressure_order=1,
-        save_opt_cfg={
-            'orig_msh_file': os.path.join(cfg['proj_dir'], cfg['msh_file']), 'save_dir': opt_save_dir
-        }
+        mesh_file_cfg={
+            'geo_file': os.path.join(cfg['proj_dir'], cfg['geo_file']),
+            'msh_file': os.path.join(cfg['proj_dir'], cfg['msh_file']),
+            'save_dir': opt_save_dir
+        },
     )
 
     # --- define boundary conditions
@@ -377,16 +384,18 @@ def main():
         print(f"[###Info {step}] loss:{loss_iter:.8f}")
 
         if is_converge:
+            print("[Info]: Finish with Convergence")
             break
 
         if np.any(loss_list > best_loss_list * (1.0 + best_loss_tol)):
+            print("[Info]: Loss Reverse")
             break
 
         if step > 300:
             break
 
-        for model in models:
-            model.save_msh(args.with_debug)
+    for model in models:
+        model.save_msh(args.with_debug)
 
 
 if __name__ == '__main__':
