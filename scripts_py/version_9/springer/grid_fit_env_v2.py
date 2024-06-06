@@ -5,7 +5,7 @@ import json
 import os
 import math
 
-from scripts_py.version_9.app.env_utils import Shape_Utils
+from scripts_py.version_9.mapf_pkg.shape_utils import Shape_Utils
 from scripts_py.version_9.mapf_pipeline_py.spanTree_TaskAllocator import SizeTreeTaskRunner
 
 

@@ -2,14 +2,12 @@ import math
 import numpy as np
 import pandas as pd
 from functools import partial
-import matplotlib.pyplot as plt
 from copy import deepcopy
 
 from scipy import optimize
 from scipy.optimize import Bounds
 from sklearn.neighbors import KDTree
 
-from scripts_py.version_9.app.env_utils import Shape_Utils
 from scripts_py.version_9.springer.smoother_utils import ConnectVisulizer
 
 

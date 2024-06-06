@@ -9,9 +9,9 @@ from tempfile import TemporaryDirectory
 
 import open3d.visualization.gui as gui
 
-from o3d_utils import AppWindow
-from o3d_utils import O3D_Utils
-from env_utils import GridEnv_Utils
+from scripts_py.version_9.mapf_pkg.app_utils import AppWindow
+from scripts_py.version_9.mapf_pkg.app_utils import O3D_Utils
+from scripts_py.version_9.mapf_pkg.shape_utils import GridEnv_Utils
 
 from scripts_py.version_8.mapf_pipeline_py.spanTree_TaskAllocator import SizeTreeTaskRunner
 

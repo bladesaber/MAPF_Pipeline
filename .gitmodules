@@ -1,9 +1,9 @@
-[submodule "Thirdparty/g2o"]
-	path = Thirdparty/g2o
+[submodule "cpp_pkg/thirdparty/g2o"]
+	path = cpp_pkg/thirdparty/g2o
 	url = https://github.com/RainerKuemmerle/g2o.git
-[submodule "Thirdparty/eigen"]
-	path = Thirdparty/eigen
+[submodule "cpp_pkg/thirdparty/eigen"]
+	path = cpp_pkg/thirdparty/eigen
 	url = https://gitlab.com/libeigen/eigen.git
-[submodule "Thirdparty/pyadjoint"]
-	path = Thirdparty/pyadjoint
+[submodule "cpp_pkg/thirdparty/pyadjoint"]
+	path = cpp_pkg/thirdparty/pyadjoint
 	url = https://github.com/dolfin-adjoint/pyadjoint.git

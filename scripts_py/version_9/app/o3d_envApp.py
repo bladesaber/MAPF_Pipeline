@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import math
 import sys
 import os
 import json
@@ -9,11 +8,10 @@ from tempfile import TemporaryDirectory
 
 import open3d.visualization.gui as gui
 
-from o3d_utils import AppWindow
-from o3d_utils import O3D_Utils
-from env_utils import GridEnv_Utils, Shape_Utils
+from scripts_py.version_9.mapf_pkg.app_utils import AppWindow
+from scripts_py.version_9.mapf_pkg.app_utils import O3D_Utils
+from scripts_py.version_9.mapf_pkg.shape_utils import Shape_Utils
 
-from scripts_py.version_9.mapf_pipeline_py.spanTree_TaskAllocator import SizeTreeTaskRunner
 
 class CustomApp(AppWindow):
     MENU_SAVEJSON = 2
@@ -24,7 +22,7 @@ class CustomApp(AppWindow):
 
         self.init_operateWidget()
         self.init_helperWidget()
-        self.init_infoWidget()
+        # self.init_infoWidget()
 
         self.groupColors = np.random.uniform(0.0, 1.0, size=(20, 3))
 
@@ -462,6 +460,7 @@ class CustomApp(AppWindow):
                 self.geoMap[name].update({'type': 'pipe', 'desc': info})
         self.adjust_centerCamera()
 
+
 def main():
     # o3d.visualization.webrtc_server.enable_webrtc()
 
@@ -477,6 +476,7 @@ def main():
     app.run()
 
     sys.exit("CopyRight From Qu")
+
 
 if __name__ == '__main__':
     main()
