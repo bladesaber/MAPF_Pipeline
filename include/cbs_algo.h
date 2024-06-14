@@ -18,101 +18,82 @@ class CbsNode {
 public:
     CbsNode() {};
 
+    CbsNode(size_t node_id) : node_id(node_id) {}
+
     ~CbsNode() { reset(); };
 
-    map<size_t, shared_ptr<GroupAstar>> groupRes;
-    map<size_t, shared_ptr<vector<ObstacleType>>> constrainsMap;
+    map<size_t, shared_ptr<GroupAstar>> group_res;
+    map<size_t, shared_ptr<vector<ObstacleType>>> constrains_map;
 
+    size_t node_id;
     double g_val = 0.0;
     double h_val = 0.0;
+
+    bool update_group_path(size_t group_idx, size_t max_iter = 1000);
+
+    void update_constrains_map(size_t group_idx, const vector<ObstacleType> &group_dynamic_obstacles);
+
+    void update_group_cell(
+            size_t group_idx, vector<TaskInfo> group_task_tree,
+            Grid::DiscreteGridEnv *group_grid, CollisionDetector *obstacle_detector,
+            const vector<ObstacleType> &group_dynamic_obstacles
+    );
+
+    void copy_from_node(CbsNode *rhs);
+
+    bool find_inner_conflict();
+
+    bool is_conflict_free() {
+        return conflict_list.size() == 0;
+    }
+
+    double compute_g_val();
+
+    double compute_h_val();
 
     inline double get_f_val() const {
         return g_val + h_val;
     }
 
-    bool update_group_path(size_t group_idx, size_t max_iter = 1000) {
-        shared_ptr<GroupAstar> agent = std::make_shared<GroupAstar>(
-                groupRes[group_idx]->get_grid(), groupRes[group_idx]->get_obstacle_detector(),
-                groupRes[group_idx]->get_task_tree()
-        );
-        groupRes[group_idx] = nullptr;
-
-        bool is_success = agent->find_path(*constrainsMap[group_idx], max_iter);
-        if (!is_success) {
-            agent = nullptr;
-            return false;
-        }
-
-        groupRes[group_idx] = agent;
-        return true;
+    PathResult get_group_path(size_t group_idx, string name) {
+        return (*group_res[group_idx]).get_res()[name];
     }
 
-    void update_constrainsMap(size_t group_idx, vector<ObstacleType> group_dynamic_obstacles) {
-        constrainsMap[group_idx] = nullptr;
-        constrainsMap[group_idx] = std::make_shared<vector<ObstacleType>>(group_dynamic_obstacles);
+    double get_conflict_length(size_t group_idx) {
+        return group_conflict_length_map[group_idx];
     }
 
-    void copy_from_node(CbsNode *rhs) {
-        for (auto iter: rhs->groupRes) {
-            groupRes[iter.first] = shared_ptr<GroupAstar>(iter.second);
-        }
-        for (auto iter: rhs->constrainsMap) {
-            constrainsMap[iter.first] = shared_ptr<vector<ObstacleType>>(iter.second);
-        }
+    vector<ConflictCell> get_conflict_cells() const {
+        return conflict_list;
     }
 
-    void update_group_cell(
-            size_t group_idx, vector<TaskInfo> *group_task_tree,
-            Grid::StandardGridEnv *group_grid, CollisionDetector *obstacle_detector,
-            vector<ObstacleType> group_dynamic_obstacles
-    ) {
-        groupRes[group_idx] = nullptr;
-        groupRes[group_idx] = std::make_shared<GroupAstar>(group_grid, obstacle_detector, *group_task_tree);
-
-        constrainsMap[group_idx] = nullptr;
-        constrainsMap[group_idx] = std::make_shared<vector<ObstacleType>>(group_dynamic_obstacles);
-    }
-
-    bool find_inner_conflict();
-
-    bool is_conflict_free() { return conflict_list.size() > 0; }
-
-    double compute_g_val() {
-        g_val = 0.0;
-        for (auto iter: groupRes) { g_val += iter.second->get_path_length(); }
-        return g_val;
-    }
-
-    double compute_h_val() {
-        h_val = 0.0;
-        for (auto iter: group_conflict_length_map) {
-            h_val += iter.second;
-        }
+    vector<ObstacleType> get_constrain(size_t group_idx) {
+        return *constrains_map[group_idx];
     }
 
     void reset() {
         group_conflict_length_map.clear();
         conflict_list.clear();
 
-        for (auto iter: groupRes) {
+        for (auto iter: group_res) {
             iter.second = nullptr;
         }
-        groupRes.clear();
+        group_res.clear();
 
-        for (auto iter: constrainsMap) {
+        for (auto iter: constrains_map) {
             iter.second = nullptr;
         }
-        constrainsMap.clear();
+        constrains_map.clear();
     }
 
     struct compare_node {
         bool operator()(const CbsNode *n1, const CbsNode *n2) const {
-            if (n1->get_f_val() == n2->get_f_val()) {
+            if (n1->g_val + n1->h_val == n2->g_val + n2->h_val) {
                 if (n1->h_val == n2->h_val)
                     return rand() % 2;
                 return n1->h_val >= n2->h_val;
             }
-            return n1->get_f_val() > n2->get_f_val();
+            return n1->g_val + n1->h_val > n2->g_val + n2->h_val;
         }
     };
 
@@ -142,14 +123,15 @@ public:
     }
 
     void reset() {
-        for (auto node: open_list) {
-            delete node;
-        }
-        open_list.clear();
+//        for (auto node: open_list) {
+//            delete node;
+//        }
+        open_list.clear(); // 释放交由python管理
     }
 
 private:
     boost::heap::pairing_heap<CbsNode *, boost::heap::compare<CbsNode::compare_node>> open_list;
 };
+
 
 #endif //MAPF_PIPELINE_CBS_ALGO_H

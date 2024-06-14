@@ -11,20 +11,16 @@ using namespace std;
 
 class ConflictCell {
 public:
+    size_t idx0, idx1;
+    double x0, y0, z0, x1, y1, z1;
+    double radius0, radius1;
+
     ConflictCell(
-            size_t idx0, double conflict_x0, double conflict_y0, double conflict_z0, double conflict_radius0,
-            size_t idx1, double conflict_x1, double conflict_y1, double conflict_z1, double conflict_radius1
-    ) : idx0(idx0), idx1(idx1),
-        conflict_x0(conflict_x0), conflict_y0(conflict_y0), conflict_z0(conflict_z0),
-        conflict_x1(conflict_x1), conflict_y1(conflict_y1), conflict_z1(conflict_z1),
-        conflict_radius0(conflict_radius0), conflict_radius1(conflict_radius1) {};
+            size_t idx0, double x0, double y0, double z0, double radius0,
+            size_t idx1, double x1, double y1, double z1, double radius1
+    ) : idx0(idx0), idx1(idx1), x0(x0), y0(y0), z0(z0), x1(x1), y1(y1), z1(z1), radius0(radius0), radius1(radius1) {};
 
     ~ConflictCell() {};
-
-private:
-    size_t idx0, idx1;
-    double conflict_x0, conflict_y0, conflict_z0, conflict_x1, conflict_y1, conflict_z1;
-    double conflict_radius0, conflict_radius1;
 
 };
 

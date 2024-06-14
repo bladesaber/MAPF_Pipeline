@@ -29,25 +29,11 @@ def create_search_init_cfg(pipes_cfg: dict):
     return block_priority
 
 
-def create_grid_init_cfg(grid_min: np.ndarray, grid_max: np.ndarray):
-    grid_env = {
-        'grid_min': grid_min.tolist(),
-        'grid_max': grid_max.tolist(),
-        'num_of_x': None, 'num_of_y': None, 'num_of_z': None,
-    }
-    return grid_env
-
-
-def discrete_pipe_position(
-        pipes_cfg: dict, grid_min: np.ndarray, grid_max: np.ndarray, num_of_x, num_of_y, num_of_z
-):
-    num_xyz = np.array([num_of_x, num_of_y, num_of_z])
-    grid_ref = grid_max - grid_min
+def discrete_pipe_position(pipes_cfg: dict, grid_min: np.ndarray, length_of_xyz: np.ndarray):
     for pipe_name in pipes_cfg.keys():
-        position = pipes_cfg[pipe_name]['position']
-        discrete_position = np.round((np.array(position) - grid_min) / grid_ref * num_xyz, decimals=0)
-        new_position = discrete_position / num_xyz * grid_ref + grid_min
-        pipes_cfg[pipe_name]['discrete_position'] = new_position.tolist()
+        position = np.array(pipes_cfg[pipe_name]['position'])
+        discrete_grid = np.round((position - grid_min) / length_of_xyz, 0).astype(int)
+        pipes_cfg[pipe_name]['discrete_position'] = discrete_grid.tolist()
     return pipes_cfg
 
 

@@ -392,14 +392,17 @@ class EnvironmentApp(AppWindow):
         self.save_dir = save_cfg['env_save_dir']
         self.global_widget['grid_min'].vector_value = save_cfg['grid_min']
         self.global_widget['grid_max'].vector_value = save_cfg['grid_max']
-        obs_df = pd.read_csv(os.path.join(self.save_dir, 'obstacle.csv'), index_col=0)
 
-        for obs_cfg in save_cfg['obs_cfgs']:
-            pcd = obs_df[obs_df['tag'] == obs_cfg['name']][['x', 'y', 'z']].values
-            pcd_o3d = FragmentOpen3d.create_pcd(pcd, np.array(obs_cfg['param']['rgb']))
-            self.add_point_cloud(
-                obs_cfg['name'], pcd_o3d, is_visible=obs_cfg['is_visible'], param=obs_cfg['param']
-            )
+        obstacle_file = os.path.join(self.save_dir, 'obstacle.csv')
+        if os.path.exists(obstacle_file):
+            obs_df = pd.read_csv(obstacle_file, index_col=0)
+
+            for obs_cfg in save_cfg['obs_cfgs']:
+                pcd = obs_df[obs_df['tag'] == obs_cfg['name']][['x', 'y', 'z']].values
+                pcd_o3d = FragmentOpen3d.create_pcd(pcd, np.array(obs_cfg['param']['rgb']))
+                self.add_point_cloud(
+                    obs_cfg['name'], pcd_o3d, is_visible=obs_cfg['is_visible'], param=obs_cfg['param']
+                )
 
         for pipe_cfg in save_cfg['pipe_cfgs']:
             self.add_mesh_from_file(

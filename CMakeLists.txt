@@ -33,14 +33,14 @@ add_definitions(${PCL_DEFINITIONS})
 
 pybind11_add_module(
         mapf_pipeline ${PACKAGE_TOP_DIR}/src/driver.cpp
-#        ${Src_DIR}/utils.cpp
-#        ${Src_DIR}/instance.cpp
-#        ${Src_DIR}/constrainTable.cpp
-#        ${Src_DIR}/kdtree.c
-#        ${Src_DIR}/pather/kdtree_xyzra.cpp
-#        ${Src_DIR}/planner/AstarSolver.cpp
-#        ${Src_DIR}/planner/groupAstarSolver.cpp
-#        ${Src_DIR}/cbs/cbs_node.cpp
+        ${PACKAGE_TOP_DIR}/src/math_utils.cpp
+        ${PACKAGE_TOP_DIR}/src/pcl_utils.cpp
+        ${PACKAGE_TOP_DIR}/src/grid_utils.cpp
+        ${PACKAGE_TOP_DIR}/src/state_utils.cpp
+        ${PACKAGE_TOP_DIR}/src/collision_utils.cpp
+        ${PACKAGE_TOP_DIR}/src/astar_algo.cpp
+        ${PACKAGE_TOP_DIR}/src/group_astar_algo.cpp
+        ${PACKAGE_TOP_DIR}/src/cbs_algo.cpp
 )
 
 target_link_libraries(
