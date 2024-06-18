@@ -4,6 +4,52 @@
 
 #include "astar_algo.h"
 
+void PathResult::get_path_xyz(vector<CellXYZ> &path_set) const {
+    double x, y, z;
+    for (size_t loc_flag: path_flags) {
+        tie(x, y, z) = grid->flag2xyz(loc_flag);
+        path_set.emplace_back(x, y, z);
+    }
+}
+
+void PathResult::get_path_xyzr(vector<CellXYZR> &path_set) const {
+    double x, y, z;
+    for (size_t loc_flag: path_flags) {
+        tie(x, y, z) = grid->flag2xyz(loc_flag);
+        path_set.emplace_back(x, y, z, radius);
+    }
+}
+
+void PathResult::get_path_xyzrl(vector<CellXYZRL> &path_set) const {
+    double x, y, z;
+    for (int i = 0; i < path_flags.size(); i++) {
+        tie(x, y, z) = grid->flag2xyz(path_flags[i]);
+        path_set.emplace_back(x, y, z, radius, path_step_lengths[i]);
+    }
+}
+
+void PathResult::get_path_grid(set<size_t> &path_set) const {
+    int x0, y0, z0, x1, y1, z1, vec_x, vec_y, vec_z, step;
+
+    for (int i = 0; i < path_flags.size(); i++) {
+        if (i == 0) {
+            tie(x0, y0, z0) = grid->flag2grid(path_flags[i]);
+            path_set.insert(path_flags[i]);
+
+        } else {
+            tie(x1, y1, z1) = grid->flag2grid(path_flags[i]);
+
+            vec_x = sign(x1 - x0), vec_y = sign(y1 - y0), vec_z = sign(z1 - z0);
+            step = (abs(x1 - x0) + abs(y1 - y0) + abs(z1 - z0)) / (abs(vec_x) + abs(vec_y) + abs(vec_z));
+            for (int j = 0; j < step + 1; j++) {
+                x1 = x0 + step * vec_x, y1 = y0 + step * vec_y, z1 = z0 + step * vec_z;
+                path_set.insert(grid->grid2flag(x1, y1, z1));
+            }
+            x0 = x1, y0 = y1, z0 = z1;
+        }
+    }
+}
+
 void PathResult::update_result(const AStarNode *goal_node, double search_radius) {
     radius = search_radius;
     path_flags.clear();
@@ -95,6 +141,8 @@ tuple<int, int, int, double> StandardAStarSolver::compute_move_info(AStarNode *p
 
     // ------ 如果是终点，则计算终端折角与目标折角的cost
     if (state_detector.is_target(loc_flag)) {
+        tie(straight_x, straight_y, straight_z) = state_detector.get_target_info(loc_flag);
+
         if (with_curvature_cost) {
             if (cos_val > 1.0 - 1e-2) {
                 cost += grid.get_curvature_cost(
@@ -117,6 +165,21 @@ tuple<int, int, int, double> StandardAStarSolver::compute_move_info(AStarNode *p
     return make_tuple(straight_x, straight_y, straight_z, cost);
 }
 
+int StandardAStarSolver::compute_num_of_conflicts(size_t loc0_flag, size_t loc1_flag) {
+    int x0, y0, z0, x1, y1, z1, vec_x, vec_y, vec_z;
+    size_t intermediate_flag;
+    int num_of_conflict = 0;
+
+    tie(x0, y0, z0) = grid.flag2grid(loc0_flag);
+    tie(x1, y1, z1) = grid.flag2grid(loc1_flag);
+    vec_x = sign(x1 - x0), vec_y = sign(y1 - y0), vec_z = sign(z1 - z0);
+    for (int i = 1; i < current_scale + 1; i++) {
+        intermediate_flag = grid.grid2flag(x0 + i * vec_x, y0 + i * vec_y, z0 + i * vec_z);
+        num_of_conflict += conflict_avoid_table->get_num_of_conflict(intermediate_flag);
+    }
+    return num_of_conflict;
+}
+
 AStarNode *StandardAStarSolver::get_next_node(size_t neighbour_loc_flag, AStarNode *parent_node) {
     int straight_x, straight_y, straight_z;
     double moving_cost;
@@ -124,13 +187,21 @@ AStarNode *StandardAStarSolver::get_next_node(size_t neighbour_loc_flag, AStarNo
 
     double h_val = compute_h_cost(neighbour_loc_flag);
     double g_val = parent_node->g_val + moving_cost;
+
+    int num_of_conflict = 0;
+    if (use_constraint_avoid_table) {
+        num_of_conflict = parent_node->num_of_conflicts + compute_num_of_conflicts(
+                parent_node->loc_flag, neighbour_loc_flag
+        );
+    }
+
     auto *next_node = new AStarNode(
             neighbour_loc_flag,
             g_val,
             h_val,
             parent_node,
             parent_node->timestep + 1,
-            0,
+            num_of_conflict,
             false,
             straight_x, straight_y, straight_z
     );
@@ -168,7 +239,9 @@ AStarNode *StandardAStarSolver::get_next_node(size_t neighbour_loc_flag, AStarNo
     return next_node;
 }
 
-bool StandardAStarSolver::find_path(PathResult &res_path, size_t max_iter) {
+bool StandardAStarSolver::find_path(PathResult &res_path, size_t max_iter, const ConflictAvoidTable *avoid_table) {
+    conflict_avoid_table = avoid_table;
+
     num_generated = 0;
     num_expanded = 0;
     size_t run_times = 0;
@@ -228,7 +301,16 @@ bool StandardAStarSolver::find_path(PathResult &res_path, size_t max_iter) {
             }
 
             AStarNode *existing_next = *it;
-            if (next_node->get_f_val() < existing_next->get_f_val()) {
+            bool update_exist_node = false;
+            if (next_node->get_f_val() < existing_next->get_f_val() ||
+                (
+                        next_node->get_f_val() == existing_next->get_f_val()
+                        && next_node->num_of_conflicts < existing_next->num_of_conflicts
+                )) {
+                update_exist_node = true;
+            }
+
+            if (update_exist_node) {
                 existing_next->copy(*next_node);
                 if (!existing_next->in_openlist) {
                     pushNode(existing_next); // if it's in the closed list (reopen)

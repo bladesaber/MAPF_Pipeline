@@ -31,7 +31,7 @@ namespace Grid {
 
         ~DiscreteGridEnv() {};
 
-        // inline函数直接在.h定义
+        // inline函数需直接在.h定义
         inline tuple<int, int, int> xyz2grid(double x, double y, double z) const {
             int x_grid = (x - x_init) / x_grid_length;
             int y_grid = (y - y_init) / y_grid_length;

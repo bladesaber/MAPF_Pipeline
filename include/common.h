@@ -25,6 +25,8 @@
 #include <boost/unordered_set.hpp>
 #include <boost/unordered_map.hpp>
 
+#include "Eigen/Core"
+
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
 

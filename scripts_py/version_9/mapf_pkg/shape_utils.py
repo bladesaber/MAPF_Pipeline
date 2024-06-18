@@ -158,12 +158,12 @@ class ShapeUtils(object):
         if is_input:
             non_valid = np.bitwise_or(
                 dist_0 <= radius + 1e-3,
-                np.bitwise_and(dist_1 > 0.0, dist_0 <= radius * tol_scale)
+                np.bitwise_and(dist_1 > 0.0, dist_0 <= (radius + 1e-3) * tol_scale)
             )
         else:
             non_valid = np.bitwise_or(
                 dist_0 <= radius + 1e-3,
-                np.bitwise_and(dist_1 < 0.0, dist_0 <= radius * tol_scale)
+                np.bitwise_and(dist_1 < 0.0, dist_0 <= (radius + 1e-3) * tol_scale)
             )
         return obs_pcd[~non_valid]
 

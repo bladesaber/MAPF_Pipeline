@@ -21,27 +21,15 @@ void TaskLeaf::insert(const Cell_Flag_Orient &mark, bool force) {
     insert(loc_flag, vec_x, vec_y, vec_z, force);
 }
 
-void TaskLeaf::insert(string tag, size_t loc_flag, int vec_x, int vec_y, int vec_z, bool force) {
-    member_tags->insert(tag);
-    insert(loc_flag, vec_x, vec_y, vec_z, force);
-}
-
-void TaskLeaf::insert(string tag, const Cell_Flag_Orient &mark, bool force) {
-    member_tags->insert(tag);
-    insert(mark, force);
-}
+void TaskLeaf::insert_member(string tag) { member_tags->insert(tag); }
 
 void TaskLeaf::merge_leafs(TaskLeaf *rhs0, TaskLeaf *rhs1) {
-    for (string tag: *rhs0->member_tags) {
-        member_tags->insert(tag);
-    }
+    for (string tag: *rhs0->member_tags) { member_tags->insert(tag); }
     for (auto i: *rhs0->locs_map) {
         insert(i.first, get<0>(i.second), get<1>(i.second), get<2>(i.second), false);
     }
 
-    for (string tag: *rhs1->member_tags) {
-        member_tags->insert(tag);
-    }
+    for (string tag: *rhs1->member_tags) { member_tags->insert(tag); }
     for (auto i: *rhs1->locs_map) {
         insert(i.first, get<0>(i.second), get<1>(i.second), get<2>(i.second), false);
     }
@@ -61,19 +49,27 @@ double GroupAstar::get_path_length() {
     return length;
 }
 
-bool GroupAstar::find_path(const vector<ObstacleType> &dynamic_obstacles, size_t max_iter) {
+bool GroupAstar::find_path(
+        const vector<ObstacleType> &dynamic_obstacles, size_t max_iter, const ConflictAvoidTable &avoid_table
+) {
+    num_expanded = 0;
+    num_generated = 0;
+    search_time_cost = 0.0;
+
     map<string, TaskLeaf *> leafs_map;
     for (const auto &it: task_tree) {
         if (leafs_map.find(it.begin_tag) == leafs_map.end()) {
             leafs_map[it.begin_tag] = new TaskLeaf();
-            for (const auto &mark: it.begin_marks) {
-                leafs_map[it.begin_tag]->insert(it.begin_tag, mark, true);
+            leafs_map[it.begin_tag]->insert_member(it.begin_tag);
+            for (const Cell_Flag_Orient &mark: it.begin_marks) {
+                leafs_map[it.begin_tag]->insert(mark, true);
             }
         }
         if (leafs_map.find(it.final_tag) == leafs_map.end()) {
             leafs_map[it.final_tag] = new TaskLeaf();
-            for (const auto &mark: it.final_marks) {
-                leafs_map[it.final_tag]->insert(it.final_tag, mark, true);
+            leafs_map[it.final_tag]->insert_member(it.final_tag);
+            for (const Cell_Flag_Orient &mark: it.final_marks) {
+                leafs_map[it.final_tag]->insert(mark, true);
             }
         }
     }
@@ -112,25 +108,28 @@ bool GroupAstar::find_path(const vector<ObstacleType> &dynamic_obstacles, size_t
 
         // ------ update search info
         solver.update_configuration(
-                iter.search_radius, iter.step_scale,
-                iter.expand_grid_cell, iter.with_theta_star, iter.with_curvature_cost,
-                iter.curvature_cost_weight
+                iter.search_radius, iter.step_scale, iter.expand_grid_cell,
+                iter.with_curvature_cost, iter.curvature_cost_weight,
+                iter.use_constraint_avoid_table,iter.with_theta_star
         );
 
         // ------ start search
         PathResult sub_path = PathResult(grid);
-        bool is_success = solver.find_path(sub_path, max_iter);
+        bool is_success = solver.find_path(sub_path, max_iter, &avoid_table);
         group_search_success = group_search_success && is_success;
         if (!is_success) {
             break;
         }
         res_list[iter.task_name] = sub_path;
+        num_expanded += solver.num_expanded;
+        num_generated += solver.num_generated;
+        search_time_cost += solver.search_time_cost;
 
         auto *new_leaf = new TaskLeaf();
         new_leaf->merge_leafs(leaf_0, leaf_1);
         new_leaf->merge_path(sub_path);
         delete leafs_map[iter.begin_tag], leafs_map[iter.final_tag];
-        for (const string tag: new_leaf->get_members()) {
+        for (const string &tag: new_leaf->get_members()) {
             leafs_map[tag] = new_leaf;
         }
     }

@@ -16,6 +16,8 @@ from scripts_py.version_9.mapf_pkg.app_utils import FragmentOpen3d
 from scripts_py.version_9.mapf_pkg.networker_block import SimpleBlocker
 from scripts_py.version_9.mapf_pkg.algo_utils import create_search_init_cfg, \
     create_obs_pcd, discrete_pipe_position
+from scripts_py.version_9.mapf_pkg.cbs_utils import CbsSolver
+from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 
 
 class PathApp(EnvironmentApp):
@@ -146,24 +148,74 @@ class PathApp(EnvironmentApp):
             for group_info in block_info['groups']:
                 for seq_info in group_info['sequence']:
                     task_info: dict = seq_info[2]
-                    task_info.setdefault('name', None)
+                    task_info.setdefault('task_name', None)
                     task_info.setdefault('step_scale', None)
                     task_info.setdefault('shrink_distance', None)
                     task_info.setdefault('shrink_scale', None)
                     task_info.setdefault('expand_grid_method', None)
-                    task_info.setdefault('with_theta_star', None)
                     task_info.setdefault('with_curvature_cost', None)
                     task_info.setdefault('curvature_cost_weight', None)
+                    task_info.setdefault('use_constraint_avoid_table', None)
+                    task_info.setdefault('with_theta_star', None)
 
         with open(setup_file, 'w') as f:
             json.dump(setup_json, f, indent=4)
 
         subprocess.run(f"gedit {setup_file};", shell=True)
 
-    def _step_search_on_click(self):
-        pcd = np.random.random((10000, 3))
-        mesh = pyvista.PointSet(pcd)
-        mesh.plot()
+    def _step_search_on_click(self, debug_checkbox: gui.Checkbox):
+        setup_file = os.path.join(self.proj_dir, 'algorithm_setup.json')
+        if not os.path.exists(setup_file):
+            self.console_label.text = "    [ERROR]: No algorithm_setup.json in the project"
+            return
+
+        with open(setup_file, 'r') as f:
+            setup_json = json.load(f)
+
+        grid_cfg = setup_json['grid_env']
+        pipe_cfg = setup_json['pipes']
+
+        block_res_list = []
+        last_leaf_info = {}
+        for block_info in setup_json['search_tree']['block_sequence']:
+            solver = CbsSolver(grid_cfg, pipe_cfg)
+            root = solver.init_block_root(block_info['groups'], last_leafs_info=last_leaf_info)
+            group_idxs = list(solver.task_infos.keys())
+            is_success, res_node = solver.solve_block(root, group_idxs, max_iter=200)
+
+            if is_success:
+                if debug_checkbox.checked:
+                    CbsSolver.draw_node_3D(
+                        res_node, group_idxs=group_idxs, task_infos=solver.task_infos, obstacle_df=solver.obstacle_df
+                    )
+
+                last_leaf_info = solver.convert_node_to_leaf_info(res_node, group_idxs)
+                block_res_list.append(solver.save_path(res_node, group_idxs, solver.task_infos))
+
+            else:
+                print(f"[INFO]: False at solving {block_info['block_id']}")
+                break
+
+        # ------
+        vis = VisUtils()
+
+        obs_df = pd.read_csv(setup_json['grid_env']['obstacle_file'], index_col=0)
+        mesh = VisUtils.create_point_cloud(obs_df[['x', 'y', 'z']].values)
+        vis.plot(mesh, color=(0.3, 0.3, 0.3), opacity=1.0)
+
+        for block_res in block_res_list:
+            for group_idx, group_res in block_res.items():
+                color = np.random.uniform(0.0, 1.0, size=(3,))
+                for task_name, xyzr in group_res.items():
+                    line_set = np.arange(0, xyzr.shape[0], 1)
+                    line_set = np.insert(line_set, 0, line_set.shape[0])
+                    radius = np.unique(xyzr[:, -1])[0]
+                    tube_mesh = VisUtils.create_tube(xyzr[:, :3], radius, line_set)
+                    line_mesh = VisUtils.create_line(xyzr[:, :3], line_set)
+                    vis.plot(tube_mesh, color=color, opacity=0.6)
+                    vis.plot(line_mesh, (0., 0., 0.), opacity=1.0)
+
+        vis.show()
 
     def init_path_search_widget(self):
         algo_layout = gui.CollapsableVert("Path Search Setup", self.spacing, self.blank_margins)
@@ -181,9 +233,9 @@ class PathApp(EnvironmentApp):
         define_search_setting_btn = FragmentOpen3d.get_widget('button', {'name': 'define search setting'})
         define_search_setting_btn.set_on_clicked(self._define_search_setting_on_click)
 
-        step_search_btn = FragmentOpen3d.get_widget('button', {'name': 'step search'})
-        step_search_btn.set_on_clicked(self._step_search_on_click)
-        auto_search_btn = FragmentOpen3d.get_widget('button', {'name': 'auto search'})
+        debug_checkbox = FragmentOpen3d.get_widget('checkbox', {'name': 'DebugMode'})
+        search_btn = FragmentOpen3d.get_widget('button', {'name': 'search'})
+        search_btn.set_on_clicked(partial(self._step_search_on_click, debug_checkbox=debug_checkbox))
 
         algo_layout.add_child(
             FragmentOpen3d.get_layout_widget('vert', [
@@ -191,7 +243,7 @@ class PathApp(EnvironmentApp):
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step2:'), create_search_network_btn]),
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step3:'), create_grid_environment_btn]),
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step4:'), define_search_setting_btn]),
-                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step5:'), step_search_btn, auto_search_btn]),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step5:'), search_btn, debug_checkbox]),
             ], 3, self.vert_margins)
         )
 

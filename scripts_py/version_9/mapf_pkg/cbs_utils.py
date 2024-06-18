@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List, Dict, Literal
+from typing import List, Dict, Literal, Tuple
 import networkx as nx
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -12,6 +12,22 @@ from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 class CbsNode(object):
     def __init__(self, node_id):
         self.node = mapf_pipeline.CbsNode(node_id=node_id)
+
+    @property
+    def node_id(self):
+        return self.node.node_id
+
+    @property
+    def num_expanded(self):
+        return self.node.num_expanded
+
+    @property
+    def num_generated(self):
+        return self.node.num_generated
+
+    @property
+    def search_time_cost(self):
+        return self.node.search_time_cost
 
     def update_group_cell(
             self, group_idx: int, task_list: List[mapf_pipeline.TaskInfo],
@@ -29,8 +45,8 @@ class CbsNode(object):
     def update_group_path(self, group_idx: int, max_iter: int):
         return self.node.update_group_path(group_idx=group_idx, max_iter=max_iter)
 
-    def find_inner_conflict(self):
-        return self.node.find_inner_conflict()
+    def find_inner_conflict_point2point(self):
+        return self.node.find_inner_conflict_point2point()
 
     def is_conflict_free(self):
         return self.node.is_conflict_free()
@@ -69,7 +85,7 @@ class CbsNode(object):
         for group_idx in task_infos.keys():
             graph = nx.Graph()
             for task_info in task_infos[group_idx]:
-                path = self.get_group_path(group_idx, task_info.name)
+                path = self.get_group_path(group_idx, task_info.task_name)
                 flags = path.get_path_flags()
                 step_lengths = path.get_step_length()
                 for i in range(1, len(flags), 1):
@@ -130,7 +146,7 @@ class CbsSolver(object):
         self.task_infos = {}
         self.latest_node_id = 0
 
-    def init_root(self, block_info: List):
+    def init_block_root(self, block_info: List, last_leafs_info: dict = {}):
         self.latest_node_id = 0
         self.task_infos.clear()
         for key in self.node_mapper.keys():
@@ -142,32 +158,44 @@ class CbsSolver(object):
 
         for group_info in block_info:
             group_idx = group_info['group_idx']
+            last_leaf_info = last_leafs_info.get(group_idx, {})
             task_list = []
+
             for name0, name1, setting in group_info['sequence']:
-                pipe0_info = self.pipe_cfg[name0]
-                pipe1_info = self.pipe_cfg[name1]
+                if name0 in last_leaf_info.get('member_tags', []):
+                    begin_marks = [(flag, 0, 0, 0) for flag in last_leaf_info['flags_dict'].keys()]
+                    begin_tag = 'main'
+                else:
+                    pipe0_info = self.pipe_cfg[name0]
+                    vec_x0, vec_y0, vec_z0 = pipe0_info['direction']
+                    if not pipe0_info['is_input']:
+                        vec_x0, vec_y0, vec_z0 = -vec_x0, -vec_y0, -vec_z0
+                    begin_marks = [(pipe0_info['loc_flag'], int(vec_x0), int(vec_y0), int(vec_z0))]
+                    begin_tag = name0
 
-                vec_x0, vec_y0, vec_z0 = pipe0_info['direction']
-                if not pipe0_info['is_input']:
-                    vec_x0, vec_y0, vec_z0 = -vec_x0, -vec_y0, -vec_z0
-
-                vec_x1, vec_y1, vec_z1 = pipe1_info['direction']
-                if not pipe1_info['is_input']:
-                    vec_x1, vec_y1, vec_z1 = -vec_x1, -vec_y1, -vec_z1
+                if name1 in last_leaf_info.get('member_tags', []):
+                    final_marks = [(flag, 0, 0, 0) for flag in last_leaf_info['flags_dict'].keys()]
+                    final_tag = 'main'
+                else:
+                    pipe1_info = self.pipe_cfg[name1]
+                    vec_x1, vec_y1, vec_z1 = pipe1_info['direction']
+                    if pipe1_info['is_input']:
+                        vec_x1, vec_y1, vec_z1 = -vec_x1, -vec_y1, -vec_z1
+                    final_marks = [(pipe1_info['loc_flag'], int(vec_x1), int(vec_y1), int(vec_z1))]
+                    final_tag = name1
 
                 task_list.append(mapf_pipeline.TaskInfo(
-                    name=setting['name'],
-                    begin_loc=self.pipe_cfg[name0]['loc_flag'],
-                    final_loc=self.pipe_cfg[name1]['loc_flag'],
-                    vec_x0=int(vec_x0), vec_y0=int(vec_y0), vec_z0=int(vec_z0),
-                    vec_x1=int(vec_x1), vec_y1=int(vec_y1), vec_z1=int(vec_z1),
+                    task_name=setting['task_name'],
+                    begin_tag=begin_tag, final_tag=final_tag, begin_marks=begin_marks, final_marks=final_marks,
                     search_radius=setting['radius'], step_scale=setting['step_scale'],
                     shrink_distance=setting['shrink_distance'], shrink_scale=setting['shrink_scale'],
                     expand_grid_cell=self.grid_expand_method[setting['expand_grid_method']],
-                    with_theta_star=setting['with_theta_star'],
                     with_curvature_cost=setting['with_curvature_cost'],
-                    curvature_cost_weight=setting['curvature_cost_weight']
+                    curvature_cost_weight=setting['curvature_cost_weight'],
+                    use_constraint_avoid_table=setting['use_constraint_avoid_table'],
+                    with_theta_star=setting['with_theta_star'],
                 ))
+
             self.task_infos[group_idx] = task_list
 
         for group_idx in list(self.task_infos.keys()):
@@ -179,6 +207,13 @@ class CbsSolver(object):
                 x, y, z = pipe_info['discrete_position']
                 dynamic_constrains.append((x, y, z, 0.0))
 
+            for sub_idx in last_leafs_info.keys():
+                if sub_idx == group_idx:
+                    continue
+                for flag, radius in last_leafs_info[sub_idx]['flags_dict'].items():
+                    other_x, other_y, other_z = self.grid_env.flag2xyz(flag)
+                    dynamic_constrains.append((other_x, other_y, other_z, radius))
+
             root.update_group_cell(
                 group_idx=group_idx,
                 task_list=self.task_infos[group_idx],
@@ -189,16 +224,15 @@ class CbsSolver(object):
 
         return root
 
-    def solve(self, root: CbsNode, group_idxs: List[int], max_iter):
+    def solve_block(self, root: CbsNode, group_idxs: List[int], max_iter):
         for group_idx in group_idxs:
             is_success = root.update_group_path(group_idx, max_iter)
             print(f"groupIdx:{group_idx} success:{is_success}")
             if not is_success:
                 return {'status': False}
+        # self.draw_node_3D(root, group_idxs, self.task_infos)
 
-        # self.draw_node_3D(root, group_idxs)
-
-        root.find_inner_conflict()
+        root.find_inner_conflict_point2point()
         root.compute_h_val()
         root.compute_h_val()
         self.push_node_wrap(root)
@@ -206,6 +240,8 @@ class CbsSolver(object):
         is_success = False
         res_node = None
         for run_times in range(1000):
+            print(f"[INFO]: running step:{run_times}")
+
             node_wrap = self.pop_node_wrap()
 
             if node_wrap.is_conflict_free():
@@ -221,7 +257,54 @@ class CbsSolver(object):
             if self.solver.is_openList_empty():
                 break
 
+            print()
+
         return is_success, res_node
+
+    def convert_node_to_leaf_info(self, node: CbsNode, group_idxs):
+        last_leaf_info = {}
+        for group_idx in group_idxs:
+            last_leaf_info.setdefault(group_idx, {})
+            member_tags, flags_dict = [], {}
+            for task_info in self.task_infos[group_idx]:
+                path_res = node.get_group_path(group_idx, task_info.task_name)
+                radius = task_info.search_radius
+
+                last_x, last_y, last_z = None, None, None
+                for i, flag in enumerate(path_res.get_path_flags()):
+                    if i == 0:
+                        if flag in flags_dict.keys():
+                            flags_dict[flag] = max(flags_dict[flag], radius)
+                        else:
+                            flags_dict[flag] = radius
+
+                        last_x, last_y, last_z = self.grid_env.flag2grid(flag)
+
+                    else:
+                        cur_x, cur_y, cur_z = self.grid_env.flag2grid(flag)
+                        dif = np.array([cur_x - last_x, cur_y - last_y, cur_z - last_z])
+                        sign = np.sign(dif)
+                        step = int(np.sum(np.abs(dif)) / np.sum(np.abs(sign)))
+                        for j in range(step + 1):
+                            intermediate_flag = self.grid_env.grid2flag(
+                                last_x + j * sign[0], last_y + j * sign[1], last_z + j * sign[2]
+                            )
+                            if intermediate_flag in flags_dict.keys():
+                                flags_dict[intermediate_flag] = max(flags_dict[intermediate_flag], radius)
+                            else:
+                                flags_dict[intermediate_flag] = radius
+
+                        last_x, last_y, last_z = cur_x, cur_y, cur_z
+
+                member_tags.append(task_info.begin_tag)
+                member_tags.append(task_info.final_tag)
+
+            last_leaf_info[group_idx] = {
+                'member_tags': list(set(member_tags)),
+                'flags_dict': flags_dict
+            }
+
+        return last_leaf_info
 
     def push_node_wrap(self, node_wrap: CbsNode):
         self.solver.push_node(node_wrap.node)
@@ -260,15 +343,24 @@ class CbsSolver(object):
 
         dynamic_constraints = new_node_wrap.get_constrain(group_idx)
         dynamic_constraints.append((obs_x, obs_y, obs_z, obs_radius))
+
+        # print(f'debug: {group_idx}', dynamic_constraints)  # todo 当grid的密度较大时，管道干涉的障碍点密度就越大，低效搜索的次数就越多
+
         new_node_wrap.update_constrains_map(group_idx=group_idx, dynamic_obstacles=dynamic_constraints)
 
         is_success = new_node_wrap.update_group_path(group_idx, max_iter)
         if not is_success:
             return False, None
 
-        new_node_wrap.find_inner_conflict()
+        new_node_wrap.find_inner_conflict_point2point()
         new_node_wrap.compute_h_val()
         new_node_wrap.compute_g_val()
+        print(f"[INFO] A star solving num_expanded:{new_node_wrap.num_expanded}, "
+              f"num_generated:{new_node_wrap.num_generated}, "
+              f"search_time_cost:{new_node_wrap.search_time_cost}"
+              )
+
+        # self.draw_node_3D(new_node_wrap, list(self.task_infos.keys()), self.task_infos, group_idx, self.obstacle_df)
 
         return True, new_node_wrap
 
@@ -276,24 +368,37 @@ class CbsSolver(object):
     def draw_node_3D(
             node: CbsNode, group_idxs: List[int],
             task_infos: Dict[int, List[mapf_pipeline.TaskInfo]],
+            highlight_group_idx: int = None,
             obstacle_df: pd.DataFrame = None
     ):
         vis = VisUtils()
-        pipe_colors = np.random.uniform(0.0, 1.0, size=(len(group_idxs), 3))
+        colors = {}
+        for i, group_idx in enumerate(group_idxs):
+            colors[group_idx] = np.random.uniform(0.0, 1.0, size=(3,))
+
         for i, group_idx in enumerate(group_idxs):
             task_list = task_infos[group_idx]
             for task_info in task_list:
-                path_res = node.get_group_path(group_idx, task_info.name)
+                path_res = node.get_group_path(group_idx, task_info.task_name)
                 xyzr = path_res.get_path()
                 xyzr = np.array(xyzr)
                 line_set = np.arange(0, xyzr.shape[0], 1)
                 line_set = np.insert(line_set, 0, line_set.shape[0])
-                mesh = VisUtils.create_tube(xyzr[:, :3], task_info.search_radius, line_set)
-                vis.plot(mesh, pipe_colors[i, :], opacity=1.0)
+                tube_mesh = VisUtils.create_tube(xyzr[:, :3], task_info.search_radius, line_set)
+                line_mesh = VisUtils.create_line(xyzr[:, :3], line_set)
+                vis.plot(tube_mesh, colors[group_idx], opacity=0.6)
+                vis.plot(line_mesh, (0., 0., 0.), opacity=1.0)
 
         if obstacle_df is not None:
             mesh = VisUtils.create_point_cloud(obstacle_df[['x', 'y', 'z']].values)
             vis.plot(mesh, color=(0.3, 0.3, 0.3), opacity=1.0)
+
+        if highlight_group_idx is not None:
+            for x, y, z, radius in node.get_constrain(highlight_group_idx):
+                vis.plot(
+                    VisUtils.create_sphere(np.array([x, y, z]), radius=max(radius, 0.02)),
+                    color=colors[highlight_group_idx], opacity=1.0
+                )
 
         vis.show()
 
@@ -317,3 +422,14 @@ class CbsSolver(object):
                 else:
                     ax.plot(xyzr[:, 1], xyzr[:, 2])
         plt.show()
+
+    @staticmethod
+    def save_path(node: CbsNode, group_idxs: List[int], task_infos: Dict[int, List[mapf_pipeline.TaskInfo]]):
+        res = {}
+        for group_idx in group_idxs:
+            task_list = task_infos[group_idx]
+            for task_info in task_list:
+                path_res = node.get_group_path(group_idx, task_info.task_name)
+                xyzr = np.array(path_res.get_path())
+                res.setdefault(group_idx, {})[task_info.task_name] = xyzr
+        return res

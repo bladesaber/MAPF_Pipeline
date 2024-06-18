@@ -8,6 +8,7 @@
 #include "grid_utils.h"
 #include "state_utils.h"
 #include "collision_utils.h"
+#include "constraint_avoid_table.h"
 #include "astar_algo.h"
 #include "group_astar_algo.h"
 #include "conflict_utils.h"
@@ -83,9 +84,9 @@ PYBIND11_MODULE(mapf_pipeline, m) {
     py::class_<Grid::DynamicStepStateDetector>(m, "DynamicStepStateDetector")
             .def(py::init<Grid::DiscreteGridEnv &>(), "grid"_a)
             .def("insert_start_flags", &Grid::DynamicStepStateDetector::insert_start_flags,
-                 "loc_flag"_a, "direction_x"_a, "direction_x"_a, "direction_x"_a)
+                 "loc_flag"_a, "direction_x"_a, "direction_x"_a, "direction_x"_a, "force"_a)
             .def("insert_target_flags", &Grid::DynamicStepStateDetector::insert_target_flags,
-                 "loc_flag"_a, "direction_x"_a, "direction_x"_a, "direction_x"_a)
+                 "loc_flag"_a, "direction_x"_a, "direction_x"_a, "direction_x"_a, "force"_a)
             .def("get_start_info", &Grid::DynamicStepStateDetector::get_start_info, "loc_flag"_a)
             .def("get_target_info", &Grid::DynamicStepStateDetector::get_target_info, "loc_flag"_a)
             .def("get_start_pos_flags", &Grid::DynamicStepStateDetector::get_start_pos_flags)
@@ -104,6 +105,12 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             .def("is_valid", py::overload_cast<double, double, double, double, double, double, double>(
                     &CollisionDetector::is_valid));
 
+    py::class_<ConflictAvoidTable>(m, "ConflictAvoidTable")
+            .def(py::init<>())
+            .def("insert", &ConflictAvoidTable::insert, "flag"_a)
+            .def("get_num_of_conflict", &ConflictAvoidTable::get_num_of_conflict, "flag"_a)
+            .def("get_data", &ConflictAvoidTable::get_data);
+
     py::class_<PathResult>(m, "PathResult")
             .def(py::init<Grid::DiscreteGridEnv *>())
             .def("get_path_flags", &PathResult::get_path_flags)
@@ -119,39 +126,37 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             .def_readonly("search_time_cost", &StandardAStarSolver::search_time_cost)
             .def("update_configuration", &StandardAStarSolver::update_configuration,
                  "pipe_radius"_a, "search_step_scale"_a, "grid_expand_candidates"_a,
-                 "use_theta_star"_a, "use_curvature_cost"_a, "curvature_cost_weight"_a)
-            .def("find_path", &StandardAStarSolver::find_path, "res_path"_a, "max_iter"_a);
+                 "use_curvature_cost"_a, "curvature_cost_weight"_a,
+                 "use_avoid_table"_a = true, "use_theta_star"_a = false)
+            .def("find_path", &StandardAStarSolver::find_path, "res_path"_a, "max_iter"_a, "avoid_table"_a);
 
     py::class_<TaskInfo>(m, "TaskInfo")
             .def(py::init<
-                         string, size_t, int, int, int, size_t, int, int, int, double, int, double, int,
-                         vector<tuple<int, int, int>>, bool, bool, double>(), "name"_a,
-                 "begin_loc"_a, "vec_x0"_a, "vec_y0"_a, "vec_z0"_a,
-                 "final_loc"_a, "vec_x1"_a, "vec_y1"_a, "vec_z1"_a,
-                 "search_radius"_a, "step_scale"_a, "shrink_distance"_a, "shrink_scale"_a,
-                 "expand_grid_cell"_a, "with_theta_star"_a, "with_curvature_cost"_a, "curvature_cost_weight"_a)
-            .def_readonly("name", &TaskInfo::name)
-            .def_readwrite("begin_loc", &TaskInfo::begin_loc)
-            .def_readwrite("final_loc", &TaskInfo::final_loc)
-            .def_readwrite("vec_x0", &TaskInfo::vec_x0)
-            .def_readwrite("vec_y0", &TaskInfo::vec_y0)
-            .def_readwrite("vec_z0", &TaskInfo::vec_z0)
-            .def_readwrite("vec_x1", &TaskInfo::vec_x1)
-            .def_readwrite("vec_y1", &TaskInfo::vec_y1)
-            .def_readwrite("vec_z1", &TaskInfo::vec_z1)
+                         string, string, string, vector<Cell_Flag_Orient>, vector<Cell_Flag_Orient>,
+                         double, int, double, int, vector<tuple<int, int, int>>, bool, double, bool, bool>(),
+                 "task_name"_a, "begin_tag"_a, "final_tag"_a, "begin_marks"_a, "final_marks"_a,
+                 "search_radius"_a, "step_scale"_a, "shrink_distance"_a, "shrink_scale"_a, "expand_grid_cell"_a,
+                 "with_curvature_cost"_a, "curvature_cost_weight"_a,
+                 "use_constraint_avoid_table"_a, "with_theta_star"_a)
+            .def_readonly("task_name", &TaskInfo::task_name)
+            .def_readonly("begin_tag", &TaskInfo::begin_tag)
+            .def_readonly("final_tag", &TaskInfo::final_tag)
+            .def_readonly("begin_marks", &TaskInfo::begin_marks)
+            .def_readonly("final_marks", &TaskInfo::final_marks)
             .def_readwrite("search_radius", &TaskInfo::search_radius)
             .def_readwrite("step_scale", &TaskInfo::step_scale)
             .def_readwrite("shrink_distance", &TaskInfo::shrink_distance)
             .def_readwrite("shrink_scale", &TaskInfo::shrink_scale)
             .def_readwrite("expand_grid_cell", &TaskInfo::expand_grid_cell)
             .def_readwrite("with_theta_star", &TaskInfo::with_theta_star)
+            .def_readwrite("use_constraint_avoid_table", &TaskInfo::use_constraint_avoid_table)
             .def_readwrite("with_curvature_cost", &TaskInfo::with_curvature_cost)
             .def_readwrite("curvature_cost_weight", &TaskInfo::curvature_cost_weight);
 
     py::class_<GroupAstar>(m, "GroupAstar")
             .def(py::init<Grid::DiscreteGridEnv *, CollisionDetector *>())
             .def("update_task_tree", &GroupAstar::update_task_tree, "task_list"_a)
-            .def("find_path", &GroupAstar::find_path, "dynamic_obstacles"_a, "max_iter"_a)
+            .def("find_path", &GroupAstar::find_path, "dynamic_obstacles"_a, "max_iter"_a, "avoid_table"_a)
             .def("get_task_tree", &GroupAstar::get_task_tree)
             .def("get_res", &GroupAstar::get_res)
             .def("reset", &GroupAstar::reset);
@@ -174,6 +179,9 @@ PYBIND11_MODULE(mapf_pipeline, m) {
     py::class_<CbsNode>(m, "CbsNode")
             .def(py::init<size_t>(), "node_id"_a)
             .def_readonly("node_id", &CbsNode::node_id)
+            .def_readonly("num_expanded", &CbsNode::num_expanded)
+            .def_readonly("num_generated", &CbsNode::num_generated)
+            .def_readonly("search_time_cost", &CbsNode::search_time_cost)
             .def("compute_g_val", &CbsNode::compute_g_val)
             .def("compute_h_val", &CbsNode::compute_h_val)
             .def("get_f_val", &CbsNode::get_f_val)
@@ -182,7 +190,8 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             .def("update_group_cell", &CbsNode::update_group_cell,
                  "group_idx"_a, "group_task_tree"_a, "group_grid"_a, "obstacle_detector"_a, "group_dynamic_obstacles"_a)
             .def("is_conflict_free", &CbsNode::is_conflict_free)
-            .def("find_inner_conflict", &CbsNode::find_inner_conflict)
+            .def("find_inner_conflict_point2point", &CbsNode::find_inner_conflict_point2point)
+            .def("find_inner_conflict_segment2segment", &CbsNode::find_inner_conflict_segment2segment)
             .def("copy_from_node", &CbsNode::copy_from_node, "rhs"_a)
             .def("get_group_path", &CbsNode::get_group_path, "group_idx"_a, "name"_a)
             .def("get_conflict_length", &CbsNode::get_conflict_length, "group_idx"_a)

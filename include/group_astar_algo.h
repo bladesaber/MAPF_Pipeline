@@ -6,6 +6,7 @@
 #define MAPF_PIPELINE_GROUP_ASTAR_ALGO_H
 
 #include "common.h"
+#include "constraint_avoid_table.h"
 #include "conflict_utils.h"
 #include "astar_algo.h"
 
@@ -28,17 +29,15 @@ public:
 
     void merge_path(PathResult &path);
 
-    void insert(string tag, size_t loc_flag, int vec_x, int vec_y, int vec_z, bool force);
-
-    void insert(string tag, const Cell_Flag_Orient &mark, bool force);
+    void insert_member(string tag);
 
     void insert(size_t loc_flag, int vec_x, int vec_y, int vec_z, bool force);
 
     void insert(const Cell_Flag_Orient &mark, bool force);
 
-    map<size_t, tuple<int, int, int>> &get_locs_map() const {return *locs_map;}
+    map<size_t, tuple<int, int, int>> &get_locs_map() const { return *locs_map; }
 
-    set<string> &get_members() const {return *member_tags;}
+    set<string> &get_members() const { return *member_tags; }
 
 private:
     set<string> *member_tags;
@@ -53,27 +52,32 @@ public:
     double search_radius, shrink_distance;
     int step_scale, shrink_scale;
     vector<tuple<int, int, int>> expand_grid_cell;
-    bool with_theta_star, with_curvature_cost;
+    bool with_theta_star, with_curvature_cost, use_constraint_avoid_table;
     double curvature_cost_weight;
 
     TaskInfo(
             string task_name, string begin_tag, string final_tag,
             vector<Cell_Flag_Orient> begin_marks, vector<Cell_Flag_Orient> final_marks,
             double search_radius, int step_scale, double shrink_distance, int shrink_scale,
-            vector<tuple<int, int, int>> expand_grid_cell, bool with_theta_star, bool with_curvature_cost,
-            double curvature_cost_weight
+            vector<tuple<int, int, int>> expand_grid_cell,
+            bool with_curvature_cost, double curvature_cost_weight,
+            bool use_constraint_avoid_table, bool with_theta_star
     ) : task_name(task_name), begin_tag(begin_tag), final_tag(final_tag),
         begin_marks(begin_marks), final_marks(final_marks),
         search_radius(search_radius), step_scale(step_scale),
         shrink_distance(shrink_distance), shrink_scale(shrink_scale), expand_grid_cell(expand_grid_cell),
-        with_theta_star(with_theta_star), with_curvature_cost(with_curvature_cost),
-        curvature_cost_weight(curvature_cost_weight) {};
+        with_curvature_cost(with_curvature_cost), curvature_cost_weight(curvature_cost_weight),
+        use_constraint_avoid_table(use_constraint_avoid_table), with_theta_star(with_theta_star) {};
 
     ~TaskInfo() {};
 };
 
 class GroupAstar {
 public:
+    size_t num_expanded = 0;
+    size_t num_generated = 0;
+    double search_time_cost = -1.0;
+
     GroupAstar() {}
 
     GroupAstar(Grid::DiscreteGridEnv *grid, CollisionDetector *obstacle_detector) :
@@ -81,7 +85,7 @@ public:
 
     ~GroupAstar() { reset(); };
 
-    bool find_path(const vector<ObstacleType> &dynamic_obstacles, size_t max_iter);
+    bool find_path(const vector<ObstacleType> &dynamic_obstacles, size_t max_iter, const ConflictAvoidTable &avoid_table);
 
     void update_task_tree(vector<TaskInfo> task_list) { task_tree = task_list; }
 

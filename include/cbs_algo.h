@@ -9,6 +9,7 @@
 #define MAPF_PIPELINE_CBS_ALGO_H
 
 #include "common.h"
+#include "constraint_avoid_table.h"
 #include "conflict_utils.h"
 #include "group_astar_algo.h"
 
@@ -29,6 +30,10 @@ public:
     double g_val = 0.0;
     double h_val = 0.0;
 
+    size_t num_expanded = 0;
+    size_t num_generated = 0;
+    double search_time_cost = -1.0;
+
     bool update_group_path(size_t group_idx, size_t max_iter = 1000);
 
     void update_constrains_map(size_t group_idx, const vector<ObstacleType> &group_dynamic_obstacles);
@@ -41,35 +46,27 @@ public:
 
     void copy_from_node(CbsNode *rhs);
 
-    bool find_inner_conflict();
+    bool find_inner_conflict_point2point();
 
-    bool is_conflict_free() {
-        return conflict_list.size() == 0;
-    }
+    bool find_inner_conflict_segment2segment();
+
+    bool is_conflict_free() { return conflict_list.size() == 0; }
 
     double compute_g_val();
 
     double compute_h_val();
 
-    inline double get_f_val() const {
-        return g_val + h_val;
-    }
+    void init_conflict_avoid_table(size_t main_group_idx);
 
-    PathResult get_group_path(size_t group_idx, string name) {
-        return (*group_res[group_idx]).get_res()[name];
-    }
+    inline double get_f_val() const { return g_val + h_val; }
 
-    double get_conflict_length(size_t group_idx) {
-        return group_conflict_length_map[group_idx];
-    }
+    PathResult get_group_path(size_t group_idx, string name) { return (*group_res[group_idx]).get_res()[name]; }
 
-    vector<ConflictCell> get_conflict_cells() const {
-        return conflict_list;
-    }
+    double get_conflict_length(size_t group_idx) { return group_conflict_length_map[group_idx]; }
 
-    vector<ObstacleType> get_constrain(size_t group_idx) {
-        return *constrains_map[group_idx];
-    }
+    vector<ConflictCell> get_conflict_cells() const { return conflict_list; }
+
+    vector<ObstacleType> get_constrain(size_t group_idx) { return *constrains_map[group_idx]; }
 
     void reset() {
         group_conflict_length_map.clear();
@@ -100,6 +97,7 @@ public:
 private:
     map<size_t, double> group_conflict_length_map;
     vector<ConflictCell> conflict_list;
+    ConflictAvoidTable avoid_table;
 };
 
 class CbsSolver {
@@ -123,9 +121,9 @@ public:
     }
 
     void reset() {
-//        for (auto node: open_list) {
-//            delete node;
-//        }
+        // for (auto node: open_list) {
+        //     delete node;
+        // }
         open_list.clear(); // 释放交由python管理
     }
 

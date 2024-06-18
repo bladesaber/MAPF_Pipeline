@@ -6,6 +6,7 @@
 #define MAPF_PIPELINE_A_STAR_ALGO_H
 
 #include "common.h"
+#include "constraint_avoid_table.h"
 #include "collision_utils.h"
 #include "grid_utils.h"
 #include "state_utils.h"
@@ -96,39 +97,21 @@ public:
 
     void update_result(const AStarNode *goal_node, double search_radius);
 
-    vector<size_t> get_path_flags() const {
-        return path_flags;
-    }
+    vector<size_t> get_path_flags() const { return path_flags; }
 
-    void get_path_xyz(vector<CellXYZ> &path_details) const {
-        double x, y, z;
-        for (size_t loc_flag: path_flags) {
-            tie(x, y, z) = grid->flag2xyz(loc_flag);
-            path_details.emplace_back(make_tuple(x, y, z));
-        }
-    }
+    void get_path_xyz(vector<CellXYZ> &path_set) const;
 
-    void get_path_xyzr(vector<CellXYZR> &path_set) const {
-        double x, y, z;
-        for (size_t loc_flag: path_flags) {
-            tie(x, y, z) = grid->flag2xyz(loc_flag);
-            path_set.emplace_back(make_tuple(x, y, z, radius));
-        }
-    }
+    void get_path_xyzr(vector<CellXYZR> &path_set) const;
 
-    void get_path_xyzrl(vector<CellXYZRL> &path_set) const {
-        double x, y, z;
-        for (int i = 0; i < path_flags.size(); i++) {
-            tie(x, y, z) = grid->flag2xyz(path_flags[i]);
-            path_set.emplace_back(make_tuple(x, y, z, radius, path_step_lengths[i]));
-        }
-    }
+    void get_path_xyzrl(vector<CellXYZRL> &path_set) const;
+
+    void get_path_grid(set<size_t> &path_set) const;
 
     double get_radius() const { return radius; }
 
     double get_length() const { return path_length; }
 
-    vector<double> get_step_length() { return path_step_lengths; }
+    vector<double> get_step_length() const { return path_step_lengths; }
 
     vector<CellXYZR> get_path() const {
         vector<CellXYZR> path;
@@ -168,24 +151,32 @@ public:
 
     void update_configuration(
             double pipe_radius, int search_step_scale, vector<tuple<int, int, int>> &grid_expand_candidates,
-            bool use_theta_star, bool use_curvature_cost, double curvature_cost_weight
+            bool use_curvature_cost, double curvature_cost_weight,
+            bool use_avoid_table=true, bool use_theta_star=false
     ) {
         radius = pipe_radius;
         step_scale = search_step_scale;
         expand_candidates.clear();
         expand_candidates.assign(grid_expand_candidates.begin(), grid_expand_candidates.end());
-        with_theta_star = use_theta_star;
         with_curvature_cost = use_curvature_cost;
         curvature_weight = curvature_cost_weight;
+        use_constraint_avoid_table = use_avoid_table;
+        with_theta_star = use_theta_star;
+        if (use_constraint_avoid_table && with_theta_star){
+            with_theta_star = false;
+            cout << "[INFO]: Since using constraint avoid table, theta star must be set to false." << endl;
+        }
     }
 
-    bool find_path(PathResult &res_path, size_t max_iter);
+    bool find_path(PathResult &res_path, size_t max_iter, const ConflictAvoidTable *avoid_table);
 
     AStarNode *get_next_node(size_t neighbour_loc_flag, AStarNode *parent_node);
 
     double compute_h_cost(size_t loc_flag);
 
     double compute_move_orient(AStarNode *parent, size_t next_loc_flag);
+
+    int compute_num_of_conflicts(size_t loc0_flag, size_t loc1_flag);
 
     tuple<int, int, int, double> compute_move_info(AStarNode *parent_node, size_t loc_flag);
 
@@ -208,6 +199,7 @@ private:
     int step_scale;
     int current_scale;
     vector<tuple<int, int, int>> expand_candidates;
+    bool use_constraint_avoid_table;
 
     bool with_theta_star = false;
     bool with_curvature_cost = false;
@@ -217,6 +209,7 @@ private:
     CollisionDetector &obstacle_detector;
     CollisionDetector &dynamic_detector;
     Grid::DynamicStepStateDetector &state_detector;
+    const ConflictAvoidTable *conflict_avoid_table;
 
     typedef boost::heap::pairing_heap<AStarNode *, boost::heap::compare<AStarNode::compare_node>> Heap_open_t;
     Heap_open_t open_list;

@@ -21,7 +21,7 @@ def debug_kdtree():
     tree.create_tree()
     tree.nearestKSearch(x=1., y=0., z=0., k=1)
     found_point = tree.get_point_from_data(tree.result_idxs_1D[0])
-    print(f"Found point:{found_point.x}-{found_point.y}-{found_point.z} distance:{tree.result_distance_1D[0]}")
+    print(f"Found point:({found_point.x}, {found_point.y}, {found_point.z}) distance:{tree.result_distance_1D[0]}")
 
     tree.clear_data()
     pcd = np.array([
@@ -33,7 +33,7 @@ def debug_kdtree():
     tree.create_tree()
     tree.nearestKSearch(1., 0., 0., 1)
     found_point = tree.get_point_from_data(tree.result_idxs_1D[0])
-    print(f"Found point:{found_point.x}-{found_point.y}-{found_point.z} distance:{tree.result_distance_1D[0]}")
+    print(f"Found point:({found_point.x}, {found_point.y}, {found_point.z}) distance:{tree.result_distance_1D[0]}")
 
 
 def debug_grid():
@@ -66,9 +66,8 @@ def debug_state_detector():
         x_init=-10.0, y_init=-10.0, z_init=-20.0,
         x_grid_length=0.5, y_grid_length=0.5, z_grid_length=1.0
     )
-    detector = mapf_pipeline.DynamicStepStateDetector(
-        grid=grid_env, shrink_dist=2.0, shrink_scale=1
-    )
+    detector = mapf_pipeline.DynamicStepStateDetector(grid=grid_env)
+    detector.update_dynamic_info(shrink_distance=2.0, scale=1)
 
     start_pipe = [
         {'grid': [5, 5, 10], 'direction': [1.0, 0.0, 0.0]},
@@ -84,11 +83,11 @@ def debug_state_detector():
     for info in start_pipe:
         grid, direction = info['grid'], info['direction']
         flag = grid_env.grid2flag(x_grid=grid[0], y_grid=grid[1], z_grid=grid[2])
-        detector.insert_start_flags(flag, direction[0], direction[1], direction[2])
+        detector.insert_start_flags(flag, direction[0], direction[1], direction[2], False)
     for info in target_pipe:
         grid, direction = info['grid'], info['direction']
         flag = grid_env.grid2flag(x_grid=grid[0], y_grid=grid[1], z_grid=grid[2])
-        detector.insert_target_flags(flag, direction[0], direction[1], direction[2])
+        detector.insert_target_flags(flag, direction[0], direction[1], direction[2], False)
 
     print(f"start_pipe flags:{detector.get_start_pos_flags()} target_pipe flags:{detector.get_target_pos_flags()}")
     for flag in detector.get_start_pos_flags():
@@ -136,6 +135,21 @@ def debug_collision_detector():
     print(f"should be false: {detector.is_valid(8, 9, 0, 10, 11, 0, 1.)}")
 
 
+def debug_constraint_table():
+    avoid_table = mapf_pipeline.ConflictAvoidTable()
+    avoid_table.insert(1)
+    avoid_table.insert(2)
+    avoid_table.insert(3)
+    avoid_table.insert(1)
+    avoid_table.insert(1)
+    avoid_table.insert(2)
+    print(f"loc 1:{avoid_table.get_num_of_conflict(1)} "
+          f"loc 2:{avoid_table.get_num_of_conflict(2)} "
+          f"loc 3:{avoid_table.get_num_of_conflict(3)} "
+          f"loc 4:{avoid_table.get_num_of_conflict(4)}")
+    print(avoid_table.get_data())
+
+
 def debug_astar_2D():
     grid_env = mapf_pipeline.DiscreteGridEnv(
         size_of_x=11, size_of_y=11, size_of_z=0,
@@ -151,6 +165,8 @@ def debug_astar_2D():
     state_detector = mapf_pipeline.detector = mapf_pipeline.DynamicStepStateDetector(grid=grid_env)
     state_detector.update_dynamic_info(shrink_distance=2.0, scale=1)
 
+    avoid_table = mapf_pipeline.ConflictAvoidTable()
+
     start_pipe = [
         {'grid': [0, 0, 0], 'direction': [1.0, 0.0, 0.0]},
     ]
@@ -160,11 +176,11 @@ def debug_astar_2D():
     for info in start_pipe:
         grid, direction = info['grid'], info['direction']
         flag = grid_env.grid2flag(x_grid=grid[0], y_grid=grid[1], z_grid=grid[2])
-        state_detector.insert_start_flags(flag, direction[0], direction[1], direction[2])
+        state_detector.insert_start_flags(flag, direction[0], direction[1], direction[2], False)
     for info in target_pipe:
         grid, direction = info['grid'], info['direction']
         flag = grid_env.grid2flag(x_grid=grid[0], y_grid=grid[1], z_grid=grid[2])
-        state_detector.insert_target_flags(flag, direction[0], direction[1], direction[2])
+        state_detector.insert_target_flags(flag, direction[0], direction[1], direction[2], False)
 
     candidate = []
     candidate.extend(mapf_pipeline.candidate_1D)
@@ -176,15 +192,17 @@ def debug_astar_2D():
         pipe_radius=1.0,
         search_step_scale=1,
         grid_expand_candidates=candidate,
-        use_theta_star=False,
         use_curvature_cost=True,
-        curvature_cost_weight=5.0
+        curvature_cost_weight=5.0,
+        use_avoid_table=True,
+        use_theta_star=False,
     )
-    is_success = solver.find_path(res_path, 200)
+    is_success = solver.find_path(res_path, 200, avoid_table)
     print(f"state:{is_success} num_generate:{solver.num_generated} num_expand:{solver.num_expanded}")
 
     if is_success:
-        print(f"info: radius:{res_path.get_radius()} path_length:{res_path.get_path_length()}")
+        print(
+            f"info: radius:{res_path.get_radius()} path_length:{res_path.get_length()} timeCost:{solver.search_time_cost}")
 
         xyz_list = []
         for flag in res_path.get_path_flags():
@@ -197,7 +215,9 @@ def debug_astar_2D():
         plt.show()
 
 
-def debug_obstacle_astar_2D():
+def debug_orient_astar_2D():
+    # 这个例子可以看出方法的不完备性，只能缓解问题
+
     grid_env = mapf_pipeline.DiscreteGridEnv(
         size_of_x=11, size_of_y=11, size_of_z=0,
         x_init=0.0, y_init=0.0, z_init=0.0,
@@ -210,22 +230,24 @@ def debug_obstacle_astar_2D():
     dynamic_detector.create_tree()
 
     state_detector = mapf_pipeline.detector = mapf_pipeline.DynamicStepStateDetector(grid=grid_env)
-    state_detector.update_dynamic_info(shrink_distance=2.0, scale=1)
+    state_detector.update_dynamic_info(shrink_distance=1.0, scale=1)
+
+    avoid_table = mapf_pipeline.ConflictAvoidTable()
 
     start_pipe = [
-        {'grid': [0, 1, 0], 'direction': [1.0, 0.0, 0.0]},
+        {'grid': [0, 0, 0], 'direction': [1.0, 0.0, 0.0]},
     ]
     target_pipe = [
-        {'grid': [10, 8, 0], 'direction': [1.0, 0.0, 0.0]},
+        {'grid': [9, 3, 0], 'direction': [0.0, 1.0, 0.0]},
     ]
     for info in start_pipe:
         grid, direction = info['grid'], info['direction']
         flag = grid_env.grid2flag(x_grid=grid[0], y_grid=grid[1], z_grid=grid[2])
-        state_detector.insert_start_flags(flag, direction[0], direction[1], direction[2])
+        state_detector.insert_start_flags(flag, direction[0], direction[1], direction[2], False)
     for info in target_pipe:
         grid, direction = info['grid'], info['direction']
         flag = grid_env.grid2flag(x_grid=grid[0], y_grid=grid[1], z_grid=grid[2])
-        state_detector.insert_target_flags(flag, direction[0], direction[1], direction[2])
+        state_detector.insert_target_flags(flag, direction[0], direction[1], direction[2], False)
 
     candidate = []
     candidate.extend(mapf_pipeline.candidate_1D)
@@ -237,15 +259,17 @@ def debug_obstacle_astar_2D():
         pipe_radius=1.0,
         search_step_scale=1,
         grid_expand_candidates=candidate,
-        use_theta_star=False,
         use_curvature_cost=True,
-        curvature_cost_weight=5.0
+        curvature_cost_weight=1000.0,
+        use_avoid_table=True,
+        use_theta_star=False,
     )
-    is_success = solver.find_path(res_path, 200)
+    is_success = solver.find_path(res_path, 200, avoid_table)
     print(f"state:{is_success} num_generate:{solver.num_generated} num_expand:{solver.num_expanded}")
 
     if is_success:
-        print(f"info: radius:{res_path.get_radius()} path_length:{res_path.get_path_length()}")
+        print(
+            f"info: radius:{res_path.get_radius()} path_length:{res_path.get_length()} timeCost:{solver.search_time_cost}")
 
         xyz_list = []
         for flag in res_path.get_path_flags():
@@ -268,37 +292,51 @@ def debug_group_astar_2D():
     obstacle_detector.create_tree()
     dynamic_obstacles = []
 
+    avoid_table = mapf_pipeline.ConflictAvoidTable()
+
     candidate = []
     candidate.extend(mapf_pipeline.candidate_1D)
     candidate.extend(mapf_pipeline.candidate_2D)
 
     task_list = [
         mapf_pipeline.TaskInfo(
-            name='path_1',
-            begin_loc=grid_env.grid2flag(x_grid=0, y_grid=0, z_grid=1),
-            final_loc=grid_env.grid2flag(x_grid=10, y_grid=3, z_grid=1),
-            vec_x0=1, vec_y0=0, vec_z0=0, vec_x1=1, vec_y1=0, vec_z1=0,
-            search_radius=0.5, step_scale=1, shrink_distance=1.0, shrink_scale=1,
-            expand_grid_cell=candidate, with_theta_star=False, with_curvature_cost=True,
-            curvature_cost_weight=10.0
+            task_name='path_1',
+            begin_tag='tag0', final_tag='tag1',
+            begin_marks=[
+                (grid_env.grid2flag(x_grid=0, y_grid=0, z_grid=1), 1, 0, 0)
+            ],
+            final_marks=[
+                (grid_env.grid2flag(x_grid=10, y_grid=3, z_grid=1), 1, 0, 0)
+            ],
+            search_radius=0.5, step_scale=1, shrink_distance=1.0, shrink_scale=1, expand_grid_cell=candidate,
+            with_curvature_cost=True, curvature_cost_weight=10.0,
+            use_constraint_avoid_table=True, with_theta_star=False
         ),
         mapf_pipeline.TaskInfo(
-            name='path_2',
-            begin_loc=grid_env.grid2flag(x_grid=0, y_grid=9, z_grid=1),
-            final_loc=grid_env.grid2flag(x_grid=10, y_grid=6, z_grid=1),
-            vec_x0=1, vec_y0=0, vec_z0=0, vec_x1=1, vec_y1=0, vec_z1=0,
-            search_radius=0.5, step_scale=1, shrink_distance=1.0, shrink_scale=1,
-            expand_grid_cell=candidate, with_theta_star=False, with_curvature_cost=True,
-            curvature_cost_weight=10.0
+            task_name='path_2',
+            begin_tag='tag2', final_tag='tag3',
+            begin_marks=[
+                (grid_env.grid2flag(x_grid=0, y_grid=9, z_grid=1), 1, 0, 0)
+            ],
+            final_marks=[
+                (grid_env.grid2flag(x_grid=10, y_grid=6, z_grid=1), 1, 0, 0)
+            ],
+            search_radius=0.5, step_scale=1, shrink_distance=1.0, shrink_scale=1, expand_grid_cell=candidate,
+            with_curvature_cost=True, curvature_cost_weight=10.0,
+            use_constraint_avoid_table=True, with_theta_star=False
         ),
         mapf_pipeline.TaskInfo(
-            name='path_3',
-            begin_loc=grid_env.grid2flag(x_grid=0, y_grid=0, z_grid=1),
-            final_loc=grid_env.grid2flag(x_grid=0, y_grid=9, z_grid=1),
-            vec_x0=1, vec_y0=0, vec_z0=0, vec_x1=1, vec_y1=0, vec_z1=0,
-            search_radius=0.5, step_scale=1, shrink_distance=1.0, shrink_scale=1,
-            expand_grid_cell=candidate, with_theta_star=False, with_curvature_cost=True,
-            curvature_cost_weight=10.0
+            task_name='path_3',
+            begin_tag='tag0', final_tag='tag2',
+            begin_marks=[
+                (grid_env.grid2flag(x_grid=0, y_grid=0, z_grid=1), 1, 0, 0)
+            ],
+            final_marks=[
+                (grid_env.grid2flag(x_grid=0, y_grid=9, z_grid=1), 1, 0, 0)
+            ],
+            search_radius=0.5, step_scale=1, shrink_distance=1.0, shrink_scale=1, expand_grid_cell=candidate,
+            with_curvature_cost=True, curvature_cost_weight=10.0,
+            use_constraint_avoid_table=True, with_theta_star=False
         )
     ]
 
@@ -306,24 +344,23 @@ def debug_group_astar_2D():
     solver.update_task_tree(task_list)
 
     for task_info in solver.get_task_tree():
-        print(f"{task_info.name} {task_info.begin_loc} -> {task_info.final_loc}")
-        print(f"{task_info.begin_loc} vec_x:{task_info.vec_x0}, vec_y:{task_info.vec_y0}, vec_z:{task_info.vec_z0}")
-        print(f"{task_info.final_loc} vec_x:{task_info.vec_x1}, vec_y:{task_info.vec_y1}, vec_z:{task_info.vec_z1}")
+        print(f"{task_info.task_name}")
         print(f"search_radius:{task_info.search_radius} "
               f"step_scale:{task_info.step_scale} "
               f"shrink_distance:{task_info.shrink_distance} "
               f"shrink_scale:{task_info.shrink_scale} "
               f"with_theta_star:{task_info.with_theta_star} "
+              f"use_constraint_avoid_table:{task_info.use_constraint_avoid_table} "
               f"with_curvature_cost:{task_info.with_curvature_cost} "
               f"curvature_cost_weight:{task_info.curvature_cost_weight}\n")
 
-    is_success = solver.find_path(dynamic_obstacles, max_iter=200)
+    is_success = solver.find_path(dynamic_obstacles, max_iter=200, avoid_table=avoid_table)
     if is_success:
         path_res = solver.get_res()
 
         fig, ax = plt.subplots()
         for task_info in solver.get_task_tree():
-            path = path_res[task_info.name]
+            path = path_res[task_info.task_name]
 
             xyz_list = []
             for flag in path.get_path_flags():
@@ -352,22 +389,30 @@ def debug_cbs_node():
     dynamic_obstacles0 = []
     task_list0 = [
         mapf_pipeline.TaskInfo(
-            name='path_1',
-            begin_loc=grid_env0.grid2flag(x_grid=0, y_grid=0, z_grid=1),
-            final_loc=grid_env0.grid2flag(x_grid=10, y_grid=3, z_grid=1),
-            vec_x0=1, vec_y0=0, vec_z0=0, vec_x1=1, vec_y1=0, vec_z1=0,
-            search_radius=0.5, step_scale=1, shrink_distance=1.0, shrink_scale=1,
-            expand_grid_cell=candidate, with_theta_star=False, with_curvature_cost=True,
-            curvature_cost_weight=10.0
+            task_name='path_1',
+            begin_tag='tag0', final_tag='tag1',
+            begin_marks=[
+                (grid_env0.grid2flag(x_grid=0, y_grid=0, z_grid=1), 1, 0, 0)
+            ],
+            final_marks=[
+                (grid_env0.grid2flag(x_grid=10, y_grid=3, z_grid=1), 1, 0, 0)
+            ],
+            search_radius=0.5, step_scale=1, shrink_distance=1.0, shrink_scale=1, expand_grid_cell=candidate,
+            with_curvature_cost=True, curvature_cost_weight=10.0,
+            use_constraint_avoid_table=True, with_theta_star=False
         ),
         mapf_pipeline.TaskInfo(
-            name='path_2',
-            begin_loc=grid_env0.grid2flag(x_grid=0, y_grid=0, z_grid=1),
-            final_loc=grid_env0.grid2flag(x_grid=7, y_grid=10, z_grid=1),
-            vec_x0=1, vec_y0=0, vec_z0=0, vec_x1=1, vec_y1=0, vec_z1=0,
-            search_radius=1.0, step_scale=1, shrink_distance=1.0, shrink_scale=1,
-            expand_grid_cell=candidate, with_theta_star=False, with_curvature_cost=True,
-            curvature_cost_weight=10.0
+            task_name='path_2',
+            begin_tag='tag0', final_tag='tag2',
+            begin_marks=[
+                (grid_env0.grid2flag(x_grid=0, y_grid=0, z_grid=1), 1, 0, 0)
+            ],
+            final_marks=[
+                (grid_env0.grid2flag(x_grid=7, y_grid=10, z_grid=1), 1, 0, 0)
+            ],
+            search_radius=1.0, step_scale=1, shrink_distance=1.0, shrink_scale=1, expand_grid_cell=candidate,
+            with_curvature_cost=True, curvature_cost_weight=10.0,
+            use_constraint_avoid_table=True, with_theta_star=False
         )
     ]
 
@@ -380,13 +425,17 @@ def debug_cbs_node():
     dynamic_obstacles1 = []
     task_list1 = [
         mapf_pipeline.TaskInfo(
-            name='path_1',
-            begin_loc=grid_env1.grid2flag(x_grid=0, y_grid=18, z_grid=1),
-            final_loc=grid_env1.grid2flag(x_grid=20, y_grid=12, z_grid=1),
-            vec_x0=1, vec_y0=0, vec_z0=0, vec_x1=1, vec_y1=0, vec_z1=0,
-            search_radius=0.5, step_scale=1, shrink_distance=1.0, shrink_scale=1,
-            expand_grid_cell=candidate, with_theta_star=False, with_curvature_cost=True,
-            curvature_cost_weight=10.0
+            task_name='path_1',
+            begin_tag='tag0', final_tag='tag1',
+            begin_marks=[
+                (grid_env1.grid2flag(x_grid=0, y_grid=18, z_grid=1), 1, 0, 0)
+            ],
+            final_marks=[
+                (grid_env1.grid2flag(x_grid=20, y_grid=12, z_grid=1), 1, 0, 0)
+            ],
+            search_radius=0.5, step_scale=1, shrink_distance=1.0, shrink_scale=1, expand_grid_cell=candidate,
+            with_curvature_cost=True, curvature_cost_weight=10.0,
+            use_constraint_avoid_table=True, with_theta_star=False,
         )
     ]
 
@@ -405,7 +454,7 @@ def debug_cbs_node():
     print(f"{group_idx0} is success:{is_success0}, {group_idx1} is success:{is_success1}")
 
     if is_success0 and is_success1:
-        is_conflict = cbs_node.find_inner_conflict()
+        is_conflict = cbs_node.find_inner_conflict_point2point()
         print(f"is_conflict: {is_conflict}")
 
         for group_idx in [group_idx0, group_idx1]:
@@ -423,7 +472,7 @@ def debug_cbs_node():
             (group_idx1, task_list1, grid_env1)
         ]:
             for task_info in task_list:
-                path = cbs_node.get_group_path(group_idx=group_idx, name=task_info.name)
+                path = cbs_node.get_group_path(group_idx=group_idx, name=task_info.task_name)
 
                 xyz_list = []
                 for flag in path.get_path_flags():
@@ -442,18 +491,26 @@ def debug_cbs_solver(algorithm_json: str):
     grid_cfg = setup_json['grid_env']
     pipe_cfg = setup_json['pipes']
 
+    block_res = []
+    last_leaf_info_list = [{}]
     for block_info in setup_json['search_tree']['block_sequence']:
         solver = CbsSolver(grid_cfg, pipe_cfg)
-        root = solver.init_root(block_info['groups'])
+        root = solver.init_block_root(block_info['groups'], last_leafs_info=last_leaf_info_list[-1])
         group_idxs = list(solver.task_infos.keys())
-        is_success, res_node = solver.solve(root, group_idxs, max_iter=200)
+        is_success, res_node = solver.solve_block(root, group_idxs, max_iter=200)
 
         if is_success:
-            CbsSolver.draw_node_3D(
-                res_node, group_idxs=group_idxs, task_infos=solver.task_infos, obstacle_df=solver.obstacle_df
-            )
+            # CbsSolver.draw_node_3D(
+            #     res_node, group_idxs=group_idxs, task_infos=solver.task_infos, obstacle_df=solver.obstacle_df
+            # )
 
-        break
+            last_leaf_info = solver.convert_node_to_leaf_info(res_node, group_idxs)
+            last_leaf_info_list.append(last_leaf_info)
+            block_res.append(solver.save_path(res_node, group_idxs, solver.task_infos))
+
+        else:
+            print(f"[INFO]: False at solving {block_info['block_id']}")
+            break
 
 
 if __name__ == '__main__':
@@ -461,9 +518,11 @@ if __name__ == '__main__':
     # debug_grid()
     # debug_state_detector()
     # debug_collision_detector()
+    # debug_constraint_table()
     # debug_astar_2D()
+    debug_orient_astar_2D()
     # debug_group_astar_2D()
     # debug_cbs_node()
-    debug_cbs_solver('/home/admin123456/Desktop/work/path_examples/test_example/algorithm_setup.json')
+    # debug_cbs_solver('/home/admin123456/Desktop/work/path_examples/test_example/algorithm_setup.json')
 
     pass

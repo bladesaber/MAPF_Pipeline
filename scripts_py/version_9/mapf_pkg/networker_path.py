@@ -154,6 +154,10 @@ class HyperRadiusGrowthTree(object):
             leafs_dict['main'] = main_leaf
 
         for name in block_names:
+            if 'main' in leafs_dict.keys():
+                if name in leafs_dict['main']['names']:
+                    continue
+
             leafs_dict[name] = {
                 'names': [name], 'coords': [self.node_dict[name]['coord']], 'radius': self.node_dict[name]['radius']
             }

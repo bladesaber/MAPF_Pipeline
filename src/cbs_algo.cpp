@@ -4,6 +4,23 @@
 
 #include "cbs_algo.h"
 
+void CbsNode::init_conflict_avoid_table(size_t main_group_idx) {
+    set<size_t> path_set;
+    for (auto &iter: group_res) {
+        if (iter.first == main_group_idx) {
+            continue;
+        }
+
+        for (auto &path_iter: iter.second->get_res()) {
+            path_iter.second.get_path_grid(path_set);
+        }
+    }
+
+    for (auto i: path_set) {
+        avoid_table.insert(i);
+    }
+}
+
 bool CbsNode::update_group_path(size_t group_idx, size_t max_iter) {
     shared_ptr<GroupAstar> agent = std::make_shared<GroupAstar>(
             group_res[group_idx]->get_grid(), group_res[group_idx]->get_obstacle_detector()
@@ -11,24 +28,32 @@ bool CbsNode::update_group_path(size_t group_idx, size_t max_iter) {
     agent->update_task_tree(group_res[group_idx]->get_task_tree());
     group_res[group_idx] = nullptr;
 
-    bool is_success = agent->find_path(*constrains_map[group_idx], max_iter);
+    avoid_table.clear();
+    init_conflict_avoid_table(group_idx);
+    bool is_success = agent->find_path(*constrains_map[group_idx], max_iter, avoid_table);
+    avoid_table.clear();
+
     if (!is_success) {
         agent = nullptr;
         return false;
     }
 
     group_res[group_idx] = agent;
+    num_expanded = agent->num_expanded;
+    num_generated = agent->num_generated;
+    search_time_cost = agent->search_time_cost;
+
     return true;
 }
 
-void CbsNode::update_constrains_map(size_t group_idx, const vector<ObstacleType>& group_dynamic_obstacles) {
+void CbsNode::update_constrains_map(size_t group_idx, const vector<ObstacleType> &group_dynamic_obstacles) {
     constrains_map[group_idx] = nullptr;
     constrains_map[group_idx] = std::make_shared<vector<ObstacleType>>(group_dynamic_obstacles);
 }
 
 void CbsNode::update_group_cell(
         size_t group_idx, vector<TaskInfo> group_task_tree, Grid::DiscreteGridEnv *group_grid,
-        CollisionDetector *obstacle_detector, const vector<ObstacleType>& group_dynamic_obstacles
+        CollisionDetector *obstacle_detector, const vector<ObstacleType> &group_dynamic_obstacles
 ) {
     group_res[group_idx] = nullptr;
     group_res[group_idx] = std::make_shared<GroupAstar>(group_grid, obstacle_detector);
@@ -39,17 +64,17 @@ void CbsNode::update_group_cell(
 }
 
 void CbsNode::copy_from_node(CbsNode *rhs) {
-    for (const auto& iter: rhs->group_res) {
+    for (const auto &iter: rhs->group_res) {
         group_res[iter.first] = shared_ptr<GroupAstar>(iter.second);
     }
-    for (const auto& iter: rhs->constrains_map) {
+    for (const auto &iter: rhs->constrains_map) {
         constrains_map[iter.first] = shared_ptr<vector<ObstacleType>>(iter.second);
     }
 }
 
 double CbsNode::compute_g_val() {
     g_val = 0.0;
-    for (const auto& iter: group_res) {
+    for (const auto &iter: group_res) {
         g_val += iter.second->get_path_length();
     }
     return g_val;
@@ -63,12 +88,11 @@ double CbsNode::compute_h_val() {
     return h_val;
 }
 
-bool CbsNode::find_inner_conflict() {
-    // todo 改用线段与线段的最段距离是不是更好呢？但这就难评估障碍点到各出口距离
+bool CbsNode::find_inner_conflict_point2point() {
     conflict_list.clear();
 
     vector<size_t> group_idxs;
-    for (const auto& iter: group_res) {
+    for (const auto &iter: group_res) {
         group_idxs.emplace_back(iter.first);
     }
     unsigned int num_of_agent = group_idxs.size();
@@ -81,7 +105,7 @@ bool CbsNode::find_inner_conflict() {
         agent = *(group_res[group_idx]);
 
         vector<CellXYZR> path_set;
-        for (const auto& res: agent.get_res()) {
+        for (const auto &res: agent.get_res()) {
             res.second.get_path_xyzr(path_set);
         }
         auto *tree = new PclUtils::XYZRTree();
@@ -136,6 +160,70 @@ bool CbsNode::find_inner_conflict() {
         delete iter.second;
     }
     group_trees.clear();
+
+    return is_conflict_free();
+}
+
+bool CbsNode::find_inner_conflict_segment2segment() {
+    conflict_list.clear();
+
+    vector<size_t> group_idxs;
+    for (const auto &iter: group_res) {
+        group_idxs.emplace_back(iter.first);
+        group_conflict_length_map[iter.first] = 0.0; // conflict length init to 0
+    }
+    unsigned int num_of_agent = group_idxs.size();
+
+    size_t group_idx0, group_idx1;
+    double ax0, ay0, az0, ax1, ay1, az1, bx0, by0, bz0, bx1, by1, bz1, dist, radius_a, radius_b;
+    CellXYZ point_a, point_b;
+    GroupAstar agent_i, agent_j;
+
+    for (int i = 0; i < num_of_agent; i++) {
+        group_idx0 = group_idxs[i];
+        agent_i = *group_res[group_idx0];
+
+        for (int j = i + 1; j < num_of_agent; j++) {
+            group_idx1 = group_idxs[j];
+            agent_j = *group_res[group_idx1];
+
+            for (auto &iter_i: agent_i.get_res()) {
+                vector<CellXYZ> path_i;
+                iter_i.second.get_path_xyz(path_i);
+                radius_a = iter_i.second.get_radius();
+
+                for (auto &iter_j: agent_j.get_res()) {
+                    vector<CellXYZ> path_j;
+                    iter_j.second.get_path_xyz(path_j);
+                    radius_b = iter_j.second.get_radius();
+
+                    for (int ii = 1; ii < path_i.size(); ii++) {
+                        tie(ax0, ay0, az0) = path_i[ii - 1];
+                        tie(ax1, ay1, az1) = path_i[ii];
+
+                        for (int jj = 1; jj < path_j.size(); jj++) {
+                            tie(bx0, by0, bz0) = path_j[jj - 1];
+                            tie(bx1, by1, bz1) = path_j[j];
+
+                            tie(dist, point_a, point_b) = line2line_cross(
+                                    ax0, ay0, az0, ax1, ay1, az1, bx0, by0, bz0, bx1, by1, bz1, true
+                            );
+                            if (dist < radius_a + radius_b) {
+                                ConflictCell conflict_cell = ConflictCell(
+                                        group_idx0, get<0>(point_b), get<1>(point_b), get<1>(point_b), radius_b,
+                                        group_idx1, get<0>(point_a), get<1>(point_a), get<2>(point_a), radius_a
+                                );
+                                conflict_list.emplace_back(conflict_cell);
+
+                                group_conflict_length_map[group_idx0] += (radius_a + radius_b - dist);
+                                group_conflict_length_map[group_idx1] += (radius_a + radius_b - dist);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     return is_conflict_free();
 }

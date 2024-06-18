@@ -13,7 +13,10 @@ class SimpleBlocker(object):
         for pipe_name in pipes_cfg:
             group_idx = pipes_cfg[pipe_name]['group_idx']
             if group_idx not in group_networker.keys():
-                group_networker[group_idx] = {'network': networker_path.HyperRadiusGrowthTree(), 'main_leaf': None}
+                group_networker[group_idx] = {
+                    'network': networker_path.HyperRadiusGrowthTree(),
+                    'main_leaf': None
+                }
             group_networker[group_idx]['network'].add_item(
                 pipe_name, pipes_cfg[pipe_name]['radius'], pipes_cfg[pipe_name]['position']
             )

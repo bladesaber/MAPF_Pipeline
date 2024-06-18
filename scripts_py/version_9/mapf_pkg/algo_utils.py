@@ -32,7 +32,7 @@ def create_search_init_cfg(pipes_cfg: dict):
 def discrete_pipe_position(pipes_cfg: dict, grid_min: np.ndarray, length_of_xyz: np.ndarray):
     for pipe_name in pipes_cfg.keys():
         position = np.array(pipes_cfg[pipe_name]['position'])
-        discrete_grid = np.round((position - grid_min) / length_of_xyz, 0).astype(int)
+        discrete_grid = np.round((position - grid_min) / length_of_xyz, 0).astype(int) * length_of_xyz + grid_min
         pipes_cfg[pipe_name]['discrete_position'] = discrete_grid.tolist()
     return pipes_cfg
 
@@ -50,7 +50,7 @@ def create_obs_pcd(pipes_cfg: dict, obs_cfg: dict):
             vector=pipes_cfg[pipe_name]['direction'],
             radius=pipes_cfg[pipe_name]['radius'] * 1.015,
             reso=min_reso * 0.5
-            # reso=0.5
+            # reso=0.1
         )
         obs_pcds.append(shell_pcd)
     for obs_name in obs_cfg.keys():
@@ -66,4 +66,5 @@ def create_obs_pcd(pipes_cfg: dict, obs_cfg: dict):
             tol_scale=1.02,
             is_input=pipes_cfg[pipe_name]['is_input']
         )
+
     return obs_pcds

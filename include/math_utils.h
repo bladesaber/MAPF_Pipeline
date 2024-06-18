@@ -5,6 +5,7 @@
 #ifndef MAPF_PIPELINE_MATH_UTILS_H
 #define MAPF_PIPELINE_MATH_UTILS_H
 
+#include "common.h"
 #include "math.h"
 #include "cfloat"
 #include "tuple"
@@ -14,6 +15,7 @@
 #include "Eigen/Core"
 
 using namespace std;
+using namespace Eigen;
 
 inline double norm2_dist(double x0, double y0, double z0, double x1, double y1, double z1) {
     return sqrt(pow(x0 - x1, 2) + pow(y0 - y1, 2) + pow(z0 - z1, 2));
@@ -22,6 +24,7 @@ inline double norm2_dist(double x0, double y0, double z0, double x1, double y1, 
 inline double point2line_projection_dist(
         double x, double y, double z, double lx0, double ly0, double lz0, double lx1, double ly1, double lz1
 ) {
+    // 求解点到直线最短距离
     double dist_start_point = norm2_dist(x, y, z, lx0, ly0, lz0);
     double dist_start_end = norm2_dist(lx0, ly0, lz0, lx1, ly1, lz1);
     double vec_sum = (lx1 - lx0) * (x - lx0) + (ly1 - ly0) * (y - ly0) + (lz1 - lz0) * (z - lz0);
@@ -32,6 +35,7 @@ inline double point2line_projection_dist(
 inline double point2line_dist(
         double x, double y, double z, double lx0, double ly0, double lz0, double lx1, double ly1, double lz1
 ) {
+    // 求解点到线段最短距离
     double dist_start_point = norm2_dist(x, y, z, lx0, ly0, lz0);
     double dist_end_point = norm2_dist(x, y, z, lx1, ly1, lz1);
     double dist_start_end = norm2_dist(lx0, ly0, lz0, lx1, ly1, lz1);
@@ -51,6 +55,7 @@ inline double point2line_dist(
 inline tuple<double, double, double> point2line_projection_xyz(
         double x, double y, double z, double lx0, double ly0, double lz0, double lx1, double ly1, double lz1
 ) {
+    // 过某一点做最短投影到某一直线，求解投影点在该直线上投影位置
     double dist_start_end = norm2_dist(lx0, ly0, lz0, lx1, ly1, lz1);
     double vec_sum = (lx1 - lx0) * (x - lx0) + (ly1 - ly0) * (y - ly0) + (lz1 - lz0) * (z - lz0);
     double cos_dist = vec_sum / dist_start_end;
@@ -62,6 +67,7 @@ inline tuple<double, double, double> point2line_projection_xyz(
 inline bool is_point2line_projection_inner(
         double x, double y, double z, double lx0, double ly0, double lz0, double lx1, double ly1, double lz1
 ) {
+    // 过某一点做最短投影到某一线段，求解投影点是否在线段上
     double dist_start_point = norm2_dist(x, y, z, lx0, ly0, lz0);
     double dist_end_point = norm2_dist(x, y, z, lx1, ly1, lz1);
     double dist_start_end = norm2_dist(lx0, ly0, lz0, lx1, ly1, lz1);
@@ -84,6 +90,7 @@ inline T compute_euler_cost(T x0, T y0, T z0, T x1, T y1, T z1) {
 }
 
 inline double line2line_cos(double vecx_0, double vecy_0, double vecz_0, double vecx_1, double vecy_1, double vecz_1) {
+    // 求解2线段的夹角的cos值
     double length_0 = sqrt(pow(vecx_0, 2.0) + pow(vecy_0, 2.0) + pow(vecz_0, 2.0));
     double length_1 = sqrt(pow(vecx_1, 2.0) + pow(vecy_1, 2.0) + pow(vecz_1, 2.0));
 
@@ -97,6 +104,7 @@ inline double curvature_radius_3point(
         double x0, double y0, double z0, double x1, double y1, double z1, double x2, double y2, double z2,
         bool is_left = true
 ) {
+    // 求解3个点的中间点曲率
     double vec_x0 = x1 - x0;
     double vec_y0 = y1 - y0;
     double vec_z0 = z1 - z0;
@@ -131,8 +139,12 @@ inline int sign(double x) {
     }
 }
 
-double line2line_dist(){
-
-}
+tuple<double, CellXYZ , CellXYZ> line2line_cross(
+        double ax0, double ay0, double az0,
+        double ax1, double ay1, double az1,
+        double bx0, double by0, double bz0,
+        double bx1, double by1, double bz1,
+        bool clamp
+); // 空间中2个3D线段上上各找1点，使这2点距离最短，求解该距离以及2点位置
 
 #endif //MAPF_PIPELINE_MATH_UTILS_H
