@@ -122,37 +122,37 @@ class EnvironmentApp(AppWindow):
         self.adjust_center_camera()
 
     def _import_obstacle_on_click(self, path: str, sample_num_of_points: gui.NumberEdit, console_label: gui.Label):
+        self.console_label.text = f"    [INFO]: please check whether stl size is too small."
+
         name = os.path.basename(path)
         if path.endswith('.ply') or path.endswith('.obj'):
             self.add_point_cloud_from_file(
                 name, path, is_visible=True,
-                param={
-                    'type': 'obstacle', 'shape': 'point_cloud_file', 'file': path
-                }
+                param={'type': 'obstacle', 'shape': 'point_cloud_file', 'file': path}
             )
         else:
             if sample_num_of_points.int_value == 0:
                 console_label.text = f"[ERROR]: Wrong sample_num_of_points:{sample_num_of_points}"
             else:
-                mesh: o3d.geometry.TriangleMesh = o3d.io.read_triangle_model(path)
+                mesh: o3d.geometry.TriangleMesh = o3d.io.read_triangle_mesh(path)
                 pcd_o3d = mesh.sample_points_poisson_disk(sample_num_of_points.int_value)
                 self.add_point_cloud(
                     name, pcd_o3d, is_visible=True,
-                    param={
-                        'type': 'obstacle', 'shape': 'point_cloud_file', 'file': path
-                    }
+                    param={'type': 'obstacle', 'shape': 'point_cloud_file', 'file': path}
                 )
+                self.adjust_center_camera()
+
         self.window.close_dialog()
 
     def _create_pipe_btn_on_click(
             self,
-            pipe_name_txt: gui.TextEdit, pipe_center_vec: gui.VectorEdit, pipe_direction_combox: gui.Combobox,
+            pipe_name_txt: gui.TextEdit, pipe_center_vec: gui.VectorEdit, pipe_direction_vector: gui.VectorEdit,
             pipe_radius_txt: gui.NumberEdit, pipe_group_int: gui.NumberEdit, pipe_is_input: gui.Checkbox,
             pipe_rgb_vec: gui.VectorEdit, console_label: gui.Label
     ):
         name = pipe_name_txt.text_value
         center = np.array(pipe_center_vec.vector_value)
-        direction = pipe_direction_combox.selected_text
+        direction_np = np.round(np.array(pipe_direction_vector.vector_value)).astype(int)
         group_idx = pipe_group_int.int_value
         radius = pipe_radius_txt.double_value
         rgb = pipe_rgb_vec.vector_value
@@ -166,18 +166,6 @@ class EnvironmentApp(AppWindow):
             console_label.text = "    [Error]: Non valid group_idx"
             return
 
-        if direction == '+x':
-            direction_np = np.array([1., 0., 0.])
-        elif direction == '+y':
-            direction_np = np.array([0., 1., 0.])
-        elif direction == '+z':
-            direction_np = np.array([0., 0., 1.])
-        elif direction == '-x':
-            direction_np = np.array([-1., 0., 0.])
-        elif direction == '-y':
-            direction_np = np.array([0., -1., 0.])
-        else:
-            direction_np = np.array([0., 0., -1.])
         mesh_o3d = FragmentOpen3d.create_arrow(center, direction_np, radius, rgb)
 
         path = os.path.join(self.save_dir, f"{name}.ply")
@@ -303,7 +291,7 @@ class EnvironmentApp(AppWindow):
 
         pipe_name_txt = FragmentOpen3d.get_widget('text', {})
         pipe_center_vec = FragmentOpen3d.get_widget('vector', {})
-        pipe_direction_combox = FragmentOpen3d.get_widget('combobox', {'items': ['+x', '+y', '+z', '-x', '-y', '-z']})
+        pipe_direction_vector = FragmentOpen3d.get_widget('vector', {})
         pipe_radius_txt = FragmentOpen3d.get_widget('number', {'style': 'double'})
         pipe_group_int = FragmentOpen3d.get_widget('number', {'style': int, 'init_value': -1, 'preferred_width': 120})
         pipe_is_input = FragmentOpen3d.get_widget('checkbox', {'name': 'is input'})
@@ -313,7 +301,7 @@ class EnvironmentApp(AppWindow):
             self._create_pipe_btn_on_click,
             pipe_name_txt=pipe_name_txt,
             pipe_center_vec=pipe_center_vec,
-            pipe_direction_combox=pipe_direction_combox,
+            pipe_direction_vector=pipe_direction_vector,
             pipe_radius_txt=pipe_radius_txt,
             pipe_group_int=pipe_group_int,
             pipe_is_input=pipe_is_input,
@@ -325,9 +313,8 @@ class EnvironmentApp(AppWindow):
                 gui.Label('create pipe inlet/outlet:'),
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('name:'), pipe_name_txt]),
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('center:'), pipe_center_vec]),
-                FragmentOpen3d.get_layout_widget('horiz', [
-                    gui.Label('direction:'), pipe_direction_combox, gui.Label('radius:'), pipe_radius_txt
-                ], 4),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('direction:'), pipe_direction_vector]),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('radius:'), pipe_radius_txt]),
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('rgb:'), pipe_rgb_vec]),
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('group:'), pipe_group_int, pipe_is_input], 4),
                 pipe_create_btn

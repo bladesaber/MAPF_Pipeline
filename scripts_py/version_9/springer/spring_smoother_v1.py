@@ -808,6 +808,7 @@ class ConstraintParser(object):
 
         vis.show()
 
+
 class Optimizer_Scipy_v1(object):
 
     def eq_value_shift(self, xs, src_col, ref_col, value_shift):
@@ -862,7 +863,7 @@ class Optimizer_Scipy_v1(object):
         x1 = self.xs_init[x1_col] + xs[x1_col]
         y1 = self.xs_init[y1_col] + xs[y1_col]
         z1 = self.xs_init[z1_col] + xs[z1_col]
-        return np.power(x0-x1, 2.0) + np.power(y0-y1, 2.0) + np.power(z0-z1, 2.0)
+        return np.power(x0 - x1, 2.0) + np.power(y0 - y1, 2.0) + np.power(z0 - z1, 2.0)
 
     def cost_func(self, xs, cost_edges: list[dict]):
         cost = 0.0
@@ -921,12 +922,12 @@ class Optimizer_Scipy_v1(object):
                 xyz_tag = constraint['xyzTag']
                 if xyz_tag == 'x':
                     func = partial(
-                            self.eq_radius_fixed,
-                            src_col0=problem_nodes[constraint['node_idx']]['y'],
-                            src_col1=problem_nodes[constraint['node_idx']]['z'],
-                            ref_col0=problem_nodes[constraint['ref_node_idx']]['y'],
-                            ref_col1=problem_nodes[constraint['ref_node_idx']]['z'],
-                            radius=constraint['fix_radius'])
+                        self.eq_radius_fixed,
+                        src_col0=problem_nodes[constraint['node_idx']]['y'],
+                        src_col1=problem_nodes[constraint['node_idx']]['z'],
+                        ref_col0=problem_nodes[constraint['ref_node_idx']]['y'],
+                        ref_col1=problem_nodes[constraint['ref_node_idx']]['z'],
+                        radius=constraint['fix_radius'])
                 elif xyz_tag == 'y':
                     func = partial(
                         self.eq_radius_fixed,
@@ -963,9 +964,11 @@ class Optimizer_Scipy_v1(object):
                     'type': 'ineq',
                     'fun': partial(
                         self.ineq_shape_conflict,
-                        x0_col=problem_nodes[node_idx0]['x'], y0_col=problem_nodes[node_idx0]['y'], z0_col=problem_nodes[node_idx0]['z'],
+                        x0_col=problem_nodes[node_idx0]['x'], y0_col=problem_nodes[node_idx0]['y'],
+                        z0_col=problem_nodes[node_idx0]['z'],
                         shape_x0=shape_xyz0[0], shape_y0=shape_xyz0[1], shape_z0=shape_xyz0[2],
-                        x1_col=problem_nodes[node_idx1]['x'], y1_col=problem_nodes[node_idx1]['y'], z1_col=problem_nodes[node_idx1]['z'],
+                        x1_col=problem_nodes[node_idx1]['x'], y1_col=problem_nodes[node_idx1]['y'],
+                        z1_col=problem_nodes[node_idx1]['z'],
                         shape_x1=shape_xyz1[0], shape_y1=shape_xyz1[1], shape_z1=shape_xyz1[2],
                         threshold=constraint['threshold']
                     )
@@ -1073,6 +1076,7 @@ class Optimizer_Scipy_v1(object):
 
         return nodes_info
 
+
 class Optimizer_Scipy_v2(object):
     def penalize_eq_value_shift(self, xs, src_col, ref_col, value_shift):
         src_value = self.xs_init[src_col] + xs[src_col]
@@ -1136,7 +1140,7 @@ class Optimizer_Scipy_v2(object):
         x1 = self.xs_init[x1_col] + xs[x1_col]
         y1 = self.xs_init[y1_col] + xs[y1_col]
         z1 = self.xs_init[z1_col] + xs[z1_col]
-        return np.power(x0-x1, 2.0) + np.power(y0-y1, 2.0) + np.power(z0-z1, 2.0)
+        return np.power(x0 - x1, 2.0) + np.power(y0 - y1, 2.0) + np.power(z0 - z1, 2.0)
 
     def cost_func(self, xs, cost_edges: list[dict], constraints_edges: list[dict]):
         cost = 0.0
@@ -1397,6 +1401,7 @@ class Optimizer_Scipy_v2(object):
 
         return nodes_info
 
+
 def run_optimize_scipy():
     import json
 
@@ -1424,7 +1429,6 @@ def run_optimize_scipy():
     # parser.plot_node()
 
     for run_time in range(10):
-
         # ------ Cost Edges
         cost_edges = []
 
@@ -1506,6 +1510,7 @@ def run_optimize_scipy():
         # parser.plot_node()
 
     # parser.plot_node()
+
 
 if __name__ == '__main__':
     run_optimize_scipy()

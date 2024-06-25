@@ -173,6 +173,14 @@ class ShapeUtils(object):
         return np.sum(vec * norm, axis=1) / np.linalg.norm(norm, ord=2)
 
 
+class StlUtils(object):
+    @staticmethod
+    def scale_stl(file: str, scale):
+        mesh = pyvista.read_meshio(file)
+        mesh.points = mesh.points * scale
+        pyvista.save_meshio(file, mesh)
+
+
 def main():
     # pcd = ShapeUtils.create_sphere_pcd(np.array([1., 1., 1.]), vector=np.array([1., 1., 0.]), radius=1.0, reso=0.1)
     # mesh = pyvista.PointSet(pcd)

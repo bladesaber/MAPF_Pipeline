@@ -258,7 +258,7 @@ class AppWindow(object):
     def add_mesh_from_file(self, name: str, file: str, param: dict, is_visible=False):
         try:
             # mesh = o3d.io.read_triangle_model(file)  # return triangle model
-            mesh = o3d.io.read_triangle_mesh(file)     # return triangle mesh
+            mesh = o3d.io.read_triangle_mesh(file)  # return triangle mesh
             mesh.compute_triangle_normals()
         except Exception as e:
             self.console_label.text = f"[ERROR]: Non valid file: {file}"

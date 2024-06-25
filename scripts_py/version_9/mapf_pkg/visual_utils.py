@@ -1,11 +1,11 @@
 import pyvista
 import numpy as np
-from typing import List
+from typing import List, Union
 
 
 class VisUtils(object):
     def __init__(self):
-        self.plotter = pyvista.Plotter()
+        self.plotter: pyvista.Plotter = pyvista.Plotter()
         self.plotter.set_background('white')
 
     def show(self, dim: int = None):
@@ -16,11 +16,13 @@ class VisUtils(object):
 
     def plot(
             self, mesh, color=(0.5, 0.1, 0.8), opacity=1.0,
-            style=None, show_edges=False, show_scalar_bar=False
+            style=None, show_edges=False, show_scalar_bar=False,
+            point_size=None, line_width=None
     ):
         self.plotter.add_mesh(
             mesh, color=color, opacity=opacity, style=style,
-            show_edges=show_edges, show_scalar_bar=show_scalar_bar
+            show_edges=show_edges, show_scalar_bar=show_scalar_bar,
+            point_size=point_size, line_width=line_width
         )
 
     @staticmethod
@@ -46,13 +48,13 @@ class VisUtils(object):
         return mesh
 
     @staticmethod
-    def create_line_set(line_idxs: List):
+    def create_line_set(line_idxs: Union[List, np.ndarray]):
         """
         line_idx: [idx_of_point1, idx_of_point2, ...]
         """
         line_set = []
         for i in range(1, len(line_idxs), 1):
-            line_set.append([2, line_idxs[i - 1], line_idxs[1]])  # 2 means that in this line contain 2 points
+            line_set.append([2, line_idxs[i - 1], line_idxs[i]])  # 2 means that in this line contain 2 points
         line_set = np.array(line_set)
         return line_set
 
