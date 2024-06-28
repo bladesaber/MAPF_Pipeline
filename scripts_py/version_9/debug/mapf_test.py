@@ -1,4 +1,5 @@
 import os
+import h5py
 import numpy as np
 import pandas as pd
 import pyvista
@@ -7,6 +8,8 @@ import json
 
 from build import mapf_pipeline
 from scripts_py.version_9.mapf_pkg.cbs_utils import CbsSolver
+from scripts_py.version_9.mapf_pkg.smooth_optimizer import PathOptimizer
+from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 
 
 def debug_kdtree():
@@ -152,7 +155,7 @@ def debug_constraint_table():
 
 def debug_astar_2D():
     grid_env = mapf_pipeline.DiscreteGridEnv(
-        size_of_x=11, size_of_y=11, size_of_z=0,
+        size_of_x=11, size_of_y=11, size_of_z=1,
         x_init=0.0, y_init=0.0, z_init=0.0,
         x_grid_length=1.0, y_grid_length=1.0, z_grid_length=1.0
     )
@@ -190,7 +193,7 @@ def debug_astar_2D():
     solver = mapf_pipeline.StandardAStarSolver(grid_env, obstacle_detector, dynamic_detector, state_detector)
     solver.update_configuration(
         pipe_radius=1.0,
-        search_step_scale=1,
+        search_step_scale=3,
         grid_expand_candidates=candidate,
         use_curvature_cost=True,
         curvature_cost_weight=5.0,
@@ -201,13 +204,18 @@ def debug_astar_2D():
     print(f"state:{is_success} num_generate:{solver.num_generated} num_expand:{solver.num_expanded}")
 
     if is_success:
-        print(
-            f"info: radius:{res_path.get_radius()} path_length:{res_path.get_length()} timeCost:{solver.search_time_cost}")
+        print(f"info: radius:{res_path.get_radius()} "
+              f"path_length:{res_path.get_length()} "
+              f"timeCost:{solver.search_time_cost}")
 
-        xyz_list = []
-        for flag in res_path.get_path_flags():
-            xyz_list.append(grid_env.flag2xyz(flag))
-        xyz_list = np.array(xyz_list)
+        print('flags:', res_path.get_path_flags())
+        print('radius:', res_path.get_radius())
+        print('length:', res_path.get_length())
+        print('step_length:', res_path.get_step_length())
+
+        xyzr = np.array(res_path.get_path())
+        xyz_list = xyzr[:, :3]
+        print(xyzr)
 
         fig, ax = plt.subplots()
         ax.plot(xyz_list[:, 0], xyz_list[:, 1], '*-')
@@ -491,26 +499,166 @@ def debug_cbs_solver(algorithm_json: str):
     grid_cfg = setup_json['grid_env']
     pipe_cfg = setup_json['pipes']
 
-    block_res = []
-    last_leaf_info_list = [{}]
+    aux_constrain_df = None
+    if grid_cfg.get('dynamic_constrain_file', False):
+        aux_constrain_df = pd.read_csv(grid_cfg['dynamic_constrain_file'], index_col=0)
+
+    block_res_list = []
+    last_leaf_info = {}
+
     for block_info in setup_json['search_tree']['block_sequence']:
         solver = CbsSolver(grid_cfg, pipe_cfg)
-        root = solver.init_block_root(block_info['groups'], last_leafs_info=last_leaf_info_list[-1])
+        root = solver.init_block_root(
+            block_info['groups'], last_leafs_info=last_leaf_info, aux_constrain_df=aux_constrain_df
+        )
+
         group_idxs = list(solver.task_infos.keys())
-        is_success, res_node = solver.solve_block(root, group_idxs, max_iter=200)
+        is_success, res_node = solver.solve_block(root, group_idxs, max_iter=100000, max_node_limit=2000)
 
         if is_success:
-            # CbsSolver.draw_node_3D(
-            #     res_node, group_idxs=group_idxs, task_infos=solver.task_infos, obstacle_df=solver.obstacle_df
-            # )
+            CbsSolver.draw_node_3D(
+                res_node, group_idxs=group_idxs, task_infos=solver.task_infos, obstacle_df=solver.obstacle_df,
+                pipe_cfg=solver.pipe_cfg
+            )
 
-            last_leaf_info = solver.convert_node_to_leaf_info(res_node, group_idxs)
-            last_leaf_info_list.append(last_leaf_info)
-            block_res.append(solver.save_path(res_node, group_idxs, solver.task_infos))
+            last_leaf_info = solver.convert_node_to_leaf_info(res_node, group_idxs, last_leaf_info)
+            block_res_list.append(solver.save_path(res_node, group_idxs, solver.task_infos))
 
         else:
             print(f"[INFO]: False at solving {block_info['block_id']}")
             break
+
+
+def debug_sequence_solve(algorithm_json: str):
+    with open(algorithm_json, 'r') as f:
+        setup_json = json.load(f)
+
+    grid_cfg = setup_json['grid_env']
+    pipe_cfg = setup_json['pipes']
+
+    aux_constrain_df = None
+    if grid_cfg.get('dynamic_constrain_file', False):
+        aux_constrain_df = pd.read_csv(grid_cfg['dynamic_constrain_file'], index_col=0)
+
+    block_res_list = []
+    last_leaf_info = {}
+
+    for block_info in setup_json['search_tree']['block_sequence']:
+        solver = CbsSolver(grid_cfg, pipe_cfg)
+        root = solver.init_block_root(
+            block_info['groups'], last_leafs_info=last_leaf_info, aux_constrain_df=aux_constrain_df
+        )
+
+        # ------ debug vis
+        high_group_idx = block_info['groups'][0]['group_idx']
+        CbsSolver.draw_node_3D(
+            root, group_idxs=[], task_infos=solver.task_infos, obstacle_df=solver.obstacle_df,
+            pipe_cfg=solver.pipe_cfg, highlight_group_idx=high_group_idx
+        )
+        # ------
+
+        group_idxs = list(solver.task_infos.keys())
+        is_success, res_node = solver.solve_block(root, group_idxs, max_iter=100000, max_node_limit=2000)
+
+        if is_success:
+            last_leaf_info = solver.convert_node_to_leaf_info(res_node, group_idxs, last_leaf_info)
+            block_res_list.append(solver.save_path(res_node, group_idxs, solver.task_infos))
+
+        else:
+            print(f"[INFO]: False at solving {block_info['block_id']}")
+            break
+
+
+def debug_cbs_first_check(algorithm_json: str):
+    with open(algorithm_json, 'r') as f:
+        setup_json = json.load(f)
+
+    grid_cfg = setup_json['grid_env']
+    pipe_cfg = setup_json['pipes']
+
+    aux_constrain_df = None
+    if grid_cfg.get('dynamic_constrain_file', False):
+        aux_constrain_df = pd.read_csv(grid_cfg['dynamic_constrain_file'], index_col=0)
+
+    last_leaf_info_list = [{}]
+    for block_info in setup_json['search_tree']['block_sequence']:
+        solver = CbsSolver(grid_cfg, pipe_cfg)
+        root = solver.init_block_root(
+            block_info['groups'], last_leafs_info=last_leaf_info_list[-1], aux_constrain_df=aux_constrain_df
+        )
+        group_idxs = list(solver.task_infos.keys())
+        solver.first_check(root, group_idxs, max_iter=100000)
+
+
+def debug_smooth_optimizer(algo_file: str, smooth_file: str, res_file: str):
+    with open(smooth_file, 'r') as f:
+        smooth_json = json.load(f)
+    with open(algo_file, 'r') as f:
+        algo_json = json.load(f)
+
+    path_res = {}
+    for _, res_cell in h5py.File(res_file).items():
+        group_idx = int(res_cell['group_idx'][0])
+        path_res[group_idx] = {}
+        for name, xyzr in res_cell['path_result'].items():
+            path_res[group_idx][name] = xyzr
+
+    grid_cfg = algo_json['grid_env']
+    pipe_cfg = algo_json['pipes']
+    obs_xyzr = pd.read_csv(grid_cfg['obstacle_file'], index_col=0)[['x', 'y', 'z', 'radius']].values
+
+    opt = PathOptimizer(grid_cfg, path_res, obs_xyzr, smooth_json['conflict_setting'])
+
+    # ------ step 1: add path
+    for path_info in smooth_json['path_list']:
+        begin_name, end_name = path_info['begin_name'], path_info['end_name']
+        group_idx = pipe_cfg[begin_name]['group_idx']
+        opt.network_cells[group_idx].add_path(
+            name=path_info['name'],
+            begin_xyz=np.array(pipe_cfg[begin_name]['discrete_position']),
+            begin_vec=np.array(pipe_cfg[begin_name]['direction']),
+            end_xyz=np.array(pipe_cfg[end_name]['discrete_position']),
+            end_vec=np.array(pipe_cfg[end_name]['direction'])
+        )
+
+    # ------ step 2: refit graph
+    for setting in smooth_json['setting']:
+        opt.network_cells[setting['group_idx']].refit_graph(setting['segment_degree'])
+
+    # ------ step 3: update optimization info
+    for setting in smooth_json['setting']:
+        for key in list(setting['segments'].keys()):
+            cell = setting['segments'].pop(key)
+            setting['segments'][cell['seg_idx']] = cell
+
+        group_idx = setting['group_idx']
+        opt.network_cells[group_idx].update_optimization_info(
+            segment_infos=setting['segments'],
+            path_infos=setting['paths_cost']
+        )
+
+    # vis = VisUtils()
+    # for group_idx, net_cell in opt.network_cells.items():
+    #     net_cell.draw_segment(with_spline=True, with_control=True, vis=vis)
+    # vis.show()
+
+    # ------ step 4: prepare tensor
+    for group_id, net_cell in opt.network_cells.items():
+        net_cell.prepare_tensor()
+
+    # for group_idx, net_cell in opt.network_cells.items():
+    #     net_cell.draw_path_tensor()
+
+    # max_lr = np.linalg.norm(np.array([0.1, 0.1, 0.1]))
+    # opt.find_obstacle_conflict_cells(max_lr)
+    # opt.find_path_conflict_cells(max_lr)
+    # opt.draw_conflict_graph(with_obstacle=True, with_path_conflict=True)
+
+    opt.run(max_iter=10, lr=0.1)
+    vis = VisUtils()
+    for group_idx, net_cell in opt.network_cells.items():
+        net_cell.draw_segment(with_spline=False, with_control=True, vis=vis)
+    vis.show()
 
 
 if __name__ == '__main__':
@@ -520,9 +668,18 @@ if __name__ == '__main__':
     # debug_collision_detector()
     # debug_constraint_table()
     # debug_astar_2D()
-    debug_orient_astar_2D()
+    # debug_orient_astar_2D()
     # debug_group_astar_2D()
     # debug_cbs_node()
-    # debug_cbs_solver('/home/admin123456/Desktop/work/path_examples/test_example/algorithm_setup.json')
+
+    # debug_cbs_solver('/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup_orig.json')
+    # debug_cbs_first_check('/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup_orig.json')
+    # debug_sequence_solve('/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup_orig.json')
+
+    debug_smooth_optimizer(
+        algo_file='/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup.json',
+        smooth_file='/home/admin123456/Desktop/work/path_examples/s5/smooth_setup.json',
+        res_file='/home/admin123456/Desktop/work/path_examples/s5/search_result.hdf5'
+    )
 
     pass

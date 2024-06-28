@@ -27,7 +27,7 @@ PYBIND11_MODULE(mapf_pipeline, m) {
 
     // ------ Function Define
     // py::bind_vector<std::vector<double>>(m, "VectorDouble");
-    // m.def("test", &test);
+    //m.def("test", &test);
 
     // ------ Class Define
     py::class_<PybindUtils::Matrix2D>(m, "Matrix2D", py::buffer_protocol())
@@ -196,7 +196,8 @@ PYBIND11_MODULE(mapf_pipeline, m) {
             .def("get_group_path", &CbsNode::get_group_path, "group_idx"_a, "name"_a)
             .def("get_conflict_length", &CbsNode::get_conflict_length, "group_idx"_a)
             .def("get_conflict_cells", &CbsNode::get_conflict_cells)
-            .def("get_constrain", &CbsNode::get_constrain, "group_idx"_a);
+            .def("get_constrain", &CbsNode::get_constrain, "group_idx"_a)
+            .def("get_conflict_size", &CbsNode::get_conflict_size);
 
     py::class_<CbsSolver>(m, "CbsSolver")
             .def(py::init<>())

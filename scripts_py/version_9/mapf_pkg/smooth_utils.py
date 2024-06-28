@@ -237,7 +237,7 @@ class SegmentCell(object):
         ]
     """
 
-    def __init__(self, idx: int, flags: List[int]):
+    def __init__(self, idx: int, flags: List[int], color: Tuple = (1.0, 0.0, 0.0)):
         self.idx = idx
         self.flags = flags
         self.tag = self.encode(self.flags)
@@ -249,7 +249,8 @@ class SegmentCell(object):
 
         self.spline_mat_tensor: torch.Tensor = None
         self.pcd_tensor: torch.Tensor = None
-        self.radius_np: np.ndarray = None
+        self.radius_np: np.ndarray = None,
+        self.color = color
 
     @staticmethod
     def encode(flags: List[int]):
@@ -360,7 +361,6 @@ class NetworkPath(object):
                 if i > 0:
                     self.graph.add_edge(last_flag, flag)
                 last_flag = flag
-
         self.control_xyzr_np = np.array(control_xyzr_np)
         # print(f"[INFO]: insert path nodes:{self.control_xyzr_np.shape[0]}, network nodes:{len(self.graph.nodes)}")
 
@@ -373,9 +373,8 @@ class NetworkPath(object):
         end_flag = self.grid.xyz2flag(x=end_xyz[0], y=end_xyz[1], z=end_xyz[2])
         self.node2info[end_flag].update({'fix': True})
 
-        # todo it should be expanded as cycle graph in the future
-        # path_flag_list = nx.all_simple_paths(self.graph, begin_flag, end_flag)
-        path_flag_list = [nx.shortest_path(self.graph, begin_flag, end_flag)]
+        path_flag_list = nx.all_simple_paths(self.graph, begin_flag, end_flag)
+        # path_flag_list = [nx.shortest_path(self.graph, begin_flag, end_flag)]
 
         for path_flags in path_flag_list:
             segment_list, segment_flags = [], []
@@ -391,12 +390,11 @@ class NetworkPath(object):
 
                 segment_cell = SegmentCell(idx=len(self.segments), flags=segment_flags.copy())
                 segment_cell = self.segments.setdefault(segment_cell.tag, segment_cell)
+
                 segment_list.append(segment_cell)
                 segment_flags = segment_flags[-1:]  # save as begin of segment
 
-            self.path_dict.setdefault(name, []).append(PathCell(
-                segment_list, begin_vec, end_vec
-            ))
+            self.path_dict.setdefault(name, []).append(PathCell(segment_list, begin_vec, end_vec))
 
     def refit_graph(self, degree: int):
         for key in list(self.segments.keys()):
@@ -424,6 +422,7 @@ class NetworkPath(object):
                     self.graph.add_edge(flag0, new_node_id)
                     self.graph.add_edge(new_node_id, flag1)
                     new_flags.insert(i + shift + 1, new_node_id)
+
                     shift += 1
                     new_node_id += 1
 
@@ -432,14 +431,13 @@ class NetworkPath(object):
         for seg_idx, cell in self.segments.items():
             cell.pcd_idxs = np.array([self.node2info[node_idx]['pcd_idx'] for node_idx in cell.flags])
 
-    def update_optimization_info(self, opt_info: Dict):
-        segment_infos = opt_info['segment']
+    def update_optimization_info(self, segment_infos: Dict, path_infos: Dict):
         for seg_idx, cell in self.segments.items():
             info = segment_infos[seg_idx]
             cell.update_spline_mat(self.control_xyzr_np, info['bspline_degree'], info['bspline_num'])
             cell.cost_info_list = info['costs']
+            cell.color = info['color']
 
-        path_infos = opt_info['path']
         for name, path_list in self.path_dict.items():
             for i, path_cell in enumerate(path_list):
                 path_cell.cost_info_list = path_infos[name][i]
@@ -573,7 +571,8 @@ class NetworkPath(object):
                 mesh = VisUtils.create_line(xyzr[:, :3], line_set)
                 vis.plot(mesh, color=color, style='wireframe', point_size=0.1, line_width=2.0)
 
-        vis.show()
+        if vis is None:
+            vis.show()
 
     def draw_path_tensor(self):
         for name, path_list in self.path_dict.items():
@@ -633,7 +632,7 @@ def main():
         }
     ]
     opt_info = {
-        'segment': {
+        'segments': {
             0: {
                 'bspline_degree': 3,
                 'bspline_num': 40,
@@ -668,7 +667,7 @@ def main():
                 ]
             },
         },
-        'path': {
+        'paths': {
             'path1': [
                 [
                     {
@@ -712,11 +711,11 @@ def main():
         )
 
     net.refit_graph(degree=10)
-    net.update_optimization_info(opt_info)
+    net.update_optimization_info(opt_info['segments'], opt_info['paths'])
     net.prepare_tensor()
 
     # net.draw_network()
-    net.draw_segment(with_spline=True, with_control=True)
+    # net.draw_segment(with_spline=True, with_control=True)
     # net.draw_path_tensor()
 
     # segment_cost_info = net.compute_segment_cost()
@@ -724,25 +723,25 @@ def main():
     # print(segment_cost_info)
     # print(path_cost_info)
 
-    # for _ in range(200):
-    #     loss_info = {}
-    #     loss_info.update(net.compute_segment_cost())
-    #     loss_info.update(net.compute_path_cost())
-    #
-    #     loss = 0.0
-    #     for cost_name, cost in loss_info.items():
-    #         loss += cost
-    #
-    #     log_txt = ' '.join([f"{cost_name}:{cost.detach().numpy():.6f}" for cost_name, cost in loss_info.items()])
-    #     loss_np = loss.detach().numpy()
-    #     log_txt += f" loss:{loss_np:.6f}"
-    #     print(log_txt)
-    #
-    #     net.update_control_pcd(loss, lr=0.05)
-    #     net.update_state(with_tensor=True, with_np=False)
-    #
-    # net.update_state(with_tensor=False, with_np=True)
-    # net.draw_segment(with_control=False, with_spline=True)
+    for _ in range(200):
+        loss_info = {}
+        loss_info.update(net.compute_segment_cost())
+        loss_info.update(net.compute_path_cost())
+
+        loss = 0.0
+        for cost_name, cost in loss_info.items():
+            loss += cost
+
+        log_txt = ' '.join([f"{cost_name}:{cost.detach().numpy():.6f}" for cost_name, cost in loss_info.items()])
+        loss_np = loss.detach().numpy()
+        log_txt += f" loss:{loss_np:.6f}"
+        print(log_txt)
+
+        net.update_control_pcd(loss, lr=0.05)
+        net.update_state(with_tensor=True, with_np=False)
+
+    net.update_state(with_tensor=False, with_np=True)
+    net.draw_segment(with_control=False, with_spline=True)
 
 
 if __name__ == '__main__':

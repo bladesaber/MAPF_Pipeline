@@ -40,15 +40,15 @@ inline double point2line_dist(
     double dist_end_point = norm2_dist(x, y, z, lx1, ly1, lz1);
     double dist_start_end = norm2_dist(lx0, ly0, lz0, lx1, ly1, lz1);
 
-    if (dist_start_point > dist_end_point && dist_start_point > dist_start_end) {
+    double vec_sum = (lx1 - lx0) * (x - lx0) + (ly1 - ly0) * (y - ly0) + (lz1 - lz0) * (z - lz0);
+    double cos_dist = vec_sum / dist_start_end;
+
+    if (0.0 <= cos_dist && cos_dist <= dist_start_end){
+        return sqrt(pow(dist_start_point, 2.0) - pow(cos_dist, 2.0));
+    } else if (cos_dist > dist_start_end){
         return dist_end_point;
-    } else if (dist_end_point > dist_start_point && dist_end_point > dist_start_end) {
+    }else {
         return dist_start_point;
-    } else {
-        double vec_sum = (lx1 - lx0) * (x - lx0) + (ly1 - ly0) * (y - ly0) + (lz1 - lz0) * (z - lz0);
-        double cos_dist = vec_sum / dist_start_end;
-        double res = sqrt(pow(dist_start_point, 2.0) - pow(cos_dist, 2.0));
-        return res;
     }
 }
 
@@ -68,11 +68,11 @@ inline bool is_point2line_projection_inner(
         double x, double y, double z, double lx0, double ly0, double lz0, double lx1, double ly1, double lz1
 ) {
     // 过某一点做最短投影到某一线段，求解投影点是否在线段上
-    double dist_start_point = norm2_dist(x, y, z, lx0, ly0, lz0);
-    double dist_end_point = norm2_dist(x, y, z, lx1, ly1, lz1);
     double dist_start_end = norm2_dist(lx0, ly0, lz0, lx1, ly1, lz1);
+    double vec_sum = (lx1 - lx0) * (x - lx0) + (ly1 - ly0) * (y - ly0) + (lz1 - lz0) * (z - lz0);
+    double cos_dist = vec_sum / dist_start_end;
 
-    if (dist_start_end > dist_start_point && dist_start_end > dist_end_point) {
+    if (0.0 <= cos_dist && cos_dist <= dist_start_end) {
         return true;
     } else {
         return false;
@@ -139,7 +139,7 @@ inline int sign(double x) {
     }
 }
 
-tuple<double, CellXYZ , CellXYZ> line2line_cross(
+tuple<double, CellXYZ, CellXYZ> line2line_cross(
         double ax0, double ay0, double az0,
         double ax1, double ay1, double az1,
         double bx0, double by0, double bz0,

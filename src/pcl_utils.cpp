@@ -13,7 +13,7 @@ void PclUtils::KDTree::update_data(vector<CellXYZ> &data) {
     pcd->width = data.size();
     pcd->height = 1;
     pcd->points.resize(pcd->width * pcd->height);
-    for (int i = 0; i < data.size(); ++i) {
+    for (int i = 0; i < data.size(); i++) {
         (*pcd)[i].x = get<0>(data[i]);
         (*pcd)[i].y = get<1>(data[i]);
         (*pcd)[i].z = get<2>(data[i]);
@@ -73,10 +73,12 @@ void PclUtils::XYZRTree::update_data(vector<CellXYZR> &data) {
     pcd->width = data.size();
     pcd->height = 1;
     pcd->points.resize(pcd->width * pcd->height);
-    for (int i = 0; i < data.size(); ++i) {
+    for (int i = 0; i < data.size(); i++) {
         double x, y, z, radius;
         tie(x, y, z, radius) = data[i];
-        (*pcd)[i].x = x, (*pcd)[i].y = y, (*pcd)[i].z = z;
+        (*pcd)[i].x = x;
+        (*pcd)[i].y = y;
+        (*pcd)[i].z = z;
         pcd_radius.emplace_back(radius);
     }
 }
@@ -113,7 +115,7 @@ void PclUtils::XYZRLTree::update_data(vector<CellXYZRL> &data) {
     pcd->width = data.size();
     pcd->height = 1;
     pcd->points.resize(pcd->width * pcd->height);
-    for (int i = 0; i < data.size(); ++i) {
+    for (int i = 0; i < data.size(); i++) {
         double x, y, z, radius, length;
         tie(x, y, z, radius, length) = data[i];
         (*pcd)[i].x = x, (*pcd)[i].y = y, (*pcd)[i].z = z;

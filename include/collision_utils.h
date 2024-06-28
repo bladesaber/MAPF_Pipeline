@@ -34,6 +34,8 @@ public:
 
     size_t get_size() { return tree.get_pcd_size(); }
 
+    void print_info();
+
 private:
     PclUtils::XYZRTree tree;
 };

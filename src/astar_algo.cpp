@@ -5,49 +5,29 @@
 #include "astar_algo.h"
 
 void PathResult::get_path_xyz(vector<CellXYZ> &path_set) const {
-    double x, y, z;
-    for (size_t loc_flag: path_flags) {
-        tie(x, y, z) = grid->flag2xyz(loc_flag);
-        path_set.emplace_back(x, y, z);
+    for (const size_t& flag: path_flags) {
+        path_set.emplace_back(grid->flag2xyz(flag));
     }
 }
 
 void PathResult::get_path_xyzr(vector<CellXYZR> &path_set) const {
     double x, y, z;
-    for (size_t loc_flag: path_flags) {
-        tie(x, y, z) = grid->flag2xyz(loc_flag);
+    for (const size_t& flag: path_flags) {
+        tie(x, y, z) = grid->flag2xyz(flag);
         path_set.emplace_back(x, y, z, radius);
     }
 }
 
-void PathResult::get_path_xyzrl(vector<CellXYZRL> &path_set) const {
-    double x, y, z;
-    for (int i = 0; i < path_flags.size(); i++) {
-        tie(x, y, z) = grid->flag2xyz(path_flags[i]);
-        path_set.emplace_back(x, y, z, radius, path_step_lengths[i]);
+void PathResult::get_path_grid(set<size_t> &path_set) const {
+    for (const size_t flag: path_flags) {
+        path_set.insert(flag);
     }
 }
 
-void PathResult::get_path_grid(set<size_t> &path_set) const {
-    int x0, y0, z0, x1, y1, z1, vec_x, vec_y, vec_z, step;
-
-    for (int i = 0; i < path_flags.size(); i++) {
-        if (i == 0) {
-            tie(x0, y0, z0) = grid->flag2grid(path_flags[i]);
-            path_set.insert(path_flags[i]);
-
-        } else {
-            tie(x1, y1, z1) = grid->flag2grid(path_flags[i]);
-
-            vec_x = sign(x1 - x0), vec_y = sign(y1 - y0), vec_z = sign(z1 - z0);
-            step = (abs(x1 - x0) + abs(y1 - y0) + abs(z1 - z0)) / (abs(vec_x) + abs(vec_y) + abs(vec_z));
-            for (int j = 0; j < step + 1; j++) {
-                x1 = x0 + step * vec_x, y1 = y0 + step * vec_y, z1 = z0 + step * vec_z;
-                path_set.insert(grid->grid2flag(x1, y1, z1));
-            }
-            x0 = x1, y0 = y1, z0 = z1;
-        }
-    }
+vector<CellXYZR> PathResult::get_path() const {
+    vector<CellXYZR> path;
+    get_path_xyzr(path);
+    return path;
 }
 
 void PathResult::update_result(const AStarNode *goal_node, double search_radius) {
@@ -56,23 +36,52 @@ void PathResult::update_result(const AStarNode *goal_node, double search_radius)
     path_step_lengths.clear();
     path_length = 0.0;
 
-    int step = 0;
-    double last_x, last_y, last_z, x, y, z, step_length;
+    int iter = 0;
+    int grid_x0, grid_y0, grid_z0, grid_x1, grid_y1, grid_z1;
+    int vec_x, vec_y, vec_z, skip_step;
+
+    double step_length;
+
     auto curr = goal_node;
     while (curr != nullptr) {
-        if (step == 0) {
-            tie(last_x, last_y, last_z) = grid->flag2xyz(curr->loc_flag);
+        if (iter == 0) {
+            tie(grid_x0, grid_y0, grid_z0) = grid->flag2grid(curr->loc_flag);
+            path_flags.emplace_back(curr->loc_flag);
 
         } else {
-            tie(x, y, z) = grid->flag2xyz(curr->loc_flag);
-            step_length = norm2_dist(last_x, last_y, last_z, x, y, z);
-            path_length += step_length;
-            last_x = x, last_y = y, last_z = z;
-            path_step_lengths.emplace_back(step_length);
-        }
-        step += 1;
+            tie(grid_x1, grid_y1, grid_z1) = grid->flag2grid(curr->loc_flag);
 
-        path_flags.emplace_back(curr->loc_flag);
+            vec_x = sign(grid_x1 - grid_x0);
+            vec_y = sign(grid_y1 - grid_y0);
+            vec_z = sign(grid_z1 - grid_z0);
+
+            skip_step = abs(grid_x1 - grid_x0) + abs(grid_y1 - grid_y0) + abs(grid_z1 - grid_z0);
+            skip_step = skip_step / (abs(vec_x) + abs(vec_y) + abs(vec_z));
+
+            for (int j = 1; j < skip_step + 1; j++) {
+                grid_x1 = grid_x0 + j * vec_x;
+                grid_y1 = grid_y0 + j * vec_y;
+                grid_z1 = grid_z0 + j * vec_z;
+                path_flags.emplace_back(grid->grid2flag(grid_x1, grid_y1, grid_z1));
+
+                double x0, y0, z0, x1, y1, z1;
+                tie(x0, y0, z0) = grid->grid2xyz(
+                        grid_x0 + (j - 1) * vec_x,
+                        grid_y0 + (j - 1) * vec_y,
+                        grid_z0 + (j - 1) * vec_z
+                );
+                tie(x1, y1, z1) = grid->grid2xyz(grid_x1, grid_y1, grid_z1);
+                step_length = norm2_dist(x0, y0, z0, x1, y1, z1);
+                path_step_lengths.emplace_back(step_length);
+                path_length += step_length;
+            }
+
+            grid_x0 = grid_x1;
+            grid_y0 = grid_y1;
+            grid_z0 = grid_z1;
+        }
+
+        iter += 1;
         curr = curr->parent;
     }
 
@@ -241,10 +250,24 @@ AStarNode *StandardAStarSolver::get_next_node(size_t neighbour_loc_flag, AStarNo
 
 bool StandardAStarSolver::find_path(PathResult &res_path, size_t max_iter, const ConflictAvoidTable *avoid_table) {
     conflict_avoid_table = avoid_table;
-
     num_generated = 0;
     num_expanded = 0;
     size_t run_times = 0;
+
+    for (size_t &flag: state_detector.get_start_pos_flags()) {
+        double x, y, z;
+        tie(x, y, z) = grid.flag2xyz(flag);
+        if (!obstacle_detector.is_valid(x, y, z, radius)) {
+            return false;
+        }
+    }
+    for (size_t &flag: state_detector.get_target_pos_flags()) {
+        double x, y, z;
+        tie(x, y, z) = grid.flag2xyz(flag);
+        if (!obstacle_detector.is_valid(x, y, z, radius)) {
+            return false;
+        }
+    }
 
     for (size_t loc_flag: state_detector.get_start_pos_flags()) {
         int orient_x, orient_y, orient_z;
@@ -266,6 +289,7 @@ bool StandardAStarSolver::find_path(PathResult &res_path, size_t max_iter, const
 
     while (!open_list.empty()) {
         AStarNode *current_node = popNode();
+        //grid.print_grid(current_node->loc_flag, "expand", compute_h_cost(current_node->loc_flag));
         tie(cur_x, cur_y, cur_z) = grid.flag2xyz(current_node->loc_flag);
 
         if (state_detector.is_target(current_node->loc_flag)) {

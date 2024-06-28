@@ -113,6 +113,12 @@ namespace Grid {
             }
             return (1.0 - radius / ref_radius) * weight;
         }
+
+        void print_grid(size_t flag, const string& info, double score){
+            int x, y, z;
+            tie(x, y, z) = flag2grid(flag);
+            cout << "[INFO]:" << info << " grid_x:" << x << " grid_y:" << y << " grid_z:" << z << " score:" << score <<endl;
+        }
     };
 }
 

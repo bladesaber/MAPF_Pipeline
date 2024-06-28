@@ -42,18 +42,32 @@ class ObstacleConflictCell(object):
 class PathOptimizer(object):
     def __init__(
             self,
-            grid: mapf_pipeline.DiscreteGridEnv,
+            grid_cfg: Dict,
             paths_result: Dict[int, Dict[str, np.ndarray]],
             obstacle_xyzr: np.ndarray,
             info: Dict
     ):
+        self.grid_env = mapf_pipeline.DiscreteGridEnv(
+            size_of_x=grid_cfg['size_of_x'] + 1,
+            size_of_y=grid_cfg['size_of_y'] + 1,
+            size_of_z=grid_cfg['size_of_z'] + 1,
+            x_init=grid_cfg['grid_min'][0],
+            y_init=grid_cfg['grid_min'][1],
+            z_init=grid_cfg['grid_min'][2],
+            x_grid_length=grid_cfg['x_grid_length'],
+            y_grid_length=grid_cfg['y_grid_length'],
+            z_grid_length=grid_cfg['z_grid_length']
+        )
+
         self.network_cells: Dict[int, smooth_utils.NetworkPath] = {}
         for group_idx, path_dict in paths_result.items():
-            self.network_cells[group_idx] = smooth_utils.NetworkPath(grid, path_dict, group_idx)
+            self.network_cells[group_idx] = smooth_utils.NetworkPath(self.grid_env, path_dict, group_idx)
 
         self.obstacle_xyzr = obstacle_xyzr
-        self.obstacle_tensor = TorchUtils.np2tensor(obstacle_xyzr[:, :3], require_grad=False)
-        self.obstacle_tree = KDTree(obstacle_xyzr[:, :3])
+        self.obstacle_num = self.obstacle_xyzr.shape[0]
+        if self.obstacle_num > 0:
+            self.obstacle_tensor = TorchUtils.np2tensor(obstacle_xyzr[:, :3], require_grad=False)
+            self.obstacle_tree = KDTree(obstacle_xyzr[:, :3])
 
         self.obstacle_conflict_cells: List[ObstacleConflictCell] = []
         self.path_conflict_cells: List[PathConflictCell] = []
@@ -62,8 +76,12 @@ class PathOptimizer(object):
 
     def find_obstacle_conflict_cells(self, unit_lr: float):
         self.obstacle_conflict_cells.clear()
+        if self.obstacle_num == 0:
+            return self.obstacle_conflict_cells
 
         for group_idx, network_cell in self.network_cells.items():
+            fix_pcd = network_cell.control_xyzr_np[network_cell.fix_pcd_idxs, :3]
+
             for seg_idx, segment_cell in network_cell.segments.items():
                 pcd_np = TorchUtils.tensor2np(segment_cell.pcd_tensor)
                 search_radius = np.max(segment_cell.radius_np) + np.max(self.obstacle_xyzr[:, -1]) + unit_lr
@@ -74,8 +92,11 @@ class PathOptimizer(object):
                     if len(obs_idxs) == 0:
                         continue
 
+                    if np.any(np.linalg.norm(pcd_np[pcd_idx] - fix_pcd, ord=2, axis=1) == 0):
+                        continue
+
                     for obs_idx, dist in zip(obs_idxs, dists):
-                        if dist < segment_cell.radius_np[pcd_idx] + self.obstacle_xyzr[obs_idx, 3] + unit_lr:
+                        if dist <= segment_cell.radius_np[pcd_idx] + self.obstacle_xyzr[obs_idx, 3] + unit_lr:
                             conflict_pcd_idxs.append(pcd_idx)
                             obs_pcd_idxs.append(obs_idx)
                             require_radius.append(segment_cell.radius_np[pcd_idx] + self.obstacle_xyzr[obs_idx, 3])
@@ -125,11 +146,15 @@ class PathOptimizer(object):
                                     pcd1_idxs.append(pcd_j_idx)
                                     require_radius.append(radius_i[pcd_i_idx] + radius_j[pcd_j_idx])
 
-                        self.path_conflict_cells.append(PathConflictCell(
-                            group_idx0=group_idxs[i], segment_idx0=segment_i.idx, conflict_pcd0_idxs=pcd0_idxs,
-                            group_idx1=group_idxs[j], segment_idx1=segment_j.idx, conflict_pcd1_idxs=pcd1_idxs,
-                            require_distance=require_radius
-                        ))
+                        if len(pcd0_idxs) > 0:
+                            pcd0_idxs = np.array(pcd0_idxs)
+                            pcd1_idxs = np.array(pcd1_idxs)
+                            require_radius = np.array(require_radius)
+                            self.path_conflict_cells.append(PathConflictCell(
+                                group_idx0=group_idxs[i], segment_idx0=segment_i.idx, conflict_pcd0_idxs=pcd0_idxs,
+                                group_idx1=group_idxs[j], segment_idx1=segment_j.idx, conflict_pcd1_idxs=pcd1_idxs,
+                                require_distance=require_radius
+                            ))
 
         return self.path_conflict_cells
 
@@ -165,9 +190,53 @@ class PathOptimizer(object):
 
         return cost_dict
 
+    def run(self, max_iter: int, lr: float):
+        lr_unit = np.linalg.norm(np.array([lr, lr, lr]))
+        loss_record = []
+
+        for it in range(max_iter):
+            self.find_obstacle_conflict_cells(lr_unit)
+            self.find_path_conflict_cells(lr_unit)
+
+            loss_info = {}
+            for group_idx, net_cell in self.network_cells.items():
+                for name, cost in net_cell.compute_segment_cost().items():
+                    loss_info[f"{name}_{group_idx}"] = cost
+                for name, cost in net_cell.compute_path_cost().items():
+                    loss_info[f"{name}_{group_idx}"] = cost
+            loss_info.update(self.compute_conflict_cost())
+
+            loss: torch.Tensor = 0.0
+            for cost_name, cost in loss_info.items():
+                loss += cost
+
+            loss_np = loss.detach().numpy()
+            loss_record.append(loss_np)
+            log_txt = f"[iter:{it}] loss:{loss_np:.6f}"
+            print(log_txt)
+
+            loss.backward()
+            with torch.no_grad():
+                for group_idx, net_cell in self.network_cells.items():
+                    grad = net_cell.control_pcd_tensor.grad
+                    grad[net_cell.fix_pcd_idxs, :] = 0.0
+                    grad = grad / (torch.norm(grad, p=2, dim=1, keepdim=True) + 1e-8)
+                    net_cell.control_pcd_tensor -= grad * lr
+                    net_cell.control_pcd_tensor.grad.zero_()
+
+            for group_idx, net_cell in self.network_cells.items():
+                net_cell.update_state(with_tensor=True, with_np=False)
+
+        for group_idx, net_cell in self.network_cells.items():
+            net_cell.update_state(with_tensor=False, with_np=True)
+
+        return loss_record
+
     def draw_conflict_graph(self, vis: VisUtils = None, with_obstacle=True, with_path_conflict=True):
+        show_plot = False
         if vis is None:
             vis = VisUtils()
+            show_plot = True
 
         for group_idx, network_cell in self.network_cells.items():
             network_cell.draw_segment(with_spline=True, with_control=True, vis=vis)
@@ -177,12 +246,15 @@ class PathOptimizer(object):
                 seg_cell = self.network_cells[cell.group_idx].segments[cell.segment_idx]
                 pcd0 = TorchUtils.tensor2np(seg_cell.pcd_tensor[cell.conflict_pcd_idxs, :])
                 pcd1 = self.obstacle_xyzr[cell.obs_pcd_idxs, :3]
+
                 pcd0_idxs = np.arange(0, pcd0.shape[0], 1)
                 pcd1_idxs = pcd0_idxs + pcd0.shape[0]
                 pcd = np.concatenate([pcd0, pcd1], axis=0)
                 line_set = np.concatenate([
-                    np.full(shape=(pcd0.shape[0], 1), fill_value=2), pcd0_idxs.reshape((-1, 1)), pcd1_idxs.reshape((-1, 1))
-                ])
+                    np.full(shape=(pcd0.shape[0], 1), fill_value=2),
+                    pcd0_idxs.reshape((-1, 1)),
+                    pcd1_idxs.reshape((-1, 1))
+                ], axis=1)
                 mesh = VisUtils.create_line(pcd, line_set)
                 vis.plot(mesh, color=(1.0, 0.0, 0.0), point_size=4)
 
@@ -196,9 +268,12 @@ class PathOptimizer(object):
                 pcd1_idxs = pcd0_idxs + pcd0.shape[0]
                 pcd = np.concatenate([pcd0, pcd1], axis=0)
                 line_set = np.concatenate([
-                    np.full(shape=(pcd0.shape[0], 1), fill_value=2), pcd0_idxs.reshape((-1, 1)), pcd1_idxs.reshape((-1, 1))
-                ])
+                    np.full(shape=(pcd0.shape[0], 1), fill_value=2),
+                    pcd0_idxs.reshape((-1, 1)),
+                    pcd1_idxs.reshape((-1, 1))
+                ], axis=1)
                 mesh = VisUtils.create_line(pcd, line_set)
-                vis.plot(mesh, color=(0.0, 0.0, 1.0), point_size=4)
+                vis.plot(mesh, color=(0.0, 1.0, 0.0), point_size=4)
 
-        vis.show()
+        if show_plot:
+            vis.show()

@@ -5,7 +5,7 @@ import math
 import os, argparse, shutil
 import json
 
-from scripts_py.visulizer import VisulizerVista
+from tem.visulizer import VisulizerVista
 
 
 def parse_args():

@@ -75,6 +75,9 @@ class CbsNode(object):
     def get_constrain(self, group_idx: int):
         return self.node.get_constrain(group_idx=group_idx)
 
+    def get_conflict_size(self):
+        return self.node.get_conflict_size()
+
     def select_conflict_cell(
             self,
             pipe_cfgs: dict,
@@ -85,7 +88,7 @@ class CbsNode(object):
         for group_idx in task_infos.keys():
             graph = nx.Graph()
             for task_info in task_infos[group_idx]:
-                path = self.get_group_path(group_idx, task_info.task_name)
+                path: mapf_pipeline.PathResult = self.get_group_path(group_idx, task_info.task_name)
                 flags = path.get_path_flags()
                 step_lengths = path.get_step_length()
                 for i in range(1, len(flags), 1):
@@ -143,10 +146,10 @@ class CbsSolver(object):
         }
 
         self.node_mapper: Dict[int, CbsNode] = {}  # 由于CbsNode是由Python构造，必须由Python自身管理
-        self.task_infos = {}
+        self.task_infos: Dict[int, List[mapf_pipeline.TaskInfo]] = {}
         self.latest_node_id = 0
 
-    def init_block_root(self, block_info: List, last_leafs_info: dict = {}):
+    def init_block_root(self, block_info: List, last_leafs_info: dict = {}, aux_constrain_df: pd.DataFrame = None):
         self.latest_node_id = 0
         self.task_infos.clear()
         for key in self.node_mapper.keys():
@@ -200,12 +203,13 @@ class CbsSolver(object):
 
         for group_idx in list(self.task_infos.keys()):
             dynamic_constrains = []
+
             for pipe_name in self.pipe_cfg:
                 pipe_info = self.pipe_cfg[pipe_name]
                 if pipe_info['group_idx'] == group_idx:
                     continue
                 x, y, z = pipe_info['discrete_position']
-                dynamic_constrains.append((x, y, z, 0.0))
+                dynamic_constrains.append((x, y, z, pipe_info['radius']))
 
             for sub_idx in last_leafs_info.keys():
                 if sub_idx == group_idx:
@@ -213,6 +217,11 @@ class CbsSolver(object):
                 for flag, radius in last_leafs_info[sub_idx]['flags_dict'].items():
                     other_x, other_y, other_z = self.grid_env.flag2xyz(flag)
                     dynamic_constrains.append((other_x, other_y, other_z, radius))
+
+            if aux_constrain_df is not None:
+                aux_constrains = aux_constrain_df[aux_constrain_df['group_idx'] != group_idx]
+                for ii, x, y, z, r, jj in aux_constrains.itertuples():
+                    dynamic_constrains.append((x, y, z, r))
 
             root.update_group_cell(
                 group_idx=group_idx,
@@ -224,13 +233,31 @@ class CbsSolver(object):
 
         return root
 
-    def solve_block(self, root: CbsNode, group_idxs: List[int], max_iter):
+    def first_check(self, root: CbsNode, group_idxs: List[int], max_iter: int):
+        for group_idx in group_idxs:
+            self.draw_node_3D(
+                root, [], self.task_infos, obstacle_df=self.obstacle_df, pipe_cfg=self.pipe_cfg,
+                highlight_group_idx=group_idx
+            )
+
+            is_success = root.update_group_path(group_idx, max_iter)
+            print(f"groupIdx:{group_idx} success:{is_success}")
+
+            if is_success:
+                self.draw_node_3D(
+                    root, [group_idx], self.task_infos, obstacle_df=self.obstacle_df, pipe_cfg=self.pipe_cfg,
+                    highlight_group_idx=group_idx
+                )
+
+    def solve_block(
+            self, root: CbsNode, group_idxs: List[int], max_iter: int, max_node_limit: int
+    ) -> (bool, CbsNode):
         for group_idx in group_idxs:
             is_success = root.update_group_path(group_idx, max_iter)
             print(f"groupIdx:{group_idx} success:{is_success}")
             if not is_success:
-                return {'status': False}
-        # self.draw_node_3D(root, group_idxs, self.task_infos)
+                return False, None
+        # self.draw_node_3D(root, group_idxs, self.task_infos, self.pipe_cfg)
 
         root.find_inner_conflict_point2point()
         root.compute_h_val()
@@ -239,7 +266,7 @@ class CbsSolver(object):
 
         is_success = False
         res_node = None
-        for run_times in range(1000):
+        for run_times in range(max_node_limit):
             print(f"[INFO]: running step:{run_times}")
 
             node_wrap = self.pop_node_wrap()
@@ -250,7 +277,7 @@ class CbsSolver(object):
                 print("[INFO]: Solving Success.")
                 break
 
-            child_nodes = self.extend_node_wrap(node_wrap)
+            child_nodes = self.extend_node_wrap(node_wrap, max_iter=max_iter)
             for child_node_wrap in child_nodes:
                 self.push_node_wrap(child_node_wrap)
 
@@ -261,48 +288,27 @@ class CbsSolver(object):
 
         return is_success, res_node
 
-    def convert_node_to_leaf_info(self, node: CbsNode, group_idxs):
-        last_leaf_info = {}
+    def convert_node_to_leaf_info(self, node: CbsNode, group_idxs, last_leaf_info):
         for group_idx in group_idxs:
             last_leaf_info.setdefault(group_idx, {})
-            member_tags, flags_dict = [], {}
+            member_tags = last_leaf_info[group_idx].get('member_tags', [])
+            flags_dict = last_leaf_info[group_idx].get('flags_dict', {})
+
             for task_info in self.task_infos[group_idx]:
                 path_res = node.get_group_path(group_idx, task_info.task_name)
                 radius = task_info.search_radius
 
-                last_x, last_y, last_z = None, None, None
                 for i, flag in enumerate(path_res.get_path_flags()):
-                    if i == 0:
-                        if flag in flags_dict.keys():
-                            flags_dict[flag] = max(flags_dict[flag], radius)
-                        else:
-                            flags_dict[flag] = radius
-
-                        last_x, last_y, last_z = self.grid_env.flag2grid(flag)
-
+                    if flag in flags_dict.keys():
+                        flags_dict[flag] = max(flags_dict[flag], radius)
                     else:
-                        cur_x, cur_y, cur_z = self.grid_env.flag2grid(flag)
-                        dif = np.array([cur_x - last_x, cur_y - last_y, cur_z - last_z])
-                        sign = np.sign(dif)
-                        step = int(np.sum(np.abs(dif)) / np.sum(np.abs(sign)))
-                        for j in range(step + 1):
-                            intermediate_flag = self.grid_env.grid2flag(
-                                last_x + j * sign[0], last_y + j * sign[1], last_z + j * sign[2]
-                            )
-                            if intermediate_flag in flags_dict.keys():
-                                flags_dict[intermediate_flag] = max(flags_dict[intermediate_flag], radius)
-                            else:
-                                flags_dict[intermediate_flag] = radius
-
-                        last_x, last_y, last_z = cur_x, cur_y, cur_z
+                        flags_dict[flag] = radius
 
                 member_tags.append(task_info.begin_tag)
                 member_tags.append(task_info.final_tag)
 
-            last_leaf_info[group_idx] = {
-                'member_tags': list(set(member_tags)),
-                'flags_dict': flags_dict
-            }
+            last_leaf_info[group_idx]['member_tags'] = list(set(member_tags))
+            last_leaf_info[group_idx]['flags_dict'] = flags_dict
 
         return last_leaf_info
 
@@ -316,7 +322,7 @@ class CbsSolver(object):
         del self.node_mapper[node.node_id]
         return node_wrap
 
-    def extend_node_wrap(self, node_wrap: CbsNode):
+    def extend_node_wrap(self, node_wrap: CbsNode, max_iter: int):
         conflict = node_wrap.select_conflict_cell(self.pipe_cfg, self.grid_env, self.task_infos)
 
         new_constrains = [
@@ -328,7 +334,8 @@ class CbsSolver(object):
         for info in new_constrains:
             is_success, new_node_wrap = self.create_node_wrap(
                 node_wrap=node_wrap, group_idx=info[0],
-                obs_x=info[1], obs_y=info[2], obs_z=info[3], obs_radius=info[4]
+                obs_x=info[1], obs_y=info[2], obs_z=info[3], obs_radius=info[4],
+                max_iter=max_iter
             )
             if not is_success:
                 continue
@@ -336,15 +343,37 @@ class CbsSolver(object):
 
         return child_nodes
 
-    def create_node_wrap(self, node_wrap: CbsNode, group_idx, obs_x, obs_y, obs_z, obs_radius, max_iter=1000):
+    def create_node_wrap(self, node_wrap: CbsNode, group_idx, obs_x, obs_y, obs_z, obs_radius, max_iter: int):
         new_node_wrap = CbsNode(node_id=self.latest_node_id)
         self.latest_node_id += 1
         new_node_wrap.copy_from_node(node_wrap.node)
 
         dynamic_constraints = new_node_wrap.get_constrain(group_idx)
+
+        # # ------ debug
+        # dynamic_constrains_np = np.array(dynamic_constraints)
+        # if np.any(np.sum(np.abs(dynamic_constrains_np[:, :3] - np.array([obs_x, obs_y, obs_z])), axis=1) == 0):
+        #     repeat_xyzr = np.array([obs_x, obs_y, obs_z, obs_radius])
+        #     print(dynamic_constrains_np)
+        #     print(repeat_xyzr)
+        #     # for task_info in self.task_infos[group_idx]:
+        #     #     path = new_node_wrap.get_group_path(group_idx, task_info.task_name)
+        #     #     xyzr = np.array(path.get_path())
+        #     #     dist = np.linalg.norm(xyzr[:, :3] - repeat_xyzr[:3], ord=2, axis=1)
+        #     #     require_radius = xyzr[:, -1] + obs_radius
+        #     #     tmp_idx = np.argmin(dist - require_radius)
+        #     #     print(xyzr[tmp_idx], dist[tmp_idx])
+        #     #
+        #     # print('asdadf')
+        #     # flag_tmp = new_node_wrap.update_group_path(group_idx, max_iter=10000)
+        #     # print(flag_tmp)
+        #     raise ValueError("Repeat Loop Constrain")
+        # # ------
+
         dynamic_constraints.append((obs_x, obs_y, obs_z, obs_radius))
 
-        # print(f'debug: {group_idx}', dynamic_constraints)  # todo 当grid的密度较大时，管道干涉的障碍点密度就越大，低效搜索的次数就越多
+        # todo 当grid的密度较大时，管道干涉的障碍点密度就越大，低效搜索的次数就越多
+        # print(f'debug: {group_idx}', dynamic_constraints)
 
         new_node_wrap.update_constrains_map(group_idx=group_idx, dynamic_obstacles=dynamic_constraints)
 
@@ -357,10 +386,17 @@ class CbsSolver(object):
         new_node_wrap.compute_g_val()
         print(f"[INFO] A star solving num_expanded:{new_node_wrap.num_expanded}, "
               f"num_generated:{new_node_wrap.num_generated}, "
-              f"search_time_cost:{new_node_wrap.search_time_cost}"
+              f"search_time_cost:{new_node_wrap.search_time_cost} "
+              f"conflict_num:{new_node_wrap.get_conflict_size()} "
+              f"constrain_size:{len(dynamic_constraints)}"
               )
 
-        # self.draw_node_3D(new_node_wrap, list(self.task_infos.keys()), self.task_infos, group_idx, self.obstacle_df)
+        # todo CBS对于目前状况并不紧致
+        # self.draw_node_3D(
+        #     new_node_wrap, list(self.task_infos.keys()), self.task_infos, self.pipe_cfg,
+        #     obstacle_df=self.obstacle_df,
+        #     # highlight_group_idx=group_idx
+        # )
 
         return True, new_node_wrap
 
@@ -368,10 +404,14 @@ class CbsSolver(object):
     def draw_node_3D(
             node: CbsNode, group_idxs: List[int],
             task_infos: Dict[int, List[mapf_pipeline.TaskInfo]],
+            pipe_cfg: Dict,
             highlight_group_idx: int = None,
-            obstacle_df: pd.DataFrame = None
+            obstacle_df: pd.DataFrame = None,
+            vis: VisUtils = None
     ):
-        vis = VisUtils()
+        if vis is None:
+            vis = VisUtils()
+
         colors = {}
         for i, group_idx in enumerate(group_idxs):
             colors[group_idx] = np.random.uniform(0.0, 1.0, size=(3,))
@@ -397,8 +437,15 @@ class CbsSolver(object):
             for x, y, z, radius in node.get_constrain(highlight_group_idx):
                 vis.plot(
                     VisUtils.create_sphere(np.array([x, y, z]), radius=max(radius, 0.02)),
-                    color=colors[highlight_group_idx], opacity=1.0
+                    color=(0.0, 1.0, 0.0), opacity=1.0
                 )
+
+            for name, info in pipe_cfg.items():
+                if info['group_idx'] == highlight_group_idx:
+                    vis.plot(
+                        VisUtils.create_sphere(info['discrete_position'], radius=info['radius']),
+                        color=(1.0, 0.0, 0.0), opacity=1.0
+                    )
 
         vis.show()
 
@@ -424,7 +471,9 @@ class CbsSolver(object):
         plt.show()
 
     @staticmethod
-    def save_path(node: CbsNode, group_idxs: List[int], task_infos: Dict[int, List[mapf_pipeline.TaskInfo]]):
+    def save_path(
+            node: CbsNode, group_idxs: List[int], task_infos: Dict[int, List[mapf_pipeline.TaskInfo]]
+    ) -> Dict[int, Dict[str, np.ndarray]]:
         res = {}
         for group_idx in group_idxs:
             task_list = task_infos[group_idx]

@@ -12,7 +12,7 @@ from scripts_py.version_9.mapf_pkg.shape_utils import AxisTransform
 
 class FragmentOpen3d(object):
     @staticmethod
-    def create_pcd(pcd: np.array, colors: np.array = None) -> o3d.geometry.PointCloud:
+    def create_pcd(pcd: np.ndarray, colors: np.ndarray = None) -> o3d.geometry.PointCloud:
         pcd_o3d = o3d.geometry.PointCloud()
         pcd_o3d.points = o3d.utility.Vector3dVector(pcd)
         if colors is not None:
@@ -21,7 +21,7 @@ class FragmentOpen3d(object):
         return pcd_o3d
 
     @staticmethod
-    def create_mesh(pcd: np.array, triangle_cells: np.array, color: np.array = None) -> o3d.geometry.TriangleMesh:
+    def create_mesh(pcd: np.ndarray, triangle_cells: np.ndarray, color: np.ndarray = None) -> o3d.geometry.TriangleMesh:
         mesh_o3d = o3d.geometry.TriangleMesh()
         mesh_o3d.vertices = o3d.utility.Vector3dVector(pcd)
         mesh_o3d.triangles = o3d.utility.Vector3iVector(triangle_cells)
@@ -30,10 +30,10 @@ class FragmentOpen3d(object):
         return mesh_o3d
 
     @staticmethod
-    def create_arrow(xyz, vec, radius, color: np.array = None):
+    def create_arrow(xyz, vec, radius, color: np.ndarray = None):
         arrow: o3d.geometry.TriangleMesh = o3d.geometry.TriangleMesh.create_arrow(
-            cylinder_radius=radius * 0.5, cone_radius=radius,
-            cylinder_height=radius * 0.7, cone_height=radius * 0.3,
+            cylinder_radius=radius, cone_radius=radius,
+            cylinder_height=radius * 0.5, cone_height=radius * 0.5,
         )
         arrow.compute_triangle_normals()
         rot_mat = AxisTransform.vector_to_rotation_mat(vec)
@@ -42,6 +42,16 @@ class FragmentOpen3d(object):
         if color is not None:
             arrow.paint_uniform_color(color)
         return arrow
+
+    @staticmethod
+    def create_line(xyz: np.ndarray, color):
+        line_set = []
+        for i in range(xyz.shape[0] - 1):
+            line_set.append([i, i + 1])
+        line_set = np.array(line_set)
+        mesh = o3d.geometry.LineSet(o3d.utility.Vector3dVector(xyz), o3d.utility.Vector2iVector(line_set))
+        mesh.paint_uniform_color(color)
+        return mesh
 
     @staticmethod
     def get_widget(widget_type: str, widget_info: dict):
@@ -81,6 +91,9 @@ class FragmentOpen3d(object):
 
         elif widget_type == 'checkbox':
             widget = gui.Checkbox(widget_info.get('name', 'checkbox'))
+
+        elif widget_type == 'toggle_switch':
+            widget = gui.ToggleSwitch(widget_info.get('name', 'switch'))
 
         else:
             raise ValueError("[ERROR]: Non-Valid")
@@ -226,36 +239,39 @@ class AppWindow(object):
         dlg.add_child(layout)
         self.window.show_dialog(dlg)
 
-    def add_point_cloud_from_file(self, name: str, file: str, param: dict, is_visible=False):
+    def add_point_cloud_from_file(
+            self, name: str, file: str, param: dict, is_visible=False, no_save=False, material_type='defaultLit'
+    ):
         try:
             pcd = o3d.io.read_point_cloud(file)
         except Exception as e:
             self.console_label.text = f"[ERROR]: Non valid file: {file}"
             return
-        self.add_point_cloud(name, pcd, param, is_visible)
+        self.add_point_cloud(name, pcd, param, is_visible, no_save, material_type)
 
     def add_point_cloud(
             self, name: str, pcd: Union[o3d.geometry.PointCloud, o3d.geometry.TriangleMesh],
-            param: dict, is_visible=False
+            param: dict, is_visible=False, no_save=False, material_type='defaultLit'
     ):
         if name in self.geoMap.keys():
             if self.geoMap[name]['is_visible']:
                 self.widget3d.scene.remove_geometry(name)
             self.geoMap[name].update({'geometry': pcd, 'param': param, 'is_visible': is_visible})
             if is_visible:
-                self.widget3d.scene.add_geometry(name, self.geoMap[name]['geometry'], self.materials[AppWindow.LIT])
+                self.widget3d.scene.add_geometry(name, self.geoMap[name]['geometry'], self.materials[material_type])
 
         else:
             if is_visible:
-                self.widget3d.scene.add_geometry(name, pcd, self.materials[AppWindow.LIT])
-                self.add_geo_item(name, checked=True)
+                self.widget3d.scene.add_geometry(name, pcd, self.materials[material_type])
+                self.add_geo_item(name, checked=True, material_type=material_type)
             else:
-                self.add_geo_item(name, checked=False)
+                self.add_geo_item(name, checked=False, material_type=material_type)
             self.geoMap[name] = {
-                'name': name, 'style': 'PointCloud', 'is_visible': is_visible, 'geometry': pcd, 'param': param
+                'name': name, 'style': 'PointCloud', 'is_visible': is_visible, 'geometry': pcd, 'param': param,
+                'no_save': no_save
             }
 
-    def add_mesh_from_file(self, name: str, file: str, param: dict, is_visible=False):
+    def add_mesh_from_file(self, name: str, file: str, param: dict, is_visible=False, no_save=False):
         try:
             # mesh = o3d.io.read_triangle_model(file)  # return triangle model
             mesh = o3d.io.read_triangle_mesh(file)  # return triangle mesh
@@ -267,7 +283,10 @@ class AppWindow(object):
         # self.add_mesh(name, mesh, param, is_visible)       # when mesh is triangle model
         self.add_point_cloud(name, mesh, param, is_visible)  # when mesh is triangle mesh
 
-    def add_mesh(self, name: str, mesh: o3d.visualization.rendering.TriangleMeshModel, param: dict, is_visible=False):
+    def add_mesh(
+            self, name: str, mesh: o3d.visualization.rendering.TriangleMeshModel, param: dict,
+            is_visible=False, no_save=False
+    ):
         if name in self.geoMap.keys():
             if self.geoMap[name]['is_visible']:
                 self.widget3d.scene.remove_geometry(name)
@@ -282,14 +301,15 @@ class AppWindow(object):
             else:
                 self.add_geo_item(name, checked=False)
             self.geoMap[name] = {
-                'name': name, 'style': 'Mesh', 'is_visible': is_visible, 'geometry': mesh, 'param': param
+                'name': name, 'style': 'Mesh', 'is_visible': is_visible, 'geometry': mesh, 'param': param,
+                'no_save': no_save
             }
 
     def adjust_center_camera(self):
         bounds = self.widget3d.scene.bounding_box
         self.widget3d.setup_camera(60, bounds, bounds.get_center())
 
-    def add_geo_item(self, name: str, checked):
+    def add_geo_item(self, name: str, checked, material_type='defaultLit'):
         if len(name.strip()) == 0:
             self.console_label.text = "    [Error] Non valid or replicated name."
             return
@@ -300,7 +320,7 @@ class AppWindow(object):
                     if is_checked:
                         if self.geoMap[box_name]['style'] == 'PointCloud':
                             self.widget3d.scene.add_geometry(
-                                box_name, self.geoMap[box_name]['geometry'], self.materials[AppWindow.LIT]
+                                box_name, self.geoMap[box_name]['geometry'], self.materials[material_type]
                             )
                         elif self.geoMap[box_name]['style'] == 'Mesh':
                             self.widget3d.scene.add_model(box_name, self.geoMap[box_name]['geometry'])
@@ -325,6 +345,19 @@ class AppWindow(object):
                 self.widget3d.scene.remove_geometry(name)
             del self.geoMap[name]
             self.geo_selected_combox.remove_item(name)
+
+    def update_geo_mesh(self, name, mesh: Union[o3d.geometry.PointCloud, o3d.geometry.TriangleMesh]):
+        if name is None or len(name.strip()) == 0:
+            self.console_label.text = "    [Error] Non valid name."
+            return
+
+        if name in self.geoMap.keys():
+            is_visible = self.geoMap[name]['is_visible']
+            if is_visible:
+                self.widget3d.scene.remove_geometry(name)
+            self.geoMap[name].update({'geometry': mesh})
+            if is_visible:
+                self.widget3d.scene.add_geometry(name, self.geoMap[name]['geometry'], self.materials[AppWindow.LIT])
 
 
 def main():

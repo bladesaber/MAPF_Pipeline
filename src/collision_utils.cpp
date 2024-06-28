@@ -50,6 +50,12 @@ bool CollisionDetector::is_valid(
         PointXYZ point = tree.get_point_from_data(idx);
         point2line_val = point2line_dist(point.x, point.y, point.z, x0, y0, z0, x1, y1, z1);
         if (point2line_val < tree.get_radius(idx) + point_radius) {
+            /*
+            cout << "a0_x:" << point.x << " a0_y:" << point.y << " a0_z:" << point.z << endl;
+            cout << "x0: " << x0 << " y0: " << y0 << " z0:" << z0 << endl;
+            cout << "x1: " << x1 << " y1: " << y1 << " z1:" << z1 << endl;
+            cout << "require dist: " << tree.get_radius(idx) + point_radius << " cur_dist: " << point2line_val << endl;
+             */
             return false;
         }
     }
@@ -58,6 +64,12 @@ bool CollisionDetector::is_valid(
         PointXYZ point = tree.get_point_from_data(idx);
         point2line_val = point2line_dist(point.x, point.y, point.z, x0, y0, z0, x1, y1, z1);
         if (point2line_val < tree.get_radius(idx) + point_radius) {
+            /*
+            cout << "a0_x:" << point.x << " a0_y:" << point.y << " a0_z:" << point.z << endl;
+            cout << "x0: " << x0 << " y0: " << y0 << " z0:" << z0 << endl;
+            cout << "x1: " << x1 << " y1: " << y1 << " z1:" << z1 << endl;
+            cout << "require dist: " << tree.get_radius(idx) + point_radius << " cur_dist: " << point2line_val << endl;
+             */
             return false;
         }
     }
@@ -69,4 +81,8 @@ bool CollisionDetector::is_line_on_sight(
 ) {
     // 检测两点间是否有障碍物
     return is_valid(x0, y0, z0, x1, y1, z1, point_radius);
+}
+
+void CollisionDetector::print_info() {
+    cout << "[CollisionDetector]: max radius:" << tree.get_max_radius() << endl;
 }

@@ -103,8 +103,6 @@ public:
 
     void get_path_xyzr(vector<CellXYZR> &path_set) const;
 
-    void get_path_xyzrl(vector<CellXYZRL> &path_set) const;
-
     void get_path_grid(set<size_t> &path_set) const;
 
     double get_radius() const { return radius; }
@@ -113,15 +111,7 @@ public:
 
     vector<double> get_step_length() const { return path_step_lengths; }
 
-    vector<CellXYZR> get_path() const {
-        vector<CellXYZR> path;
-        double x, y, z;
-        for (size_t loc_flag: path_flags) {
-            tie(x, y, z) = grid->flag2xyz(loc_flag);
-            path.emplace_back(make_tuple(x, y, z, radius));
-        }
-        return path;
-    }
+    vector<CellXYZR> get_path() const;
 
 private:
     double radius;

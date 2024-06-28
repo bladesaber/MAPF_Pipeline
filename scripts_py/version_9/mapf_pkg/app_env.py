@@ -9,6 +9,7 @@ import open3d as o3d
 import open3d.visualization.gui as gui
 from functools import partial
 import argparse
+import cadquery as cq
 
 from scripts_py.version_9.mapf_pkg.app_utils import AppWindow
 from scripts_py.version_9.mapf_pkg.app_utils import FragmentOpen3d
@@ -125,12 +126,20 @@ class EnvironmentApp(AppWindow):
         self.console_label.text = f"    [INFO]: please check whether stl size is too small."
 
         name = os.path.basename(path)
-        if path.endswith('.ply') or path.endswith('.obj'):
+        file_format = name.split('.')[-1]
+
+        if file_format in ['ply', 'obj']:
             self.add_point_cloud_from_file(
                 name, path, is_visible=True,
                 param={'type': 'obstacle', 'shape': 'point_cloud_file', 'file': path}
             )
-        else:
+        elif file_format in ['stl', 'stp', 'step']:
+            if file_format in ['stp', 'step']:
+                tmp_file = os.path.join(self.save_dir, name.replace('.stp', 'stl').replace('.step', 'stl'))
+                solid = cq.importers.importStep(path)
+                cq.exporters.export(solid, tmp_file)
+                path = tmp_file
+
             if sample_num_of_points.int_value == 0:
                 console_label.text = f"[ERROR]: Wrong sample_num_of_points:{sample_num_of_points}"
             else:
@@ -275,7 +284,7 @@ class EnvironmentApp(AppWindow):
 
         def _file_dlg_btn_on_click():
             filedlg = gui.FileDialog(gui.FileDialog.OPEN, "Select file", self.window.theme)
-            filedlg.add_filter(".obj .ply .stl", "Triangle mesh (.obj, .ply, .stl)")
+            filedlg.add_filter(".obj .ply .stl", "Triangle mesh (.obj, .ply, .stl, .stp, .step)")
             filedlg.set_on_cancel(self.window.close_dialog)
             filedlg.set_on_done(dlg_done_fun)
             self.window.show_dialog(filedlg)
@@ -340,6 +349,9 @@ class EnvironmentApp(AppWindow):
                 clean_item[key] = self.geoMap[name][key]
 
             if clean_item['param']['type'] == 'obstacle' and clean_item['style'] == 'PointCloud':
+                if clean_item['no_save']:
+                    continue
+
                 obs_cfgs.append(clean_item)
                 pcd = np.asarray(self.geoMap[name]['geometry'].points)
                 sub_obs_df = pd.DataFrame(data={'x': pcd[:, 0], 'y': pcd[:, 1], 'z': pcd[:, 2]})
@@ -350,10 +362,6 @@ class EnvironmentApp(AppWindow):
             elif clean_item['param']['type'] == 'pipe':
                 pipe_cfgs.append(clean_item)
                 o3d.io.write_triangle_mesh(clean_item['param']['save_path'], self.geoMap[name]['geometry'])
-
-            else:
-                self.console_label.text = f"[Error]: Non Valid type {clean_item['param']['type']}"
-                return
 
         if len(obs_dfs) > 0:
             obs_path = os.path.join(self.save_dir, 'obstacle.csv')

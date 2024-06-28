@@ -50,7 +50,7 @@ class CrossSimulatorUtil(object):
 class FluentUtils(object):
     @staticmethod
     def read_hdf5(file: str) -> h5py.File:
-        assert file.split('.')[-1] in ['cgns', 'hdf5']
+        assert file.split('.')[-1] in ['cgns', 'hdf5', 'h5']
         return h5py.File(file)
 
     @staticmethod
@@ -69,13 +69,13 @@ class FluentUtils(object):
                 # the last item
                 if type(val) == h5py._hl.group.Group:
                     print(pre + '└── ' + key)
-                    CrossSimulatorUtil.print_h5df_tree(val, pre + '    ')
+                    FluentUtils.print_h5df_tree(val, pre + '    ')
                 else:
                     print(pre + '└── ' + key + ' (%d)' % len(val))
             else:
                 if type(val) == h5py._hl.group.Group:
                     print(pre + '├── ' + key)
-                    CrossSimulatorUtil.print_h5df_tree(val, pre + '│   ')
+                    FluentUtils.print_h5df_tree(val, pre + '│   ')
                 else:
                     print(pre + '├── ' + key + ' (%d)' % len(val))
 

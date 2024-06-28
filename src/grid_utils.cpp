@@ -12,9 +12,9 @@ bool Grid::DiscreteGridEnv::is_valid_flag(size_t loc_flag) const {
 
 bool Grid::DiscreteGridEnv::is_valid_grid(int x, int y, int z) const {
     // 不使用<=或>=的原因在于搜索空间外轮廓不一定为长方体
-    if (x < 0 || x > size_of_x) { return false; }
-    if (y < 0 || y > size_of_y) { return false; }
-    if (z < 0 || z > size_of_z) { return false; }
+    if (x < 0 || x > size_of_x - 1) { return false; }
+    if (y < 0 || y > size_of_y - 1) { return false; }
+    if (z < 0 || z > size_of_z - 1) { return false; }
     return true;
 }
 

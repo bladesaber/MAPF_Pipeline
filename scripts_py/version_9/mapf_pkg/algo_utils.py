@@ -49,8 +49,8 @@ def create_obs_pcd(pipes_cfg: dict, obs_cfg: dict):
             center=pipes_cfg[pipe_name]['discrete_position'],
             vector=pipes_cfg[pipe_name]['direction'],
             radius=pipes_cfg[pipe_name]['radius'] * 1.015,
-            reso=min_reso * 0.5
-            # reso=0.1
+            reso=min_reso * 0.3
+            # reso=3.0
         )
         obs_pcds.append(shell_pcd)
     for obs_name in obs_cfg.keys():
@@ -63,7 +63,7 @@ def create_obs_pcd(pipes_cfg: dict, obs_cfg: dict):
             center=pipes_cfg[pipe_name]['discrete_position'],
             direction=pipes_cfg[pipe_name]['direction'],
             radius=pipes_cfg[pipe_name]['radius'],
-            tol_scale=1.02,
+            tol_scale=1.025,
             is_input=pipes_cfg[pipe_name]['is_input']
         )
 

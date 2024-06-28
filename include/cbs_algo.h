@@ -52,6 +52,8 @@ public:
 
     bool is_conflict_free() { return conflict_list.size() == 0; }
 
+    int get_conflict_size() { return conflict_list.size(); }
+
     double compute_g_val();
 
     double compute_h_val();
