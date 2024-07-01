@@ -192,13 +192,13 @@ class PathOptimizer(object):
 
     def run(self, max_iter: int, lr: float):
         lr_unit = np.linalg.norm(np.array([lr, lr, lr]))
-        loss_record = []
+        loss_record, loss_info = [], {}
 
         for it in range(max_iter):
             self.find_obstacle_conflict_cells(lr_unit)
             self.find_path_conflict_cells(lr_unit)
 
-            loss_info = {}
+            loss_info.clear()
             for group_idx, net_cell in self.network_cells.items():
                 for name, cost in net_cell.compute_segment_cost().items():
                     loss_info[f"{name}_{group_idx}"] = cost
@@ -230,7 +230,12 @@ class PathOptimizer(object):
         for group_idx, net_cell in self.network_cells.items():
             net_cell.update_state(with_tensor=False, with_np=True)
 
-        return loss_record
+        loss_info_np = {}
+        for key in list(loss_info.keys()):
+            tensor = loss_info.pop(key)
+            loss_info_np[key] = tensor.detach().numpy()
+
+        return loss_record, loss_info_np
 
     def draw_conflict_graph(self, vis: VisUtils = None, with_obstacle=True, with_path_conflict=True):
         show_plot = False

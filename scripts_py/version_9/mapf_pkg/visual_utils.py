@@ -73,7 +73,7 @@ class VisUtils(object):
         return meshes
 
     @staticmethod
-    def create_tube(pcd: np.ndarray, radius, lines_set: np.ndarray):
+    def create_tube(pcd: np.ndarray, radius, lines_set: np.ndarray) -> pyvista.PolyData:
         pcd_mesh = pyvista.PolyData(pcd)
         pcd_mesh.lines = lines_set
         tube_mesh = pcd_mesh.tube(radius=radius)

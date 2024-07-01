@@ -251,6 +251,7 @@ class SmoothApp(PathApp):
             self, with_control_checkbox: gui.Checkbox, with_spline_checkbox: gui.Checkbox,
             with_obstacle_checkbox: gui.Checkbox
     ):
+        # todo problem here and stp output
         algo_file = os.path.join(self.proj_dir, 'algorithm_setup.json')
         with open(algo_file, 'r') as f:
             algo_json = json.load(f)
@@ -295,8 +296,19 @@ class SmoothApp(PathApp):
             net_cell.prepare_tensor()
 
         # ------ start running
-        loss_res = self.smooth_opt.run(max_iter=int(run_times_txt.double_value), lr=lr_txt.double_value)
-        plt.plot(loss_res)
+        loss_record, loss_info = self.smooth_opt.run(max_iter=int(run_times_txt.double_value), lr=lr_txt.double_value)
+
+        plt.figure()
+        plt.title('loss record')
+        plt.plot(loss_record)
+        plt.figure()
+        plt.title('loss fragment')
+        plt.pie(
+            x=list(loss_info.values()),
+            labels=list(loss_info.keys()),
+            autopct='%.2f%%',
+            wedgeprops={'width': 0.3}
+        )
         plt.show()
 
     def _revert_smooth(self):
@@ -309,6 +321,27 @@ class SmoothApp(PathApp):
 
         self.smooth_tmp['revert'] = True
         self.console_label.text = f"    [INFO]: revert finish."
+
+    def _save_smooth_result(self):
+        if self.smooth_opt is None:
+            self.console_label.text = f"    [ERROR]: smooth runner hasn't initiation."
+            return
+
+        save_file = os.path.join(self.proj_dir, 'smooth_result.hdf5')
+        with h5py.File(save_file, 'w') as f:
+            for group_idx, net_cell in self.smooth_opt.network_cells.items():
+                group_set = f.create_group(str(group_idx))
+                group_set.create_dataset("group_idx", data=[group_idx])
+                control_points_layer = group_set.create_group("control_points")
+                spline_layer = group_set.create_group("spline")
+
+                for seg_idx, seg_cell in net_cell.segments.items():
+                    control_points_layer.create_dataset(
+                        f"seg_{seg_cell.idx}", data=net_cell.control_xyzr_np[seg_cell.pcd_idxs, :]
+                    )
+                    spline_layer.create_dataset(
+                        f"seg_{seg_cell.idx}", data=seg_cell.get_bspline_xyzr_np(net_cell.control_xyzr_np)
+                    )
 
     def init_path_smooth_widget(self):
         smoother_layout = gui.CollapsableVert("Path Smooth Setup", self.spacing, self.blank_margins)
@@ -348,6 +381,8 @@ class SmoothApp(PathApp):
         run_smooth_btn.set_on_clicked(partial(self._run_smooth, run_times_txt=run_times_txt, lr_txt=lr_txt))
         revert_smooth_btn = FragmentOpen3d.get_widget('button', {'name': 'revert smooth'})
         revert_smooth_btn.set_on_clicked(self._revert_smooth)
+        save_btn = FragmentOpen3d.get_widget('button', {'name': 'save result'})
+        save_btn.set_on_clicked(self._save_smooth_result)
 
         with_control_checkbox = FragmentOpen3d.get_widget('checkbox', widget_info={'name': 'with_control'})
         with_control_checkbox.checked = True
@@ -359,8 +394,6 @@ class SmoothApp(PathApp):
             with_control_checkbox=with_control_checkbox, with_spline_checkbox=with_spline_checkbox,
             with_obstacle_checkbox=with_obstacle_checkbox
         ))
-
-        # todo save result
 
         smoother_layout.add_child(
             FragmentOpen3d.get_layout_widget('vert', [
@@ -380,6 +413,7 @@ class SmoothApp(PathApp):
                     gui.Label('run_times:'), run_times_txt, gui.Label('lr:'), lr_txt
                 ], 4),
                 FragmentOpen3d.get_layout_widget('horiz', [run_smooth_btn, revert_smooth_btn], 4),
+                save_btn
             ], 3, self.vert_margins)
         )
 

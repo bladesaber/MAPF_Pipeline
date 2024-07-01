@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
 from typing import Dict, List, Tuple, Union
+
+import pyvista
 import torch
 import torch.nn.functional as F
 
@@ -554,8 +556,10 @@ class NetworkPath(object):
         plt.show()
 
     def draw_segment(self, with_control=True, with_spline=False, vis: VisUtils = None):
+        show_plot = False
         if vis is None:
             vis = VisUtils()
+            show_plot = True
 
         for seg_idx, cell in self.segments.items():
             color = np.random.uniform(0.0, 1.0, size=(3,))
@@ -569,9 +573,12 @@ class NetworkPath(object):
                 xyzr = cell.get_bspline_xyzr_np(self.control_xyzr_np)
                 line_set = VisUtils.create_line_set(np.arange(0, xyzr.shape[0], 1))
                 mesh = VisUtils.create_line(xyzr[:, :3], line_set)
-                vis.plot(mesh, color=color, style='wireframe', point_size=0.1, line_width=2.0)
+                vis.plot(
+                    mesh, color=color, style='wireframe',
+                    # point_size=0.1, line_width=2.0
+                )
 
-        if vis is None:
+        if show_plot:
             vis.show()
 
     def draw_path_tensor(self):
@@ -585,50 +592,48 @@ class NetworkPath(object):
 
 def main():
     grid_env = mapf_pipeline.DiscreteGridEnv(
-        size_of_x=51, size_of_y=51, size_of_z=0,
+        size_of_x=51, size_of_y=51, size_of_z=1,
         x_init=0.0, y_init=0.0, z_init=0.0,
         x_grid_length=1.0, y_grid_length=1.0, z_grid_length=1.0
     )
 
     segment_dict = {
         'segment1': np.array([
-            [15.0, 15.0, 0.0, 0.5],
-            [15.0, 16.0, 0.0, 0.5],
-            [15.0, 17.0, 0.0, 0.5],
-            [15.0, 18.0, 0.0, 0.5],
-            [15.0, 19.0, 0.0, 0.5],
-            [15.0, 20.0, 0.0, 0.5],
-            [15.0, 21.0, 0.0, 0.5],
-            [14.0, 22.0, 0.0, 0.5],
-            [13.0, 23.0, 0.0, 0.5],
-            [12.0, 24.0, 0.0, 0.5],
-            [11.0, 25.0, 0.0, 0.5],
-            [10.0, 25.0, 0.0, 0.5],
-            [9.0, 25.0, 0.0, 0.5],
-            [8.0, 25.0, 0.0, 0.5]
+            [15.0, 15.0, 0.0, 1.0],
+            [15.0, 16.0, 0.0, 1.0],
+            [15.0, 17.0, 0.0, 1.0],
+            [15.0, 18.0, 0.0, 1.0],
+            [15.0, 19.0, 0.0, 1.0],
+            [15.0, 20.0, 0.0, 1.0],
+            [15.0, 21.0, 0.0, 1.0]
         ]),
         'segment2': np.array([
-            [15.0, 21.0, 0.0, 0.5],
-            [16.0, 21.0, 0.0, 0.5],
-            [17.0, 21.0, 0.0, 0.5],
-            [18.0, 21.0, 0.0, 0.5],
-            [19.0, 21.0, 0.0, 0.5],
-            [19.0, 22.0, 0.0, 0.5],
-            [19.0, 23.0, 0.0, 0.5],
-            [19.0, 24.0, 0.0, 0.5],
-            [19.0, 25.0, 0.0, 0.5]
+            [15.0, 21.0, 0.0, 1.0],
+            [14.0, 21.0, 0.0, 1.0],
+            [13.0, 21.0, 0.0, 1.0],
+            [12.0, 21.0, 0.0, 1.0],
+            [11.0, 21.0, 0.0, 1.0],
+            [10.0, 21.0, 0.0, 1.0],
+        ]),
+        'segment3': np.array([
+            [15.0, 21.0, 0.0, 1.0],
+            [16.0, 21.0, 0.0, 1.0],
+            [17.0, 21.0, 0.0, 1.0],
+            [18.0, 21.0, 0.0, 1.0],
+            [19.0, 21.0, 0.0, 1.0],
+            [20.0, 21.0, 0.0, 1.0]
         ]),
     }
     path_list = [
         {
             'name': 'path1',
-            'begin_xyz': np.array([15.0, 15.0, 0.0]), 'end_xyz': np.array([8.0, 25.0, 0.0, 0.5]),
+            'begin_xyz': np.array([15.0, 15.0, 0.0]), 'end_xyz': np.array([10.0, 21.0, 0.0]),
             'begin_vec': np.array([0., 1., 0.]), 'end_vec': np.array([-1., 0., 0.])
         },
         {
             'name': 'path2',
-            'begin_xyz': np.array([15.0, 15.0, 0.0]), 'end_xyz': np.array([19.0, 25.0, 0.0, 0.5]),
-            'begin_vec': np.array([0., 1., 0.]), 'end_vec': np.array([0., 1., 0.])
+            'begin_xyz': np.array([15.0, 15.0, 0.0]), 'end_xyz': np.array([20.0, 21.0, 0.0]),
+            'begin_vec': np.array([0., 1., 0.]), 'end_vec': np.array([1., 0., 0.])
         }
     ]
     opt_info = {
@@ -638,11 +643,12 @@ def main():
                 'bspline_num': 40,
                 'costs': [
                     {
-                        'method': 'control_square_length_cost',
-                        'type': 'auto',
-                        'weight': 1.0
+                        "method": "control_square_length_cost",
+                        "type": "auto",
+                        "weight": 1.0
                     }
-                ]
+                ],
+                "color": [1.0, 0.0, 0.0]
             },
             1: {
                 'bspline_degree': 3,
@@ -653,7 +659,8 @@ def main():
                         'type': 'auto',
                         'weight': 1.0
                     }
-                ]
+                ],
+                "color": [0.0, 1.0, 0.0]
             },
             2: {
                 'bspline_degree': 3,
@@ -664,40 +671,41 @@ def main():
                         'type': 'auto',
                         'weight': 1.0
                     }
-                ]
+                ],
+                "color": [0.0, 0.0, 1.0]
             },
         },
         'paths': {
             'path1': [
                 [
                     {
-                        'method': 'curvature_cost',
-                        'radius_scale': 3.0,
-                        'radius_weight': 1.0,
-                        'cos_threshold': 0.95,
-                        'cos_exponent': 1.5,
-                        'cos_weight': 1.0
+                        "method": "curvature_cost",
+                        "radius_scale": 3.0,
+                        "radius_weight": 1.0,
+                        "cos_threshold": 0.95,
+                        "cos_exponent": 1.5,
+                        "cos_weight": 1.0
                     },
-                    {
-                        'method': 'connector_control_cos_cost',
-                        'weight': 0.5
-                    }
+                    # {
+                    #     "method": "connector_control_cos_cost",
+                    #     "weight": 0.5
+                    # }
                 ]
             ],
             'path2': [
                 [
                     {
-                        'method': 'curvature_cost',
-                        'radius_scale': 3.0,
-                        'radius_weight': 1.0,
-                        'cos_threshold': 0.95,
-                        'cos_exponent': 1.5,
-                        'cos_weight': 1.0
+                        "method": "curvature_cost",
+                        "radius_scale": 3.0,
+                        "radius_weight": 1.0,
+                        "cos_threshold": 0.95,
+                        "cos_exponent": 1.5,
+                        "cos_weight": 1.0
                     },
-                    {
-                        'method': 'connector_control_cos_cost',
-                        'weight': 0.5
-                    }
+                    # {
+                    #     "method": "connector_control_cos_cost",
+                    #     "weight": 0.5
+                    # }
                 ]
             ]
         }
@@ -710,38 +718,67 @@ def main():
             begin_vec=path['begin_vec'], end_vec=path['end_vec']
         )
 
-    net.refit_graph(degree=10)
+    net.refit_graph(degree=4)
     net.update_optimization_info(opt_info['segments'], opt_info['paths'])
     net.prepare_tensor()
 
     # net.draw_network()
-    # net.draw_segment(with_spline=True, with_control=True)
+    net.draw_segment(with_spline=True, with_control=True)
     # net.draw_path_tensor()
 
-    # segment_cost_info = net.compute_segment_cost()
-    # path_cost_info = net.compute_path_cost()
-    # print(segment_cost_info)
-    # print(path_cost_info)
-
-    for _ in range(200):
-        loss_info = {}
-        loss_info.update(net.compute_segment_cost())
-        loss_info.update(net.compute_path_cost())
-
-        loss = 0.0
-        for cost_name, cost in loss_info.items():
-            loss += cost
-
-        log_txt = ' '.join([f"{cost_name}:{cost.detach().numpy():.6f}" for cost_name, cost in loss_info.items()])
-        loss_np = loss.detach().numpy()
-        log_txt += f" loss:{loss_np:.6f}"
-        print(log_txt)
-
-        net.update_control_pcd(loss, lr=0.05)
-        net.update_state(with_tensor=True, with_np=False)
-
-    net.update_state(with_tensor=False, with_np=True)
-    net.draw_segment(with_control=False, with_spline=True)
+    # loss_record = []
+    # for _ in range(300):
+    #     loss_info = {}
+    #     loss_info.update(net.compute_segment_cost())
+    #     loss_info.update(net.compute_path_cost())
+    #
+    #     loss = 0.0
+    #     for cost_name, cost in loss_info.items():
+    #         loss += cost
+    #
+    #     log_txt = ' '.join([f"{cost_name}:{cost.detach().numpy():.6f}" for cost_name, cost in loss_info.items()])
+    #     loss_np = loss.detach().numpy()
+    #     log_txt += f" loss:{loss_np:.6f}"
+    #     print(log_txt)
+    #     loss_record.append(loss_np)
+    #
+    #     loss.backward()
+    #     with torch.no_grad():
+    #         grad = net.control_pcd_tensor.grad
+    #         grad[net.fix_pcd_idxs, :] = 0.0
+    #         grad = grad / (torch.norm(grad, p=2, dim=1, keepdim=True) + 1e-8)
+    #         net.control_pcd_tensor -= grad * 0.01
+    #         net.control_pcd_tensor.grad.zero_()
+    #
+    #     net.update_state(with_tensor=True, with_np=False)
+    #
+    # plt.plot(loss_record)
+    # plt.show()
+    #
+    # net.update_state(with_tensor=False, with_np=True)
+    #
+    # # for name, path_list in net.path_dict.items():
+    # #     for path_cell in path_list:
+    # #         xyzr = path_cell.get_bspline_xyzr_np(net.control_xyzr_np)
+    # #         curvature = BsplineUtils.compute_menger_curvature(xyzr)
+    # #         print(np.min(1.0 / curvature))
+    #
+    # net.draw_segment(with_control=False, with_spline=True)
+    # # vis = VisUtils()
+    # # for seg_idx, cell in net.segments.items():
+    # #     color = np.random.uniform(0.0, 1.0, size=(3,))
+    # #     control_pcd = net.control_xyzr_np[cell.pcd_idxs, :3]
+    # #     line_set = VisUtils.create_line_set(np.arange(0, cell.pcd_idxs.shape[0], 1))
+    # #     mesh = VisUtils.create_line(control_pcd, line_set)
+    # #     vis.plot(mesh, color=color, point_size=4)
+    # #
+    # #     xyzr = cell.get_bspline_xyzr_np(net.control_xyzr_np)
+    # #     radius = xyzr[:, -1][0]
+    # #     line_set = VisUtils.create_line_set(np.arange(0, xyzr.shape[0], 1))
+    # #     tube_mesh = VisUtils.create_tube(xyzr[:, :3], radius, line_set)
+    # #     tube_mesh.save(f'/home/admin123456/Desktop/work/path_examples/s5/smooth_pcd/{str(cell)}.stl', binary=False)
+    # #     vis.plot(tube_mesh, color, opacity=1.0)
+    # # vis.show()
 
 
 if __name__ == '__main__':
