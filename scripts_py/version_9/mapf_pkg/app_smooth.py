@@ -19,6 +19,8 @@ from scripts_py.version_9.mapf_pkg.app_utils import FragmentOpen3d
 from scripts_py.version_9.mapf_pkg.smooth_optimizer import PathOptimizer
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 
+from scripts_py.version_9.mapf_pkg.torch_utils import MeanTestLearner
+
 
 class SmoothApp(PathApp):
     def __init__(self, config):
@@ -187,7 +189,11 @@ class SmoothApp(PathApp):
                             'weight': 1.0
                         }
                     ],
-                    'color': np.random.uniform(0.0, 1.0, size=(3,)).tolist()
+                    'color': np.random.uniform(0.0, 1.0, size=(3,)).tolist(),
+                    # todo 添加壁厚与优化预备差
+                    'thickness': None,
+                    'relax_conflict_ratio': 0.01,
+                    'min_relax_conflict_thickness': 0.01,
                 }
 
             for path_name, path_list in opt.network_cells[group_idx].path_dict.items():
@@ -199,16 +205,24 @@ class SmoothApp(PathApp):
                         {
                             'method': 'curvature_cost',
                             'radius_scale': 3.0,
-                            'radius_weight': 1.0,
+                            'radius_weight': 0.1,
                             'cos_threshold': 0.95,
                             'cos_exponent': 1.5,
                             'cos_weight': 1.0
                         },
                         {
                             'method': 'connector_control_cos_cost',
-                            'weight': 0.5
+                            'weight': 1.0
                         }
                     ])
+
+        if 'AutoRun' not in smooth_json.keys():
+            smooth_json['AutoRun'] = {
+                'learner': 'MeanTestLearner',
+                'init_lr': None,
+                'stat_num': 100,
+                'min_lr': None
+            }
 
         with open(smooth_file, 'w') as f:
             json.dump(smooth_json, f, indent=4)
@@ -251,7 +265,6 @@ class SmoothApp(PathApp):
             self, with_control_checkbox: gui.Checkbox, with_spline_checkbox: gui.Checkbox,
             with_obstacle_checkbox: gui.Checkbox
     ):
-        # todo problem here and stp output
         algo_file = os.path.join(self.proj_dir, 'algorithm_setup.json')
         with open(algo_file, 'r') as f:
             algo_json = json.load(f)
@@ -297,10 +310,64 @@ class SmoothApp(PathApp):
 
         # ------ start running
         loss_record, loss_info = self.smooth_opt.run(max_iter=int(run_times_txt.double_value), lr=lr_txt.double_value)
+        for key, value in loss_info.items():
+            print(f"{key}: {value}")
 
         plt.figure()
         plt.title('loss record')
         plt.plot(loss_record)
+        plt.figure()
+        plt.title('loss fragment')
+        plt.pie(
+            x=list(loss_info.values()),
+            labels=list(loss_info.keys()),
+            autopct='%.2f%%',
+            wedgeprops={'width': 0.3}
+        )
+        plt.show()
+
+    def _auto_smooth(self):
+        if self.smooth_opt is None:
+            self.console_label.text = f"    [ERROR]: smooth runner hasn't initiation"
+            return
+
+        smooth_file = os.path.join(self.proj_dir, 'smooth_setup.json')
+        if not os.path.exists(smooth_file):
+            self.console_label.text = "    [ERROR]: No smooth_setup.json in the project"
+            return
+
+        with open(smooth_file, 'r') as f:
+            smooth_json = json.load(f)
+
+        auto_run_json = smooth_json['AutoRun']
+        if auto_run_json['learner'] == 'MeanTestLearner':
+            learner = MeanTestLearner(
+                init_lr=auto_run_json['init_lr'],
+                stat_num=auto_run_json['stat_num'],
+                min_lr=auto_run_json['min_lr']
+            )
+        else:
+            self.console_label.text = "    [ERROR]: No valid learner"
+            return
+
+        # ------ restore current information
+        self.smooth_tmp['revert'] = False
+        self.smooth_tmp['last_step_data'].clear()
+        for group_idx, net_cell in self.smooth_opt.network_cells.items():
+            self.smooth_tmp['last_step_data'][group_idx] = net_cell.control_xyzr_np.copy()
+
+        # ------ prepare tensor
+        for group_idx, net_cell in self.smooth_opt.network_cells.items():
+            net_cell.prepare_tensor()
+
+        # ------ start running
+        loss_info, learner = self.smooth_opt.auto_run(learner)
+        for key, value in loss_info.items():
+            print(f"{key}: {value}")
+
+        plt.figure()
+        plt.title('loss record')
+        plt.plot(learner.losses)
         plt.figure()
         plt.title('loss fragment')
         plt.pie(
@@ -334,6 +401,7 @@ class SmoothApp(PathApp):
                 group_set.create_dataset("group_idx", data=[group_idx])
                 control_points_layer = group_set.create_group("control_points")
                 spline_layer = group_set.create_group("spline")
+                path_layer = group_set.create_group("path")
 
                 for seg_idx, seg_cell in net_cell.segments.items():
                     control_points_layer.create_dataset(
@@ -342,6 +410,12 @@ class SmoothApp(PathApp):
                     spline_layer.create_dataset(
                         f"seg_{seg_cell.idx}", data=seg_cell.get_bspline_xyzr_np(net_cell.control_xyzr_np)
                     )
+
+                for name, path_list in net_cell.path_dict.items():
+                    for j, path_cell in enumerate(path_list):
+                        path_layer.create_dataset(
+                            f"{name}_j", data=path_cell.get_bspline_xyzr_np(net_cell.control_xyzr_np)
+                        )
 
     def init_path_smooth_widget(self):
         smoother_layout = gui.CollapsableVert("Path Smooth Setup", self.spacing, self.blank_margins)
@@ -381,6 +455,8 @@ class SmoothApp(PathApp):
         run_smooth_btn.set_on_clicked(partial(self._run_smooth, run_times_txt=run_times_txt, lr_txt=lr_txt))
         revert_smooth_btn = FragmentOpen3d.get_widget('button', {'name': 'revert smooth'})
         revert_smooth_btn.set_on_clicked(self._revert_smooth)
+        auto_smooth_btn = FragmentOpen3d.get_widget('button', {'name': 'auto smooth'})
+        auto_smooth_btn.set_on_clicked(self._auto_smooth)
         save_btn = FragmentOpen3d.get_widget('button', {'name': 'save result'})
         save_btn.set_on_clicked(self._save_smooth_result)
 
@@ -413,7 +489,7 @@ class SmoothApp(PathApp):
                     gui.Label('run_times:'), run_times_txt, gui.Label('lr:'), lr_txt
                 ], 4),
                 FragmentOpen3d.get_layout_widget('horiz', [run_smooth_btn, revert_smooth_btn], 4),
-                save_btn
+                FragmentOpen3d.get_layout_widget('horiz', [auto_smooth_btn, save_btn], 4),
             ], 3, self.vert_margins)
         )
 

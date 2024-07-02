@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from sklearn.neighbors import KDTree
 
 from scripts_py.version_9.mapf_pkg import smooth_utils
-from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils
+from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils, MeanTestLearner
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 from build import mapf_pipeline
 
@@ -105,6 +105,9 @@ class PathOptimizer(object):
                     conflict_pcd_idxs = np.array(conflict_pcd_idxs)
                     obs_pcd_idxs = np.array(obs_pcd_idxs)
                     require_radius = np.array(require_radius)
+
+                    require_radius += np.maximum(require_radius * 0.01, 0.01)  # todo
+
                     self.obstacle_conflict_cells.append(
                         ObstacleConflictCell(
                             group_idx, segment_cell.idx, conflict_pcd_idxs, obs_pcd_idxs, require_radius
@@ -150,6 +153,9 @@ class PathOptimizer(object):
                             pcd0_idxs = np.array(pcd0_idxs)
                             pcd1_idxs = np.array(pcd1_idxs)
                             require_radius = np.array(require_radius)
+
+                            require_radius += np.maximum(require_radius * 0.01, 0.01)  # todo
+
                             self.path_conflict_cells.append(PathConflictCell(
                                 group_idx0=group_idxs[i], segment_idx0=segment_i.idx, conflict_pcd0_idxs=pcd0_idxs,
                                 group_idx1=group_idxs[j], segment_idx1=segment_j.idx, conflict_pcd1_idxs=pcd1_idxs,
@@ -236,6 +242,59 @@ class PathOptimizer(object):
             loss_info_np[key] = tensor.detach().numpy()
 
         return loss_record, loss_info_np
+
+    def auto_run(self, learner: Union[MeanTestLearner]):
+        lr_unit = np.linalg.norm(np.array([learner.lr, learner.lr, learner.lr]))
+        loss_info = {}
+        it = 0
+
+        while True:
+            it += 1
+            self.find_obstacle_conflict_cells(lr_unit)
+            self.find_path_conflict_cells(lr_unit)
+
+            loss_info.clear()
+            for group_idx, net_cell in self.network_cells.items():
+                for name, cost in net_cell.compute_segment_cost().items():
+                    loss_info[f"{name}_{group_idx}"] = cost
+                for name, cost in net_cell.compute_path_cost().items():
+                    loss_info[f"{name}_{group_idx}"] = cost
+            loss_info.update(self.compute_conflict_cost())
+
+            loss: torch.Tensor = 0.0
+            for cost_name, cost in loss_info.items():
+                loss += cost
+
+            loss_np = loss.detach().numpy()
+            stat_info = learner.get_lr(loss_np)
+            if stat_info['state']:
+                break
+            lr = stat_info['lr']
+
+            log_txt = f"[iter:{it}] loss:{loss_np:.6f} lr:{lr}"
+            print(log_txt)
+
+            loss.backward()
+            with torch.no_grad():
+                for group_idx, net_cell in self.network_cells.items():
+                    grad = net_cell.control_pcd_tensor.grad
+                    grad[net_cell.fix_pcd_idxs, :] = 0.0
+                    grad = grad / (torch.norm(grad, p=2, dim=1, keepdim=True) + 1e-8)
+                    net_cell.control_pcd_tensor -= grad * lr
+                    net_cell.control_pcd_tensor.grad.zero_()
+
+            for group_idx, net_cell in self.network_cells.items():
+                net_cell.update_state(with_tensor=True, with_np=False)
+
+        for group_idx, net_cell in self.network_cells.items():
+            net_cell.update_state(with_tensor=False, with_np=True)
+
+        loss_info_np = {}
+        for key in list(loss_info.keys()):
+            tensor = loss_info.pop(key)
+            loss_info_np[key] = tensor.detach().numpy()
+
+        return loss_info_np, learner
 
     def draw_conflict_graph(self, vis: VisUtils = None, with_obstacle=True, with_path_conflict=True):
         show_plot = False

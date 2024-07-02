@@ -1,4 +1,6 @@
 import math
+
+import h5py
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -8,7 +10,7 @@ import pyvista
 import torch
 import torch.nn.functional as F
 
-from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils
+from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils, MeanTestLearner
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 from build import mapf_pipeline
 
@@ -174,7 +176,9 @@ class BsplineUtils(object):
         return a / (b + 1e-8)
 
     @staticmethod
-    def compute_menger_curvature(pcd: np.ndarray, start_vec: np.ndarray = None, end_vec: np.ndarray = None):
+    def compute_menger_curvature(
+            pcd: np.ndarray, start_vec: np.ndarray = None, end_vec: np.ndarray = None, method='simple'
+    ):
         pcd_list = []
         if start_vec is not None:
             pcd_list.append((pcd[0] - start_vec).reshape((1, -1)))
@@ -183,16 +187,16 @@ class BsplineUtils(object):
             pcd_list.append((pcd[-1] + end_vec).reshape((1, -1)))
         pcd = np.concatenate(pcd_list, axis=0)
 
-        pcd_0 = pcd[:-2, :]
-        pcd_1 = pcd[1:-1, :]
-        pcd_2 = pcd[2:, :]
+        pcd_0 = pcd[:-2, :]  # x
+        pcd_1 = pcd[1:-1, :]  # y
+        pcd_2 = pcd[2:, :]  # z
 
         a_lengths = np.linalg.norm(pcd_1 - pcd_0, ord=2, axis=1)
         b_lengths = np.linalg.norm(pcd_2 - pcd_1, ord=2, axis=1)
         c_lengths = np.linalg.norm(pcd_0 - pcd_2, ord=2, axis=1)
-        s = (a_lengths + b_lengths + c_lengths) * 0.5
+        s = (a_lengths + b_lengths + c_lengths) * 0.5 + 1e-12
         A = np.sqrt(s * (s - a_lengths) * (s - b_lengths) * (s - c_lengths))
-        radius = a_lengths * b_lengths * c_lengths * 0.25 / (A + 1e-8)
+        radius = a_lengths * b_lengths * c_lengths * 0.25 / (A + 1e-16)
         return 1.0 / radius
 
     @staticmethod
@@ -211,9 +215,9 @@ class BsplineUtils(object):
         length0, length1 = lengths[:-1], lengths[1:]
         cos_theta = np.sum(vector0 * vector1, axis=1) / (length0 * length1)
 
-        # curvature = np.arccos(cos_theta) / np.minimum(length0, length1)  # real curvature
-        arc_theta = np.log((1.0 - cos_theta) * 11.0 + 1.0)
-        curvature = arc_theta / np.minimum(length0, length1)
+        curvature = np.arccos(cos_theta) / np.minimum(length0, length1)  # real curvature
+        # arc_theta = np.log((1.0 - cos_theta) * 11.0 + 1.0)
+        # curvature = arc_theta / np.minimum(length0, length1)
 
         return curvature
 
@@ -304,10 +308,10 @@ class PathCell(object):
         self.pcd_tensor: torch.Tensor = None
         self.radius_np: np.ndarray = None
 
-    def get_bspline_xyzr_np(self, xyzr: np.ndarray):
+    def get_bspline_xyzr_np(self, control_xyzr: np.ndarray):
         path = []
         for i, cell in enumerate(self.segments):
-            xyzr = cell.get_bspline_xyzr_np(xyzr)
+            xyzr = cell.get_bspline_xyzr_np(control_xyzr)
             if i > 0:
                 xyzr = xyzr[1:, :]
             path.append(xyzr)
@@ -488,7 +492,9 @@ class NetworkPath(object):
 
                 if info['method'] == 'control_square_length_cost':
                     cost_dict.setdefault('control_square_length_cost', 0.0)
-                    length = TorchUtils.compute_square_mean_length(self.control_pcd_tensor[cell.pcd_idxs, :])
+                    seg_lengths = TorchUtils.compute_segment_length(self.control_pcd_tensor[cell.pcd_idxs, :])
+                    length = seg_lengths.square().mean()
+
                     if info['type'] == 'auto':
                         cost_dict['control_square_length_cost'] += length * info['weight']
                     elif info['type'] == 'value':
@@ -507,17 +513,21 @@ class NetworkPath(object):
                     # 由于这是一个最小最大问题，无法直接参数优化，因此使用了离散曲率。但离散曲率会被优化模型攻击而失效，因此必须添加额外约束
                     if info['method'] == 'curvature_cost':
                         cost_dict.setdefault('curvature_cost', 0.0)
-                        target_radius = TorchUtils.np2tensor(path_cell.radius_np * info['radius_scale'], False)
-                        curvature_radius = TorchUtils.compute_menger_curvature_radius(path_cell.pcd_tensor)
-                        cost_dict['curvature_cost'] += (
-                                F.relu(target_radius - curvature_radius) / target_radius * info['radius_weight']
-                        ).mean()
+                        target_curvature = 1.0 / TorchUtils.np2tensor(
+                            path_cell.radius_np * info['radius_scale'], False
+                        )
+
+                        curvature = TorchUtils.compute_approximate_curvature(path_cell.pcd_tensor)
+                        cost_dict['curvature_cost'] += info['radius_weight'] * (
+                            (F.relu(curvature - target_curvature) / target_curvature).max()
+                            + (F.relu(curvature - target_curvature) / target_curvature).mean()
+                        )
 
                         cost_dict.setdefault('cos_cost', 0.0)
                         cos_val = TorchUtils.compute_cos_val(path_cell.pcd_tensor)
-                        cost_dict['cos_cost'] += (torch.pow(
+                        cost_dict['cos_cost'] += info['cos_weight'] * torch.pow(
                             F.relu(info['cos_threshold'] - cos_val), info['cos_exponent']
-                        ) * info['cos_weight']).mean()
+                        ).max()
 
                     if info['method'] == 'connector_control_cos_cost':
                         cost_dict.setdefault('connector_control_cos_cost', 0.0)
@@ -575,16 +585,19 @@ class NetworkPath(object):
                 mesh = VisUtils.create_line(xyzr[:, :3], line_set)
                 vis.plot(
                     mesh, color=color, style='wireframe',
-                    # point_size=0.1, line_width=2.0
+                    point_size=0.1, line_width=2.0
                 )
 
         if show_plot:
             vis.show()
 
-    def draw_path_tensor(self):
+    def draw_path(self, is_tensor=False):
         for name, path_list in self.path_dict.items():
             for path_cell in path_list:
-                pcd = TorchUtils.tensor2np(path_cell.pcd_tensor)
+                if is_tensor:
+                    pcd = TorchUtils.tensor2np(path_cell.pcd_tensor)
+                else:
+                    pcd = path_cell.get_bspline_xyzr_np(self.control_xyzr_np)[:, :3]
                 line_set = VisUtils.create_line_set(np.arange(0, pcd.shape[0], 1))
                 mesh = VisUtils.create_line(pcd, line_set)
                 mesh.plot()
@@ -599,29 +612,29 @@ def main():
 
     segment_dict = {
         'segment1': np.array([
-            [15.0, 15.0, 0.0, 1.0],
-            [15.0, 16.0, 0.0, 1.0],
-            [15.0, 17.0, 0.0, 1.0],
-            [15.0, 18.0, 0.0, 1.0],
-            [15.0, 19.0, 0.0, 1.0],
-            [15.0, 20.0, 0.0, 1.0],
-            [15.0, 21.0, 0.0, 1.0]
+            [15.0, 15.0, 0.0, 5.0],
+            [15.0, 16.0, 0.0, 5.0],
+            [15.0, 17.0, 0.0, 5.0],
+            [15.0, 18.0, 0.0, 5.0],
+            [15.0, 19.0, 0.0, 5.0],
+            [15.0, 20.0, 0.0, 5.0],
+            [15.0, 21.0, 0.0, 5.0]
         ]),
         'segment2': np.array([
-            [15.0, 21.0, 0.0, 1.0],
-            [14.0, 21.0, 0.0, 1.0],
-            [13.0, 21.0, 0.0, 1.0],
-            [12.0, 21.0, 0.0, 1.0],
-            [11.0, 21.0, 0.0, 1.0],
-            [10.0, 21.0, 0.0, 1.0],
+            [15.0, 21.0, 0.0, 5.0],
+            [14.0, 21.0, 0.0, 5.0],
+            [13.0, 21.0, 0.0, 5.0],
+            [12.0, 21.0, 0.0, 5.0],
+            [11.0, 21.0, 0.0, 5.0],
+            [10.0, 21.0, 0.0, 5.0],
         ]),
         'segment3': np.array([
-            [15.0, 21.0, 0.0, 1.0],
-            [16.0, 21.0, 0.0, 1.0],
-            [17.0, 21.0, 0.0, 1.0],
-            [18.0, 21.0, 0.0, 1.0],
-            [19.0, 21.0, 0.0, 1.0],
-            [20.0, 21.0, 0.0, 1.0]
+            [15.0, 21.0, 0.0, 5.0],
+            [16.0, 21.0, 0.0, 5.0],
+            [17.0, 21.0, 0.0, 5.0],
+            [18.0, 21.0, 0.0, 5.0],
+            [19.0, 21.0, 0.0, 5.0],
+            [20.0, 21.0, 0.0, 5.0]
         ]),
     }
     path_list = [
@@ -645,7 +658,8 @@ def main():
                     {
                         "method": "control_square_length_cost",
                         "type": "auto",
-                        "weight": 1.0
+                        "target_length": 0.0,
+                        "weight": 0.1
                     }
                 ],
                 "color": [1.0, 0.0, 0.0]
@@ -657,7 +671,7 @@ def main():
                     {
                         'method': 'control_square_length_cost',
                         'type': 'auto',
-                        'weight': 1.0
+                        'weight': 0.1
                     }
                 ],
                 "color": [0.0, 1.0, 0.0]
@@ -669,7 +683,7 @@ def main():
                     {
                         'method': 'control_square_length_cost',
                         'type': 'auto',
-                        'weight': 1.0
+                        'weight': 0.1
                     }
                 ],
                 "color": [0.0, 0.0, 1.0]
@@ -688,7 +702,7 @@ def main():
                     },
                     # {
                     #     "method": "connector_control_cos_cost",
-                    #     "weight": 0.5
+                    #     "weight": 10.0
                     # }
                 ]
             ],
@@ -704,7 +718,7 @@ def main():
                     },
                     # {
                     #     "method": "connector_control_cos_cost",
-                    #     "weight": 0.5
+                    #     "weight": 10.0
                     # }
                 ]
             ]
@@ -723,62 +737,56 @@ def main():
     net.prepare_tensor()
 
     # net.draw_network()
-    net.draw_segment(with_spline=True, with_control=True)
-    # net.draw_path_tensor()
+    # net.draw_segment(with_spline=False, with_control=True)
+    # net.draw_path(is_tensor=False)
 
-    # loss_record = []
-    # for _ in range(300):
-    #     loss_info = {}
-    #     loss_info.update(net.compute_segment_cost())
-    #     loss_info.update(net.compute_path_cost())
-    #
-    #     loss = 0.0
-    #     for cost_name, cost in loss_info.items():
-    #         loss += cost
-    #
-    #     log_txt = ' '.join([f"{cost_name}:{cost.detach().numpy():.6f}" for cost_name, cost in loss_info.items()])
-    #     loss_np = loss.detach().numpy()
-    #     log_txt += f" loss:{loss_np:.6f}"
-    #     print(log_txt)
-    #     loss_record.append(loss_np)
-    #
-    #     loss.backward()
-    #     with torch.no_grad():
-    #         grad = net.control_pcd_tensor.grad
-    #         grad[net.fix_pcd_idxs, :] = 0.0
-    #         grad = grad / (torch.norm(grad, p=2, dim=1, keepdim=True) + 1e-8)
-    #         net.control_pcd_tensor -= grad * 0.01
-    #         net.control_pcd_tensor.grad.zero_()
-    #
-    #     net.update_state(with_tensor=True, with_np=False)
-    #
+    lr = 0.02
+    learner = MeanTestLearner(init_lr=lr)
+    ii = 0
+
+    while True:
+        ii += 1
+
+        loss_info = {}
+        loss_info.update(net.compute_segment_cost())
+        loss_info.update(net.compute_path_cost())
+
+        loss = 0.0
+        for cost_name, cost in loss_info.items():
+            loss += cost
+
+        log_txt = f'step:{ii} ' + \
+                  ' '.join([f"{cost_name}:{cost.detach().numpy():.6f}" for cost_name, cost in loss_info.items()])
+        loss_np = loss.detach().numpy()
+        log_txt += f" loss:{loss_np:.6f} lr:{lr}"
+        print(log_txt)
+
+        info = learner.get_lr(loss_np)
+        if info['state']:
+            break
+        lr = info['lr']
+
+        loss.backward()
+        with torch.no_grad():
+            grad = net.control_pcd_tensor.grad
+            grad[net.fix_pcd_idxs, :] = 0.0
+            grad = grad / (torch.norm(grad, p=2, dim=1, keepdim=True) + 1e-8)
+            net.control_pcd_tensor -= grad * lr
+            net.control_pcd_tensor.grad.zero_()
+
+        net.update_state(with_tensor=True, with_np=False)
+
     # plt.plot(loss_record)
     # plt.show()
-    #
-    # net.update_state(with_tensor=False, with_np=True)
-    #
-    # # for name, path_list in net.path_dict.items():
-    # #     for path_cell in path_list:
-    # #         xyzr = path_cell.get_bspline_xyzr_np(net.control_xyzr_np)
-    # #         curvature = BsplineUtils.compute_menger_curvature(xyzr)
-    # #         print(np.min(1.0 / curvature))
-    #
-    # net.draw_segment(with_control=False, with_spline=True)
-    # # vis = VisUtils()
-    # # for seg_idx, cell in net.segments.items():
-    # #     color = np.random.uniform(0.0, 1.0, size=(3,))
-    # #     control_pcd = net.control_xyzr_np[cell.pcd_idxs, :3]
-    # #     line_set = VisUtils.create_line_set(np.arange(0, cell.pcd_idxs.shape[0], 1))
-    # #     mesh = VisUtils.create_line(control_pcd, line_set)
-    # #     vis.plot(mesh, color=color, point_size=4)
-    # #
-    # #     xyzr = cell.get_bspline_xyzr_np(net.control_xyzr_np)
-    # #     radius = xyzr[:, -1][0]
-    # #     line_set = VisUtils.create_line_set(np.arange(0, xyzr.shape[0], 1))
-    # #     tube_mesh = VisUtils.create_tube(xyzr[:, :3], radius, line_set)
-    # #     tube_mesh.save(f'/home/admin123456/Desktop/work/path_examples/s5/smooth_pcd/{str(cell)}.stl', binary=False)
-    # #     vis.plot(tube_mesh, color, opacity=1.0)
-    # # vis.show()
+
+    net.update_state(with_tensor=False, with_np=True)
+
+    # net.draw_segment(with_control=True, with_spline=True)
+    with h5py.File('/home/admin123456/Desktop/work/path_examples/s5/debug/record.h5df', 'w') as f:
+        for name, path_list in net.path_dict.items():
+            for path_cell in path_list:
+                xyzr = path_cell.get_bspline_xyzr_np(net.control_xyzr_np)
+                f.create_dataset(name=name, data=xyzr)
 
 
 if __name__ == '__main__':
