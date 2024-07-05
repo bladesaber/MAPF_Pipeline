@@ -34,17 +34,19 @@ class AxisTransform(object):
         return rotate_mat.dot(pcd.T).T
 
     @staticmethod
-    def norm_to_rotation_mat(vector: np.ndarray):
-        axis_x = np.array([1., 0.])
-        length_xy = np.linalg.norm(vector[:2], ord=2)
-        if length_xy == 0:
-            return AxisTransform.euler_angles_to_rotation_mat(
-                [0, np.sign(vector[-1]) * 90, 0], is_degree=True, seq='xyz'
-            )
-
-        angel_0 = np.rad2deg(np.arccos(np.sum(axis_x * vector[:2]) / length_xy))
-        angel_1 = np.rad2deg(np.arctan(vector[2] / length_xy))
-        return AxisTransform.euler_angles_to_rotation_mat([0, angel_0, angel_1], is_degree=True, seq='xzy')
+    def rot_mat_from_vectors(dest: np.ndarray, orig: np.ndarray = np.array([1., 0., 0.])):
+        norm0 = orig / np.linalg.norm(orig, ord=2)
+        norm1 = dest / np.linalg.norm(dest, ord=2)
+        v = np.cross(norm0, norm1)
+        c = np.dot(norm0, norm1)
+        s = np.linalg.norm(v, ord=2)
+        kmat = np.array([
+            [0., -v[2], v[1]],
+            [v[2], 0., -v[0]],
+            [-v[1], v[0], 0.]
+        ])
+        rot_mat = np.eye(3) + kmat + kmat.dot(kmat) * ((1.0 - c) / (s ** 2 + 1e-32))
+        return rot_mat
 
 
 class ShapeUtils(object):
@@ -81,7 +83,10 @@ class ShapeUtils(object):
         return pcd
 
     @staticmethod
-    def create_cylinder_pcd(center, radius, height, angles: List[float], reso, is_solid):
+    def create_cylinder_pcd(
+            center, radius, height, angles: List[float], reso, is_solid,
+            left_camp='fill', right_clamp='fill', rot_mat: np.ndarray = None
+    ):
         u_steps, h_steps = math.ceil(radius / reso), max(math.ceil(height / reso), 2)
 
         # step 1: create cylinder along X Axis
@@ -109,11 +114,34 @@ class ShapeUtils(object):
             huv[:, 0] = np.cos(rads) * radius
             huv[:, 1] = np.sin(rads) * radius
 
-            pcds = [
-                np.concatenate([np.full((uvs.shape[0], 1), height / 2.0), uvs[:, 0:1], uvs[:, 1:2]], axis=1),
-                np.concatenate([np.full((uvs.shape[0], 1), -height / 2.0), uvs[:, 0:1], uvs[:, 1:2]], axis=1),
-            ]
-            for h_value in np.linspace(-height / 2.0, height / 2.0, h_steps):
+            h_value_list = np.linspace(-height / 2.0, height / 2.0, h_steps)
+            pcds = []
+
+            if left_camp == 'fill':
+                pcds.append(
+                    np.concatenate([np.full((uvs.shape[0], 1), height / 2.0), uvs[:, 0:1], uvs[:, 1:2]], axis=1)
+                )
+                h_value_list = h_value_list[1:]
+            elif left_camp == 'empty':
+                h_value_list = h_value_list[1:]
+            elif left_camp == 'wireframe':
+                pass
+            else:
+                raise ValueError
+
+            if right_clamp == 'fill':
+                pcds.append(
+                    np.concatenate([np.full((uvs.shape[0], 1), -height / 2.0), uvs[:, 0:1], uvs[:, 1:2]], axis=1)
+                )
+                h_value_list = h_value_list[:-1]
+            elif right_clamp == 'empty':
+                h_value_list = h_value_list[:-1]
+            elif right_clamp == 'wireframe':
+                pass
+            else:
+                raise ValueError
+
+            for h_value in h_value_list:
                 h_pcd = np.zeros(shape=(num, 3))
                 h_pcd[:, 0] = h_value
                 h_pcd[:, 1] = huv[:, 0]
@@ -121,7 +149,8 @@ class ShapeUtils(object):
                 pcds.append(h_pcd)
             pcd = np.concatenate(pcds, axis=0)
 
-        rot_mat = AxisTransform.euler_angles_to_rotation_mat(angles)
+        if rot_mat is None:
+            rot_mat = AxisTransform.euler_angles_to_rotation_mat(angles)
         pcd = AxisTransform.pcd_transform(pcd, rot_mat)
         pcd = pcd + center
         return pcd
@@ -129,8 +158,11 @@ class ShapeUtils(object):
     @staticmethod
     def create_sphere_pcd(center: np.ndarray, vector: np.ndarray, radius, reso):
         pcd = []
-        x_step = max(math.ceil(radius * 2 / reso), 5)
-        for h in np.linspace(-radius, +radius, x_step):
+
+        per_deg = np.rad2deg(reso / np.pi)
+        x_step = max(math.ceil(180.8 / per_deg), 5)
+        for h in np.linspace(0.0, 180.0, x_step):
+            h = np.cos(np.deg2rad(h)) * radius
             y_radius = np.sqrt(np.power(radius, 2) - np.power(h, 2))
             if y_radius < 1e-4:
                 r_num = 1
@@ -142,9 +174,10 @@ class ShapeUtils(object):
             sub_pcd[:, 1] = np.cos(rads) * y_radius
             sub_pcd[:, 2] = np.sin(rads) * y_radius
             pcd.append(sub_pcd)
+
         pcd = np.concatenate(pcd, axis=0)
         # rot_mat = AxisTransform.euler_angles_to_rotation_mat(angles)
-        rot_mat = AxisTransform.norm_to_rotation_mat(vector)
+        rot_mat = AxisTransform.rot_mat_from_vectors(dest=vector)
         pcd = AxisTransform.pcd_transform(pcd, rot_mat)
         pcd = pcd + center
         return pcd

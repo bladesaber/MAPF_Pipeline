@@ -99,15 +99,18 @@ class PathOptimizer(object):
                         if dist <= segment_cell.radius_np[pcd_idx] + self.obstacle_xyzr[obs_idx, 3] + unit_lr:
                             conflict_pcd_idxs.append(pcd_idx)
                             obs_pcd_idxs.append(obs_idx)
-                            require_radius.append(segment_cell.radius_np[pcd_idx] + self.obstacle_xyzr[obs_idx, 3])
+                            seg_radius = segment_cell.radius_np[pcd_idx]
+                            obs_radius = self.obstacle_xyzr[obs_idx, 3]
+                            aux_radius = max(
+                                seg_radius * segment_cell.relax_conflict_ratio,
+                                segment_cell.min_relax_conflict_thickness
+                            )
+                            require_radius.append(seg_radius + obs_radius + aux_radius)
 
                 if len(conflict_pcd_idxs) > 0:
                     conflict_pcd_idxs = np.array(conflict_pcd_idxs)
                     obs_pcd_idxs = np.array(obs_pcd_idxs)
                     require_radius = np.array(require_radius)
-
-                    require_radius += np.maximum(require_radius * 0.01, 0.01)  # todo
-
                     self.obstacle_conflict_cells.append(
                         ObstacleConflictCell(
                             group_idx, segment_cell.idx, conflict_pcd_idxs, obs_pcd_idxs, require_radius
@@ -147,15 +150,22 @@ class PathOptimizer(object):
                                 if dist < radius_i[pcd_i_idx] + radius_j[pcd_j_idx] + unit_lr:
                                     pcd0_idxs.append(pcd_i_idx)
                                     pcd1_idxs.append(pcd_j_idx)
-                                    require_radius.append(radius_i[pcd_i_idx] + radius_j[pcd_j_idx])
+                                    seg_i_radius = radius_i[pcd_i_idx]
+                                    seg_j_radius = radius_j[pcd_j_idx]
+                                    aux_i_radius = max(
+                                        seg_i_radius * segment_i.relax_conflict_ratio,
+                                        segment_i.min_relax_conflict_thickness
+                                    )
+                                    aux_j_radius = max(
+                                        seg_j_radius * segment_j.relax_conflict_ratio,
+                                        segment_j.min_relax_conflict_thickness
+                                    )
+                                    require_radius.append(seg_i_radius + seg_j_radius + aux_i_radius + aux_j_radius)
 
                         if len(pcd0_idxs) > 0:
                             pcd0_idxs = np.array(pcd0_idxs)
                             pcd1_idxs = np.array(pcd1_idxs)
                             require_radius = np.array(require_radius)
-
-                            require_radius += np.maximum(require_radius * 0.01, 0.01)  # todo
-
                             self.path_conflict_cells.append(PathConflictCell(
                                 group_idx0=group_idxs[i], segment_idx0=segment_i.idx, conflict_pcd0_idxs=pcd0_idxs,
                                 group_idx1=group_idxs[j], segment_idx1=segment_j.idx, conflict_pcd1_idxs=pcd1_idxs,
@@ -238,8 +248,11 @@ class PathOptimizer(object):
 
         loss_info_np = {}
         for key in list(loss_info.keys()):
-            tensor = loss_info.pop(key)
-            loss_info_np[key] = tensor.detach().numpy()
+            val = loss_info.pop(key)
+            if isinstance(val, torch.Tensor):
+                loss_info_np[key] = val.detach().numpy()
+            else:
+                loss_info_np[key] = val
 
         return loss_record, loss_info_np
 
@@ -291,8 +304,11 @@ class PathOptimizer(object):
 
         loss_info_np = {}
         for key in list(loss_info.keys()):
-            tensor = loss_info.pop(key)
-            loss_info_np[key] = tensor.detach().numpy()
+            val = loss_info.pop(key)
+            if isinstance(val, torch.Tensor):
+                loss_info_np[key] = val.detach().numpy()
+            else:
+                loss_info_np[key] = val
 
         return loss_info_np, learner
 

@@ -26,7 +26,7 @@ class VisUtils(object):
         )
 
     @staticmethod
-    def create_point_cloud(xyz: np.ndarray):
+    def create_point_cloud(xyz: np.ndarray) -> pyvista.PolyData:
         mesh = pyvista.PolyData(xyz)
         return mesh
 

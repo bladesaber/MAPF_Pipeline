@@ -1,5 +1,4 @@
 import numpy as np
-import open3d.io
 import pandas as pd
 import sys
 import os
@@ -9,9 +8,7 @@ import open3d.visualization.gui as gui
 from functools import partial
 import argparse
 import subprocess
-import pyvista
 import h5py
-from typing import Dict
 import matplotlib.pyplot as plt
 
 from scripts_py.version_9.mapf_pkg.app_path import PathApp
@@ -181,6 +178,7 @@ class SmoothApp(PathApp):
                 setting['segments'][seg_idx] = {
                     'bspline_degree': 3,
                     'bspline_num': 40,
+                    'output_bspline_num': 80,
                     'seg_idx': seg_idx,
                     'costs': [
                         {
@@ -189,11 +187,9 @@ class SmoothApp(PathApp):
                             'weight': 1.0
                         }
                     ],
-                    'color': np.random.uniform(0.0, 1.0, size=(3,)).tolist(),
-                    # todo 添加壁厚与优化预备差
-                    'thickness': None,
                     'relax_conflict_ratio': 0.01,
-                    'min_relax_conflict_thickness': 0.01,
+                    'min_relax_conflict_thickness': 0.05,
+                    'color': np.random.uniform(0.0, 1.0, size=(3,)).tolist()
                 }
 
             for path_name, path_list in opt.network_cells[group_idx].path_dict.items():
@@ -263,7 +259,7 @@ class SmoothApp(PathApp):
 
     def _vis_spline_on_click(
             self, with_control_checkbox: gui.Checkbox, with_spline_checkbox: gui.Checkbox,
-            with_obstacle_checkbox: gui.Checkbox
+            with_obstacle_checkbox: gui.Checkbox, with_tube_checkbox: gui.Checkbox
     ):
         algo_file = os.path.join(self.proj_dir, 'algorithm_setup.json')
         with open(algo_file, 'r') as f:
@@ -280,7 +276,13 @@ class SmoothApp(PathApp):
                     vis.plot(mesh, color=color, point_size=4)
 
                 if with_spline_checkbox.checked:
-                    xyzr = cell.get_bspline_xyzr_np(net_cell.control_xyzr_np)
+                    xyzr = cell.get_output_bspline_xyzr_np(net_cell.control_xyzr_np)
+                    line_set = VisUtils.create_line_set(np.arange(0, xyzr.shape[0], 1))
+                    line_mesh = VisUtils.create_line(xyzr[:, :3], line_set)
+                    vis.plot(line_mesh, color, opacity=1.0)
+
+                if with_tube_checkbox.checked:
+                    xyzr = cell.get_output_bspline_xyzr_np(net_cell.control_xyzr_np)
                     radius = xyzr[:, -1][0]
                     line_set = VisUtils.create_line_set(np.arange(0, xyzr.shape[0], 1))
                     tube_mesh = VisUtils.create_tube(xyzr[:, :3], radius, line_set)
@@ -408,13 +410,15 @@ class SmoothApp(PathApp):
                         f"seg_{seg_cell.idx}", data=net_cell.control_xyzr_np[seg_cell.pcd_idxs, :]
                     )
                     spline_layer.create_dataset(
-                        f"seg_{seg_cell.idx}", data=seg_cell.get_bspline_xyzr_np(net_cell.control_xyzr_np)
+                        f"seg_{seg_cell.idx}", data=seg_cell.get_output_bspline_xyzr_np(net_cell.control_xyzr_np)
                     )
 
                 for name, path_list in net_cell.path_dict.items():
                     for j, path_cell in enumerate(path_list):
                         path_layer.create_dataset(
-                            f"{name}_j", data=path_cell.get_bspline_xyzr_np(net_cell.control_xyzr_np)
+                            f"{name}_{j}", data=path_cell.get_output_bspline_xyzr_np(
+                                net_cell.control_xyzr_np, with_terminate_vec=True
+                            )
                         )
 
     def init_path_smooth_widget(self):
@@ -457,8 +461,8 @@ class SmoothApp(PathApp):
         revert_smooth_btn.set_on_clicked(self._revert_smooth)
         auto_smooth_btn = FragmentOpen3d.get_widget('button', {'name': 'auto smooth'})
         auto_smooth_btn.set_on_clicked(self._auto_smooth)
-        save_btn = FragmentOpen3d.get_widget('button', {'name': 'save result'})
-        save_btn.set_on_clicked(self._save_smooth_result)
+        save_smooth_btn = FragmentOpen3d.get_widget('button', {'name': 'save smooth result'})
+        save_smooth_btn.set_on_clicked(self._save_smooth_result)
 
         with_control_checkbox = FragmentOpen3d.get_widget('checkbox', widget_info={'name': 'with_control'})
         with_control_checkbox.checked = True
@@ -468,7 +472,7 @@ class SmoothApp(PathApp):
         vis_spline_result_btn.set_on_clicked(partial(
             self._vis_spline_on_click,
             with_control_checkbox=with_control_checkbox, with_spline_checkbox=with_spline_checkbox,
-            with_obstacle_checkbox=with_obstacle_checkbox
+            with_obstacle_checkbox=with_obstacle_checkbox, with_tube_checkbox=with_tube_checkbox
         ))
 
         smoother_layout.add_child(
@@ -489,7 +493,7 @@ class SmoothApp(PathApp):
                     gui.Label('run_times:'), run_times_txt, gui.Label('lr:'), lr_txt
                 ], 4),
                 FragmentOpen3d.get_layout_widget('horiz', [run_smooth_btn, revert_smooth_btn], 4),
-                FragmentOpen3d.get_layout_widget('horiz', [auto_smooth_btn, save_btn], 4),
+                FragmentOpen3d.get_layout_widget('horiz', [auto_smooth_btn, save_smooth_btn], 4),
             ], 3, self.vert_margins)
         )
 

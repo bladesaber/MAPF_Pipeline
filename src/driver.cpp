@@ -27,7 +27,8 @@ PYBIND11_MODULE(mapf_pipeline, m) {
 
     // ------ Function Define
     // py::bind_vector<std::vector<double>>(m, "VectorDouble");
-    //m.def("test", &test);
+    m.def("point2line_dist", &point2line_dist,
+          "x"_a, "y"_a, "z"_a, "lx0"_a, "ly0"_a, "lz0"_a, "lx1"_a, "ly1"_a, "lz1"_a);
 
     // ------ Class Define
     py::class_<PybindUtils::Matrix2D>(m, "Matrix2D", py::buffer_protocol())

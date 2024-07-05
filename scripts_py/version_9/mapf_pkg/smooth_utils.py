@@ -177,7 +177,7 @@ class BsplineUtils(object):
 
     @staticmethod
     def compute_menger_curvature(
-            pcd: np.ndarray, start_vec: np.ndarray = None, end_vec: np.ndarray = None, method='simple'
+            pcd: np.ndarray, start_vec: np.ndarray = None, end_vec: np.ndarray = None
     ):
         pcd_list = []
         if start_vec is not None:
@@ -257,6 +257,10 @@ class SegmentCell(object):
         self.pcd_tensor: torch.Tensor = None
         self.radius_np: np.ndarray = None,
         self.color = color
+        self.relax_conflict_ratio = 0.01
+        self.min_relax_conflict_thickness = 0.01
+
+        self.output_spline_mat: np.ndarray = None  # just used for more precision output
 
     @staticmethod
     def encode(flags: List[int]):
@@ -289,6 +293,18 @@ class SegmentCell(object):
     def update_tensor(self, control_pcd: torch.Tensor):
         self.pcd_tensor = self.spline_mat_tensor.matmul(control_pcd[self.pcd_idxs, :3])
 
+    def update_output_spline_mat(
+            self, xyzr: np.ndarray, degree: int, sample_num: int, uniform_weight=0.5, uniform_step=3
+    ):
+        knot = BsplineUtils.create_knots(
+            xyzr[self.pcd_idxs, :3], degree, uniform_step=uniform_step, uniform_weight=uniform_weight
+        )
+        ts = np.linspace(0.0, 1.0, sample_num)
+        self.output_spline_mat = BsplineUtils.compute_mat(ts, xyzr[self.pcd_idxs, :3], degree, knot)
+
+    def get_output_bspline_xyzr_np(self, xyzr: np.ndarray):
+        return self.output_spline_mat.dot(xyzr[self.pcd_idxs, :])
+
 
 class PathCell(object):
     """
@@ -308,7 +324,7 @@ class PathCell(object):
         self.pcd_tensor: torch.Tensor = None
         self.radius_np: np.ndarray = None
 
-    def get_bspline_xyzr_np(self, control_xyzr: np.ndarray):
+    def get_bspline_xyzr_np(self, control_xyzr: np.ndarray, with_terminate_vec=False):
         path = []
         for i, cell in enumerate(self.segments):
             xyzr = cell.get_bspline_xyzr_np(control_xyzr)
@@ -316,6 +332,48 @@ class PathCell(object):
                 xyzr = xyzr[1:, :]
             path.append(xyzr)
         path = np.concatenate(path, axis=0)
+
+        if with_terminate_vec:
+            begin_vec = np.zeros((4,))
+            begin_vec[:3] = path[0, :3] - self.begin_vec
+            begin_vec[3] = path[0, 3]
+
+            end_vec = np.zeros((4,))
+            end_vec[:3] = path[-1, :3] + self.end_vec
+            end_vec[3] = path[-1, 3]
+
+            path = np.concatenate([
+                begin_vec.reshape((1, -1)),
+                path,
+                end_vec.reshape((1, -1)),
+            ], axis=0)
+
+        return path
+
+    def get_output_bspline_xyzr_np(self, control_xyzr: np.ndarray, with_terminate_vec=False):
+        path = []
+        for i, cell in enumerate(self.segments):
+            xyzr = cell.get_output_bspline_xyzr_np(control_xyzr)
+            if i > 0:
+                xyzr = xyzr[1:, :]
+            path.append(xyzr)
+        path = np.concatenate(path, axis=0)
+
+        if with_terminate_vec:
+            begin_vec = np.zeros((4,))
+            begin_vec[:3] = path[0, :3] - self.begin_vec
+            begin_vec[3] = path[0, 3]
+
+            end_vec = np.zeros((4,))
+            end_vec[:3] = path[-1, :3] + self.end_vec
+            end_vec[3] = path[-1, 3]
+
+            path = np.concatenate([
+                begin_vec.reshape((1, -1)),
+                path,
+                end_vec.reshape((1, -1)),
+            ], axis=0)
+
         return path
 
     def update_tensor(self):
@@ -443,6 +501,9 @@ class NetworkPath(object):
             cell.update_spline_mat(self.control_xyzr_np, info['bspline_degree'], info['bspline_num'])
             cell.cost_info_list = info['costs']
             cell.color = info['color']
+            cell.relax_conflict_ratio = info['relax_conflict_ratio']
+            cell.min_relax_conflict_thickness = info['min_relax_conflict_thickness']
+            cell.update_output_spline_mat(self.control_xyzr_np, info['bspline_degree'], info['output_bspline_num'])
 
         for name, path_list in self.path_dict.items():
             for i, path_cell in enumerate(path_list):
@@ -482,7 +543,9 @@ class NetworkPath(object):
             for info in cell.cost_info_list:
                 if info['method'] == 'spline_square_length_cost':
                     cost_dict.setdefault('spline_square_length_cost', 0.0)
-                    length = TorchUtils.compute_square_mean_length(cell.pcd_tensor)
+                    seg_lengths = TorchUtils.compute_segment_length(cell.pcd_tensor)
+                    length = seg_lengths.square().mean()
+
                     if info['type'] == 'auto':
                         cost_dict['spline_square_length_cost'] += length * info['weight']
                     elif info['type'] == 'value':
@@ -519,15 +582,16 @@ class NetworkPath(object):
 
                         curvature = TorchUtils.compute_approximate_curvature(path_cell.pcd_tensor)
                         cost_dict['curvature_cost'] += info['radius_weight'] * (
-                            (F.relu(curvature - target_curvature) / target_curvature).max()
-                            + (F.relu(curvature - target_curvature) / target_curvature).mean()
+                                (F.relu(curvature - target_curvature) / target_curvature).max()
+                                + (F.relu(curvature - target_curvature) / target_curvature).mean()
                         )
 
                         cost_dict.setdefault('cos_cost', 0.0)
                         cos_val = TorchUtils.compute_cos_val(path_cell.pcd_tensor)
-                        cost_dict['cos_cost'] += info['cos_weight'] * torch.pow(
-                            F.relu(info['cos_threshold'] - cos_val), info['cos_exponent']
-                        ).max()
+                        cost_dict['cos_cost'] += info['cos_weight'] * (
+                            torch.pow(F.relu(info['cos_threshold'] - cos_val), info['cos_exponent']).max()
+                            + torch.pow(F.relu(info['cos_threshold'] - cos_val), info['cos_exponent']).mean()
+                        )
 
                     if info['method'] == 'connector_control_cos_cost':
                         cost_dict.setdefault('connector_control_cos_cost', 0.0)

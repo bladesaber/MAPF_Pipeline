@@ -10,6 +10,7 @@ from build import mapf_pipeline
 from scripts_py.version_9.mapf_pkg.cbs_utils import CbsSolver
 from scripts_py.version_9.mapf_pkg.smooth_optimizer import PathOptimizer
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
+from scripts_py.version_9.mapf_pkg.pcd2mesh_utils import Pcd2MeshConverter
 
 
 def debug_kdtree():
@@ -661,6 +662,78 @@ def debug_smooth_optimizer(algo_file: str, smooth_file: str, res_file: str):
     vis.show()
 
 
+def debug_pcd2mesh(algo_file, smooth_res_file):
+    with open(algo_file, 'r') as f:
+        algo_json = json.load(f)
+    pipe_cfg = algo_json['pipes']
+
+    reso = 0.2
+    group_mesher = {}
+
+    for _, group_cell in h5py.File(smooth_res_file).items():
+        group_idx = group_cell['group_idx'][0]
+        group_mesher[group_idx] = Pcd2MeshConverter()
+
+        for i, (seg_name, xyzr) in enumerate(group_cell['spline'].items()):
+            xyzr = np.array(xyzr)
+            path = xyzr[:, :3]
+            radius = xyzr[0, -1]
+            left_direction, right_direction = None, None
+            with_left_clamp, with_right_clamp = False, False
+
+            for pipe_name, pipe_info in pipe_cfg.items():
+                pipe_xyz = np.array(pipe_info['discrete_position'])
+                pipe_direction = np.array(pipe_info['direction'])
+
+                if np.all(np.isclose(path[0] - pipe_xyz, 0.0)):
+                    if pipe_info['is_input']:
+                        path = np.concatenate([(path[0] - pipe_direction).reshape((1, -1)), path], axis=0)
+                    else:
+                        path = np.concatenate([(path[0] + pipe_direction).reshape((1, -1)), path], axis=0)
+                    left_direction = pipe_direction
+                    with_left_clamp = True
+
+                if np.all(np.isclose(path[-1] - pipe_xyz, 0.0)):
+                    if pipe_info['is_input']:
+                        path = np.concatenate([path, (path[-1] - pipe_direction).reshape((1, -1))], axis=0)
+                    else:
+                        path = np.concatenate([path, (path[-1] + pipe_direction).reshape((1, -1))], axis=0)
+                    right_direction = pipe_direction
+                    with_right_clamp = True
+
+            group_mesher[group_idx].add_segment(
+                seg_name, path, radius,
+                left_direction=left_direction, right_direction=right_direction,
+                with_left_clamp=with_left_clamp, with_right_clamp=with_right_clamp,
+                reso_info={
+                    'length_reso': 0.2,
+                    'sphere_reso': 0.15,
+                    'relax_factor': 1e-3
+                }
+            )
+
+        # # ------ debug vis
+        # for seg_name, info in group_mesher[group_idx].segment_cell.items():
+        #     info['surface_cell'].generate_pcd_by_sphere(
+        #         length_reso=info['reso_info']['length_reso'],
+        #         sphere_reso=info['reso_info']['sphere_reso'],
+        #         relax_factor=info['reso_info']['relax_factor']
+        #     )
+        #     info['surface_cell'].draw()
+        # # ------
+
+        group_mesher[group_idx].generate_pcd_data()
+        group_mesher[group_idx].remove_inner_pcd()
+        pcd_data = group_mesher[group_idx].get_pcd_data()
+
+        # ------ debug point cloud
+        debug_dir = '/home/admin123456/Desktop/work/path_examples/s5/debug'
+        pcd_ply = pyvista.PolyData(pcd_data)
+        pcd_ply.plot()
+        Pcd2MeshConverter.save_ply(pcd_ply, file=os.path.join(debug_dir, f"group_{group_idx}.ply"))
+        # ------
+
+
 if __name__ == '__main__':
     # debug_kdtree()
     # debug_grid()
@@ -676,10 +749,15 @@ if __name__ == '__main__':
     # debug_cbs_first_check('/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup_orig.json')
     # debug_sequence_solve('/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup_orig.json')
 
-    debug_smooth_optimizer(
+    # debug_smooth_optimizer(
+    #     algo_file='/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup.json',
+    #     smooth_file='/home/admin123456/Desktop/work/path_examples/s5/smooth_setup.json',
+    #     res_file='/home/admin123456/Desktop/work/path_examples/s5/search_result.hdf5'
+    # )
+
+    debug_pcd2mesh(
         algo_file='/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup.json',
-        smooth_file='/home/admin123456/Desktop/work/path_examples/s5/smooth_setup.json',
-        res_file='/home/admin123456/Desktop/work/path_examples/s5/search_result.hdf5'
+        smooth_res_file='/home/admin123456/Desktop/work/path_examples/s5/smooth_result.hdf5'
     )
 
     pass
