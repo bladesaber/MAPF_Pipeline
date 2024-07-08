@@ -667,9 +667,7 @@ def debug_pcd2mesh(algo_file, smooth_res_file):
         algo_json = json.load(f)
     pipe_cfg = algo_json['pipes']
 
-    reso = 0.2
     group_mesher = {}
-
     for _, group_cell in h5py.File(smooth_res_file).items():
         group_idx = group_cell['group_idx'][0]
         group_mesher[group_idx] = Pcd2MeshConverter()
