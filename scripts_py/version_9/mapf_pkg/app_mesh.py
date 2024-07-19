@@ -1,16 +1,12 @@
 import shutil
 import numpy as np
-import pandas as pd
 import sys
 import os
 import json
-import open3d as o3d
 import open3d.visualization.gui as gui
-from functools import partial
 import argparse
 import subprocess
 import h5py
-import matplotlib.pyplot as plt
 import pyvista
 
 from scripts_py.version_9.mapf_pkg.app_utils import FragmentOpen3d
@@ -22,8 +18,9 @@ from scripts_py.version_9.mapf_pkg.pcd2mesh_utils import Pcd2MeshConverter
 class MeshApp(SmoothApp):
     def __init__(self, config):
         super().__init__(config=config)
+        self.init_path_mesh_widget()
 
-    def _path2pcd(self):
+    def _path2pcd_on_click(self):
         algo_file = os.path.join(self.proj_dir, 'algorithm_setup.json')
         if not os.path.exists(algo_file):
             self.console_label.text = "    [ERROR]: No algorithm_setup.json in the project"
@@ -121,12 +118,12 @@ class MeshApp(SmoothApp):
             pcd_ply.plot()
             Pcd2MeshConverter.save_ply(pcd_ply, file=os.path.join(mesh_dir, f"group_{group_idx}.ply"))
 
-    def init_path_smooth_widget(self):
+    def init_path_mesh_widget(self):
         mesh_layout = gui.CollapsableVert("Path Mesh Setup", self.spacing, self.blank_margins)
         self.panel.add_child(mesh_layout)
 
         run_pcd2mesh_btn = FragmentOpen3d.get_widget('button', {'name': 'run Pcd to Mesh'})
-        run_pcd2mesh_btn.set_on_clicked(self._path2pcd)
+        run_pcd2mesh_btn.set_on_clicked(self._path2pcd_on_click)
 
         mesh_layout.add_child(
             FragmentOpen3d.get_layout_widget('vert', [

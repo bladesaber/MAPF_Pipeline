@@ -117,9 +117,7 @@ class OptimalShapeProblem(OptimalControlProblem):
         self.shape_regulariztions = shape_regulariztions
 
         F_forms = [state_problem.F_form for state_problem in self.state_system.state_problems]
-        self.lagrangian_function = LagrangianFunction(
-            self.cost_functional_list, F_forms
-        )
+        self.lagrangian_function = LagrangianFunction(self.cost_functional_list, F_forms)
 
         self.states = [problem.state for problem in self.state_system.state_problems]
         self.adjoints = [problem.adjoint for problem in self.state_system.state_problems]

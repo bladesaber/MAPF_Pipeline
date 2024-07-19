@@ -4,6 +4,7 @@ import argparse
 from importlib import util as import_util
 import json
 import sys
+from typing import List
 
 from scripts_py.version_9.dolfinx_Grad.simulator_convert import OpenFoamUtils
 
@@ -54,7 +55,7 @@ def parse_args():
     parser.add_argument('--proj_dir', type=str, default=None)
     parser.add_argument('--create_cfg', type=int, default=0)
     parser.add_argument('--with_recombine_cfg', type=int, default=0)
-    parser.add_argument('--simulate_method', type=str, nargs='+', default=['ipcs', 'navier_stoke'])
+    parser.add_argument('--simulate_methods', type=str, nargs='+', default=['ipcs', 'navier_stoke'])
 
     parser.add_argument('--create_obstacle', type=int, default=0)
     parser.add_argument('--obstacle_name', type=str, default=None)
@@ -63,20 +64,22 @@ def parse_args():
     return args
 
 
-def create_project(args):
-    if args.proj_dir is None:
+def create_project(
+        proj_dir: str,
+        simulate_methods: List[str],
+        with_recombine_cfg: bool
+):
+    if proj_dir is None:
         print('[Info]: Param(Proj_dir) Is Not A Valid Path')
         return
+    if not os.path.exists(proj_dir):
+        os.mkdir(proj_dir)
 
-    if os.path.exists(args.proj_dir):
-        shutil.rmtree(args.proj_dir)
-    os.mkdir(args.proj_dir)
-
-    open(os.path.join(args.proj_dir, 'model.geo'), 'w')  # create gmsh file
-    open(os.path.join(args.proj_dir, 'condition.py'), 'w')
+    open(os.path.join(proj_dir, 'model.geo'), 'w')  # create gmsh file
+    open(os.path.join(proj_dir, 'condition.py'), 'w')
 
     simulate_cfg = {}
-    if 'ipcs' in args.simulate_method:
+    if 'ipcs' in simulate_methods:
         simulate_cfg['ipcs'] = {
             'dt': 1 / 400.0,
             'dynamic_viscosity': 0.01,
@@ -89,7 +92,7 @@ def create_project(args):
             'trial_iter': 100,
         }
 
-    if 'navier_stoke' in args.simulate_method:
+    if 'navier_stoke' in simulate_methods:
         simulate_cfg['navier_stoke'] = {
             'kinematic_viscosity_nu': 0.01,
             'ksp_option': {
@@ -112,12 +115,12 @@ def create_project(args):
             }
         }
 
-    if 'stoke' in args.simulate_method:
+    if 'stoke' in simulate_methods:
         simulate_cfg['stoke'] = {
             'ksp_option': {'ksp_type': 'preonly', 'pc_type': 'lu', 'pc_factor_mat_solver_type': 'mumps'},
         }
 
-    if 'openfoam' in args.simulate_method:
+    if 'openfoam' in simulate_methods:
         simulate_cfg['openfoam'] = {
             'configuration': {
                 'controlDict': {
@@ -279,7 +282,7 @@ def create_project(args):
     }
     proj_cfg = {
         'name': None,
-        'proj_dir': args.proj_dir,
+        'proj_dir': proj_dir,
         "geo_file": "model.geo",
         "msh_file": "model.msh",
         "xdmf_file": "model.xdmf",
@@ -299,17 +302,17 @@ def create_project(args):
         'obstacle_dir': None,
         'obstacle_names': []
     }
-    with open(os.path.join(args.proj_dir, 'cfg.json'), 'w') as f:
+    with open(os.path.join(proj_dir, 'cfg.json'), 'w') as f:
         json.dump(proj_cfg, f, indent=4)
 
-    if args.with_recombine_cfg:
+    if with_recombine_cfg:
         recombine_cfg = {
             'tag_name': None,
-            'proj_dir': args.proj_dir,
+            'proj_dir': proj_dir,
             'recombine_cfgs': []
         }
 
-        with open(os.path.join(args.proj_dir, 'recombine_cfg.json'), 'w') as f:
+        with open(os.path.join(proj_dir, 'recombine_cfg.json'), 'w') as f:
             json.dump(recombine_cfg, f, indent=4)
 
 
@@ -330,11 +333,19 @@ def create_obstacle_cfg(args):
         json.dump(obs_cfg, f, indent=4)
 
 
-if __name__ == '__main__':
+def main():
     args = parse_args()
 
     if args.create_cfg:
-        create_project(args)
+        create_project(
+            proj_dir=args.proj_dir,
+            simulate_methods=args.simulate_methods,
+            with_recombine_cfg=args.with_recombine_cfg
+        )
 
     if args.create_obstacle:
         create_obstacle_cfg(args)
+
+
+if __name__ == '__main__':
+    main()

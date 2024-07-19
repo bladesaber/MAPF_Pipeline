@@ -1,0 +1,763 @@
+{
+    "path_list": [
+        {
+            "name": "T1_T2",
+            "begin_name": "T1",
+            "end_name": "T2"
+        },
+        {
+            "name": "T1_T3",
+            "begin_name": "T1",
+            "end_name": "T3"
+        },
+        {
+            "name": "T1_T4",
+            "begin_name": "T1",
+            "end_name": "T4"
+        },
+        {
+            "name": "T1_T5",
+            "begin_name": "T1",
+            "end_name": "T5"
+        },
+        {
+            "name": "T1_T6",
+            "begin_name": "T1",
+            "end_name": "T6"
+        },
+        {
+            "name": "P1_P2",
+            "begin_name": "P1",
+            "end_name": "P2"
+        },
+        {
+            "name": "P1_P3",
+            "begin_name": "P1",
+            "end_name": "P3"
+        },
+        {
+            "name": "P1_P4",
+            "begin_name": "P1",
+            "end_name": "P4"
+        },
+        {
+            "name": "P1_P5",
+            "begin_name": "P1",
+            "end_name": "P5"
+        },
+        {
+            "name": "B1_B2",
+            "begin_name": "B1",
+            "end_name": "B2"
+        },
+        {
+            "name": "B1_B3",
+            "begin_name": "B1",
+            "end_name": "B3"
+        },
+        {
+            "name": "A1_A2",
+            "begin_name": "A1",
+            "end_name": "A2"
+        },
+        {
+            "name": "A1_A3",
+            "begin_name": "A1",
+            "end_name": "A3"
+        }
+    ],
+    "conflict_setting": {
+        "obstacle_weight": 1000.0,
+        "path_conflict_weight": 1000.0
+    },
+    "setting": [
+        {
+            "group_idx": 0,
+            "segment_degree": 4,
+            "segments": {
+                "0": {
+                    "bspline_degree": 3,
+                    "bspline_num": 30,
+                    "output_bspline_num": 30,
+                    "seg_idx": 0,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "value",
+                            "target_length": 0.0,
+                            "weight": 10.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.1,
+                    "color": [
+                        0.8926539430285386,
+                        0.36484287471868704,
+                        0.6503832469649283
+                    ]
+                },
+                "1": {
+                    "bspline_degree": 3,
+                    "bspline_num": 80,
+                    "output_bspline_num": 80,
+                    "seg_idx": 1,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.4350075666328924,
+                        0.16948140570651482,
+                        0.9610832087292568
+                    ]
+                },
+                "2": {
+                    "bspline_degree": 3,
+                    "bspline_num": 120,
+                    "output_bspline_num": 120,
+                    "seg_idx": 2,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.776513641509668,
+                        0.7223198813528902,
+                        0.9691002756018304
+                    ]
+                },
+                "3": {
+                    "bspline_degree": 3,
+                    "bspline_num": 30,
+                    "output_bspline_num": 30,
+                    "seg_idx": 3,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.7630022929848443,
+                        0.22145186235350545,
+                        0.11868322859248204
+                    ]
+                },
+                "4": {
+                    "bspline_degree": 3,
+                    "bspline_num": 80,
+                    "output_bspline_num": 80,
+                    "seg_idx": 4,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.6102632417769266,
+                        0.9307966027619877,
+                        0.10186662876543084
+                    ]
+                },
+                "5": {
+                    "bspline_degree": 3,
+                    "bspline_num": 30,
+                    "output_bspline_num": 30,
+                    "seg_idx": 5,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.2886674754466009,
+                        0.1855037321270152,
+                        0.5993448586492413
+                    ]
+                },
+                "6": {
+                    "bspline_degree": 3,
+                    "bspline_num": 50,
+                    "output_bspline_num": 50,
+                    "seg_idx": 6,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.46198447234012807,
+                        0.7852845226692368,
+                        0.868723127103483
+                    ]
+                },
+                "7": {
+                    "bspline_degree": 3,
+                    "bspline_num": 40,
+                    "output_bspline_num": 40,
+                    "seg_idx": 7,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 10.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.479249500319877,
+                        0.7274457227645741,
+                        0.36965566324094357
+                    ]
+                },
+                "8": {
+                    "bspline_degree": 3,
+                    "bspline_num": 40,
+                    "output_bspline_num": 40,
+                    "seg_idx": 8,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.8804846453673817,
+                        0.912582532573815,
+                        0.5305033896798544
+                    ]
+                }
+            },
+            "paths_cost": {
+                "T1_T2": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ],
+                "T1_T3": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ],
+                "T1_T4": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ],
+                "T1_T5": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ],
+                "T1_T6": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ]
+            }
+        },
+        {
+            "group_idx": 1,
+            "segment_degree": 4,
+            "segments": {
+                "0": {
+                    "bspline_degree": 3,
+                    "bspline_num": 30,
+                    "output_bspline_num": 30,
+                    "seg_idx": 0,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "value",
+                            "target_length": 0.0,
+                            "weight": 10.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.6016937887969716,
+                        0.605623282432346,
+                        0.1327355450211396
+                    ]
+                },
+                "1": {
+                    "bspline_degree": 3,
+                    "bspline_num": 80,
+                    "output_bspline_num": 80,
+                    "seg_idx": 1,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 5.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.5732153390572415,
+                        0.4132613393205967,
+                        0.519290480691965
+                    ]
+                },
+                "2": {
+                    "bspline_degree": 3,
+                    "bspline_num": 120,
+                    "output_bspline_num": 120,
+                    "seg_idx": 2,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.6157817393994456,
+                        0.3634440009596578,
+                        0.6151499869893011
+                    ]
+                }
+            },
+            "paths_cost": {
+                "B1_B2": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ],
+                "B1_B3": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ]
+            }
+        },
+        {
+            "group_idx": 2,
+            "segment_degree": 4,
+            "segments": {
+                "0": {
+                    "bspline_degree": 3,
+                    "bspline_num": 160,
+                    "output_bspline_num": 160,
+                    "seg_idx": 0,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 15.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.06002489337654082,
+                        0.7429152944638607,
+                        0.08760612617962638
+                    ]
+                },
+                "1": {
+                    "bspline_degree": 3,
+                    "bspline_num": 100,
+                    "output_bspline_num": 100,
+                    "seg_idx": 1,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.940061956560226,
+                        0.26210707292647517,
+                        0.90908377052213
+                    ]
+                },
+                "2": {
+                    "bspline_degree": 3,
+                    "bspline_num": 160,
+                    "output_bspline_num": 160,
+                    "seg_idx": 2,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.5075664992436772,
+                        0.22708244638684194,
+                        0.2435020598390394
+                    ]
+                },
+                "3": {
+                    "bspline_degree": 3,
+                    "bspline_num": 60,
+                    "output_bspline_num": 60,
+                    "seg_idx": 3,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.11989077888853661,
+                        0.7800207494206646,
+                        0.5797847258537233
+                    ]
+                },
+                "4": {
+                    "bspline_degree": 3,
+                    "bspline_num": 20,
+                    "output_bspline_num": 20,
+                    "seg_idx": 4,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.1055569312246658,
+                        0.19584242171427468,
+                        0.916000600991863
+                    ]
+                },
+                "5": {
+                    "bspline_degree": 3,
+                    "bspline_num": 30,
+                    "output_bspline_num": 30,
+                    "seg_idx": 5,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.22835418874802316,
+                        0.1932844152141463,
+                        0.7524627897400081
+                    ]
+                },
+                "6": {
+                    "bspline_degree": 3,
+                    "bspline_num": 20,
+                    "output_bspline_num": 20,
+                    "seg_idx": 6,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.523652622144797,
+                        0.31875499383280503,
+                        0.4067605303437636
+                    ]
+                }
+            },
+            "paths_cost": {
+                "P1_P2": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ],
+                "P1_P3": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ],
+                "P1_P4": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ],
+                "P1_P5": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ]
+            }
+        },
+        {
+            "group_idx": 3,
+            "segment_degree": 4,
+            "segments": {
+                "0": {
+                    "bspline_degree": 3,
+                    "bspline_num": 30,
+                    "output_bspline_num": 30,
+                    "seg_idx": 0,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 10.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.2953265368240049,
+                        0.8184290310636357,
+                        0.3337096924702536
+                    ]
+                },
+                "1": {
+                    "bspline_degree": 3,
+                    "bspline_num": 60,
+                    "output_bspline_num": 60,
+                    "seg_idx": 1,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.44267967082156023,
+                        0.5188608496624564,
+                        0.5726426333001123
+                    ]
+                },
+                "2": {
+                    "bspline_degree": 3,
+                    "bspline_num": 60,
+                    "output_bspline_num": 60,
+                    "seg_idx": 2,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.085,
+                    "color": [
+                        0.9207171431179834,
+                        0.2950598913470287,
+                        0.3351917003117627
+                    ]
+                }
+            },
+            "paths_cost": {
+                "A1_A2": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ],
+                "A1_A3": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 10.0
+                        }
+                    ]
+                ]
+            }
+        }
+    ],
+    "AutoRun": {
+        "learner": "MeanTestLearner",
+        "init_lr": 0.1,
+        "stat_num": 50,
+        "min_lr": 0.01
+    }
+}

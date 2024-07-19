@@ -1,0 +1,120 @@
+{
+    "0": {
+        "seg_0": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_1": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_2": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_3": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_4": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_5": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_6": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_7": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_8": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        }
+    },
+    "1": {
+        "seg_0": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_1": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_2": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        }
+    },
+    "2": {
+        "seg_0": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_1": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_2": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_3": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_4": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_5": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_6": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        }
+    },
+    "3": {
+        "seg_0": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_1": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        },
+        "seg_2": {
+            "length_reso": 0.2,
+            "sphere_reso": 0.15,
+            "relax_factor": 0.001
+        }
+    }
+}

@@ -41,6 +41,7 @@ class OpenFoamSimulator(object):
     ):
         self.re_init(domain, cell_tags, facet_tags)
         self.name = name
+
         self.openfoam_cfg: dict = openfoam_cfg
         self.cache_dir = self.openfoam_cfg['cache_dir']
         self.remove_conda_env = remove_conda_env
@@ -55,12 +56,12 @@ class OpenFoamSimulator(object):
         else:
             self.run_parallel = False
 
-        self.k, self.epsilon, self.Re = self.compute_k_epsilon(
-            U=self.openfoam_cfg['k-Epsilon_args']['abs_velocity_U'],
-            L=self.openfoam_cfg['k-Epsilon_args']['characteristic_length_L'],
-            viscosity=self.openfoam_cfg['k-Epsilon_args']['kinematic_viscosity']
-        )
-        print(f"[INFO]: guess Reynold Number: {self.Re}, k:{self.k}, epsilon:{self.epsilon}")
+        # self.k, self.epsilon, self.Re = self.compute_k_epsilon(
+        #     U=self.openfoam_cfg['k-Epsilon_args']['abs_velocity_U'],
+        #     L=self.openfoam_cfg['k-Epsilon_args']['characteristic_length_L'],
+        #     viscosity=self.openfoam_cfg['k-Epsilon_args']['kinematic_viscosity']
+        # )
+        # print(f"[INFO]: guess Reynold Number: {self.Re}, k:{self.k}, epsilon:{self.epsilon}")
 
     def re_init(self, domain: dolfinx.mesh.Mesh, cell_tags: dolfinx.mesh.MeshTags, facet_tags: dolfinx.mesh.MeshTags):
         self.domain = domain
@@ -122,6 +123,8 @@ class OpenFoamSimulator(object):
             if name.endswith('.vtk'):
                 res_vtk = pyvista.read(os.path.join(vtk_dir, name))
                 success_flag = True
+
+        open(os.path.join(tmp_dir, 'visualization.foam'), 'w')
 
         return {'state': success_flag, 'res_vtk': res_vtk}
 
@@ -192,8 +195,8 @@ class OpenFoamSimulator(object):
     def compute_k_epsilon(U, L, viscosity):
         l = L * 0.07
         Re = np.abs(U) * L / viscosity
-        # I = 0.16 * np.power(Re, -1. / 8.)
-        I = 0.05
+        I = 0.16 * np.power(Re, -1. / 8.)
+        # I = 0.05
         k = 3. / 2. * np.power(U * I, 2)
         C_u = 0.09
         epsilon = np.power(C_u, 0.75) * np.power(k, 1.5) / l

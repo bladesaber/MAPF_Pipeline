@@ -199,7 +199,6 @@ class DolfinSimulator(object):
                     self.equation_map['ipcs']['bcs_velocity'].append(bc)
                 else:
                     self.equation_map['ipcs']['bcs_velocity'] = [bc]
-
             else:
                 if 'bcs_pressure' in self.equation_map['ipcs'].keys():
                     self.equation_map['ipcs']['bcs_pressure'].append(bc)
@@ -705,7 +704,6 @@ class DolfinSimulator(object):
             df[['coord_x', 'coord_y', 'coord_z']] = self.domain.geometry.x[:, :3].copy()
             df[['vel_x', 'vel_y', 'vel_z']] = u_map.x.array.reshape((-1, 3))
         df['pressure'] = p_map.x.array
-
         return df
 
     def estimate_equation_lost(self, method):
