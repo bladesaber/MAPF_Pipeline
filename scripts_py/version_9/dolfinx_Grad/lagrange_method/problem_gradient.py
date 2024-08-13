@@ -11,6 +11,7 @@ from .type_database import ControlDataBase, ShapeDataBase
 from ..equation_solver import LinearProblemSolver
 from ..dolfinx_utils import MeshUtils, AssembleUtils, UFLUtils
 from .shape_regularization import ShapeRegularization
+from .control_regularization import ControlRegularization
 from ..remesh_helper import MeshQuality
 
 
@@ -19,12 +20,14 @@ class ControlGradientProblem(object):
             self,
             control_problems: ControlDataBase,
             lagrangian_function: LagrangianFunction,
+            control_regularizations: ControlRegularization,
             scalar_product: Callable = None
     ):
         self.has_solution = False
 
         self.control_problems = control_problems
         self.lagrangian_function = lagrangian_function
+        self.control_regularizations = control_regularizations
 
         # Used to express lhs(Left Hand Side)
         if scalar_product is None:
@@ -47,12 +50,15 @@ class ControlGradientProblem(object):
             grad_forms_rhs = self.lagrangian_function.derivative(
                 control, ufl.TestFunction(control.function_space)
             )
+            grad_forms_rhs += self.control_regularizations.compute_control_derivative()
             grad_forms_lhs = self.scalar_product(control)
 
             self.control_problems.set_gradient_eq_form(control.name, grad_forms_lhs, grad_forms_rhs)
 
     def solve(self, comm, check_converged=True, **kwargs):
         if not self.has_solution:
+            self.control_regularizations.update()
+
             for control in self.control_problems.controls:
                 control_name = control.name
 

@@ -9,6 +9,7 @@ from .problem_state import StateProblem
 from .problem_adjoint import AdjointProblem
 from .problem_gradient import ControlGradientProblem, ShapeGradientProblem
 from .shape_regularization import ShapeRegularization
+from .control_regularization import ControlRegularization
 
 
 class OptimalControlProblem(object):
@@ -17,12 +18,14 @@ class OptimalControlProblem(object):
             state_system: StateProblem,
             control_problem: ControlDataBase,
             cost_functional_list: List[CostFunctional_types],
+            control_regularization: ControlRegularization,
             scalar_product: Callable = None,
             **kwargs
     ):
         self.state_system = state_system
         self.control_problem = control_problem
         self.cost_functional_list = cost_functional_list
+        self.control_regularization = control_regularization
 
         F_forms = [state_problem.F_form for state_problem in self.state_system.state_problems]
         self.lagrangian_function = LagrangianFunction(
@@ -40,7 +43,8 @@ class OptimalControlProblem(object):
         self.gradient_system = ControlGradientProblem(
             control_problems=self.control_problem,
             lagrangian_function=self.lagrangian_function,
-            scalar_product=scalar_product
+            scalar_product=scalar_product,
+            control_regularizations=self.control_regularization
         )
 
     @staticmethod
@@ -55,6 +59,8 @@ class OptimalControlProblem(object):
         val = 0.0
         for func in self.cost_functional_list:
             val += func.evaluate()
+
+        val += self.control_regularization.compute_objective()
         return val
 
     def compute_state(self, comm, **kwargs):
@@ -97,6 +103,7 @@ class OptimalControlProblem(object):
         cost_info = []
         for func in self.cost_functional_list:
             cost_info.append((func.name, func.evaluate()))
+        cost_info.extend(self.control_regularization.get_cost_info())
         return cost_info
 
 

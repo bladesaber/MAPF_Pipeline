@@ -7,7 +7,7 @@ from sklearn.neighbors import KDTree
 from scipy import sparse
 from tqdm import tqdm
 
-from Thirdparty.pyadjoint.pyadjoint import *
+from thirdparty.pyadjoint.pyadjoint import *
 
 from scripts_py.version_9.dolfinx_Grad.autoGrad_method.type_Function import Function
 from scripts_py.version_9.dolfinx_Grad.autoGrad_method.type_Mesh import Mesh
