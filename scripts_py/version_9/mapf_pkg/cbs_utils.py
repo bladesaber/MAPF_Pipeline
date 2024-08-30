@@ -252,12 +252,28 @@ class CbsSolver(object):
     def solve_block(
             self, root: CbsNode, group_idxs: List[int], max_iter: int, max_node_limit: int
     ) -> (bool, CbsNode):
+        # ----- just for debug
+        for group_idx in group_idxs:
+            self.draw_node_3D(
+                root, [], self.task_infos, self.pipe_cfg, highlight_group_idx=group_idx,
+                obstacle_df=self.obstacle_df
+            )
+        # -----
+
         for group_idx in group_idxs:
             is_success = root.update_group_path(group_idx, max_iter)
             print(f"groupIdx:{group_idx} success:{is_success}")
             if not is_success:
                 return False, None
+
+        # ----- just for debug
         # self.draw_node_3D(root, group_idxs, self.task_infos, self.pipe_cfg)
+        # for group_idx in group_idxs:
+        #     self.draw_node_3D(
+        #         root, [group_idx], self.task_infos, self.pipe_cfg, highlight_group_idx=group_idx,
+        #         obstacle_df=self.obstacle_df
+        #     )
+        # -----
 
         root.find_inner_conflict_point2point()
         root.compute_h_val()
@@ -350,12 +366,12 @@ class CbsSolver(object):
 
         dynamic_constraints = new_node_wrap.get_constrain(group_idx)
 
-        # # ------ debug
+        # # ------ debug: test if there duplicate constraint
         # dynamic_constrains_np = np.array(dynamic_constraints)
         # if np.any(np.sum(np.abs(dynamic_constrains_np[:, :3] - np.array([obs_x, obs_y, obs_z])), axis=1) == 0):
         #     repeat_xyzr = np.array([obs_x, obs_y, obs_z, obs_radius])
-        #     print(dynamic_constrains_np)
-        #     print(repeat_xyzr)
+        #     # print(dynamic_constrains_np)
+        #     # print(repeat_xyzr)
         #     # for task_info in self.task_infos[group_idx]:
         #     #     path = new_node_wrap.get_group_path(group_idx, task_info.task_name)
         #     #     xyzr = np.array(path.get_path())
@@ -364,7 +380,6 @@ class CbsSolver(object):
         #     #     tmp_idx = np.argmin(dist - require_radius)
         #     #     print(xyzr[tmp_idx], dist[tmp_idx])
         #     #
-        #     # print('asdadf')
         #     # flag_tmp = new_node_wrap.update_group_path(group_idx, max_iter=10000)
         #     # print(flag_tmp)
         #     raise ValueError("Repeat Loop Constrain")
@@ -379,6 +394,10 @@ class CbsSolver(object):
 
         is_success = new_node_wrap.update_group_path(group_idx, max_iter)
         if not is_success:
+            # self.draw_node_3D(
+            #     new_node_wrap, [], self.task_infos, self.pipe_cfg, highlight_group_idx=group_idx,
+            #     obstacle_df=self.obstacle_df
+            # )
             return False, None
 
         new_node_wrap.find_inner_conflict_point2point()

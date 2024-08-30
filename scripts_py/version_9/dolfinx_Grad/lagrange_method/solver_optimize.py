@@ -74,13 +74,16 @@ class OptimalControlProblem(object):
         self.adjoint_system.has_solution = False
         has_solution = self.adjoint_system.solve(comm, **kwargs)
 
-    def compute_gradient(self, comm, state_kwargs: Dict = {}, adjoint_kwargs: Dict = {}, gradient_kwargs: Dict = {}):
-        self.state_system.has_solution = False
+    def compute_gradient(
+            self, comm, state_kwargs: Dict = {}, adjoint_kwargs: Dict = {}, gradient_kwargs: Dict = {},
+            update_state=True, update_adjoint=True
+    ):
+        self.state_system.has_solution = not update_state
         has_solution = self.state_system.solve(comm, **state_kwargs)
 
         self.update_cost_funcs()
 
-        self.adjoint_system.has_solution = False
+        self.adjoint_system.has_solution = not update_adjoint
         has_solution = self.adjoint_system.solve(comm, **adjoint_kwargs)
 
         self.gradient_system.has_solution = False

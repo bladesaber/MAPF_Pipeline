@@ -2,7 +2,7 @@ import dolfinx
 import numpy as np
 import ufl
 import ctypes
-from typing import Union, Tuple, List, Set
+from typing import Union, Tuple, List, Set, Literal
 
 from ..dolfinx_utils import AssembleUtils
 
@@ -54,7 +54,8 @@ class ScalarTrackingFunctional(object):
             integrand_form: ufl.Form,
             tracking_goal: Union[float, ctypes.c_float, ctypes.c_double],
             weight: float = 1.0,
-            name: str = 'ScalarTracking'
+            name: str = 'ScalarTracking',
+            method: Literal['absolute_sub', 'percentage_div'] = 'absolute_sub'
     ):
         self.name = name
         self.domain = domain
@@ -73,14 +74,28 @@ class ScalarTrackingFunctional(object):
 
         self.integrand_value = dolfinx.fem.Constant(domain, 0.0)
         self.goal_value = dolfinx.fem.Constant(domain, self.tracking_goal_value)
-        self.derivative_form = self.weight * (self.integrand_value - self.goal_value) * self.form
+
+        self.dif_value = dolfinx.fem.Constant(domain, 0.0)
+        # self.derivative_form = self.weight * (self.integrand_value - self.goal_value) * self.form
+        self.derivative_form = self.weight * self.dif_value * self.form
+
+        self.method = method
 
     def evaluate(self):
         if isinstance(self.tracking_goal, (ctypes.c_float, ctypes.c_double)):
             self.tracking_goal_value = self.tracking_goal.value
             self.goal_value.value = self.tracking_goal_value
 
-        val: float = np.power(AssembleUtils.assemble_scalar(self.form_dolfin) - self.tracking_goal_value, 2) * 0.5
+        if self.method == 'absolute_sub':
+            val = np.power(AssembleUtils.assemble_scalar(self.form_dolfin) - self.tracking_goal_value, 2) * 0.5
+        elif self.method == 'percentage_div':
+            val = np.sqrt(np.power(
+                AssembleUtils.assemble_scalar(self.form_dolfin) / self.tracking_goal_value - 1.0, 2.0
+            ))
+        else:
+            raise ValueError
+        self.dif_value.value = val
+
         val = val * self.weight_value
         return val
 
@@ -103,6 +118,16 @@ class ScalarTrackingFunctional(object):
     def update(self):
         val: float = AssembleUtils.assemble_scalar(self.form_dolfin)
         self.integrand_value.value = val
+
+        if self.method == 'absolute_sub':
+            val = np.power(AssembleUtils.assemble_scalar(self.form_dolfin) - self.tracking_goal_value, 2) * 0.5
+        elif self.method == 'percentage_div':
+            val = np.sqrt(np.power(
+                AssembleUtils.assemble_scalar(self.form_dolfin) / self.tracking_goal_value - 1.0, 2.0
+            ))
+        else:
+            raise ValueError
+        self.dif_value.value = val
 
     def update_scale(self, weight: float):
         self.weight_value = weight

@@ -112,7 +112,7 @@ class AssembleUtils(object):
 
 class MeshUtils(object):
     @staticmethod
-    def msh_to_XDMF(msh_file: str, output_file: str, name, dim: int, mesh_dim: int = None):
+    def msh_to_XDMF(msh_file: str, output_file: str, dim: int, name='model', mesh_dim: int = None):
         """
         msh_file: .msh, .gmsh2, .gmsh
         if operation fail, please check:
@@ -137,7 +137,9 @@ class MeshUtils(object):
             f.write_meshtags(facet_tags, mesh.geometry)
 
     @staticmethod
-    def read_XDMF(file: str, mesh_name, cellTag_name, facetTag_name, mesh_dim=None):
+    def read_XDMF(
+            file: str, mesh_name='model', cellTag_name='model_cells', facetTag_name='model_facets', mesh_dim=None
+    ):
         assert file.endswith('.xdmf')
         with XDMFFile(MPI.COMM_WORLD, file, "r") as f:
             domain = f.read_mesh(name=mesh_name)
@@ -183,8 +185,8 @@ class MeshUtils(object):
 
     @staticmethod
     def save_XDMF(
-            output_file: str,
-            domain: dolfinx.mesh.Mesh, cell_tags: dolfinx.mesh.MeshTags, facet_tags: dolfinx.mesh.MeshTags
+            output_file: str, domain: dolfinx.mesh.Mesh, cell_tags: dolfinx.mesh.MeshTags,
+            facet_tags: dolfinx.mesh.MeshTags
     ):
         """
         Save后Points的顺序会改变,原因不明

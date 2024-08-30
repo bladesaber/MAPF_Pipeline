@@ -259,6 +259,7 @@ class PathApp(EnvironmentApp):
                 block_info['groups'], last_leafs_info=last_leaf_info, aux_constrain_df=aux_constrain_df
             )
             group_idxs = list(solver.task_infos.keys())
+
             is_success, res_node = solver.solve_block(
                 root, group_idxs,
                 max_iter=int(max_iter_txt.double_value),
@@ -279,8 +280,6 @@ class PathApp(EnvironmentApp):
             else:
                 print(f"[INFO]: False at solving {block_info['block_id']}")
                 break
-
-            break
 
         if success_flag:
             save_file = os.path.join(self.proj_dir, 'search_result.hdf5')
@@ -317,6 +316,7 @@ class PathApp(EnvironmentApp):
             vis.show()
         else:
             self.console_label.text = f"    [INFO]: search fail"
+            print("[INFO]: search fail")
 
     def init_path_search_widget(self):
         algo_layout = gui.CollapsableVert("Path Search Setup", self.spacing, self.blank_margins)
@@ -341,10 +341,10 @@ class PathApp(EnvironmentApp):
 
         debug_checkbox = FragmentOpen3d.get_widget('checkbox', {'name': 'DebugMode'})
         max_iter_txt = FragmentOpen3d.get_widget(
-            'number', {'style': 'double', 'decimal_precision': 0, 'init_value': 100000, 'preferred_width': 80}
+            'number', {'style': 'double', 'decimal_precision': 0, 'init_value': 300000, 'preferred_width': 80}
         )
         max_node_txt = FragmentOpen3d.get_widget(
-            'number', {'style': 'double', 'decimal_precision': 0, 'init_value': 100000, 'preferred_width': 80}
+            'number', {'style': 'double', 'decimal_precision': 0, 'init_value': 1000, 'preferred_width': 80}
         )
         search_btn = FragmentOpen3d.get_widget('button', {'name': 'search'})
         search_btn.set_on_clicked(partial(

@@ -9,7 +9,7 @@ from typing import List, Union, Dict, Tuple, Callable
 import ctypes
 import pickle
 
-from ..recorder_utils import VTKRecorder, TensorBoardRecorder
+from ..recorder_utils import PVDRecorder, TensorBoardRecorder
 from ..dolfinx_utils import MeshUtils, AssembleUtils, BoundaryUtils
 from ..equation_solver import LinearProblemSolver, NonLinearProblemSolver
 from ..lagrange_method.type_database import create_shape_problem, create_state_problem, ShapeDataBase
@@ -436,7 +436,7 @@ class FluidConditionalModel(object):
         if os.path.exists(simulate_dir):
             shutil.rmtree(simulate_dir)
         os.mkdir(simulate_dir)
-        u_recorder = VTKRecorder(os.path.join(simulate_dir, 'simulate_u.pvd'))
+        u_recorder = PVDRecorder(os.path.join(simulate_dir, 'simulate_u.pvd'))
 
         # ------ Step 2: Init Calculation and log first step
         self.compute_simulation(with_debug=with_debug)

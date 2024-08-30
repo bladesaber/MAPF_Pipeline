@@ -1,15 +1,10 @@
 import shutil
 import numpy as np
-import pyvista
 import ufl
 import dolfinx
 from typing import Dict, Union, List, Callable
-from functools import partial
-from sklearn.neighbors import KDTree
 import os
-from ufl import div, inner, grad, dot
-from scipy import sparse
-from tqdm import tqdm
+from ufl import div, inner, grad
 from mpi4py import MPI
 import scipy
 
@@ -20,10 +15,9 @@ from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import Int
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.control_regularization import ControlRegularization, \
     ControlIntegralRegularization
 from scripts_py.version_9.dolfinx_Grad.recorder_utils import VTKRecorder
-from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
-from scripts_py.version_9.dolfinx_Grad.topology_optimize_utils import DistanceBandFilter, DensityBandFilter
+from scripts_py.version_9.dolfinx_finder.topology_optimize_utils import DistanceBandFilter, DensityBandFilter
 
 
 class StopLearner(object):

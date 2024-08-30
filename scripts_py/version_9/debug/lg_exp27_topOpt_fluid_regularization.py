@@ -18,7 +18,7 @@ from scripts_py.version_9.dolfinx_Grad.lagrange_method.solver_optimize import Op
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.cost_functions import IntegralFunction
 from scripts_py.version_9.dolfinx_Grad.lagrange_method.control_regularization import ControlRegularization, \
     ControlIntegralRegularization
-from scripts_py.version_9.dolfinx_Grad.recorder_utils import VTKRecorder
+from scripts_py.version_9.dolfinx_Grad.recorder_utils import PVDRecorder
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
@@ -134,8 +134,8 @@ def generate_problem(
     sub_res_dir = os.path.join(res_dir, f"res_problem{tag}")
     os.mkdir(sub_res_dir)
 
-    rho_recorder = VTKRecorder(file=os.path.join(sub_res_dir, 'rho.pvd'))
-    u_recorder = VTKRecorder(file=os.path.join(sub_res_dir, 'u.pvd'))
+    rho_recorder = PVDRecorder(file=os.path.join(sub_res_dir, 'rho.pvd'))
+    u_recorder = PVDRecorder(file=os.path.join(sub_res_dir, 'u.pvd'))
 
     return state_problem, cost_fun, [reg_volume], {rho.name: rho_recorder, f"{up.name}_u": u_recorder}
 

@@ -15,35 +15,30 @@ class XDMFRecorder(object):
         assert file.endswith('.xdmf')
         if comm is None:
             comm = MPI.COMM_WORLD
-
-        self.writter = XDMFFile(comm, file, 'w')
+        self.writer = XDMFFile(comm, file, 'w')
 
     def write_mesh(self, doamin: dolfinx.mesh.Mesh):
-        self.writter.write_mesh(doamin)
+        self.writer.write_mesh(doamin)
 
     def write_function(self, function: dolfinx.fem.Function, step):
-        self.writter.write_function(function, step)
+        self.writer.write_function(function, step)
 
     def close(self):
-        self.writter.close()
+        self.writer.close()
 
 
-class VTKRecorder(object):
+class PVDRecorder(object):
     def __init__(self, file: str, comm=None):
         assert file.endswith('.pvd')
         if comm is None:
             comm = MPI.COMM_WORLD
-
-        self.writter = VTKFile(comm, file, 'w')
-
-    def write_mesh(self, doamin: dolfinx.mesh.Mesh, step):
-        self.writter.write_mesh(doamin, step)
+        self.writer = VTKFile(comm, file, 'w')
 
     def write_function(self, function: Union[dolfinx.fem.Function, List[dolfinx.fem.Function]], step):
-        self.writter.write_function(function, step)
+        self.writer.write_function(function, step)
 
     def close(self):
-        self.writter.close()
+        self.writer.close()
 
 
 class TensorBoardRecorder(object):
@@ -53,12 +48,13 @@ class TensorBoardRecorder(object):
     def write_scalar(self, tag, scalar_value, step):
         self.writer.add_scalar(tag=tag, scalar_value=scalar_value, global_step=step)
 
-    def write_scalars(self, tag, scalar_dict: Dict, step):
+    def write_scalars(self, tag, scalar_dict: Dict[str, float], step):
         if len(scalar_dict) == 0:
             return
         self.writer.add_scalars(tag, scalar_dict, step)
 
 
+"""
 class RefDataRecorder(object):
     def __init__(self, domain: dolfinx.mesh.Mesh):
         self.domain = domain
@@ -146,3 +142,4 @@ class RefDataRecorder(object):
                 return self.ref_grid[name][convert_seq]
         else:
             return self.ref_grid[name]
+"""

@@ -514,7 +514,7 @@ def debug_cbs_solver(algorithm_json: str):
         )
 
         group_idxs = list(solver.task_infos.keys())
-        is_success, res_node = solver.solve_block(root, group_idxs, max_iter=100000, max_node_limit=2000)
+        is_success, res_node = solver.solve_block(root, group_idxs, max_iter=1000000, max_node_limit=2000)
 
         if is_success:
             CbsSolver.draw_node_3D(
@@ -743,7 +743,7 @@ if __name__ == '__main__':
     # debug_group_astar_2D()
     # debug_cbs_node()
 
-    # debug_cbs_solver('/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup_orig.json')
+    debug_cbs_solver('/home/admin123456/Desktop/work/path_examples/s3/algorithm_setup.json')
     # debug_cbs_first_check('/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup_orig.json')
     # debug_sequence_solve('/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup_orig.json')
 
@@ -753,9 +753,9 @@ if __name__ == '__main__':
     #     res_file='/home/admin123456/Desktop/work/path_examples/s5/search_result.hdf5'
     # )
 
-    debug_pcd2mesh(
-        algo_file='/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup.json',
-        smooth_res_file='/home/admin123456/Desktop/work/path_examples/s5/smooth_result.hdf5'
-    )
+    # debug_pcd2mesh(
+    #     algo_file='/home/admin123456/Desktop/work/path_examples/s5/algorithm_setup.json',
+    #     smooth_res_file='/home/admin123456/Desktop/work/path_examples/s5/smooth_result.hdf5'
+    # )
 
     pass

@@ -1,23 +1,15 @@
-import shutil
 import numpy as np
 import ufl
 import dolfinx
-from typing import Dict, Union, List
 from functools import partial
-from sklearn.neighbors import KDTree
 import os
-from ufl import div, inner, grad
-from scipy import sparse
-from tqdm import tqdm
 from mpi4py import MPI
-import scipy
 
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
 from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_topology_opt import FluidTopoLogyModel
-from scripts_py.version_9.dolfinx_Grad.topology_optimize_utils import DistanceBandFilter, DensityBandFilter
-from scripts_py.version_9.dolfinx_Grad.recorder_utils import VTKRecorder
+from scripts_py.version_9.dolfinx_finder.topology_optimize_utils import DistanceBandFilter
 
 """
 1. 先规范写法
