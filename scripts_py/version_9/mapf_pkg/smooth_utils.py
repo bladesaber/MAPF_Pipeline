@@ -14,8 +14,7 @@ from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils, MeanTestLearne
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 from build import mapf_pipeline
 
-
-# todo:
+"""
 #  1.离散方法（数值化）:点表述方法
 #  2.半连续方法 :类似Bspline方法，理论上可以通过无穷插值获得无穷精度
 #  3.连续方法（参数化）:通常方法是构建表述函数族，并通过拟合求解，但这种表述方法只适合单路径。
@@ -25,18 +24,19 @@ from build import mapf_pipeline
 #  3.多组路径考虑距离干涉
 #  4.路径考虑障碍点干涉
 #  5.路径有多分支，且分支不均衡，多分支用spline的前后端点重叠实现
+"""
 
 
 class BsplineUtils(object):
     @staticmethod
     def create_knots(
-            pcd: np.ndarray, degree: int, range_min=0.0, range_max=1.0, clamp=True,
+            pcd_num: int, degree: int, range_min=0.0, range_max=1.0, clamp=True,
             uniform_weight: float = -1.0, uniform_step: int = np.inf
     ):
         """
         pcd: control point cloud
         """
-        knot = np.linspace(range_min, range_max, pcd.shape[0] - degree + 1)
+        knot = np.linspace(range_min, range_max, pcd_num - degree + 1)
         if uniform_weight > 0:
             assert 0.0 < uniform_weight < 1.0
 
@@ -79,14 +79,14 @@ class BsplineUtils(object):
         return c1 + c2
 
     @staticmethod
-    def compute_mat(t_list: np.ndarray, pcd: np.ndarray, degree: int, knot: np.ndarray):
-        num = pcd.shape[0]
-        b_mat = np.zeros(shape=(t_list.shape[0], num))
+    def compute_mat(t_list: np.ndarray, pcd_num: int, degree: int, knot: np.ndarray, fill_last_one=True):
+        b_mat = np.zeros(shape=(t_list.shape[0], pcd_num))
         for j, t in enumerate(t_list):
-            for i in range(num):
+            for i in range(pcd_num):
                 b_mat[j, i] = BsplineUtils.compute_Bip(t, i, degree, knot)
-            if j == t_list.shape[0] - 1:
-                b_mat[-1, -1] = 1.0
+            if fill_last_one:
+                if j == t_list.shape[0] - 1:
+                    b_mat[-1, -1] = 1.0
         return b_mat
 
     @staticmethod
@@ -278,10 +278,10 @@ class SegmentCell(object):
 
     def update_spline_mat(self, xyzr: np.ndarray, degree: int, sample_num: int, uniform_weight=0.5, uniform_step=3):
         self.knot = BsplineUtils.create_knots(
-            xyzr[self.pcd_idxs, :3], degree, uniform_step=uniform_step, uniform_weight=uniform_weight
+            xyzr[self.pcd_idxs, :3].shape[0], degree, uniform_step=uniform_step, uniform_weight=uniform_weight
         )
         self.ts = np.linspace(0.0, 1.0, sample_num)
-        self.spline_mat = BsplineUtils.compute_mat(self.ts, xyzr[self.pcd_idxs, :3], degree, self.knot)
+        self.spline_mat = BsplineUtils.compute_mat(self.ts, xyzr[self.pcd_idxs, :3].shape[0], degree, self.knot)
         self.radius_np = self.spline_mat.dot(xyzr[self.pcd_idxs, 3:4]).reshape(-1)
 
     def get_bspline_xyzr_np(self, xyzr: np.ndarray):
@@ -297,10 +297,10 @@ class SegmentCell(object):
             self, xyzr: np.ndarray, degree: int, sample_num: int, uniform_weight=0.5, uniform_step=3
     ):
         knot = BsplineUtils.create_knots(
-            xyzr[self.pcd_idxs, :3], degree, uniform_step=uniform_step, uniform_weight=uniform_weight
+            xyzr[self.pcd_idxs, :3].shape[0], degree, uniform_step=uniform_step, uniform_weight=uniform_weight
         )
         ts = np.linspace(0.0, 1.0, sample_num)
-        self.output_spline_mat = BsplineUtils.compute_mat(ts, xyzr[self.pcd_idxs, :3], degree, knot)
+        self.output_spline_mat = BsplineUtils.compute_mat(ts, xyzr[self.pcd_idxs, :3].shape[0], degree, knot)
 
     def get_output_bspline_xyzr_np(self, xyzr: np.ndarray):
         return self.output_spline_mat.dot(xyzr[self.pcd_idxs, :])
@@ -589,8 +589,8 @@ class NetworkPath(object):
                         cost_dict.setdefault('cos_cost', 0.0)
                         cos_val = TorchUtils.compute_cos_val(path_cell.pcd_tensor)
                         cost_dict['cos_cost'] += info['cos_weight'] * (
-                            torch.pow(F.relu(info['cos_threshold'] - cos_val), info['cos_exponent']).max()
-                            + torch.pow(F.relu(info['cos_threshold'] - cos_val), info['cos_exponent']).mean()
+                                torch.pow(F.relu(info['cos_threshold'] - cos_val), info['cos_exponent']).max()
+                                + torch.pow(F.relu(info['cos_threshold'] - cos_val), info['cos_exponent']).mean()
                         )
 
                     if info['method'] == 'connector_control_cos_cost':

@@ -6,7 +6,6 @@ from sklearn.neighbors import KDTree
 from typing import Dict, Union
 from tqdm import tqdm
 
-from build import mapf_pipeline
 from scripts_py.version_9.mapf_pkg.shape_utils import ShapeUtils, AxisTransform
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 

@@ -1,0 +1,84 @@
+{
+    "constrains": [
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "A1",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "B1",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P1",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T1",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P2",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P3",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P4",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P5",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T2",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T3",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T4",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T5",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "B2",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "B3",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "A2",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "A3",
+            "length": 1.5
+        }
+    ]
+}

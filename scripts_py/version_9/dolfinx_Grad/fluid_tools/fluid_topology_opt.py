@@ -17,7 +17,7 @@ from scripts_py.version_9.dolfinx_Grad.lagrange_method.control_regularization im
 from scripts_py.version_9.dolfinx_Grad.recorder_utils import VTKRecorder
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
-from scripts_py.version_9.dolfinx_finder.topology_optimize_utils import DistanceBandFilter, DensityBandFilter
+from scripts_py.version_9.topology_path_planner.topology_optimize_utils import DistanceBandFilter, DensityBandFilter
 
 
 class StopLearner(object):

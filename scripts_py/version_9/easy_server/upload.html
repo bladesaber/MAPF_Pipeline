@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload STL and JSON</title>
+    <script>
+        async function uploadData() {
+            const formData = new FormData();
+
+            // Append the STL file
+            const stlfileInput = document.getElementById('stlFile');
+            formData.append('stl_file', stlfileInput.files[0]);
+
+            const csvfileInput = document.getElementById('csvFile');
+            formData.append('csv_file', csvfileInput.files[0]);
+
+            // Append a parameter
+            formData.append('param_1', 10);
+            formData.append('param_2', 'str test');
+
+            // Append JSON data as a string
+            const jsonData = {
+                key1: "value1",
+                key2: "value2"
+            };
+            formData.append('json_data', JSON.stringify(jsonData));
+
+            // Send the POST request
+            const response = await fetch('http://127.0.0.1:5000/PostTest', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            console.log(result);
+        }
+    </script>
+</head>
+<body>
+    <input type="file" id="stlFile" accept=".stl">
+    <input type="file" id="csvFile" accept=".csv">
+    <button onclick="uploadData()">Upload STL, Param, and JSON</button>
+</body>
+</html>

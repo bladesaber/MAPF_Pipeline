@@ -16,7 +16,7 @@ class FluentReader(object):
         data = data_h5
         for tag in tag_sequence:
             data = data[tag]
-        return data
+        return np.array(data)
 
     @staticmethod
     def print_h5df_tree(data_h5: h5py.File, pre=''):

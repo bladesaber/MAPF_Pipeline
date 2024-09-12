@@ -3,8 +3,8 @@ import numpy as np
 import os
 
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
-from scripts_py.version_9.dolfinx_finder.grad_runner import GradRunner
-from scripts_py.version_9.dolfinx_finder.optimize_runner import TopologyPathSolver
+from scripts_py.version_9.topology_path_planner.grad_runner import RasGradRunner
+from scripts_py.version_9.topology_path_planner.optimize_runner import TopologyPathSolver
 
 proj_dir = '/home/admin123456/Desktop/work/path_examples/topo_path_03'
 
@@ -614,16 +614,11 @@ MeshUtils.msh_to_XDMF(
 )
 domain, cell_tags, facet_tags = MeshUtils.read_XDMF(file=os.path.join(proj_dir, 'model.xdmf'))
 
-grad_runner = GradRunner(domain, cell_tags, facet_tags, grad_cfg={
+grad_runner = RasGradRunner(domain, cell_tags, facet_tags, grad_cfg={
     'equ_info': {
         'velocity_order': 2,
         'pressure_order': 1,
         'is_stoke': True  # todo 这里使用了Stoke方程作为代理，NavierStoke方程失败，原因不明
-    },
-    'alpha_info': {
-        'alpha_min': 0.01,
-        'alpha_max': 2000.0,
-        'p': 2.0
     },
     'grad_filter_radius': 0.02 * 2.1,
     'max_step_size': 0.2,
@@ -689,16 +684,18 @@ condition_cfgs = [
         'control_openfoam_name': 'rho',
         'control_init_value': 0.1,
 
-        'cost_cfgs': {
-            # 'minimum_dissipation': {
+        'cost_cfgs': [
+            # {
+            #     'type': 'minimum_dissipation',
             #     'weight': 1.0
             # },
-            'minimum_pressure_loss': {
+            {
+                'type': 'minimum_pressure_loss',
                 'weight': 1.0,
                 'marker1': 8,
                 'marker2': 10,
             }
-        },
+        ],
         'regularization_cfgs': {
             # 'volume_regularization': {
             #     'ratio': 0.2,
@@ -743,6 +740,11 @@ for cfg in condition_cfgs:
         rho=grad_runner.controls_dicts[cfg['control_name']],
         rho_openfoam_name=cfg['control_openfoam_name'],
         other_rhos=other_rhos,
+        alpha_cfg={
+            'alpha_min': 0.01,
+            'alpha_max': 2000.0,
+            'p': 2.0
+        },
         cost_cfgs=cfg['cost_cfgs'],
         regularization_cfgs=cfg['regularization_cfgs'],
         openfoam_cfg=cfg['openfoam_cfg'],

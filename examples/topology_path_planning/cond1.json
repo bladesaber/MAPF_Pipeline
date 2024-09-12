@@ -1,0 +1,304 @@
+{
+  "name": "cond1",
+  "input_dict": {
+    "26": [0.0, 0.0, 1.0]
+  },
+  "output_dict": {
+    "28": 0.0
+  },
+  "boundary_markers": [27, 29, 30],
+  "control_name": "rho_A",
+  "control_openfoam_name": "rho",
+  "control_init_value": 0.1,
+  "cost_cfgs": [
+    {
+      "type": "minimum_pressure_loss",
+      "weight": 1.0,
+      "marker": 26
+    }
+  ],
+  "regularization_cfgs": {
+    "volume_regularization": {
+      "ratio": 0.1,
+      "weight": 5000.0
+    }
+  },
+  "openfoam_cfg": {
+    "configuration": {
+      "controlDict": {
+        "location": "system",
+        "class_name": "dictionary",
+        "args": {
+          "application": "rhoMrfFoam",
+          "startFrom": "latestTime",
+          "startTime": 0,
+          "stopAt": "endTime",
+          "endTime": 5.0,
+          "deltaT": 0.005,
+          "writeControl": "timeStep",
+          "writeInterval": 100,
+          "purgeWrite": 0,
+          "writeFormat": "ascii",
+          "writePrecision": 6,
+          "writeCompression": "off",
+          "timeFormat": "general",
+          "runTimeModifiable": "true"
+        }
+      },
+      "fvSchemes": {
+        "location": "system",
+        "class_name": "dictionary",
+        "args": {
+          "ddtSchemes": {
+            "default": "steadyState"
+          },
+          "gradSchemes": {
+            "default": "Gauss linear"
+          },
+          "divSchemes": {
+            "default": "Gauss linear",
+            "div(phi,U)": "bounded Gauss linearUpwind grad(U)",
+            "div(phi,k)": "bounded Gauss limitedLinear 1",
+            "div(phi,epsilon)": "bounded Gauss limitedLinear 1",
+            "div(nonlinearStress)": "Gauss linear"
+          },
+          "laplacianSchemes": {
+            "default": "Gauss linear corrected"
+          },
+          "interpolationSchemes": {
+            "default": "linear"
+          },
+          "snGradSchemes": {
+            "default": "corrected"
+          },
+          "wallDist": {
+            "method": "meshWave"
+          }
+        }
+      },
+      "fvSolution": {
+        "location": "system",
+        "class_name": "dictionary",
+        "args": {
+          "solvers": {
+            "p": {
+              "solver": "GAMG",
+              "tolerance": 1e-06,
+              "relTol": 0.1,
+              "smoother": "GaussSeidel"
+            },
+            "pFinal": {
+              "single": "$p",
+              "relTol": 0.0
+            },
+            "\"(U|k|epsilon)\"": {
+              "solver": "smoothSolver",
+              "smoother": "symGaussSeidel",
+              "tolerance": 1e-05,
+              "relTol": 0.1
+            }
+          },
+          "SIMPLE": {
+            "nNonOrthogonalCorrectors": 0,
+            "consistent": "no",
+            "residualControl": {
+              "p": 0.01,
+              "U": 0.001,
+              "\"(k|epsilon)\"": 0.001
+            }
+          },
+          "relaxationFactors": {
+            "fields": {
+              "p": 0.3
+            },
+            "equations": {
+              "U": 0.9,
+              "\"(k|epsilon)\"": 0.9
+            }
+          }
+        }
+      },
+      "transportProperties": {
+        "location": "constant",
+        "class_name": "dictionary",
+        "args": {
+          "transportModel": "Newtonian",
+          "nu": "[0 2 -1 0 0 0 0] 0.01"
+        }
+      },
+      "turbulenceProperties": {
+        "location": "constant",
+        "class_name": "dictionary",
+        "args": {
+          "simulationType": "RAS",
+          "RAS": {
+            "RASModel": "kEpsilon",
+            "turbulence": "on",
+            "printCoeffs": "on"
+          }
+        }
+      },
+      "U": {
+        "location": 0,
+        "class_name": "volVectorField",
+        "args": {
+          "dimensions": "[0 1 -1 0 0 0 0]",
+          "internalField": "uniform (0 0 0)",
+          "boundaryField": {
+            "inlet0": {
+              "type": "fixedValue",
+              "value": "uniform (1 0 0)"
+            },
+            "outlet0": {
+              "type": "zeroGradient"
+            },
+            "boundary": {
+              "type": "noSlip"
+            },
+            "\"(inlet1|outlet1)\"": {
+              "type": "noSlip"
+            }
+          }
+        }
+      },
+      "p": {
+        "location": 0,
+        "class_name": "volScalarField",
+        "args": {
+          "dimensions": "[0 2 -2 0 0 0 0]",
+          "internalField": "uniform 0",
+          "boundaryField": {
+            "inlet0": {
+              "type": "zeroGradient"
+            },
+            "outlet0": {
+              "type": "fixedValue",
+              "value": "uniform 0"
+            },
+            "boundary": {
+              "type": "zeroGradient"
+            },
+            "\"(inlet1|outlet1)\"":{
+              "type": "zeroGradient"
+            }
+          }
+        }
+      },
+      "rho": {
+        "location": 0,
+        "class_name": "volScalarField",
+        "args": {
+          "dimensions": "[0 0 -1 0 0 0 0]",
+          "internalField": "uniform 0",
+          "boundaryField": {
+            "inlet0": {
+              "type": "fixedValue",
+              "value": "uniform 0.0"
+            },
+            "outlet0": {
+              "type": "fixedValue",
+              "value": "uniform 0.0"
+            },
+            "boundary": {
+              "type": "fixedValue",
+              "value": "uniform 0.0"
+            },
+            "\"(inlet1|outlet1)\"":{
+              "type": "fixedValue",
+              "value": "uniform 0.0"
+            }
+          }
+        }
+      },
+      "nut": {
+        "location": 0,
+        "class_name": "volScalarField",
+        "args": {
+          "dimensions": "[0 2 -1 0 0 0 0]",
+          "internalField": "uniform 0",
+          "boundaryField": {
+            "inlet0": {
+              "type": "calculated",
+              "value": "uniform 0"
+            },
+            "outlet0": {
+              "type": "calculated",
+              "value": "uniform 0"
+            },
+            "boundary": {
+              "type": "nutkWallFunction",
+              "value": "uniform 0"
+            },
+            "\"(inlet1|outlet1)\"":{
+              "type": "nutkWallFunction",
+              "value": "uniform 0"
+            }
+          }
+        }
+      },
+      "k": {
+        "location": 0,
+        "class_name": "volScalarField",
+        "args": {
+          "dimensions": "[0 2 -2 0 0 0 0]",
+          "internalField": "uniform 0.01",
+          "boundaryField": {
+            "inlet0": {
+              "type": "fixedValue",
+              "value": "uniform 0.01"
+            },
+            "outlet0": {
+              "type": "zeroGradient"
+            },
+            "boundary": {
+              "type": "kqRWallFunction",
+              "value": "uniform 0.01"
+            },
+            "\"(inlet1|outlet1)\"":{
+              "type": "kqRWallFunction",
+              "value": "uniform 0.01"
+            }
+          }
+        }
+      },
+      "epsilon": {
+        "location": 0,
+        "class_name": "volScalarField",
+        "args": {
+          "dimensions": "[0 2 -3 0 0 0 0]",
+          "internalField": "uniform 0.01",
+          "boundaryField": {
+            "inlet0": {
+              "type": "fixedValue",
+              "value": "uniform 0.01"
+            },
+            "outlet0": {
+              "type": "zeroGradient"
+            },
+            "boundary": {
+              "type": "epsilonWallFunction",
+              "value": "uniform 0.01"
+            },
+            "\"(inlet1|outlet1)\"":{
+              "type": "epsilonWallFunction",
+              "value": "uniform 0.01"
+            }
+          }
+        }
+      }
+    },
+    "modify_type_dict": {
+      "boundary": "wall",
+      "inlet1": "wall",
+      "outlet1": "wall"
+    },
+    "cache_dir": "/home/admin123456/Desktop/work/path_examples/topo_path_04/cache",
+    "run_cfg": {
+      "msh_version": "msh2",
+      "run_code": "rhoMrfFoam"
+    },
+    "source_msh_file": "/home/admin123456/Desktop/work/path_examples/topo_path_04/model.msh",
+    "kinematic_viscosity": 0.01
+  }
+}
+

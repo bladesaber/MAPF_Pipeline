@@ -3,8 +3,8 @@ import numpy as np
 import os
 
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
-from scripts_py.version_9.dolfinx_finder.grad_runner import GradRunner
-from scripts_py.version_9.dolfinx_finder.optimize_runner import TopologyPathSolver
+from scripts_py.version_9.topology_path_planner.grad_runner import RasGradRunner
+from scripts_py.version_9.topology_path_planner.optimize_runner import TopologyPathSolver
 
 proj_dir = '/home/admin123456/Desktop/work/path_examples/topo_path_03'
 
@@ -285,7 +285,7 @@ MeshUtils.msh_to_XDMF(
 )
 domain, cell_tags, facet_tags = MeshUtils.read_XDMF(file=os.path.join(proj_dir, 'model.xdmf'))
 
-grad_runner = GradRunner(domain, cell_tags, facet_tags, grad_cfg=grad_cfg)
+grad_runner = RasGradRunner(domain, cell_tags, facet_tags, grad_cfg=grad_cfg)
 
 optimizer = TopologyPathSolver(
     grad_runner,

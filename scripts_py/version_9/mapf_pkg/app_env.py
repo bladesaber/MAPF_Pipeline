@@ -135,7 +135,7 @@ class EnvironmentApp(AppWindow):
             )
         elif file_format in ['stl', 'stp', 'step']:
             if file_format in ['stp', 'step']:
-                tmp_file = os.path.join(self.save_dir, name.replace('.stp', 'stl').replace('.step', 'stl'))
+                tmp_file = os.path.join(self.save_dir, name.replace('.stp', '.stl').replace('.step', '.stl'))
                 solid = cq.importers.importStep(path)
                 cq.exporters.export(solid, tmp_file)
                 path = tmp_file
@@ -284,7 +284,7 @@ class EnvironmentApp(AppWindow):
 
         def _file_dlg_btn_on_click():
             filedlg = gui.FileDialog(gui.FileDialog.OPEN, "Select file", self.window.theme)
-            filedlg.add_filter(".obj .ply .stl", "Triangle mesh (.obj, .ply, .stl, .stp, .step)")
+            filedlg.add_filter(".obj .ply .stl .stp .step", "Triangle mesh (.obj, .ply, .stl, .stp, .step)")
             filedlg.set_on_cancel(self.window.close_dialog)
             filedlg.set_on_done(dlg_done_fun)
             self.window.show_dialog(filedlg)

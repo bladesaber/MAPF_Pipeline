@@ -9,7 +9,7 @@ from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import AssembleUtils
 from scripts_py.version_9.dolfinx_Grad.fluid_tools.fluid_topology_opt import FluidTopoLogyModel
-from scripts_py.version_9.dolfinx_finder.topology_optimize_utils import DistanceBandFilter
+from scripts_py.version_9.topology_path_planner.topology_optimize_utils import DistanceBandFilter
 
 """
 1. 先规范写法

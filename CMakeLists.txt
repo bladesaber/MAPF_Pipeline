@@ -14,6 +14,15 @@ find_package(Boost REQUIRED)
 # message("PCL_INCLUDE_DIR: " ${PCL_INCLUDE_DIRS})
 # message("PCL_LIBRARY_DIR: " ${PCL_LIBRARIES})
 
+#set(OpenFoam_Project_DIR $ENV{WM_PROJECT_DIR})
+#set(OpenFoam_SRC_DIR $ENV{FOAM_SRC})
+#set(OpenFoam_LIBBIN_DIR $ENV{FOAM_LIBBIN})
+#set(OpenFoam_USER_LIBBIN_DIR $ENV{FOAM_USER_LIBBIN})
+#message("OpenFoam_Project_DIR: " ${OpenFoam_Project_DIR})
+#message("OpenFoam_SRC_DIR: " ${OpenFoam_SRC_DIR})
+#message("OpenFoam_LIBBIN_DIR: " ${OpenFoam_LIBBIN_DIR})
+#message("OpenFoam_USER_LIBBIN_DIR: " ${OpenFoam_USER_LIBBIN_DIR})
+
 add_subdirectory(${ThirdPartyDir}/pybind11)
 
 include_directories(
@@ -23,10 +32,19 @@ include_directories(
         ${EIGEN3_INCLUDE_DIR}
         ${PCL_INCLUDE_DIRS}
         ${PACKAGE_TOP_DIR}/include
+
+#        ${OpenFoam_SRC_DIR}/OpenFOAM/lnInclude
+#        ${OpenFoam_SRC_DIR}/finiteVolume/lnInclude
+#        ${OpenFoam_SRC_DIR}/meshTools/lnInclude
+#        ${OpenFoam_SRC_DIR}/OSspecific/POSIX/lnInclude
 )
 
 link_directories(
         ${PCL_LIBRARY_DIRS}
+#        ${OpenFoam_LIBBIN_DIR}
+#        ${OpenFoam_LIBBIN_DIR}/dummy
+#        ${OpenFoam_LIBBIN_DIR}/openmpi-system
+#        ${OpenFoam_USER_LIBBIN_DIR}
 )
 
 add_definitions(${PCL_DEFINITIONS})

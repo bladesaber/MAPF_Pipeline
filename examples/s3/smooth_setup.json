@@ -1,0 +1,700 @@
+{
+    "path_list": [
+        {
+            "name": "A1_A2",
+            "begin_name": "A1",
+            "end_name": "A2"
+        },
+        {
+            "name": "A1_A3",
+            "begin_name": "A1",
+            "end_name": "A3"
+        },
+        {
+            "name": "B1_B2",
+            "begin_name": "B1",
+            "end_name": "B2"
+        },
+        {
+            "name": "B1_B3",
+            "begin_name": "B1",
+            "end_name": "B3"
+        },
+        {
+            "name": "P1_P2",
+            "begin_name": "P1",
+            "end_name": "P2"
+        },
+        {
+            "name": "P1_P3",
+            "begin_name": "P1",
+            "end_name": "P3"
+        },
+        {
+            "name": "P1_P4",
+            "begin_name": "P1",
+            "end_name": "P4"
+        },
+        {
+            "name": "P1_P5",
+            "begin_name": "P1",
+            "end_name": "P5"
+        },
+        {
+            "name": "T1_T2",
+            "begin_name": "T1",
+            "end_name": "T2"
+        },
+        {
+            "name": "T1_T3",
+            "begin_name": "T1",
+            "end_name": "T3"
+        },
+        {
+            "name": "T1_T4",
+            "begin_name": "T1",
+            "end_name": "T4"
+        },
+        {
+            "name": "T1_T5",
+            "begin_name": "T1",
+            "end_name": "T5"
+        }
+    ],
+    "conflict_setting": {
+        "obstacle_weight": 100.0,
+        "path_conflict_weight": 100.0
+    },
+    "setting": [
+        {
+            "group_idx": 0,
+            "segment_degree": 4,
+            "segments": {
+                "0": {
+                    "bspline_degree": 3,
+                    "bspline_num": 20,
+                    "output_bspline_num": 40,
+                    "seg_idx": 0,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 10.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.9535590041360023,
+                        0.46514190609191697,
+                        0.21417959440869416
+                    ]
+                },
+                "1": {
+                    "bspline_degree": 3,
+                    "bspline_num": 40,
+                    "output_bspline_num": 80,
+                    "seg_idx": 1,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.773850032353299,
+                        0.3280155675011712,
+                        0.6465846192176575
+                    ]
+                },
+                "2": {
+                    "bspline_degree": 3,
+                    "bspline_num": 20,
+                    "output_bspline_num": 40,
+                    "seg_idx": 2,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.5347866491174929,
+                        0.35890211839969155,
+                        0.8363571012741882
+                    ]
+                }
+            },
+            "paths_cost": {
+                "A1_A2": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "A1_A3": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 1.0
+                        }
+                    ]
+                ]
+            }
+        },
+        {
+            "group_idx": 1,
+            "segment_degree": 4,
+            "segments": {
+                "0": {
+                    "bspline_degree": 3,
+                    "bspline_num": 40,
+                    "output_bspline_num": 80,
+                    "seg_idx": 0,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.8759799902873532,
+                        0.439604840176539,
+                        0.9083260979478321
+                    ]
+                },
+                "1": {
+                    "bspline_degree": 3,
+                    "bspline_num": 40,
+                    "output_bspline_num": 80,
+                    "seg_idx": 1,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.8240993542743777,
+                        0.9626285485199823,
+                        0.9874519774848168
+                    ]
+                },
+                "2": {
+                    "bspline_degree": 3,
+                    "bspline_num": 60,
+                    "output_bspline_num": 120,
+                    "seg_idx": 2,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.3937003939347866,
+                        0.5753080139157621,
+                        0.5998811022872147
+                    ]
+                },
+                "3": {
+                    "bspline_degree": 3,
+                    "bspline_num": 50,
+                    "output_bspline_num": 100,
+                    "seg_idx": 3,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.8207904103720386,
+                        0.8239945510447162,
+                        0.18905433774917668
+                    ]
+                },
+                "4": {
+                    "bspline_degree": 3,
+                    "bspline_num": 40,
+                    "output_bspline_num": 80,
+                    "seg_idx": 4,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.8394222636946906,
+                        0.5250976808058373,
+                        0.7295312942309234
+                    ]
+                },
+                "5": {
+                    "bspline_degree": 3,
+                    "bspline_num": 20,
+                    "output_bspline_num": 40,
+                    "seg_idx": 5,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.3721606758870424,
+                        0.3186147622932419,
+                        0.9538868176704882
+                    ]
+                },
+                "6": {
+                    "bspline_degree": 3,
+                    "bspline_num": 10,
+                    "output_bspline_num": 20,
+                    "seg_idx": 6,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.7161285927233184,
+                        0.2597571929757977,
+                        0.898281219740597
+                    ]
+                }
+            },
+            "paths_cost": {
+                "P1_P2": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P3": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P4": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P5": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 1.0
+                        }
+                    ]
+                ]
+            }
+        },
+        {
+            "group_idx": 2,
+            "segment_degree": 4,
+            "segments": {
+                "0": {
+                    "bspline_degree": 3,
+                    "bspline_num": 40,
+                    "output_bspline_num": 80,
+                    "seg_idx": 0,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 10.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.44391790244357276,
+                        0.670529500444339,
+                        0.4793898117970333
+                    ]
+                },
+                "1": {
+                    "bspline_degree": 3,
+                    "bspline_num": 20,
+                    "output_bspline_num": 40,
+                    "seg_idx": 1,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.4365522985919176,
+                        0.20333293859470802,
+                        0.1683146455769381
+                    ]
+                },
+                "2": {
+                    "bspline_degree": 3,
+                    "bspline_num": 60,
+                    "output_bspline_num": 120,
+                    "seg_idx": 2,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.2634727339451802,
+                        0.7134511778695005,
+                        0.9827131104010817
+                    ]
+                }
+            },
+            "paths_cost": {
+                "B1_B2": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "B1_B3": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 1.0
+                        }
+                    ]
+                ]
+            }
+        },
+        {
+            "group_idx": 3,
+            "segment_degree": 4,
+            "segments": {
+                "0": {
+                    "bspline_degree": 3,
+                    "bspline_num": 40,
+                    "output_bspline_num": 80,
+                    "seg_idx": 0,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.6374409765633584,
+                        0.4185777923212768,
+                        0.2545447569136666
+                    ]
+                },
+                "1": {
+                    "bspline_degree": 3,
+                    "bspline_num": 60,
+                    "output_bspline_num": 120,
+                    "seg_idx": 1,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.4114309438882089,
+                        0.7227006086289998,
+                        0.5838348556126469
+                    ]
+                },
+                "2": {
+                    "bspline_degree": 3,
+                    "bspline_num": 20,
+                    "output_bspline_num": 40,
+                    "seg_idx": 2,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.21613172748707354,
+                        0.4336590553969192,
+                        0.19631114501208236
+                    ]
+                },
+                "3": {
+                    "bspline_degree": 3,
+                    "bspline_num": 60,
+                    "output_bspline_num": 120,
+                    "seg_idx": 3,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.9691020001258734,
+                        0.31313845809993346,
+                        0.5741603535493045
+                    ]
+                },
+                "4": {
+                    "bspline_degree": 3,
+                    "bspline_num": 40,
+                    "output_bspline_num": 80,
+                    "seg_idx": 4,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.4959701960981988,
+                        0.08836768497487735,
+                        0.7052054723109973
+                    ]
+                },
+                "5": {
+                    "bspline_degree": 3,
+                    "bspline_num": 40,
+                    "output_bspline_num": 80,
+                    "seg_idx": 5,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.9950779965769769,
+                        0.42264269599186466,
+                        0.07051100288782874
+                    ]
+                },
+                "6": {
+                    "bspline_degree": 3,
+                    "bspline_num": 5,
+                    "output_bspline_num": 10,
+                    "seg_idx": 6,
+                    "costs": [
+                        {
+                            "method": "control_square_length_cost",
+                            "type": "auto",
+                            "weight": 1.0
+                        }
+                    ],
+                    "relax_conflict_ratio": 0.01,
+                    "min_relax_conflict_thickness": 0.05,
+                    "color": [
+                        0.8794050810129223,
+                        0.26978057227410057,
+                        0.6912989155218625
+                    ]
+                }
+            },
+            "paths_cost": {
+                "T1_T2": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T3": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T4": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T5": [
+                    [
+                        {
+                            "method": "curvature_cost",
+                            "radius_scale": 3.0,
+                            "radius_weight": 0.1,
+                            "cos_threshold": 0.95,
+                            "cos_exponent": 1.5,
+                            "cos_weight": 1.0
+                        },
+                        {
+                            "method": "connector_control_cos_cost",
+                            "weight": 1.0
+                        }
+                    ]
+                ]
+            }
+        }
+    ],
+    "AutoRun": {
+        "learner": "MeanTestLearner",
+        "init_lr": 0.1,
+        "stat_num": 100,
+        "min_lr": 0.05
+    }
+}
