@@ -12,7 +12,7 @@ import pyvista
 from scripts_py.version_9.mapf_pkg.app_utils import FragmentOpen3d
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 from scripts_py.version_9.mapf_pkg.app_smooth import SmoothApp
-from scripts_py.version_9.mapf_pkg.pcd2mesh_utils import Pcd2MeshConverter
+from scripts_py.version_9.mapf_pkg.path2mesh_utils import Path2MeshConverter
 
 
 class MeshApp(SmoothApp):
@@ -41,7 +41,12 @@ class MeshApp(SmoothApp):
                     pcd2mesh_json[group_idx][name] = {
                         'length_reso': 0.2,  # line segment resolution
                         'sphere_reso': 0.15,  # sphere resolution
-                        'relax_factor': 1e-3  # remove resolution
+                        'relax_factor': 0.01,  # remove resolution,
+                        'deplicate_format': 3,
+                        'left_clamp_reso': 0.2,
+                        'right_clamp_reso': 0.2,
+                        'left_clamp_relax_factor': 0.01,
+                        'right_clamp_relax_factor': 0.01
                     }
             with open(pcd2mesh_file, 'w') as f:
                 json.dump(pcd2mesh_json, f, indent=4)
@@ -64,50 +69,46 @@ class MeshApp(SmoothApp):
         group_mesher = {}
         for _, group_cell in h5py.File(res_file).items():
             group_idx = int(group_cell['group_idx'][0])
-            group_mesher[group_idx] = Pcd2MeshConverter()
+            group_mesher[group_idx] = Path2MeshConverter()
 
             for i, (seg_name, xyzr) in enumerate(group_cell['spline'].items()):
                 xyzr = np.array(xyzr)
-                path = xyzr[:, :3]
-                radius = xyzr[0, -1]
-                left_direction, right_direction = None, None
+                path, radius = xyzr[:, :3], xyzr[:, -1]
+                left_dire, right_dire = None, None
+                is_left_clamp_invert, is_right_clamp_invert = None, None
                 with_left_clamp, with_right_clamp = False, False
 
                 for pipe_name, pipe_info in pipe_cfg.items():
                     pipe_xyz = np.array(pipe_info['discrete_position'])
-                    pipe_direction = np.array(pipe_info['direction'])
+                    pipe_dire = np.array(pipe_info['direction'])
 
                     if np.all(np.isclose(path[0] - pipe_xyz, 0.0)):
                         if pipe_info['is_input']:
-                            path = np.concatenate([(path[0] - pipe_direction).reshape((1, -1)), path], axis=0)
+                            is_left_clamp_invert = False
                         else:
-                            path = np.concatenate([(path[0] + pipe_direction).reshape((1, -1)), path], axis=0)
-                        left_direction = pipe_direction
+                            is_left_clamp_invert = True
+                        left_dire = pipe_dire
                         with_left_clamp = True
 
                     if np.all(np.isclose(path[-1] - pipe_xyz, 0.0)):
                         if pipe_info['is_input']:
-                            path = np.concatenate([path, (path[-1] - pipe_direction).reshape((1, -1))], axis=0)
+                            is_right_clamp_invert = False
                         else:
-                            path = np.concatenate([path, (path[-1] + pipe_direction).reshape((1, -1))], axis=0)
-                        right_direction = pipe_direction
+                            is_right_clamp_invert = True
+                        right_dire = pipe_dire
                         with_right_clamp = True
 
                 group_mesher[group_idx].add_segment(
-                    seg_name, path, radius,
-                    left_direction=left_direction, right_direction=right_direction,
-                    with_left_clamp=with_left_clamp, with_right_clamp=with_right_clamp,
-                    reso_info=pcd2mesh_json[group_idx][seg_name]
+                    seg_name, path, radius, cfg=pcd2mesh_json[group_idx][seg_name],
+                    left_dire=left_dire, right_dire=right_dire,
+                    is_left_clamp_invert=is_left_clamp_invert, is_right_clamp_invert=is_right_clamp_invert,
+                    with_left_clamp=with_left_clamp, with_right_clamp=with_right_clamp
                 )
 
             # # ------ debug vis
             # for seg_name, info in group_mesher[group_idx].segment_cell.items():
-            #     info['surface_cell'].generate_pcd_by_sphere(
-            #         length_reso=info['reso_info']['length_reso'],
-            #         sphere_reso=info['reso_info']['sphere_reso'],
-            #         relax_factor=info['reso_info']['relax_factor']
-            #     )
-            #     info['surface_cell'].draw()
+            #     info['path_cell'].generate_pcd(info['cfg'])
+            #     info['path_cell'].draw()
             # # ------
 
             group_mesher[group_idx].generate_pcd_data()
@@ -116,8 +117,8 @@ class MeshApp(SmoothApp):
 
             pcd_ply = pyvista.PolyData(pcd_data)
             pcd_ply.plot()
-            Pcd2MeshConverter.save_ply(pcd_ply, file=os.path.join(mesh_dir, f"group_{group_idx}.ply"))
-
+            Path2MeshConverter.save_ply(pcd_ply, file=os.path.join(mesh_dir, f"group_{group_idx}.ply"))
+    
     def init_path_mesh_widget(self):
         mesh_layout = gui.CollapsableVert("Path Mesh Setup", self.spacing, self.blank_margins)
         self.panel.add_child(mesh_layout)
@@ -130,7 +131,7 @@ class MeshApp(SmoothApp):
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label("step1:"), run_pcd2mesh_btn]),
             ])
         )
-
+    
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Fluid Tool")

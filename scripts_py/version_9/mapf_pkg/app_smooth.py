@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import sys
 import os
+import shutil
+import h5py
 import json
 import open3d as o3d
 import open3d.visualization.gui as gui
@@ -15,7 +17,7 @@ from scripts_py.version_9.mapf_pkg.app_path import PathApp
 from scripts_py.version_9.mapf_pkg.app_utils import FragmentOpen3d
 from scripts_py.version_9.mapf_pkg.smooth_optimizer import PathOptimizer
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
-
+from scripts_py.version_9.mapf_pkg.shape_utils import ShapeUtils
 from scripts_py.version_9.mapf_pkg.torch_utils import MeanTestLearner
 
 
@@ -75,14 +77,33 @@ class SmoothApp(PathApp):
         vis.show()
 
     def _define_path_on_click(self):
+        algo_file = os.path.join(self.proj_dir, 'algorithm_setup.json')
+        if not os.path.exists(algo_file):
+            self.console_label.text = "    [ERROR]: No algorithm_setup.json in the project"
+            return
+
         res_file = os.path.join(self.proj_dir, 'search_result.hdf5')
         if not os.path.exists(res_file):
             self.console_label.text = f"    [INFO]: no search file exist, please generate search result first."
             return
 
+        with open(algo_file, 'r') as f:
+            algo_json = json.load(f)
+
+        pipe_cfg = algo_json['pipes']
+        for pipe_name in pipe_cfg.keys():
+            pipe_cfg[pipe_name].update({
+                'radius_scale': 1.0
+            })
+
         smooth_file = os.path.join(self.proj_dir, 'smooth_setup.json')
         if not os.path.exists(smooth_file):
             smooth_json = {
+                'cfg': {
+                    'path_result_hdf5': res_file,
+                    'grid_cfg': algo_json['grid_env'],
+                    'pipe_cfg': pipe_cfg,
+                },
                 'path_list': [
                     {
                         'name': None,
@@ -91,8 +112,9 @@ class SmoothApp(PathApp):
                     }
                 ],
                 'conflict_setting': {
-                    'obstacle_weight': 100.0,
-                    'path_conflict_weight': 100.0
+                    'obstacle_conflict_weight': 100.0,
+                    'path_conflict_weight': 100.0,
+                    'self_conflict_weight': 100.0
                 },
                 'setting': []
             }
@@ -110,41 +132,67 @@ class SmoothApp(PathApp):
                 json.dump(smooth_json, f, indent=4)
         subprocess.run(f"gedit {smooth_file};", shell=True)
 
-    def _setup_smooth_runner_on_click(self):
-        algo_file = os.path.join(self.proj_dir, 'algorithm_setup.json')
-        if not os.path.exists(algo_file):
-            self.console_label.text = "    [ERROR]: No algorithm_setup.json in the project"
-            return
-
+    def _create_smooth_obstacle_on_click(self):
         smooth_file = os.path.join(self.proj_dir, 'smooth_setup.json')
         if not os.path.exists(smooth_file):
             self.console_label.text = "    [ERROR]: No smooth_setup.json in the project"
             return
 
-        res_file = os.path.join(self.proj_dir, 'search_result.hdf5')
-        if not os.path.exists(res_file):
-            self.console_label.text = f"    [INFO]: no search file exist, please generate search result first."
+        with open(smooth_file, 'r') as f:
+            smooth_json = json.load(f)
+
+        grid_cfg = smooth_json['cfg']['grid_cfg']
+        pipe_cfg = smooth_json['cfg']['pipe_cfg']
+
+        obs_xyz = pd.read_csv(grid_cfg['obstacle_file'], index_col=0)[['x', 'y', 'z', 'radius']].values[:, :3]
+        for pipe_name in pipe_cfg.keys():
+            pipe_info = pipe_cfg[pipe_name]
+            obs_xyz = ShapeUtils.remove_obstacle_point_in_pipe(
+                obs_pcd=obs_xyz,
+                center=pipe_info['discrete_position'],
+                direction=pipe_info['direction'],
+                radius=pipe_info['radius'] * pipe_info['radius_scale'],
+                tol_scale=1.05,
+                is_input=pipe_info['is_input']
+            )
+        obs_df = pd.DataFrame(obs_xyz, columns=['x', 'y', 'z'])
+        obs_df['radius'] = 0.0
+        smooth_obstacle_file = os.path.join(self.proj_dir, 'smooth_obstacle.csv')
+        obs_df.to_csv(smooth_obstacle_file)
+        grid_cfg.update({'smooth_obstacle_file': smooth_obstacle_file})
+
+        with open(smooth_file, 'w') as f:
+            json.dump(smooth_json, f, indent=4)
+
+        pcd_o3d = FragmentOpen3d.create_pcd(obs_xyz)
+        self.add_point_cloud(
+            'smooth_obstacle', pcd_o3d, is_visible=False,
+            param={'type': 'obstacle', 'shape': 'grid_obstacle', 'rgb': [0.2, 0.4, 0.6]}, no_save=True
+        )
+
+    def _setup_smooth_runner_on_click(self):
+        smooth_file = os.path.join(self.proj_dir, 'smooth_setup.json')
+        if not os.path.exists(smooth_file):
+            self.console_label.text = "    [ERROR]: No smooth_setup.json in the project"
             return
 
         with open(smooth_file, 'r') as f:
             smooth_json = json.load(f)
-        with open(algo_file, 'r') as f:
-            algo_json = json.load(f)
 
+        # ------ Step 1 load search result
         path_res = {}
-        for _, res_cell in h5py.File(res_file).items():
+        for _, res_cell in h5py.File(smooth_json['cfg']['path_result_hdf5']).items():
             group_idx = int(res_cell['group_idx'][0])
             path_res[group_idx] = {}
             for name, xyzr in res_cell['path_result'].items():
                 path_res[group_idx][name] = xyzr
 
-        grid_cfg = algo_json['grid_env']
-        pipe_cfg = algo_json['pipes']
-        obs_xyzr = pd.read_csv(grid_cfg['obstacle_file'], index_col=0)[['x', 'y', 'z', 'radius']].values
+        grid_cfg = smooth_json['cfg']['grid_cfg']
+        pipe_cfg = smooth_json['cfg']['pipe_cfg']
+        obs_xyzr = pd.read_csv(grid_cfg['smooth_obstacle_file'], index_col=0)[['x', 'y', 'z', 'radius']].values
 
-        opt = PathOptimizer(grid_cfg, path_res, obs_xyzr, smooth_json['conflict_setting'])
-
-        # ------ Step1: add path
+        # ------ Step 2: add path
+        opt = PathOptimizer(path_res, obs_xyzr, smooth_json['conflict_setting'], grid_cfg)
         for path_info in smooth_json['path_list']:
             begin_name, end_name = path_info['begin_name'], path_info['end_name']
             if (begin_name is None) or (end_name is None):
@@ -164,9 +212,20 @@ class SmoothApp(PathApp):
                 end_vec=np.array(pipe_cfg[end_name]['direction'])
             )
 
+        # # ------ debug for visualization
+        # for group_idx, net_cell in opt.network_cells.items():
+        #     net_cell.draw_points(with_point_type=True)
+        #     net_cell.draw_points(with_point_fix=True)
+        # # ------
+
         # ------ Step2: refit graph
         for setting in smooth_json['setting']:
-            opt.network_cells[setting['group_idx']].refit_graph(setting['segment_degree'])
+            opt.network_cells[setting['group_idx']].assemble_and_refit_graph(setting['segment_degree'])
+
+        # # ------ debug for visualization
+        # for group_idx, net_cell in opt.network_cells.items():
+        #     net_cell.draw_segment(with_control=True, with_spline=False)
+        # # ------
 
         # ------ Just for human edit
         for setting in smooth_json['setting']:
@@ -177,18 +236,37 @@ class SmoothApp(PathApp):
                     continue
                 setting['segments'][seg_idx] = {
                     'bspline_degree': 3,
-                    'bspline_num': 40,
-                    'output_bspline_num': 80,
+                    'bspline_density': None,
+                    'update_bspline_length_threshold': 0.1,
                     'seg_idx': seg_idx,
                     'costs': [
                         {
-                            'method': 'control_square_length_cost',
-                            'type': 'auto',
+                            'method': 'control_spring_length',
+                            'type': 'square_mean',
                             'weight': 1.0
-                        }
+                        },
+                        # {
+                        #     'method': 'segment_constraint',
+                        #     'type': 'upper_value',
+                        #     'value': None,
+                        #     'weight': 1.0
+                        # }
+                        {
+                            'method': 'curvature',
+                            'type': 'upper_value',
+                            'radius_scale': 3.0,
+                            "weight": 1.0
+                        },
+                        # {
+                        #     "method": "control_spring_variance",
+                        #     "type": "range_mean",
+                        #     "range_value": 0.05,
+                        #     "weight": 1.0
+                        # }
                     ],
-                    'relax_conflict_ratio': 0.01,
-                    'min_relax_conflict_thickness': 0.05,
+                    'spring_radius_conflict_ratio': 0.01,
+                    'min_conflict_thickness': 0.05,
+                    'radius_scale': 1.0,
                     'color': np.random.uniform(0.0, 1.0, size=(3,)).tolist()
                 }
 
@@ -199,16 +277,12 @@ class SmoothApp(PathApp):
                 for _ in path_list:
                     setting['paths_cost'][path_name].append([
                         {
-                            'method': 'curvature_cost',
+                            'method': 'connector_curvature',
+                            'type': 'upper_value',
                             'radius_scale': 3.0,
-                            'radius_weight': 0.1,
-                            'cos_threshold': 0.95,
-                            'cos_exponent': 1.5,
-                            'cos_weight': 1.0
-                        },
-                        {
-                            'method': 'connector_control_cos_cost',
-                            'weight': 1.0
+                            'left_num': 3,
+                            'right_num': 3,
+                            "weight": 1.0
                         }
                     ])
 
@@ -230,16 +304,20 @@ class SmoothApp(PathApp):
         # ------ Step3: update optimization info
         for setting in smooth_json['setting']:
             group_idx = setting['group_idx']
-
             for key in list(setting['segments'].keys()):
                 cell = setting['segments'].pop(key)
                 setting['segments'][cell['seg_idx']] = cell
 
-            opt.network_cells[group_idx].update_optimization_info(
-                segment_infos=setting['segments'],
-                path_infos=setting['paths_cost']
-            )
+            # opt.network_cells[group_idx].update_optimize_info(
+            #     segment_infos=setting['segments'], path_infos=setting['paths_cost']
+            # )
+            opt.init_optimize_cfg(group_idx, segment_infos=setting['segments'], path_infos=setting['paths_cost'])
         self.smooth_opt = opt
+
+        # # ------ debug for visualization
+        # for group_idx, net_cell in opt.network_cells.items():
+        #     net_cell.draw_segment(with_control=False, with_spline=False, with_tube=True)
+        # # ------
 
     def _update_segments_on_click(self):
         if self.smooth_opt is None:
@@ -248,7 +326,7 @@ class SmoothApp(PathApp):
 
         for group_idx, net_cell in self.smooth_opt.network_cells.items():
             for seg_idx, seg_cell in net_cell.segments.items():
-                xyzr = seg_cell.get_bspline_xyzr_np(net_cell.control_xyzr_np)
+                xyzr = seg_cell.get_spline_xyzr_np(net_cell.control_xyzr_np)
                 mesh = FragmentOpen3d.create_line(xyzr[:, :3], color=seg_cell.color)
 
                 self.add_point_cloud(
@@ -261,9 +339,9 @@ class SmoothApp(PathApp):
             self, with_control_checkbox: gui.Checkbox, with_spline_checkbox: gui.Checkbox,
             with_obstacle_checkbox: gui.Checkbox, with_tube_checkbox: gui.Checkbox
     ):
-        algo_file = os.path.join(self.proj_dir, 'algorithm_setup.json')
-        with open(algo_file, 'r') as f:
-            algo_json = json.load(f)
+        smooth_file = os.path.join(self.proj_dir, 'smooth_setup.json')
+        with open(smooth_file, 'r') as f:
+            smooth_json = json.load(f)
 
         vis = VisUtils()
         for group_idx, net_cell in self.smooth_opt.network_cells.items():
@@ -276,20 +354,21 @@ class SmoothApp(PathApp):
                     vis.plot(mesh, color=color, point_size=4)
 
                 if with_spline_checkbox.checked:
-                    xyzr = cell.get_output_bspline_xyzr_np(net_cell.control_xyzr_np)
+                    xyzr = cell.get_spline_xyzr_np(net_cell.control_xyzr_np)
                     line_set = VisUtils.create_line_set(np.arange(0, xyzr.shape[0], 1))
                     line_mesh = VisUtils.create_line(xyzr[:, :3], line_set)
                     vis.plot(line_mesh, color, opacity=1.0)
 
                 if with_tube_checkbox.checked:
-                    xyzr = cell.get_output_bspline_xyzr_np(net_cell.control_xyzr_np)
-                    radius = xyzr[:, -1][0]
+                    xyzr = cell.get_spline_xyzr_np(net_cell.control_xyzr_np)
                     line_set = VisUtils.create_line_set(np.arange(0, xyzr.shape[0], 1))
-                    tube_mesh = VisUtils.create_tube(xyzr[:, :3], radius, line_set)
+                    tube_mesh = VisUtils.create_deformation_tube(
+                        xyzr[:, :3], line_set, radius=None, scalars=xyzr[:, -1]
+                    )
                     vis.plot(tube_mesh, color, opacity=1.0)
 
         if with_obstacle_checkbox.checked:
-            obs_df = pd.read_csv(algo_json['grid_env']['obstacle_file'], index_col=0)
+            obs_df = pd.read_csv(smooth_json['cfg']['grid_cfg']['smooth_obstacle_file'], index_col=0)
             mesh = VisUtils.create_point_cloud(obs_df[['x', 'y', 'z']].values)
             vis.plot(mesh, color=(0.3, 0.3, 0.3), opacity=1.0)
 
@@ -307,8 +386,17 @@ class SmoothApp(PathApp):
             self.smooth_tmp['last_step_data'][group_idx] = net_cell.control_xyzr_np.copy()
 
         # ------ prepare tensor
-        for group_idx, net_cell in self.smooth_opt.network_cells.items():
-            net_cell.prepare_tensor()
+        # for group_idx, net_cell in self.smooth_opt.network_cells.items():
+        #     net_cell.prepare_tensor()
+        self.smooth_opt.prepare_tensor_and_self_graph()
+
+        # ------ visualization debug
+        self.smooth_opt.draw_constraints(
+            lr_txt.double_value, with_control=False, with_spline=True,
+            with_path_conflict=False, with_obstacle_conflict=True, with_obstacle=False,
+            with_self_conflict=False
+        )
+        # ------
 
         # ------ start running
         loss_record, loss_info = self.smooth_opt.run(max_iter=int(run_times_txt.double_value), lr=lr_txt.double_value)
@@ -359,8 +447,9 @@ class SmoothApp(PathApp):
             self.smooth_tmp['last_step_data'][group_idx] = net_cell.control_xyzr_np.copy()
 
         # ------ prepare tensor
-        for group_idx, net_cell in self.smooth_opt.network_cells.items():
-            net_cell.prepare_tensor()
+        # for group_idx, net_cell in self.smooth_opt.network_cells.items():
+        #     net_cell.prepare_tensor()
+        self.smooth_opt.prepare_tensor_and_self_graph()
 
         # ------ start running
         loss_info, learner = self.smooth_opt.auto_run(learner)
@@ -410,16 +499,28 @@ class SmoothApp(PathApp):
                         f"seg_{seg_cell.idx}", data=net_cell.control_xyzr_np[seg_cell.pcd_idxs, :]
                     )
                     spline_layer.create_dataset(
-                        f"seg_{seg_cell.idx}", data=seg_cell.get_output_bspline_xyzr_np(net_cell.control_xyzr_np)
+                        f"seg_{seg_cell.idx}", data=seg_cell.get_spline_xyzr_np(net_cell.control_xyzr_np)
                     )
 
                 for name, path_list in net_cell.path_dict.items():
                     for j, path_cell in enumerate(path_list):
                         path_layer.create_dataset(
-                            f"{name}_{j}", data=path_cell.get_output_bspline_xyzr_np(
-                                net_cell.control_xyzr_np, with_terminate_vec=True
+                            f"{name}_{j}", data=path_cell.get_spline_xyzr_np(
+                                net_cell.control_xyzr_np, fill_terminate_vec=False
                             )
                         )
+
+    def loss_check_on_click(self):
+        if self.smooth_opt is not None:
+            self.smooth_opt.prepare_tensor_and_self_graph()
+
+            loss_info = self.smooth_opt.loss_check()
+            plt.figure()
+            plt.title('loss fragment')
+            plt.barh(list(loss_info.keys()), loss_info.values())
+            for i, (key, value) in enumerate(loss_info.items()):
+                plt.text(value, i, f"{value:.3f}")
+            plt.show()
 
     def init_path_smooth_widget(self):
         smoother_layout = gui.CollapsableVert("Path Smooth Setup", self.spacing, self.blank_margins)
@@ -475,6 +576,11 @@ class SmoothApp(PathApp):
             with_obstacle_checkbox=with_obstacle_checkbox, with_tube_checkbox=with_tube_checkbox
         ))
 
+        loss_check_btn = FragmentOpen3d.get_widget('button', {'name': 'loss check'})
+        loss_check_btn.set_on_clicked(self.loss_check_on_click)
+        init_smooth_obstacle_btn = FragmentOpen3d.get_widget('button', {'name': 'obstacle init'})
+        init_smooth_obstacle_btn.set_on_clicked(self._create_smooth_obstacle_on_click)
+
         smoother_layout.add_child(
             FragmentOpen3d.get_layout_widget('vert', [
                 FragmentOpen3d.get_layout_widget('horiz', [with_line_checkbox, with_tube_checkbox]),
@@ -486,16 +592,38 @@ class SmoothApp(PathApp):
                 vis_search_result_btn,
                 vis_spline_result_btn,
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step1:'), define_path_btn]),
-                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step2:'), setup_smooth_runner_btn]),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step2:'), init_smooth_obstacle_btn]),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step3:'), setup_smooth_runner_btn]),
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('check_path:'), update_path_visual_btn]),
-                gui.Label('step3:'),
+                gui.Label('step4:'),
                 FragmentOpen3d.get_layout_widget('horiz', [
                     gui.Label('run_times:'), run_times_txt, gui.Label('lr:'), lr_txt
                 ], 4),
+                loss_check_btn,
                 FragmentOpen3d.get_layout_widget('horiz', [run_smooth_btn, revert_smooth_btn], 4),
                 FragmentOpen3d.get_layout_widget('horiz', [auto_smooth_btn, save_smooth_btn], 4),
             ], 3, self.vert_margins)
         )
+
+    def hdf52csv(self):
+        data = h5py.File(os.path.join(self.proj_dir, 'smooth_result.hdf5'))
+        save_dir = os.path.join(self.proj_dir, 'excel')
+        if not os.path.exists(save_dir):
+            os.mkdir(save_dir)
+
+        for group_idx in data.keys():
+            group_data = data[group_idx]
+            spline_data = group_data['spline']
+
+            group_dir = os.path.join(save_dir, f'group_{group_idx}')
+            if os.path.exists(group_dir):
+                shutil.rmtree(group_dir)
+            os.mkdir(group_dir)
+
+            for name in spline_data:
+                path = np.array(spline_data[name])
+                path_df = pd.DataFrame(path, columns=['x', 'y', 'z', 'radius'])
+                path_df.to_csv(os.path.join(group_dir, f"{name}.csv"))
 
 
 def parse_args():

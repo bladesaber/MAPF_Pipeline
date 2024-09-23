@@ -39,7 +39,7 @@ class TorchUtils(object):
             return data.numpy()
 
     @staticmethod
-    def tensor_grad2np(data: torch.Tensor):
+    def grad2np(data: torch.Tensor):
         return TorchUtils.tensor2np(data.grad)
 
     @staticmethod
@@ -49,70 +49,6 @@ class TorchUtils(object):
     @staticmethod
     def concatenate(datas: List[torch.Tensor], dim=-1):
         return torch.concatenate(datas, dim=dim)
-
-    @staticmethod
-    def compute_segment_length(path_pcd: torch.Tensor):
-        return torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1)
-
-    @staticmethod
-    def compute_menger_curvature(path_pcd: torch.Tensor):
-        """
-        这个方法的问题是，它属于3点成圆方法，其优化的曲率是离散的
-        menger curvature无法提供好的精梯度指引
-        """
-        pcd0 = path_pcd[:-2, :]
-        pcd1 = path_pcd[1:-1, :]
-        pcd2 = path_pcd[2:, :]
-
-        a_lengths = torch.norm(pcd1 - pcd0, p=2, dim=1)
-        b_lengths = torch.norm(pcd2 - pcd1, p=2, dim=1)
-        c_lengths = torch.norm(pcd0 - pcd2, p=2, dim=1)
-        s = (a_lengths + b_lengths + c_lengths) * 0.5
-        # be careful, if value equal to 0, will cause nan grad
-        A = torch.sqrt(s * (s - a_lengths) * (s - b_lengths) * (s - c_lengths) + 1e-16)
-        radius = a_lengths * b_lengths * c_lengths * 0.25 / A
-        return radius
-
-    @staticmethod
-    def compute_approximate_curvature(path_pcd: torch.Tensor):
-        vec0 = path_pcd[1:-1, :] - path_pcd[:-2, :]
-        vec1 = path_pcd[2:, :] - path_pcd[1:-1, :]
-        vec0_length = torch.norm(vec0, p=2, dim=1)
-        vec1_length = torch.norm(vec1, p=2, dim=1)
-
-        # pytorch存在比较大的浮点算术误差，这里cos_val可能大于1.0或小于-1.0
-        cos_val = torch.sum(vec0 * vec1, dim=1) / (vec0_length * vec1_length + 1e-16)
-        cos_val = torch.clamp(cos_val, -0.9999999999, 0.9999999999)
-
-        arc_theta = torch.arccos(cos_val)
-        # arc_theta = torch.log((1.0 - cos_val) * 500.0 + 1.0) * 0.48
-        curvature = arc_theta / torch.minimum(vec0_length, vec1_length)
-        return curvature
-
-    @staticmethod
-    def compute_spline_curvature(path_pcd: torch.Tensor, order1_mat: torch.Tensor, order2_mat: torch.Tensor):
-        """
-        这个方法无法用于拼接的样条
-        """
-        pcd_order1 = order1_mat.matmul(path_pcd)
-        pcd_order2 = order2_mat.matmul(path_pcd)
-
-        a = torch.cross(pcd_order1, pcd_order2, dim=1)
-        a = torch.norm(a, dim=1, p=2)
-
-        b = torch.norm(pcd_order1, dim=1, p=2)
-        b = torch.pow(b, 3.0)
-
-        return a / (b + 1e-8)
-
-    @staticmethod
-    def compute_cos_val(path_pcd: torch.Tensor):
-        vec0 = path_pcd[1:-1, :] - path_pcd[:-2, :]
-        vec1 = path_pcd[2:, :] - path_pcd[1:-1, :]
-        a = torch.sum(vec0 * vec1, dim=1)
-        vec0_length = torch.norm(vec0, p=2, dim=1)
-        vec1_length = torch.norm(vec1, p=2, dim=1)
-        return a / (vec0_length * vec1_length + 1e-16)
 
     @staticmethod
     def get_optimizer(parameters: List[torch.Tensor], lr: float):
@@ -131,6 +67,110 @@ class TorchUtils(object):
             for para in parameters:
                 para -= para.grad * lr
                 para.grad.zero_()
+
+
+class CostUtils(object):
+    @staticmethod
+    def compute_spring_length_cost(path_pcd: torch.Tensor, cfg: Dict):
+        weight = cfg['weight']
+        if cfg['type'] == 'norm_sum':
+            length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1).sum()
+            return length * weight
+        elif cfg['type'] == 'specify_value':
+            length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1).sum()
+            ratio = length / cfg['length'] - 1.0
+            return torch.sqrt(torch.pow(ratio, 2.0)) * weight
+        elif cfg['type'] == 'bottom_value':
+            length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1).sum()
+            ratio = F.relu(cfg['length'] / (length + 1e-2) - 1.0)
+            return ratio * weight
+        elif cfg['type'] == 'upper_value':
+            length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1).sum()
+            ratio = F.relu(length / cfg['length'] - 1.0)
+            return ratio * weight
+        elif cfg['type'] == 'square_mean':
+            square_length = (torch.pow(path_pcd[1:, :] - path_pcd[:-1, :], 2.0)).sum(dim=1)
+            cost = square_length.mean()
+            return cost * weight
+        else:
+            raise ValueError()
+
+    @staticmethod
+    def compute_spring_variance_cost(path_pcd: torch.Tensor, cfg: Dict):
+        weight = cfg['weight']
+        if cfg['type'] == 'square_mean':
+            sub_lengths = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1)
+            mean_length = sub_lengths.mean()
+            variance = (torch.pow(sub_lengths - mean_length, 2.0)).mean()
+            return variance * weight
+        elif cfg['type'] == 'range_mean':
+            sub_lengths = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1)
+            mean_length = sub_lengths.mean()
+            variance = F.relu(torch.abs(sub_lengths / mean_length - 1.0) - cfg['range_value'])
+            variance = variance.mean()
+            return variance * weight
+        else:
+            raise ValueError()
+
+    @staticmethod
+    def compute_approximate_curvature(path_pcd: torch.Tensor):
+        vec0 = path_pcd[1:-1, :] - path_pcd[:-2, :]
+        vec1 = path_pcd[2:, :] - path_pcd[1:-1, :]
+        vec0_length = torch.norm(vec0, p=2, dim=1)
+        vec1_length = torch.norm(vec1, p=2, dim=1)
+
+        # pytorch存在比较大的浮点算术误差，这里cos_val可能大于1.0或小于-1.0
+        cos_val = torch.sum(vec0 * vec1, dim=1) / (vec0_length * vec1_length + 1e-16)
+        cos_val = torch.clamp(cos_val, -0.9999999999, 0.9999999999)
+
+        arc_theta = torch.arccos(cos_val)
+        # arc_theta = torch.log((1.0 - cos_val) * 500.0 + 1.0) * 0.48
+        curvature = arc_theta / torch.minimum(vec0_length, vec1_length)
+        return curvature
+
+    @staticmethod
+    def compute_cos_val(path_pcd: torch.Tensor):
+        vec0 = path_pcd[1:-1, :] - path_pcd[:-2, :]
+        vec1 = path_pcd[2:, :] - path_pcd[1:-1, :]
+        a = torch.sum(vec0 * vec1, dim=1)
+        vec0_length = torch.norm(vec0, p=2, dim=1)
+        vec1_length = torch.norm(vec1, p=2, dim=1)
+        return a / (vec0_length * vec1_length + 1e-16)
+
+    @staticmethod
+    def compute_curvature_cost(path_pcd: torch.Tensor, cfg: Dict):
+        weight = cfg['weight']
+        if cfg['type'] == 'raw':
+            curvature = CostUtils.compute_approximate_curvature(path_pcd)
+            return (curvature.max() + curvature.mean()) * weight
+        elif cfg['type'] == 'upper_value':
+            curvature = CostUtils.compute_approximate_curvature(path_pcd)
+            ratio = (curvature - cfg['value']) / cfg['value']
+            return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
+        else:
+            raise ValueError
+
+    @staticmethod
+    def compute_segment_constraint(path_pcd: torch.Tensor, cfg: Dict):
+        weight = cfg['weight']
+        if cfg['type'] == 'upper_value':
+            seg_length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1)
+            ratio = seg_length / cfg['value'] - 1.0
+            return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
+        else:
+            raise ValueError
+
+    @staticmethod
+    def compute_connector_curvature_cost(left_pcd: torch.Tensor, right_pcd: torch.Tensor, cfg: Dict):
+        path_pcd = TorchUtils.concatenate([
+            left_pcd[-cfg['left_num']:], right_pcd[:cfg['right_num']]
+        ], dim=0)
+        return CostUtils.compute_curvature_cost(path_pcd, cfg)
+
+    @staticmethod
+    def compute_shape_conflict_cost(pcd0: torch.Tensor, pcd1: torch.Tensor, require_dist: np.ndarray, weight: float):
+        require_dist = TorchUtils.np2tensor(require_dist.reshape((-1, 1)), require_grad=False)
+        return F.relu(require_dist - torch.norm(pcd0 - pcd1, p=2, dim=1)) * weight
 
 
 class MeanTestLearner(object):

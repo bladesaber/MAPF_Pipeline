@@ -10,7 +10,7 @@ from build import mapf_pipeline
 from scripts_py.version_9.mapf_pkg.cbs_utils import CbsSolver
 from scripts_py.version_9.mapf_pkg.smooth_optimizer import PathOptimizer
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
-from scripts_py.version_9.mapf_pkg.pcd2mesh_utils import Pcd2MeshConverter
+from scripts_py.version_9.mapf_pkg.path2mesh_utils import Pcd2MeshConverter
 
 
 def debug_kdtree():

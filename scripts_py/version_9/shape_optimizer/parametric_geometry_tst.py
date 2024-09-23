@@ -2,7 +2,7 @@ import numpy as np
 from typing import List, Dict
 import pyvista
 
-from scripts_py.version_9.mapf_pkg.smooth_utils import BsplineUtils
+from scripts_py.version_9.mapf_pkg.bspline_utils import BsplineUtils
 
 
 class SurfaceBspline(object):
