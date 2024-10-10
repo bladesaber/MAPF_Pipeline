@@ -12,14 +12,22 @@ from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 
 class Pcd2MeshUtils(object):
     @staticmethod
-    def pcd2mesh(pcd_file: str, sample_num: int, output_cfg: Dict):
+    def pcd2mesh(pcd_file: str, output_cfg: Dict, sample_num=-1, threshold: float = 0.8):
         import pymeshlab
+        from pymeshlab import pmeshlab
+
         ms = pymeshlab.MeshSet()
         ms.load_new_mesh(pcd_file)
         ms.apply_filter('compute_normal_for_point_clouds')
         ms.apply_filter('generate_surface_reconstruction_screened_poisson')
-        ms.apply_filter('generate_sampling_poisson_disk', samplenum=sample_num)
-        ms.apply_filter('generate_surface_reconstruction_screened_poisson')
+
+        if sample_num > 0:
+            ms.apply_filter('generate_sampling_poisson_disk', samplenum=sample_num)
+            ms.apply_filter('generate_surface_reconstruction_screened_poisson')
+
+        if threshold > 0.0:
+            ms.apply_filter('meshing_decimation_clustering', threshold=pmeshlab.PercentageValue(threshold))
+
         ms.save_current_mesh(output_cfg['file'], **output_cfg['cfg'])
 
 

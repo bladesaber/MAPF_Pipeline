@@ -293,6 +293,7 @@ class PathApp(EnvironmentApp):
                             h5df_group[group_idx] = group_set.create_group("path_result")
 
                         for task_name, xyzr in group_res.items():
+                            print(f"[Info]: Saving {task_name} ......")
                             h5df_group[group_idx].create_dataset(task_name, data=xyzr)
 
         if success_flag:

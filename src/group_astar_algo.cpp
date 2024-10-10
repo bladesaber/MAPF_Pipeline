@@ -120,6 +120,9 @@ bool GroupAstar::find_path(
         if (!is_success) {
             break;
         }
+         else {
+             cout << iter.task_name << " success in " << solver.search_time_cost << "s." << endl;
+         }
         res_list[iter.task_name] = sub_path;
         num_expanded += solver.num_expanded;
         num_generated += solver.num_generated;

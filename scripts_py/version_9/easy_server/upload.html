@@ -16,8 +16,12 @@
             formData.append('csv_file', csvfileInput.files[0]);
 
             // Append a parameter
-            formData.append('param_1', 10);
-            formData.append('param_2', 'str test');
+            // formData.append('param_1', 10);
+            // formData.append('param_2', 'str test');
+            formData.append('proj_id', "proj1");
+            formData.append('cfg', {
+                "operation": "init_project"
+            });
 
             // Append JSON data as a string
             const jsonData = {

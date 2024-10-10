@@ -252,13 +252,13 @@ class CbsSolver(object):
     def solve_block(
             self, root: CbsNode, group_idxs: List[int], max_iter: int, max_node_limit: int
     ) -> (bool, CbsNode):
-        # ----- just for debug
-        for group_idx in group_idxs:
-            self.draw_node_3D(
-                root, [], self.task_infos, self.pipe_cfg, highlight_group_idx=group_idx,
-                obstacle_df=self.obstacle_df
-            )
-        # -----
+        # # ----- just for debug
+        # for group_idx in group_idxs:
+        #     self.draw_node_3D(
+        #         root, [], self.task_infos, self.pipe_cfg, highlight_group_idx=group_idx,
+        #         obstacle_df=self.obstacle_df
+        #     )
+        # # -----
 
         for group_idx in group_idxs:
             is_success = root.update_group_path(group_idx, max_iter)
@@ -428,6 +428,7 @@ class CbsSolver(object):
             obstacle_df: pd.DataFrame = None,
             vis: VisUtils = None
     ):
+        # todo 可视化水平不够，不能显示之前优先级的回路
         if vis is None:
             vis = VisUtils()
 

@@ -34,7 +34,7 @@ class SelfConflictCell(object):
 
 class SelfConflictGraph(object):
     @staticmethod
-    def create_float_graph(net_cell: smooth_segment_utils.NetworkPath, inner_set_length: float, decimals_r=1e-8):
+    def create_float_graph(net_cell: smooth_segment_utils.NetworkSimplePath, inner_set_length: float, decimals_r=1e-8):
         df = []
         for seg_idx, seg_cell in net_cell.segments.items():
             pcd = TorchUtils.tensor2np(seg_cell.tensor_info['path_pcd_t'])
@@ -108,7 +108,7 @@ class SelfConflictGraph(object):
     @staticmethod
     def find_self_conflict_pair(
             unit_lr: float, df: pd.DataFrame, inner_set_dict: Dict[int, List[int]],
-            group_idx: int, net_cell: smooth_segment_utils.NetworkPath,
+            group_idx: int, net_cell: smooth_segment_utils.NetworkSimplePath,
     ):
         pcds = df[['x', 'y', 'z']].values
         radius = df['radius'].values
@@ -211,12 +211,16 @@ class ObstacleConflictCell(object):
 class PathOptimizer(object):
     def __init__(
             self,
-            paths_result: Dict[int, Dict[str, np.ndarray]],
+            init_seg_result: Dict[int, Dict[str, Union[np.ndarray, Dict]]],
             obstacle_xyzr: np.ndarray, conflict_cfg: Dict, grid_cfg: Dict
     ):
-        self.network_cells: Dict[int, smooth_segment_utils.NetworkPath] = {}
-        for group_idx, path_dict in paths_result.items():
-            self.network_cells[group_idx] = smooth_segment_utils.NetworkPath(path_dict, group_idx, grid_cfg)
+        self.network_cells: Dict[int, smooth_segment_utils.NetworkSimplePath] = {}
+        for group_idx, group_seg_cfgs in init_seg_result.items():
+            self.network_cells[group_idx] = smooth_segment_utils.NetworkSimplePath(group_idx, grid_cfg)
+            self.network_cells[group_idx].assemble_graph(
+                path_dict=group_seg_cfgs['path_dict'],
+                graph_cfg=group_seg_cfgs['graph_cfg']
+            )
 
         self.obstacle_xyzr = obstacle_xyzr
         self.obstacle_num = self.obstacle_xyzr.shape[0]
@@ -488,7 +492,10 @@ class PathOptimizer(object):
                 for group_idx, net_cell in self.network_cells.items():
                     grad = net_cell.control_pcd_tensor.grad
                     grad[net_cell.fix_pcd_idxs, :] = 0.0
-                    grad = grad / (torch.norm(grad, p=2, dim=1, keepdim=True) + 1e-8)
+
+                    # grad = grad / (torch.norm(grad, p=2, dim=1, keepdim=True) + 1e-8)
+                    grad = grad / grad.abs().max()  # it works
+
                     net_cell.control_pcd_tensor -= grad * lr
                     net_cell.control_pcd_tensor.grad.zero_()
 
@@ -566,13 +573,18 @@ class PathOptimizer(object):
 
         return loss_info_np, learner
 
-    def loss_check(self):
+    def loss_check(self, lr):
         loss_info = {}
         for group_idx, net_cell in self.network_cells.items():
             for name, cost in net_cell.compute_segment_cost().items():
                 loss_info[f"{group_idx}_{name}"] = cost
             for name, cost in net_cell.compute_path_cost().items():
                 loss_info[f"{group_idx}_{name}"] = cost
+
+        lr_unit = np.linalg.norm(np.array([lr, lr, lr]))
+        self.find_path_conflict_cells(lr_unit)
+        self.find_obstacle_conflict_cells(lr_unit)
+        loss_info.update(self.compute_conflict_cost())
 
         loss_info_np = {}
         for key in list(loss_info.keys()):
@@ -586,7 +598,7 @@ class PathOptimizer(object):
     def draw_constraints(
             self, lr_unit=None, vis: VisUtils = None, with_control=True, with_spline=True,
             with_obstacle_conflict=True, with_path_conflict=True, with_self_conflict=True,
-            with_obstacle=True
+            with_obstacle=True, with_real_conflict=False
     ):
         if lr_unit is not None:
             self.find_obstacle_conflict_cells(lr_unit)
@@ -624,6 +636,16 @@ class PathOptimizer(object):
                 pcd0 = TorchUtils.tensor2np(seg_cell.tensor_info['path_pcd_t'][cell.conflict_pcd_idxs, :])
                 pcd1 = self.obstacle_xyzr[cell.obs_pcd_idxs, :3]
 
+                if with_real_conflict:
+                    dists = np.linalg.norm(pcd0 - pcd1, axis=1)
+                    conflict_bool = dists < cell.require_distance
+                    if conflict_bool.sum() == 0:
+                        continue
+                    pcd0 = pcd0[conflict_bool]
+                    pcd1 = pcd1[conflict_bool]
+                    max_conflict = np.max(cell.require_distance[conflict_bool] - dists[conflict_bool])
+                    print(f'[INFO {cell.group_idx}/{cell.segment_idx}]: obstacle max conflict {max_conflict};')
+
                 pcd0_idxs = np.arange(0, pcd0.shape[0], 1)
                 pcd1_idxs = pcd0_idxs + pcd0.shape[0]
                 pcd = np.concatenate([pcd0, pcd1], axis=0)
@@ -640,6 +662,18 @@ class PathOptimizer(object):
                 seg1_cell = self.network_cells[cell.group_idx1].segments[cell.segment_idx1]
                 pcd0 = TorchUtils.tensor2np(seg0_cell.tensor_info['path_pcd_t'][cell.conflict_pcd0_idxs, :])
                 pcd1 = TorchUtils.tensor2np(seg1_cell.tensor_info['path_pcd_t'][cell.conflict_pcd1_idxs, :])
+
+                if with_real_conflict:
+                    dists = np.linalg.norm(pcd0 - pcd1, axis=1)
+                    conflict_bool = dists < cell.require_distance
+                    if conflict_bool.sum() == 0:
+                        continue
+                    pcd0 = pcd0[conflict_bool]
+                    pcd1 = pcd1[conflict_bool]
+                    max_conflict = np.max(cell.require_distance[conflict_bool] - dists[conflict_bool])
+                    print(f'[INFO {cell.group_idx0}/{cell.segment_idx0}-{cell.group_idx1}/{cell.segment_idx1}]: '
+                          f'path max conflict {max_conflict};')
+
                 pcd0_idxs = np.arange(0, pcd0.shape[0], 1)
                 pcd1_idxs = pcd0_idxs + pcd0.shape[0]
                 pcd = np.concatenate([pcd0, pcd1], axis=0)

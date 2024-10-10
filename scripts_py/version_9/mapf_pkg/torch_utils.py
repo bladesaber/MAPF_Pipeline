@@ -92,6 +92,10 @@ class CostUtils(object):
             square_length = (torch.pow(path_pcd[1:, :] - path_pcd[:-1, :], 2.0)).sum(dim=1)
             cost = square_length.mean()
             return cost * weight
+        elif cfg['type'] == 'square_sum':
+            square_length = (torch.pow(path_pcd[1:, :] - path_pcd[:-1, :], 2.0)).sum(dim=1)
+            cost = square_length.sum()
+            return cost * weight
         else:
             raise ValueError()
 
@@ -157,6 +161,10 @@ class CostUtils(object):
             seg_length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1)
             ratio = seg_length / cfg['value'] - 1.0
             return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
+        elif cfg['type'] == 'variance':
+            seg_length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1)
+            cost = torch.pow(seg_length - seg_length.mean(), 2.0).sum()
+            return cost * weight
         else:
             raise ValueError
 

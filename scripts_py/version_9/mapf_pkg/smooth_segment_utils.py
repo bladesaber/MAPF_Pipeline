@@ -1,6 +1,4 @@
 import math
-
-import h5py
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -15,15 +13,8 @@ from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 from scripts_py.version_9.mapf_pkg.bspline_utils import BsplineUtils
 
 
-# todo
-#  1.添加半径膨胀约束
-#  2.应关注local neighbour search的路径搜索问题
-#  3.要减少控制点
-#  4.控制点抖动是问题之一
-
-
 class SegmentCell(object):
-    def __init__(self, idx: int, flags: List[int], color: Tuple = (1.0, 0.0, 0.0)):
+    def __init__(self, idx: Union[int, str], flags: List[int], color: Tuple = (1.0, 0.0, 0.0)):
         self.idx = idx
         self.color = color
         self.flags = flags
@@ -143,22 +134,26 @@ class PathCell(object):
 
             self.tensor_info['paths_pcd_t'].append(seg_pcd_t)
 
-    def get_spline_xyzr_np(self, control_xyzr: np.ndarray, fill_terminate_vec=False):
+    def get_spline_xyzr_np(self, control_xyzr: np.ndarray, fill_terminate_vec=False, is_split=False):
         path = []
         for i, cell in enumerate(self.segments):
             xyzr = cell.get_spline_xyzr_np(control_xyzr)
-            if i > 0:
-                xyzr = xyzr[1:, :]
+            if i == 0 and fill_terminate_vec:
+                begin_terminate = xyzr[0:1, :].copy()
+                begin_terminate[0, :3] = begin_terminate[0, :3] - self.begin_vec
+                xyzr = np.concatenate([begin_terminate, xyzr], axis=0)
+            elif i == len(self.segments) - 1 and fill_terminate_vec:
+                end_terminate = xyzr[-1:, :].copy()
+                end_terminate[0, :3] = end_terminate[0, :3] + self.end_vec
+                xyzr = np.concatenate([xyzr, end_terminate], axis=0)
+
+            if not is_split:
+                if i > 0:
+                    xyzr = xyzr[1:, :]
             path.append(xyzr)
-        path = np.concatenate(path, axis=0)
 
-        if fill_terminate_vec:
-            begin_terminate = path[0:1, :].copy()
-            begin_terminate[:3] = begin_terminate[0, :3] - self.begin_vec
-            end_terminate = path[-1:, :].copy()
-            end_terminate[:3] = end_terminate[0, :3] + self.end_vec
-            path = np.concatenate([begin_terminate, path, end_terminate], axis=0)
-
+        if not is_split:
+            path = np.concatenate(path, axis=0)
         return path
 
 
@@ -265,7 +260,7 @@ class NetworkPath(object):
 
             self.path_dict[name].append(PathCell(segment_list, begin_vec, end_vec))
 
-    def assemble_and_refit_graph(self, degree: int = 0):
+    def assemble_and_expand_graph(self, degree: int = 0):
         for key in list(self.segments.keys()):
             cell = self.segments.pop(key)
             self.segments[cell.idx] = cell
@@ -359,7 +354,9 @@ class NetworkPath(object):
             for cfg in seg_cell.cost_cfgs:
                 if cfg['method'] == 'spring_length':
                     cost = CostUtils.compute_spring_length_cost(seg_cell.tensor_info['path_pcd_t'], cfg)
-                elif cfg['method'] == 'segment_constraint':
+                elif cfg['method'] == 'control_distribute_constraint':
+                    cost = CostUtils.compute_segment_constraint(self.control_pcd_tensor[seg_cell.pcd_idxs, :], cfg)
+                elif cfg['method'] == 'spline_distribute_constraint':
                     cost = CostUtils.compute_segment_constraint(seg_cell.tensor_info['path_pcd_t'], cfg)
                 elif cfg['method'] == 'curvature':
                     radius_np = seg_cell.spline_info['radius']
@@ -408,11 +405,11 @@ class NetworkPath(object):
             self.control_pcd_tensor -= self.control_pcd_tensor.grad * lr
             self.control_pcd_tensor.grad.zero_()
 
-    def draw_network(self):
-        pos = nx.spring_layout(self.graph)
-        nx.draw_networkx_nodes(self.graph, pos, node_color='lightblue', node_size=500)
-        nx.draw_networkx_edges(self.graph, pos, edge_color='black', width=1)
-        nx.draw_networkx_labels(self.graph, pos, font_size=12)
+    def draw_network(self, graph):
+        pos = nx.spring_layout(graph)
+        nx.draw_networkx_nodes(graph, pos, node_color='lightblue', node_size=500)
+        nx.draw_networkx_edges(graph, pos, edge_color='black', width=1)
+        nx.draw_networkx_labels(graph, pos, font_size=12)
         plt.show()
 
     def draw_segment(self, with_control=True, with_spline=False, with_tube=False, vis: VisUtils = None):
@@ -486,14 +483,227 @@ class NetworkPath(object):
         if show_plot:
             vis.show()
 
-    def draw_path(self, is_tensor=False):
+    def draw_path(self, with_control_points=False, with_spline=False, is_tensor=False):
         for name, path_list in self.path_dict.items():
             for path_cell in path_list:
-                if is_tensor:
-                    merge_path_t = TorchUtils.concatenate(path_cell.tensor_info['paths_pcd_t'], dim=0)
-                    pcd = TorchUtils.tensor2np(merge_path_t)
+                if with_spline:
+                    if is_tensor:
+                        merge_path_t = TorchUtils.concatenate(path_cell.tensor_info['paths_pcd_t'], dim=0)
+                        pcd = TorchUtils.tensor2np(merge_path_t)
+                    else:
+                        pcd = path_cell.get_spline_xyzr_np(self.control_xyzr_np)[:, :3]
+                    line_set = VisUtils.create_line_set(np.arange(0, pcd.shape[0], 1))
+                    mesh = VisUtils.create_line(pcd, line_set)
+                    mesh.plot()
+
+                if with_control_points:
+                    vis = VisUtils()
+                    for seg_cell in path_cell.segments:
+                        pcd = self.control_xyzr_np[seg_cell.pcd_idxs, :3]
+                        line_set = VisUtils.create_line_set(np.arange(0, pcd.shape[0], 1))
+                        mesh = VisUtils.create_line(pcd, line_set)
+                        color = np.random.uniform(0.0, 1.0, size=3)
+                        vis.plot(mesh, color)
+                    vis.show()
+
+
+class NetworkSimplePath(NetworkPath):
+    def __init__(self, group_idx: int, grid_cfg: Dict):
+        """
+        params:
+            path_dict: Dict(path_name, xyzr[n x 4]), xyz should be integer path
+        """
+        self.group_idx = group_idx
+        self.encode_cfg = self.get_encode_cfg(grid_cfg)
+
+        self.node_graph: nx.Graph = None
+        self.control_xyzr_np: np.ndarray = None
+        self.node2info: Dict[Union[int, str], Dict[str, Union[int, float, str, np.ndarray]]] = None
+
+        self.node_graph: nx.Graph = None
+        self.segments: Dict[Union[Tuple, int, str], SegmentCell] = None
+        self.path_dict: Dict[str, List[PathCell]] = {}  # 多个工况路径
+
+        self.control_pcd_tensor: torch.Tensor = None
+        self.fix_pcd_idxs: np.ndarray = None
+
+    @staticmethod
+    def encode_segment_tag(flags: List[int]):
+        if len(flags) < 4:
+            label_flags = flags
+        else:
+            label_flags = [flags[0], flags[1], flags[-2], flags[-1]]
+        return tuple(np.sort(np.array(label_flags)))
+
+    def assemble_graph(self, path_dict: Dict[str, np.ndarray], graph_cfg: Dict):
+        # ------ Step 1 find all segments
+        tmp_graph, tmp_node2xyzr = nx.Graph(), {}
+        for task_name, xyzr_np in path_dict.items():
+            last_flag = None
+            for i, xyzr in enumerate(xyzr_np):
+                flag = self.encode_xyz(xyzr[:3], self.encode_cfg)
+                tmp_node2xyzr[flag] = xyzr
+                if i > 0:
+                    tmp_graph.add_edge(last_flag, flag)
+                last_flag = flag
+
+        # ------ travel all path to generate all segments
+        terminal_nodes = []
+        for node in tmp_graph.nodes:
+            if tmp_graph.degree(node) == 1:
+                terminal_nodes.append(node)
+
+        seg_book = {}
+        begin_flag = terminal_nodes[0]
+        for end_flag in terminal_nodes[1:]:
+            path_flag_list = nx.all_simple_paths(tmp_graph, begin_flag, end_flag)
+            for path_flags in path_flag_list:
+                seg_flag, seg_xyzr = [], []
+                path_length = len(path_flags)
+                for i, flag in enumerate(path_flags):
+                    seg_flag.append(flag)
+                    seg_xyzr.append(tmp_node2xyzr[flag])
+                    if tmp_graph.degree(flag) <= 2 and (i < path_length - 1):  # node is in the middle and degree = 2
+                        continue
+
+                    seg_flag_data = seg_flag.copy()
+                    seg_xyzr_data = np.array(seg_xyzr.copy())
+                    seg_tag = self.encode_segment_tag(seg_flag_data)
+                    if seg_tag not in seg_book.keys():
+                        seg_book[seg_tag] = {
+                            'flags': seg_flag_data,
+                            'xyzr_np': seg_xyzr_data
+                        }
+
+                    seg_flag = seg_flag[-1:]  # save as begin of segment
+                    seg_xyzr = seg_xyzr[-1:]
+
+        # ------ Step 2 refit graph
+        node_graph = nx.Graph()
+        control_xyzr_np = []
+        node2info = {}
+        segments = {}
+        segment_degree_min, segment_degree_max = graph_cfg['segment_degree_min'], graph_cfg['segment_degree_max']
+        assert segment_degree_min > 4
+        extend_flag_idx = np.max(list(tmp_graph.nodes)) + 1
+
+        for seg_idx, (_, seg_book) in enumerate(seg_book.items()):
+            seg_idx = f"seg_{seg_idx}"
+            seg_length = len(seg_book['flags'])
+            xyzr_np = seg_book['xyzr_np']
+            seg_flags = seg_book['flags']
+
+            if seg_length < segment_degree_min:
+                while seg_length < segment_degree_min:
+                    expand_xyzr, expand_flags = [], []
+                    for i in range(xyzr_np.shape[0] - 1):
+                        expand_xyzr.append(xyzr_np[i])
+                        expand_xyzr.append((xyzr_np[i] + xyzr_np[i + 1]) * 0.5)
+
+                        expand_flags.append(seg_flags[i])
+                        expand_flags.append(extend_flag_idx)
+                        extend_flag_idx += 1
+
+                    expand_xyzr.append(xyzr_np[-1])
+                    expand_flags.append(seg_flags[-1])
+
+                    xyzr_np = np.array(expand_xyzr)
+                    seg_flags = expand_flags.copy()
+                    seg_length = len(seg_flags)
+
+            elif seg_length > segment_degree_max:
+                important_bool = np.zeros(len(seg_flags), dtype=bool)
+                for j, flag in enumerate(seg_flags):
+                    if tmp_graph.degree(flag) == 2:
+                        important_bool[j] = True
+
+                all_idxs = np.arange(0, seg_length, 1)
+                select_idxs = all_idxs[important_bool]
+                select_idxs = np.random.choice(
+                    select_idxs, size=min(segment_degree_max, select_idxs.shape[0]), replace=False
+                )
+                select_idxs = np.concatenate([all_idxs[~important_bool], select_idxs], axis=-1)
+                select_idxs = np.sort(select_idxs)
+
+                xyzr_np = xyzr_np[select_idxs, :]
+                seg_flags = np.array(seg_flags)[select_idxs]
+
+            last_flag = None
+            for i, (xyzr, flag) in enumerate(zip(xyzr_np, seg_flags)):
+                if flag not in node2info.keys():
+                    control_xyzr_np.append(xyzr)
+                    node2info[flag] = {
+                        'pcd_idx': len(control_xyzr_np) - 1,
+                        'fix': False,
+                        'type': 'cell',
+                        'seg_idx': set([seg_idx])
+                    }
                 else:
-                    pcd = path_cell.get_spline_xyzr_np(self.control_xyzr_np)[:, :3]
-                line_set = VisUtils.create_line_set(np.arange(0, pcd.shape[0], 1))
-                mesh = VisUtils.create_line(pcd, line_set)
-                mesh.plot()
+                    seg_idx_list = list(node2info[flag]['seg_idx'])
+                    seg_idx_list.append(seg_idx)
+                    node2info[flag].update({'seg_idx': set(seg_idx_list)})
+
+                if i > 0:
+                    node_graph.add_edge(last_flag, flag)
+                last_flag = flag
+
+            segments[seg_idx] = SegmentCell(seg_idx, seg_flags)
+
+        for flag in node_graph.nodes:
+            if node_graph.degree(flag) == 1:
+                node2info[flag].update({'type': 'terminal', 'fix': True})
+            elif node_graph.degree(flag) > 2:
+                node2info[flag].update({'type': 'connector'})
+
+        self.node_graph = node_graph
+        self.segments = segments
+        self.node2info = node2info
+        self.control_xyzr_np = np.array(control_xyzr_np)
+
+        for _, cell in self.segments.items():
+            cell.pcd_idxs = np.array([self.node2info[node_idx]['pcd_idx'] for node_idx in cell.flags])
+
+        # ------ debug connect graph
+        print(f"[INFO group_{self.group_idx}]: "
+              f"control nodes:{self.control_xyzr_np.shape[0]}, network nodes:{len(self.node_graph.nodes)}")
+        degree_count = {}
+        for node_name in self.node_graph.nodes:
+            node_degree = self.node_graph.degree(node_name)
+            if node_degree not in degree_count:
+                degree_count[node_degree] = 0
+            degree_count[node_degree] += 1
+        print(f'[INFO group_{self.group_idx}]: degree_count:', degree_count, ' shape:', len(self.node_graph))
+        # self.draw_network(self.node_graph)
+        # ------
+
+    def add_path(
+            self, name: str, begin_xyz: np.ndarray, end_xyz: np.ndarray, begin_vec: np.ndarray, end_vec: np.ndarray
+    ):
+        self.path_dict[name] = []
+        begin_flag = self.encode_xyz(begin_xyz, self.encode_cfg)
+        end_flag = self.encode_xyz(end_xyz, self.encode_cfg)
+
+        path_flag_list = nx.all_simple_paths(self.node_graph, begin_flag, end_flag)
+        # path_flag_list = [nx.shortest_path(self.node_graph, begin_flag, end_flag)]
+
+        for path_flags in path_flag_list:
+            seg_list = []
+            for flag in path_flags:
+                if self.node_graph.degree(flag) == 2:
+                    seg_idx_list = list(self.node2info[flag]['seg_idx'])
+                    assert len(seg_idx_list) == 1
+                    seg_idx = seg_idx_list[0]
+
+                    if len(seg_list) == 0:
+                        seg_list.append(seg_idx)
+                    else:
+                        if seg_idx != seg_list[-1]:
+                            seg_list.append(seg_idx)
+
+            seg_cell_list = []
+            for seg_name in seg_list:
+                seg_cell_list.append(self.segments[seg_name])
+            self.path_dict[name].append(PathCell(seg_cell_list, begin_vec, end_vec))
+
+    def assemble_and_expand_graph(self, degree: int = 0):
+        raise NotImplementedError
