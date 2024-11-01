@@ -568,7 +568,7 @@ def smooth_run():
     # ------ start running
     loss_record, loss_info = smooth_opt.run(max_iter=run_cfg['run_times'], lr=run_cfg['lr'])
 
-    return jsonify({'Status': False, 'Info': '', 'Loss_info': {
+    return jsonify({'success': True, 'Loss_info': {
         'loss_record': list(loss_record), 'loss_info': loss_info
     }})
 

@@ -300,9 +300,7 @@ class PathOptimizer(object):
                 pcd_np = TorchUtils.tensor2np(segment_cell.tensor_info['path_pcd_t'])
                 radius = segment_cell.spline_info['radius']
 
-                detection_radius = radius + np.maximum(
-                    radius * segment_cell.spring_radius_conflict_ratio, segment_cell.min_conflict_thickness
-                ) + unit_lr
+                detection_radius = radius + segment_cell.min_obstacle_thickness + unit_lr
                 search_radius = detection_radius + np.max(self.obstacle_xyzr[:, -1])
 
                 idxs_list, dist_list = self.obstacle_tree.query_radius(pcd_np, r=search_radius, return_distance=True)
@@ -321,10 +319,7 @@ class PathOptimizer(object):
                             obs_pcd_idxs.append(obs_idx)
                             seg_radius = radius[pcd_idx]
                             obs_radius = self.obstacle_xyzr[obs_idx, 3]
-                            aux_radius = max(
-                                seg_radius * segment_cell.spring_radius_conflict_ratio,
-                                segment_cell.min_conflict_thickness
-                            )
+                            aux_radius = segment_cell.min_obstacle_thickness
                             require_radius.append(seg_radius + obs_radius + aux_radius)
 
                 if len(conflict_pcd_idxs) > 0:

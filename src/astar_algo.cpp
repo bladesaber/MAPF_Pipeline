@@ -257,7 +257,9 @@ bool StandardAStarSolver::find_path(PathResult &res_path, size_t max_iter, const
     for (size_t &flag: state_detector.get_start_pos_flags()) {
         double x, y, z;
         tie(x, y, z) = grid.flag2xyz(flag);
+        // cout << "x:" << x << " y:" << y << " z:" << z << endl;
         if (!obstacle_detector.is_valid(x, y, z, radius)) {
+            cout << "[INFO]: Start pos conflict." << endl;
             return false;
         }
     }
@@ -265,6 +267,7 @@ bool StandardAStarSolver::find_path(PathResult &res_path, size_t max_iter, const
         double x, y, z;
         tie(x, y, z) = grid.flag2xyz(flag);
         if (!obstacle_detector.is_valid(x, y, z, radius)) {
+            cout << "[INFO]: Target pos conflict." << endl;
             return false;
         }
     }

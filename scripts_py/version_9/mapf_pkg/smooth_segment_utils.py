@@ -34,6 +34,7 @@ class SegmentCell(object):
 
         self.spring_radius_conflict_ratio = 0.01
         self.min_conflict_thickness = 0.01
+        self.min_obstacle_thickness = 0.01
 
     @staticmethod
     def encode_tag(flags: List[int]):
@@ -104,28 +105,26 @@ class PathCell(object):
 
         for i, seg_cell in enumerate(self.segments):
             path_pcd_t = seg_cell.tensor_info['path_pcd_t']
-
             seg_tensor_list = []
-            if i == 0:
-                if fill_terminate_vec:
+
+            if fill_terminate_vec:
+                if i == 0:
                     pos0 = TorchUtils.tensor2np(path_pcd_t[0, :])
                     pos0_tensor = TorchUtils.np2tensor((pos0 - self.begin_vec).reshape((1, -1)), require_grad=False)
                     seg_tensor_list.append(pos0_tensor)
+
+            if i == 0:
                 seg_tensor_list.append(path_pcd_t)
                 self.tensor_info['radius'].append(seg_cell.spline_info['radius'])
-
-            elif i == len(self.segments) - 1:
-                seg_tensor_list.append(path_pcd_t[1:, :])
-                self.tensor_info['radius'].append(seg_cell.spline_info['radius'][1:])
-
-                if fill_terminate_vec:
-                    pos1 = TorchUtils.tensor2np(path_pcd_t[-1, :])
-                    pos1_tensor = TorchUtils.np2tensor((pos1 + self.end_vec).reshape((1, -1)), require_grad=False)
-                    seg_tensor_list.append(pos1_tensor)
-
             else:
                 seg_tensor_list.append(path_pcd_t[1:, :])
                 self.tensor_info['radius'].append(seg_cell.spline_info['radius'][1:])
+
+            if fill_terminate_vec:
+                if i == len(self.segments) - 1:
+                    pos1 = TorchUtils.tensor2np(path_pcd_t[-1, :])
+                    pos1_tensor = TorchUtils.np2tensor((pos1 + self.end_vec).reshape((1, -1)), require_grad=False)
+                    seg_tensor_list.append(pos1_tensor)
 
             if len(seg_tensor_list) > 1:
                 seg_pcd_t = TorchUtils.concatenate(seg_tensor_list, dim=0)
@@ -311,6 +310,7 @@ class NetworkPath(object):
             seg_cell.cost_cfgs = seg_info['costs']
             seg_cell.spring_radius_conflict_ratio = seg_info['spring_radius_conflict_ratio']
             seg_cell.min_conflict_thickness = seg_info['min_conflict_thickness']
+            seg_cell.min_obstacle_thickness = seg_info['min_obstacle_thickness']
             scale_np[seg_cell.pcd_idxs] = np.maximum(scale_np[seg_cell.pcd_idxs], seg_info['radius_scale'])
             update_np[seg_cell.pcd_idxs] = True
         self.control_xyzr_np[update_np, 3] = self.control_xyzr_np[update_np, 3] * scale_np[update_np]
@@ -366,6 +366,8 @@ class NetworkPath(object):
                     cost = CostUtils.compute_spring_length_cost(self.control_pcd_tensor[seg_cell.pcd_idxs, :], cfg)
                 elif cfg['method'] == 'control_spring_variance':
                     cost = CostUtils.compute_spring_variance_cost(self.control_pcd_tensor[seg_cell.pcd_idxs, :], cfg)
+                elif cfg['method'] == 'control_curvature':
+                    cost = CostUtils.compute_curvature_cost(self.control_pcd_tensor[seg_cell.pcd_idxs, :], cfg)
                 else:
                     raise ValueError
                 cost_dict.update({f"{cfg['method']}_{seg_cell.idx}": cost})
@@ -396,6 +398,45 @@ class NetworkPath(object):
 
                             cost = CostUtils.compute_connector_curvature_cost(left_pcd, right_pcd, cfg)
                             cost_dict.update({tag: cost})
+
+                        start_idx = path_cell.segments[0].idx
+                        start_curvature_tag = f"start_curvature_{start_idx}"
+                        if start_curvature_tag not in cost_dict.keys():
+                            start_pcd = path_pcd_list[0]
+                            start_radius = radius_list[0][0]
+                            cfg['value'] = 1.0 / TorchUtils.np2tensor(
+                                np.array([start_radius]) * cfg['radius_scale'], False
+                            )
+                            cost = CostUtils.compute_curvature_cost(start_pcd[:3, :], cfg)
+                            cost_dict.update({start_curvature_tag: cost})
+
+                        end_idx = path_cell.segments[-1].idx
+                        end_curvature_tag = f"end_curvature_{end_idx}"
+                        if end_curvature_tag not in cost_dict.keys():
+                            end_pcd = path_pcd_list[-1]
+                            end_radius = radius_list[-1][-1]
+                            cfg['value'] = 1.0 / TorchUtils.np2tensor(
+                                np.array([end_radius]) * cfg['radius_scale'], False
+                            )
+                            cost = CostUtils.compute_curvature_cost(end_pcd[-3:, :], cfg)
+                            cost_dict.update({end_curvature_tag: cost})
+
+                    elif cfg['method'] == 'control_connector_curvature':
+                        seg_num = len(path_cell.segments)
+                        for i in range(seg_num - 1):
+                            left_seg_cell, right_seg_cell = path_cell.segments[i], path_cell.segments[i + 1]
+                            left_idx, right_idx = left_seg_cell.idx, right_seg_cell.idx
+                            tag = f"{cfg['method']}_{min(left_idx, right_idx)}_{max(left_idx, right_idx)}"
+                            if tag in cost_dict.keys():
+                                continue
+
+                            left_control_pcd = self.control_pcd_tensor[left_seg_cell.pcd_idxs, :]
+                            right_control_pcd = self.control_pcd_tensor[right_seg_cell.pcd_idxs, :][1:, :]
+                            cost = CostUtils.compute_connector_curvature_cost(
+                                left_control_pcd, right_control_pcd, cfg
+                            )
+                            cost_dict.update({tag: cost})
+
         return cost_dict
 
     def update_control_pcd(self, loss: torch.Tensor, lr: float):

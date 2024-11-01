@@ -26,3 +26,4 @@
    13. CBS的速度与选择障碍点相关，这是个大问题
    14. 将Astar搜索的碰撞检测置换为限制图效率更高
    15. 平滑优化的时间很长，分开两步（1）control path conflict （2）spline path conflict
+   16. 组路径最短不是完备的

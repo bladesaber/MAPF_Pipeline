@@ -286,22 +286,17 @@ class VolumetricBspline(object):
         ys = np.linspace(xyz_min[1], xyz_max[1], num=xyz_num[1])
         zs = np.linspace(xyz_min[2], xyz_max[2], num=xyz_num[2])
         xs, ys, zs = np.meshgrid(xs, ys, zs)
-        self.control_pcd = np.concatenate([
-            xs[..., np.newaxis], ys[..., np.newaxis], zs[..., np.newaxis]
-        ], axis=-1)
+        self.control_pcd = np.concatenate([xs[..., np.newaxis], ys[..., np.newaxis], zs[..., np.newaxis]], axis=-1)
         self.ndims = self.control_pcd.shape
         self.bspline_cfg: Dict[int, Dict] = {
             0: {
-                'degree': degrees[0],
-                'knots': BsplineUtils.create_knots(self.ndims[0], degrees[0], clamp=True)
+                'degree': degrees[0], 'knots': BsplineUtils.create_knots(self.ndims[0], degrees[0], clamp=True)
             },
             1: {
-                'degree': degrees[1],
-                'knots': BsplineUtils.create_knots(self.ndims[1], degrees[1], clamp=True)
+                'degree': degrees[1], 'knots': BsplineUtils.create_knots(self.ndims[1], degrees[1], clamp=True)
             },
             2: {
-                'degree': degrees[2],
-                'knots': BsplineUtils.create_knots(self.ndims[2], degrees[2], clamp=True)
+                'degree': degrees[2], 'knots': BsplineUtils.create_knots(self.ndims[2], degrees[2], clamp=True)
             }
         }
         self.aug_cfg = {}
@@ -348,3 +343,16 @@ class VolumetricBspline(object):
 class FreeFormVolume(object):
     # todo 基于BsplineUtils.compute_ts的不连续 Volumetric Bspline
     pass
+
+
+# a = SurfaceBspline(np.array([1., 1.]), np.array([3., 3.]), np.array([2, 2]), [1, 1])
+# us, vs = np.linspace(0.01, 0.99, 50), np.linspace(0.01, 0.99, 50)
+# us, vs = np.meshgrid(us, vs)
+# uvs = np.concatenate([us[..., np.newaxis], vs[..., np.newaxis]], axis=-1).reshape((-1, 2))
+# r = a.sample_pcd(uvs, force_update=True)
+#
+# import matplotlib.pyplot as plt
+# b = a.control_pcd.reshape((-1, 2))
+# plt.scatter(b[:, 0], b[:, 1], s=20.0, c='r')
+# plt.scatter(r[:, 0], r[:, 1], s=10.0, c='b')
+# plt.show()

@@ -129,6 +129,7 @@ class CostUtils(object):
 
         arc_theta = torch.arccos(cos_val)
         # arc_theta = torch.log((1.0 - cos_val) * 500.0 + 1.0) * 0.48
+
         curvature = arc_theta / torch.minimum(vec0_length, vec1_length)
         return curvature
 
@@ -151,6 +152,10 @@ class CostUtils(object):
             curvature = CostUtils.compute_approximate_curvature(path_pcd)
             ratio = (curvature - cfg['value']) / cfg['value']
             return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
+        elif cfg['type'] == 'cos_raw':
+            cos_vals = CostUtils.compute_cos_val(path_pcd)
+            cosin_cost_val = 1.0 - cos_vals
+            return (cosin_cost_val.max() + cosin_cost_val.mean()) * weight
         else:
             raise ValueError
 
@@ -170,9 +175,7 @@ class CostUtils(object):
 
     @staticmethod
     def compute_connector_curvature_cost(left_pcd: torch.Tensor, right_pcd: torch.Tensor, cfg: Dict):
-        path_pcd = TorchUtils.concatenate([
-            left_pcd[-cfg['left_num']:], right_pcd[:cfg['right_num']]
-        ], dim=0)
+        path_pcd = TorchUtils.concatenate([left_pcd[-cfg['left_num']:], right_pcd[:cfg['right_num']]], dim=0)
         return CostUtils.compute_curvature_cost(path_pcd, cfg)
 
     @staticmethod

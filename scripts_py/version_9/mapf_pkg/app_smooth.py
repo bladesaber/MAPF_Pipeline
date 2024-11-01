@@ -240,6 +240,7 @@ class SmoothApp(PathApp):
                     'update_bspline_length_threshold': 0.1,
                     'spring_radius_conflict_ratio': 0.01,
                     'min_conflict_thickness': 0.05,
+                    'min_obstacle_thickness': 0.05,
                     'radius_scale': 1.0,
                     'color': np.random.uniform(0.0, 1.0, size=(3,)).tolist(),
                     'costs': [
@@ -259,6 +260,11 @@ class SmoothApp(PathApp):
                             'radius_scale': 3.0,
                             "weight": 1.0
                         },
+                        {
+                            "method": "control_curvature",
+                            "type": "cos_raw",
+                            "weight": 15.0
+                        }
                         # {
                         #     "method": "control_spring_variance",
                         #     "type": "range_mean",
@@ -274,6 +280,13 @@ class SmoothApp(PathApp):
                 setting['paths'][path_name] = []
                 for _ in path_list:
                     setting['paths'][path_name].append([
+                        {
+                            "method": "control_connector_curvature",
+                            "type": "cos_raw",
+                            "left_num": 2,
+                            "right_num": 2,
+                            "weight": 1.0
+                        },
                         {
                             'method': 'connector_curvature',
                             'type': 'upper_value',
@@ -317,6 +330,28 @@ class SmoothApp(PathApp):
         # for group_idx, net_cell in opt.network_cells.items():
         #     net_cell.draw_segment(with_control=False, with_spline=False, with_tube=True)
         # # ------
+
+    def _update_cost_cfg(self, path: str):
+        # subprocess.run(f"gedit {path};", shell=True)
+        with open(path, 'r') as f:
+            smooth_json = json.load(f)
+
+        for setting in smooth_json['setting']:
+            group_idx = setting['group_idx']
+            net_cell = self.smooth_opt.network_cells[group_idx]
+            segment_infos, path_infos = setting['segments'], setting['paths']
+
+            for seg_idx, seg_cell in net_cell.segments.items():
+                seg_info = segment_infos[seg_idx]
+                seg_cell.cost_cfgs = seg_info['costs']
+                seg_cell.spring_radius_conflict_ratio = seg_info['spring_radius_conflict_ratio']
+                seg_cell.min_conflict_thickness = seg_info['min_conflict_thickness']
+
+            for name, path_list in net_cell.path_dict.items():
+                for i, path_cell in enumerate(path_list):
+                    path_cell.cost_cfgs = path_infos[name][i]
+
+        self.smooth_opt.conflict_cfg = smooth_json['conflict_setting']
 
     def _update_segments_on_click(self):
         if self.smooth_opt is None:
@@ -525,6 +560,9 @@ class SmoothApp(PathApp):
             plt.show()
 
             # ------ visualization debug
+            # for group_idx, net_cell in self.smooth_opt.network_cells.items():
+            #     net_cell.draw_path(with_spline=True, is_tensor=True)
+
             self.smooth_opt.draw_constraints(
                 lr_txt.double_value, with_control=False, with_spline=True,
                 with_path_conflict=True, with_obstacle_conflict=True, with_obstacle=True,
@@ -591,6 +629,17 @@ class SmoothApp(PathApp):
         init_smooth_obstacle_btn = FragmentOpen3d.get_widget('button', {'name': 'obstacle init'})
         init_smooth_obstacle_btn.set_on_clicked(self._create_smooth_obstacle_on_click)
 
+        # ------
+        def _update_cost_cfg_btn_on_click():
+            filedlg = gui.FileDialog(gui.FileDialog.OPEN, "Select file", self.window.theme)
+            filedlg.add_filter(".json", "Config File (.json)")
+            filedlg.set_on_cancel(self.window.close_dialog)
+            filedlg.set_on_done(self._update_cost_cfg)
+            self.window.show_dialog(filedlg)
+
+        update_cost_cfg_btn = FragmentOpen3d.get_widget('button', {'name': 'update cost config'})
+        update_cost_cfg_btn.set_on_clicked(_update_cost_cfg_btn_on_click)
+
         smoother_layout.add_child(
             FragmentOpen3d.get_layout_widget('vert', [
                 FragmentOpen3d.get_layout_widget('horiz', [with_line_checkbox, with_tube_checkbox]),
@@ -605,6 +654,7 @@ class SmoothApp(PathApp):
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step2:'), init_smooth_obstacle_btn]),
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step3:'), setup_smooth_runner_btn]),
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('check_path:'), update_path_visual_btn]),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('update cost:'), update_cost_cfg_btn]),
                 gui.Label('step4:'),
                 FragmentOpen3d.get_layout_widget('horiz', [
                     gui.Label('run_times:'), run_times_txt, gui.Label('lr:'), lr_txt
@@ -615,9 +665,10 @@ class SmoothApp(PathApp):
             ], 3, self.vert_margins)
         )
 
-    def hdf52csv(self):
-        data = h5py.File(os.path.join(self.proj_dir, 'smooth_result.hdf5'))
-        save_dir = os.path.join(self.proj_dir, 'excel')
+    @staticmethod
+    def hdf52csv(proj_dir):
+        data = h5py.File(os.path.join(proj_dir, 'smooth_result.hdf5'))
+        save_dir = os.path.join(proj_dir, 'excel')
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
 
@@ -633,7 +684,7 @@ class SmoothApp(PathApp):
             for name in spline_data:
                 path = np.array(spline_data[name])
                 path_df = pd.DataFrame(path, columns=['x', 'y', 'z', 'radius'])
-                path_df.to_csv(os.path.join(group_dir, f"{name}.csv"), header=False, index=False)
+                path_df.to_csv(os.path.join(group_dir, f"{name}.txt"), header=False, index=False)
 
 
 def parse_args():
