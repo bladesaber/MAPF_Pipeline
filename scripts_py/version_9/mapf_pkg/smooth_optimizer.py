@@ -477,10 +477,11 @@ class PathOptimizer(object):
             for cost_name, cost in loss_info.items():
                 loss += cost
 
-            loss_np = loss.detach().numpy()
-            loss_record.append(loss_np)
-            log_txt = f"[iter:{it}] loss:{loss_np:.6f}"
-            print(log_txt)
+            if it % 100 == 0:
+                loss_np = loss.detach().numpy()
+                loss_record.append(loss_np)
+                log_txt = f"[iter:{it}] loss:{loss_np:.6f}"
+                print(log_txt)
 
             loss.backward()
             with torch.no_grad():
@@ -496,7 +497,7 @@ class PathOptimizer(object):
 
             # for group_idx, net_cell in self.network_cells.items():
             #     net_cell.update_state(with_tensor=True, with_np=False)
-            self.update_tensor_and_self_graph(iteration=it, update_iteration=10)
+            self.update_tensor_and_self_graph(iteration=it, update_iteration=50)
 
         for group_idx, net_cell in self.network_cells.items():
             net_cell.update_state(with_tensor=False, with_np=True)
@@ -553,7 +554,7 @@ class PathOptimizer(object):
 
             # for group_idx, net_cell in self.network_cells.items():
             #     net_cell.update_state(with_tensor=True, with_np=False)
-            self.update_tensor_and_self_graph(iteration=it, update_iteration=10)
+            self.update_tensor_and_self_graph(iteration=it, update_iteration=20)
 
         for group_idx, net_cell in self.network_cells.items():
             net_cell.update_state(with_tensor=False, with_np=True)

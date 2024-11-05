@@ -78,16 +78,16 @@ class CostUtils(object):
             return length * weight
         elif cfg['type'] == 'specify_value':
             length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1).sum()
-            ratio = length / cfg['length'] - 1.0
-            return torch.sqrt(torch.pow(ratio, 2.0)) * weight
+            ratio = length / cfg['value'] - 1.0
+            return torch.pow(ratio, 2.0).mean() * weight
         elif cfg['type'] == 'bottom_value':
             length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1).sum()
-            ratio = F.relu(cfg['length'] / (length + 1e-2) - 1.0)
-            return ratio * weight
+            ratio = cfg['value'] / (length + 1e-6) - 1.0
+            return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
         elif cfg['type'] == 'upper_value':
             length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1).sum()
-            ratio = F.relu(length / cfg['length'] - 1.0)
-            return ratio * weight
+            ratio = length / cfg['value'] - 1.0
+            return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
         elif cfg['type'] == 'square_mean':
             square_length = (torch.pow(path_pcd[1:, :] - path_pcd[:-1, :], 2.0)).sum(dim=1)
             cost = square_length.mean()
@@ -96,23 +96,6 @@ class CostUtils(object):
             square_length = (torch.pow(path_pcd[1:, :] - path_pcd[:-1, :], 2.0)).sum(dim=1)
             cost = square_length.sum()
             return cost * weight
-        else:
-            raise ValueError()
-
-    @staticmethod
-    def compute_spring_variance_cost(path_pcd: torch.Tensor, cfg: Dict):
-        weight = cfg['weight']
-        if cfg['type'] == 'square_mean':
-            sub_lengths = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1)
-            mean_length = sub_lengths.mean()
-            variance = (torch.pow(sub_lengths - mean_length, 2.0)).mean()
-            return variance * weight
-        elif cfg['type'] == 'range_mean':
-            sub_lengths = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1)
-            mean_length = sub_lengths.mean()
-            variance = F.relu(torch.abs(sub_lengths / mean_length - 1.0) - cfg['range_value'])
-            variance = variance.mean()
-            return variance * weight
         else:
             raise ValueError()
 
@@ -135,12 +118,10 @@ class CostUtils(object):
 
     @staticmethod
     def compute_cos_val(path_pcd: torch.Tensor):
-        vec0 = path_pcd[1:-1, :] - path_pcd[:-2, :]
-        vec1 = path_pcd[2:, :] - path_pcd[1:-1, :]
-        a = torch.sum(vec0 * vec1, dim=1)
-        vec0_length = torch.norm(vec0, p=2, dim=1)
-        vec1_length = torch.norm(vec1, p=2, dim=1)
-        return a / (vec0_length * vec1_length + 1e-16)
+        vec0, vec1 = path_pcd[1:-1, :] - path_pcd[:-2, :], path_pcd[2:, :] - path_pcd[1:-1, :]
+        vec_sum = torch.sum(vec0 * vec1, dim=1)
+        vec0_length, vec1_length = torch.norm(vec0, p=2, dim=1), torch.norm(vec1, p=2, dim=1)
+        return vec_sum / (vec0_length * vec1_length + 1e-16)
 
     @staticmethod
     def compute_curvature_cost(path_pcd: torch.Tensor, cfg: Dict):
@@ -153,30 +134,50 @@ class CostUtils(object):
             ratio = (curvature - cfg['value']) / cfg['value']
             return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
         elif cfg['type'] == 'cos_raw':
-            cos_vals = CostUtils.compute_cos_val(path_pcd)
-            cosin_cost_val = 1.0 - cos_vals
-            return (cosin_cost_val.max() + cosin_cost_val.mean()) * weight
+            cost = 1.0 - CostUtils.compute_cos_val(path_pcd)
+            return (cost.max() + cost.mean()) * weight
+        else:
+            raise ValueError
+
+    @staticmethod
+    def compute_boundary_constraint(path_data: torch.Tensor, cfg: Dict):
+        weight = cfg['weight']
+        if cfg['type'] == 'upper_value':
+            ratio = (path_data - cfg['value']) / cfg['value']
+            return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
+        elif cfg['type'] == 'bottom_value':
+            ratio = (cfg['value'] - path_data) / cfg['value']
+            return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
         else:
             raise ValueError
 
     @staticmethod
     def compute_segment_constraint(path_pcd: torch.Tensor, cfg: Dict):
         weight = cfg['weight']
-        if cfg['type'] == 'upper_value':
-            seg_length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1)
-            ratio = seg_length / cfg['value'] - 1.0
-            return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
-        elif cfg['type'] == 'variance':
-            seg_length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1)
-            cost = torch.pow(seg_length - seg_length.mean(), 2.0).sum()
+        if cfg['type'] == 'variance':
+            seg_lengths = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1)
+            cost = torch.pow(seg_lengths - seg_lengths.mean(), 2.0).sum()
+            return cost * weight
+        elif cfg['type'] == 'center_cluster':
+            path_pcd_np = TorchUtils.tensor2np(path_pcd)
+            center_np = (path_pcd_np[:-2, :] + path_pcd_np[2:, :]) * 0.5
+            center_t = TorchUtils.np2tensor(center_np, require_grad=False)
+            cost = torch.pow(path_pcd[1:-1] - center_t, 2.0).sum()
             return cost * weight
         else:
             raise ValueError
 
     @staticmethod
-    def compute_connector_curvature_cost(left_pcd: torch.Tensor, right_pcd: torch.Tensor, cfg: Dict):
-        path_pcd = TorchUtils.concatenate([left_pcd[-cfg['left_num']:], right_pcd[:cfg['right_num']]], dim=0)
-        return CostUtils.compute_curvature_cost(path_pcd, cfg)
+    def compute_connector_constraint(left_pcd: torch.Tensor, right_pcd: torch.Tensor, cfg: Dict):
+        if cfg['constraint_type'] == 'approximate_curvature':
+            path_pcd = TorchUtils.concatenate([left_pcd[-cfg['left_num']:], right_pcd[:cfg['right_num']]], dim=0)
+            return CostUtils.compute_curvature_cost(path_pcd, cfg)
+        elif cfg['constraint_type'] == 'connector_straight':
+            path_pcd = TorchUtils.concatenate([left_pcd[-cfg['left_num']:], right_pcd[:cfg['right_num']]], dim=0)
+            cost = 1.0 - CostUtils.compute_cos_val(path_pcd)
+            return cost.sum() * cfg['weight']
+        else:
+            raise ValueError()
 
     @staticmethod
     def compute_shape_conflict_cost(pcd0: torch.Tensor, pcd1: torch.Tensor, require_dist: np.ndarray, weight: float):

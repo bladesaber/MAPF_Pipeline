@@ -205,11 +205,13 @@ class BsplineUtils(object):
         return ts
 
     @staticmethod
-    def compute_spline_length(c_pcd: np.ndarray, degree: int, uniform_weight=0.5, uniform_step=3, atol=5e-1):
-        knot = BsplineUtils.create_knots(
-            c_pcd.shape[0], degree, uniform_step=uniform_step, uniform_weight=uniform_weight
-        )
-        sample_num, last_length = 50, None
+    def compute_spline_length(
+            c_pcd: np.ndarray, degree: int,
+            sample_num_init: int = 50, sample_change_ratio: float = 1.5,
+            uniform_weight=0.5, uniform_step=3, atol=5e-1
+    ):
+        knot = BsplineUtils.create_knots(c_pcd.shape[0], degree)
+        sample_num, last_length = sample_num_init, None
         for _ in range(20):
             ts = np.linspace(0.0, 1.0, sample_num)
             spline_mat = BsplineUtils.compute_mat(ts, c_pcd.shape[0], degree, knot)
@@ -222,7 +224,7 @@ class BsplineUtils(object):
                     return length
 
             last_length = length
-            sample_num = int(sample_num * 1.5)
+            sample_num = int(sample_num * sample_change_ratio)
         return None
 
 
@@ -343,7 +345,6 @@ class VolumetricBspline(object):
 class FreeFormVolume(object):
     # todo 基于BsplineUtils.compute_ts的不连续 Volumetric Bspline
     pass
-
 
 # a = SurfaceBspline(np.array([1., 1.]), np.array([3., 3.]), np.array([2, 2]), [1, 1])
 # us, vs = np.linspace(0.01, 0.99, 50), np.linspace(0.01, 0.99, 50)

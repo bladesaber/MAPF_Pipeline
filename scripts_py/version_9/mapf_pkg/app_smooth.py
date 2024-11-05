@@ -118,12 +118,13 @@ class SmoothApp(PathApp):
                 'setting': []
             }
 
+            # segment_degree_min尽量与segment_degree_max相近
             for _, res_cell in h5py.File(search_file).items():
                 group_idx = res_cell['group_idx'][0]
                 group_setting = {
                     'group_idx': int(group_idx),
                     'graph_cfg': {
-                        'segment_degree_min': 5,
+                        'segment_degree_min': None,
                         'segment_degree_max': None,
                     },
                     'segments': {},
@@ -148,6 +149,26 @@ class SmoothApp(PathApp):
         pipe_cfg = smooth_json['cfg']['pipe_cfg']
 
         obs_xyz = pd.read_csv(grid_cfg['obstacle_file'], index_col=0)[['x', 'y', 'z', 'radius']].values[:, :3]
+        obs_xyz_list = [obs_xyz]
+
+        # ------ create shell
+        min_reso = np.inf
+        for pipe_name in pipe_cfg.keys():
+            min_reso = min(pipe_cfg[pipe_name]['radius'] * pipe_cfg[pipe_name]['radius_scale'], min_reso)
+
+        for pipe_name in pipe_cfg.keys():
+            shell_pcd = ShapeUtils.create_sphere_pcd(
+                center=pipe_cfg[pipe_name]['discrete_position'],
+                vector=pipe_cfg[pipe_name]['direction'],
+                radius=pipe_cfg[pipe_name]['radius'] * pipe_cfg[pipe_name]['radius_scale'] * 1.015,
+                reso=min_reso * 0.3
+                # reso=0.3
+            )
+            obs_xyz_list.append(shell_pcd)
+
+        obs_xyz = np.concatenate(obs_xyz_list, axis=0)
+
+        # ------ remove inner pcd
         for pipe_name in pipe_cfg.keys():
             pipe_info = pipe_cfg[pipe_name]
             obs_xyz = ShapeUtils.remove_obstacle_point_in_pipe(
@@ -155,9 +176,10 @@ class SmoothApp(PathApp):
                 center=pipe_info['discrete_position'],
                 direction=pipe_info['direction'],
                 radius=pipe_info['radius'] * pipe_info['radius_scale'],
-                tol_scale=1.05,
+                tol_scale=1.025,
                 is_input=pipe_info['is_input']
             )
+
         obs_df = pd.DataFrame(obs_xyz, columns=['x', 'y', 'z'])
         obs_df['radius'] = 0.0
         smooth_obstacle_file = os.path.join(self.proj_dir, 'smooth_obstacle.csv')
@@ -245,32 +267,21 @@ class SmoothApp(PathApp):
                     'color': np.random.uniform(0.0, 1.0, size=(3,)).tolist(),
                     'costs': [
                         {
-                            'method': 'control_spring_length',
-                            'type': 'square_sum',
-                            'weight': 1.0
-                        },
-                        {
-                            "method": "control_distribute_constraint",
-                            "type": "variance",
-                            "weight": 5.0
-                        },
-                        {
-                            'method': 'curvature',
-                            'type': 'upper_value',
-                            'radius_scale': 3.0,
+                            "method": "control_length",
+                            "type": "square_sum",
                             "weight": 1.0
                         },
                         {
-                            "method": "control_curvature",
-                            "type": "cos_raw",
+                            "method": "control_distribute_constraint",
+                            "type": "center_cluster",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "spring_curvature_boundary",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
                             "weight": 15.0
                         }
-                        # {
-                        #     "method": "control_spring_variance",
-                        #     "type": "range_mean",
-                        #     "range_value": 0.05,
-                        #     "weight": 1.0
-                        # }
                     ]
                 }
 
@@ -281,20 +292,18 @@ class SmoothApp(PathApp):
                 for _ in path_list:
                     setting['paths'][path_name].append([
                         {
-                            "method": "control_connector_curvature",
-                            "type": "cos_raw",
-                            "left_num": 2,
-                            "right_num": 2,
-                            "weight": 1.0
+                            "method": "spring_terminal_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 50.0
                         },
                         {
-                            'method': 'connector_curvature',
-                            'type': 'upper_value',
-                            'radius_scale': 3.0,
-                            'left_num': 3,
-                            'right_num': 3,
-                            "weight": 1.0
-                        }
+                            "method": "control_connector_cosin",
+                            "constraint_type": "connector_straight",
+                            "left_num": 2,
+                            "right_num": 2,
+                            "weight": 50.0
+                        },
                     ])
 
         if 'AutoRun' not in smooth_json.keys():
@@ -602,7 +611,7 @@ class SmoothApp(PathApp):
             'number', {'style': 'double', 'decimal_precision': 0, 'init_value': 10}
         )
         lr_txt = FragmentOpen3d.get_widget(
-            'number', {'style': 'double', 'decimal_precision': 6, 'init_value': 0.1, 'preferred_width': 80}
+            'number', {'style': 'double', 'decimal_precision': 6, 'init_value': 0.0025, 'preferred_width': 80}
         )
         run_smooth_btn = FragmentOpen3d.get_widget('button', {'name': 'run smooth'})
         run_smooth_btn.set_on_clicked(partial(self._run_smooth, run_times_txt=run_times_txt, lr_txt=lr_txt))
