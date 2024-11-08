@@ -1,0 +1,261 @@
+import numpy as np
+from typing import Union, List, Dict
+import OCC.Core.TopoDS as TopoDS
+
+from OCC.Display.SimpleGui import init_display
+from OCC.Display.WebGl import threejs_renderer
+
+from OCC.Core.STEPControl import STEPControl_Reader, STEPControl_Writer, STEPControl_AsIs
+from OCC.Core.TColgp import TColgp_Array1OfPnt
+from OCC.Core.TColStd import TColStd_Array1OfReal, TColStd_Array1OfInteger
+from OCC.Core.gp import gp_Pnt, gp_Ax2, gp_Ax3, gp_Dir, gp_Circ
+from OCC.Core.Geom import Geom_BSplineCurve, Geom_BezierCurve
+from OCC.Core.BRepBuilderAPI import (BRepBuilderAPI_MakeVertex, BRepBuilderAPI_MakeEdge,
+                                     BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakeWire,
+                                     BRepBuilderAPI_MakeSolid, BRepBuilderAPI_MakeShell,
+                                     BRepBuilderAPI_Sewing)
+from OCC.Core.BRepOffsetAPI import (BRepOffsetAPI_MakePipe, BRepOffsetAPI_ThruSections,
+                                    BRepOffsetAPI_MakePipeShell)
+
+from OCC.Core.TopoDS import TopoDS_Shell
+from OCC.Core.BRep import BRep_Builder
+from OCC.Core.Law import Law_Linear, Law_BSpline, Law_BSpFunc, Law_Interpolate, Law_Constant
+from OCC.Core.BRepAlgoAPI import (
+    BRepAlgoAPI_Fuse,
+    BRepAlgoAPI_Common,
+    BRepAlgoAPI_Section,
+    BRepAlgoAPI_Cut,
+)
+
+
+class OcctIO(object):
+    @staticmethod
+    def read_STEP(file: str):
+        if file.split('.')[-1] in ['stp', 'step', 'STP', 'STEP']:
+            step_reader = STEPControl_Reader()
+            step_reader.ReadFile(file)
+            step_reader.TransferRoot()
+            shape = step_reader.Shape()
+            return shape
+        return None
+
+    @staticmethod
+    def write_STEP(file: str, shape: Union[TopoDS.TopoDS_Shell, TopoDS.TopoDS_Solid]):
+        saver = STEPControl_Writer()
+        saver.Transfer(shape, STEPControl_AsIs)
+        saver.Write(file)
+
+
+class OcctAux(object):
+    @staticmethod
+    def create_law(law_type: str, law_cfg: Dict):
+        if law_type == 'constant':
+            law = Law_Constant()
+            law.Set(law_cfg['radius'], law_cfg['radius'], law_cfg['radius'])
+        elif law_type == 'linear':
+            law = Law_Linear()
+            law.Set(0, law_cfg['start_ratio'], 1, law_cfg['end_ratio'])
+        elif law_type == 'bspline':
+            c_radius = law_cfg['c_radius']
+            degree = law_cfg['degree']
+
+            n_control = c_radius.shape[0]
+            c_array = TColStd_Array1OfReal(1, n_control)
+            for i, radius in enumerate(c_radius):
+                c_array.SetValue(i + 1, float(radius))
+
+            n_knot = (n_control + degree + 1) - 2 * (degree + 1) + 2
+            knot = np.linspace(0.0, 1.0, n_knot)
+            knot_array = TColStd_Array1OfReal(1, n_knot)
+            for i, k_value in enumerate(knot):
+                # print(f"[INFO]: Setting knot index:{i + 1} k_value:{k_value}")
+                knot_array.SetValue(i + 1, k_value)
+
+            mul_value = np.ones(shape=(n_knot,), dtype=int)
+            mul_value[0] = degree + 1
+            mul_value[-1] = degree + 1
+            multiplicities_array = TColStd_Array1OfInteger(1, n_knot)
+            for i, v in enumerate(mul_value):
+                # print(f"[INFO]: Setting knot index:{i + 1} multiplicities:{v}")
+                multiplicities_array.SetValue(i + 1, int(v))
+
+            law = Law_BSpFunc(
+                Law_BSpline(c_array, knot_array, multiplicities_array, degree, False), 0.0, 1.0
+            )
+
+        else:
+            raise ValueError()
+
+        return law
+
+
+class OcctProfile(object):
+    @staticmethod
+    def make_vertex(point: gp_Pnt):
+        return BRepBuilderAPI_MakeVertex(point)
+
+    @staticmethod
+    def make_point(x, y, z) -> gp_Pnt:
+        return gp_Pnt(x, y, z)
+
+    @staticmethod
+    def make_direction_vector(vector_x, vector_y, vector_z) -> gp_Dir:
+        return gp_Dir(vector_x, vector_y, vector_z)
+
+    @staticmethod
+    def make_AX2(point: gp_Pnt, direction_vector: gp_Dir) -> gp_Ax2:
+        """2D Coordinate axis: point + vector"""
+        return gp_Ax2(point, direction_vector)
+
+    @staticmethod
+    def create_bspline(
+            control_pcd: np.ndarray, degree: int, left_clamp: bool, right_clamp: bool,
+    ) -> Geom_BSplineCurve:
+        n_control = control_pcd.shape[0]
+        pnt_array = TColgp_Array1OfPnt(1, n_control)
+        for i, point in enumerate(control_pcd):
+            # print(f"[INFO]: Setting c_pcd index:{i + 1} pcd:({point[0]}, {point[1]}, {point[2]})")
+            pnt_array.SetValue(i + 1, gp_Pnt(point[0], point[1], point[2]))
+
+        if left_clamp and right_clamp:
+            n_knot = (n_control + degree + 1) - 2 * (degree + 1) + 2
+        elif left_clamp and (not right_clamp):
+            n_knot = (n_control + degree + 1) - 1 * (degree + 1) + 1
+        elif (not left_clamp) and right_clamp:
+            n_knot = (n_control + degree + 1) - 1 * (degree + 1) + 1
+        else:
+            n_knot = n_control + degree + 1
+        knot = np.linspace(0.0, 1.0, n_knot)
+        knot_array = TColStd_Array1OfReal(1, n_knot)
+        for i, k_value in enumerate(knot):
+            # print(f"[INFO]: Setting knot index:{i + 1} k_value:{k_value}")
+            knot_array.SetValue(i + 1, k_value)
+
+        if left_clamp and right_clamp:
+            mul_value = np.ones(shape=(n_knot,), dtype=int)
+            mul_value[0] = degree + 1
+            mul_value[-1] = degree + 1
+        elif left_clamp and (not right_clamp):
+            mul_value = np.ones(shape=(n_knot,), dtype=int)
+            mul_value[0] = degree + 1
+        elif (not left_clamp) and right_clamp:
+            mul_value = np.ones(shape=(n_knot,), dtype=int)
+            mul_value[-1] = degree + 1
+        else:
+            mul_value = np.ones(shape=(n_knot,), dtype=int)
+
+        multiplicities_array = TColStd_Array1OfInteger(1, n_knot)
+        for i, v in enumerate(mul_value):
+            # print(f"[INFO]: Setting knot index:{i + 1} multiplicities:{v}")
+            multiplicities_array.SetValue(i + 1, int(v))
+
+        profile = Geom_BSplineCurve(pnt_array, knot_array, multiplicities_array, degree, False)
+        return profile
+
+    @staticmethod
+    def make_pipe(
+            path: TopoDS.TopoDS_Wire, profile: Union[TopoDS.TopoDS_Face, TopoDS.TopoDS_Wire],
+            return_shape=True
+    ) -> Union[TopoDS.TopoDS_Shell, TopoDS.TopoDS_Solid, TopoDS.TopoDS_Shape, BRepOffsetAPI_MakePipe]:
+        if return_shape:
+            return BRepOffsetAPI_MakePipe(path, profile).Shape()
+        return BRepOffsetAPI_MakePipe(path, profile)
+
+    @staticmethod
+    def make_pipe_shell(
+            path: TopoDS.TopoDS_Wire, profile: TopoDS.TopoDS_Wire,
+            law_runner: Union[Law_Linear, Law_BSpline, Law_Interpolate, Law_Constant],
+            return_shape=True
+    ) -> Union[TopoDS.TopoDS_Shell, TopoDS.TopoDS_Shape, BRepOffsetAPI_MakePipeShell]:
+        pipe = BRepOffsetAPI_MakePipeShell(path)
+        pipe.SetLaw(profile, law_runner, False, True)
+        if return_shape:
+            return pipe.Shape()
+        return pipe
+
+    @staticmethod
+    def make_circle(point: Union[List, np.ndarray], vector: Union[List, np.ndarray], radius: float) -> gp_Circ:
+        profile = gp_Circ(
+            OcctProfile.make_AX2(
+                OcctProfile.make_point(point[0], point[1], point[2]),
+                OcctProfile.make_direction_vector(vector[0], vector[1], vector[2])
+            ), radius
+        )
+        return profile
+
+
+class OcctOperation(object):
+    @staticmethod
+    def fuse(shape1: TopoDS.TopoDS_Solid, shape2: TopoDS.TopoDS_Solid) -> TopoDS.TopoDS_Compound:
+        return BRepAlgoAPI_Fuse(shape1, shape2).Shape()
+
+    @staticmethod
+    def common(shape1: TopoDS.TopoDS_Solid, shape2: TopoDS.TopoDS_Solid) -> TopoDS.TopoDS_Compound:
+        return BRepAlgoAPI_Common(shape1, shape2).Shape()
+
+    @staticmethod
+    def cut(shape_orig: TopoDS.TopoDS_Solid, shape_tool: TopoDS.TopoDS_Solid) -> TopoDS.TopoDS_Compound:
+        return BRepAlgoAPI_Cut(shape_orig, shape_tool).Shape()
+
+
+class OcctUtil(object):
+    """ Profile -> Edge -> Wire -> Face -> Shell/Solid """
+
+    @staticmethod
+    def face2shell(
+            face: TopoDS.TopoDS_Face, builder: BRep_Builder = None, shell: TopoDS.TopoDS_Shell = None
+    ) -> TopoDS.TopoDS_Shell:
+        if builder is None:
+            builder = BRep_Builder()
+        if shell is None:
+            shell = TopoDS_Shell()
+        builder.MakeShell(shell)
+        builder.Add(shell, face)
+        return shell
+
+    @staticmethod
+    def shell2solid(shell: TopoDS.TopoDS_Shell) -> TopoDS.TopoDS_Solid:
+        if shell.Closed():
+            return BRepBuilderAPI_MakeSolid(shell).Solid()
+        print("[ERROR]: Shell is not closed")
+        return None
+
+    @staticmethod
+    def make_edge(profile) -> TopoDS.TopoDS_Edge:
+        return BRepBuilderAPI_MakeEdge(profile).Edge()
+
+    @staticmethod
+    def make_wire(edge: TopoDS.TopoDS_Edge) -> TopoDS.TopoDS_Wire:
+        return BRepBuilderAPI_MakeWire(edge).Wire()
+
+    @staticmethod
+    def make_face(wire: TopoDS.TopoDS_Wire) -> TopoDS.TopoDS_Face:
+        return BRepBuilderAPI_MakeFace(wire).Face()
+
+    @staticmethod
+    def make_shell() -> TopoDS.TopoDS_Shell:
+        return TopoDS.TopoDS_Shell()
+
+    @staticmethod
+    def sewing_faces(
+            faces: List[Union[TopoDS.TopoDS_Face, TopoDS.TopoDS_Shell]],
+            builder: BRepBuilderAPI_Sewing = None
+    ) -> Union[TopoDS.TopoDS_Shell, TopoDS.TopoDS_Shape]:
+        if builder is None:
+            builder = BRepBuilderAPI_Sewing()
+        for face in faces:
+            builder.Add(face)
+        builder.Perform()
+        return builder.SewedShape()
+
+
+class OcctVis(object):
+    @staticmethod
+    def init_plotter():
+        display, start_display, add_menu, add_function_to_menu = init_display()
+        return display, start_display, add_menu, add_function_to_menu
+
+    @staticmethod
+    def init_threejs():
+        render = threejs_renderer.ThreejsRenderer()
+        return render
