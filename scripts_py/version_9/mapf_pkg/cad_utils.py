@@ -6,6 +6,7 @@ from OCC.Display.SimpleGui import init_display
 from OCC.Display.WebGl import threejs_renderer
 
 from OCC.Core.STEPControl import STEPControl_Reader, STEPControl_Writer, STEPControl_AsIs
+from OCC.Core.StlAPI import StlAPI_Writer, StlAPI_Reader
 from OCC.Core.TColgp import TColgp_Array1OfPnt
 from OCC.Core.TColStd import TColStd_Array1OfReal, TColStd_Array1OfInteger
 from OCC.Core.gp import gp_Pnt, gp_Ax2, gp_Ax3, gp_Dir, gp_Circ
@@ -44,6 +45,23 @@ class OcctIO(object):
         saver = STEPControl_Writer()
         saver.Transfer(shape, STEPControl_AsIs)
         saver.Write(file)
+
+    @staticmethod
+    def read_STL(file: str):
+        if file.split('.')[-1] in ['stl', 'STL']:
+            stl_reader = StlAPI_Reader()
+            shape = TopoDS.TopoDS_Shape()
+            stl_reader.Read(shape, file)
+            return shape
+        return None
+
+    @staticmethod
+    def write_STL(file: str, shape: Union[TopoDS.TopoDS_Shell, TopoDS.TopoDS_Solid], is_ascii=True):
+        # ------ high possible fail
+        assert file.endswith('.stl')
+        saver = StlAPI_Writer()
+        saver.SetASCIIMode(is_ascii)
+        return saver.Write(shape, file)
 
 
 class OcctAux(object):
@@ -250,6 +268,15 @@ class OcctUtil(object):
 
 
 class OcctVis(object):
+    def __init__(self):
+        self.display, self.start_display, self.add_menu, self.add_function_to_menu = init_display()
+
+    def plot(self, shape: TopoDS.TopoDS_Shape):
+        self.display.DisplayShape(shape, update=True)
+
+    def show(self):
+        self.start_display()
+
     @staticmethod
     def init_plotter():
         display, start_display, add_menu, add_function_to_menu = init_display()

@@ -201,7 +201,6 @@ class VisUtils(object):
     def show_arrow_from_grid(grid: pyvista.DataSet, name: str, scale=1.0, plotter: pyvista.Plotter = None):
         if plotter is None:
             plotter = pyvista.Plotter()
-
         plotter.add_arrows(grid.points, grid[name], mag=scale)
         return plotter
 

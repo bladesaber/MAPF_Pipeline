@@ -17,12 +17,13 @@ class VisUtils(object):
     def plot(
             self, mesh, color=(0.5, 0.1, 0.8), opacity=1.0,
             style=None, show_edges=False, show_scalar_bar=False,
-            point_size=None, line_width=None
+            point_size=None, line_width=None, scalars=None, cmap='viridis'
     ):
         self.plotter.add_mesh(
             mesh, color=color, opacity=opacity, style=style,
             show_edges=show_edges, show_scalar_bar=show_scalar_bar,
-            point_size=point_size, line_width=line_width
+            point_size=point_size, line_width=line_width,
+            scalars=scalars, cmap=cmap
         )
 
     @staticmethod
@@ -64,13 +65,13 @@ class VisUtils(object):
         line_mesh.lines = lines_set
         return line_mesh
 
-    @staticmethod
-    def create_sphere_set(pcd: np.ndarray, radius):
-        meshes = []
-        for xyz in pcd:
-            meshes.append(VisUtils.create_sphere(xyz, radius))
-        meshes = pyvista.MultiBlock(meshes)
-        return meshes
+    # @staticmethod
+    # def create_sphere_set(pcd: np.ndarray, radius):
+    #     meshes = []
+    #     for xyz in pcd:
+    #         meshes.append(VisUtils.create_sphere(xyz, radius))
+    #     meshes = pyvista.MultiBlock(meshes)
+    #     return meshes
 
     @staticmethod
     def create_tube(pcd: np.ndarray, radius, lines_set: np.ndarray) -> pyvista.PolyData:
@@ -116,42 +117,4 @@ class VisUtils(object):
         # mesh = VisUtils.create_tube(pcd, radius=0.25, lines_set=lines_set)
         # mesh.plot()
 
-    @staticmethod
-    def multi_tube_union_example():
-        """
-        todo Fail example
-        """
-        pcd = np.array([
-            [0., 0., 0.],
-            [0., 1., 0.],
-            [0., 2., 0.],
-            [0., 3., 0.],
-            [0., 4., 0.],
-            [1., 2., 0.],
-            [2., 2., 0.],
-            [3., 2., 0.]
-        ])
-        lines_connect = [
-            [0, 1, 2, 3, 4],
-            [2, 5, 6, 7]
-        ]
-        radius = [0.25, 0.05]
-
-        meshes = []
-        for i in range(len(lines_connect)):
-            line_set = VisUtils.create_line_set(lines_connect[i])
-            mesh = VisUtils.create_tube(pcd, radius=radius[i], lines_set=line_set)
-            meshes.append(mesh)
-
-        vis = VisUtils()
-
-        # for mesh in meshes:
-        #     vis.plot(mesh, style='wireframe')
-
-        main_mesh = meshes[0]
-        for mesh in meshes[1:]:
-            main_mesh.boolean_union(mesh)
-        vis.plot(main_mesh, style='wireframe')
-
-        vis.show()
 

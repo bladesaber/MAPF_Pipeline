@@ -20,7 +20,6 @@ from scripts_py.version_9.mapf_pkg.algo_utils import create_search_init_cfg, \
     create_obs_pcd, discrete_pipe_position
 from scripts_py.version_9.mapf_pkg.constrain_utils import DynamicHumanConstrain
 from scripts_py.version_9.mapf_pkg.cbs_utils import CbsSolver
-from scripts_py.version_9.mapf_pkg.smooth_optimizer import PathOptimizer
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 
 
@@ -342,10 +341,10 @@ class PathApp(EnvironmentApp):
 
         debug_checkbox = FragmentOpen3d.get_widget('checkbox', {'name': 'DebugMode'})
         max_iter_txt = FragmentOpen3d.get_widget(
-            'number', {'style': 'double', 'decimal_precision': 0, 'init_value': 300000, 'preferred_width': 80}
+            'number', {'style': 'double', 'decimal_precision': 0, 'init_value': 300000, 'preferred_width': 60}
         )
         max_node_txt = FragmentOpen3d.get_widget(
-            'number', {'style': 'double', 'decimal_precision': 0, 'init_value': 1000, 'preferred_width': 80}
+            'number', {'style': 'double', 'decimal_precision': 0, 'init_value': 1000, 'preferred_width': 60}
         )
         search_btn = FragmentOpen3d.get_widget('button', {'name': 'search'})
         search_btn.set_on_clicked(partial(
@@ -361,8 +360,9 @@ class PathApp(EnvironmentApp):
                 gui.Label('step4:'), define_search_setting_btn, discrete_pipe_switch,
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step5:'), create_constraint_btn]),
                 gui.Label('step6:'),
-                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('max_iter:'), max_iter_txt], 4),
-                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('max_nodes:'), max_node_txt], 4),
+                FragmentOpen3d.get_layout_widget('horiz', [
+                    gui.Label('maxIter:'), max_iter_txt, gui.Label('maxNodes:'), max_node_txt
+                ], space=10),
                 FragmentOpen3d.get_layout_widget('horiz', [search_btn, debug_checkbox], 4),
             ], 3, self.vert_margins)
         )

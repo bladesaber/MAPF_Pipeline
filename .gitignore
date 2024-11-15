@@ -2,6 +2,7 @@
 /.idea
 /Company Record
 /build
+/build_test
 .vscode
 __pycache__
 *.npy

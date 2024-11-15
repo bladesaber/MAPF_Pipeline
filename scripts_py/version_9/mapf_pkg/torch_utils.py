@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau, CosineAnnealingLR
 import numpy as np
 from typing import List, Callable, Dict
 import scipy
@@ -51,14 +52,27 @@ class TorchUtils(object):
         return torch.concatenate(datas, dim=dim)
 
     @staticmethod
-    def get_optimizer(parameters: List[torch.Tensor], lr: float):
+    def get_optimizer(parameters: List[torch.Tensor], lr: float) -> torch.optim.Optimizer:
         return optim.Adam(parameters, lr=lr)
 
     @staticmethod
-    def update_through_optimizer(optimizer: torch.optim.Optimizer, loss: torch.Tensor):
+    def get_lr_scheduler(
+            optimizer: torch.optim.Optimizer, factor=0.25, threshold=1e-2, patience=1000, cooldown=1000, min_lr=0.001
+    ) -> torch.optim.lr_scheduler.LRScheduler:
+        return ReduceLROnPlateau(
+            optimizer, mode='min', factor=factor, patience=patience, threshold=threshold,
+            cooldown=cooldown, min_lr=min_lr
+        )
+
+    @staticmethod
+    def update_through_optimizer(
+            optimizer: torch.optim.Optimizer, loss: torch.Tensor, scheduler: torch.optim.lr_scheduler.LRScheduler = None
+    ):
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
+        if scheduler is not None:
+            scheduler.step(loss)
 
     @staticmethod
     def update_by_raw(loss: torch.Tensor, parameters: List[torch.Tensor], lr: float):
@@ -69,42 +83,18 @@ class TorchUtils(object):
                 para.grad.zero_()
 
 
-class CostUtils(object):
+class TorchMath(object):
     @staticmethod
-    def compute_spring_length_cost(path_pcd: torch.Tensor, cfg: Dict):
-        weight = cfg['weight']
-        if cfg['type'] == 'norm_sum':
-            length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1).sum()
-            return length * weight
-        elif cfg['type'] == 'specify_value':
-            length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1).sum()
-            ratio = length / cfg['value'] - 1.0
-            return torch.pow(ratio, 2.0).mean() * weight
-        elif cfg['type'] == 'bottom_value':
-            length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1).sum()
-            ratio = cfg['value'] / (length + 1e-6) - 1.0
-            return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
-        elif cfg['type'] == 'upper_value':
-            length = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1).sum()
-            ratio = length / cfg['value'] - 1.0
-            return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
-        elif cfg['type'] == 'square_mean':
-            square_length = (torch.pow(path_pcd[1:, :] - path_pcd[:-1, :], 2.0)).sum(dim=1)
-            cost = square_length.mean()
-            return cost * weight
-        elif cfg['type'] == 'square_sum':
-            square_length = (torch.pow(path_pcd[1:, :] - path_pcd[:-1, :], 2.0)).sum(dim=1)
-            cost = square_length.sum()
-            return cost * weight
-        else:
-            raise ValueError()
+    def compute_cos_val(data_xyz: torch.Tensor):
+        vec0, vec1 = data_xyz[1:-1, :] - data_xyz[:-2, :], data_xyz[2:, :] - data_xyz[1:-1, :]
+        vec_sum = torch.sum(vec0 * vec1, dim=1)
+        vec0_length, vec1_length = torch.norm(vec0, p=2, dim=1), torch.norm(vec1, p=2, dim=1)
+        return vec_sum / (vec0_length * vec1_length + 1e-16)
 
     @staticmethod
-    def compute_approximate_curvature(path_pcd: torch.Tensor):
-        vec0 = path_pcd[1:-1, :] - path_pcd[:-2, :]
-        vec1 = path_pcd[2:, :] - path_pcd[1:-1, :]
-        vec0_length = torch.norm(vec0, p=2, dim=1)
-        vec1_length = torch.norm(vec1, p=2, dim=1)
+    def compute_approximate_curvature(data_xyz: torch.Tensor):
+        vec0, vec1 = data_xyz[1:-1, :] - data_xyz[:-2, :], data_xyz[2:, :] - data_xyz[1:-1, :]
+        vec0_length, vec1_length = torch.norm(vec0, p=2, dim=1), torch.norm(vec1, p=2, dim=1)
 
         # pytorch存在比较大的浮点算术误差，这里cos_val可能大于1.0或小于-1.0
         cos_val = torch.sum(vec0 * vec1, dim=1) / (vec0_length * vec1_length + 1e-16)
@@ -117,102 +107,116 @@ class CostUtils(object):
         return curvature
 
     @staticmethod
-    def compute_cos_val(path_pcd: torch.Tensor):
-        vec0, vec1 = path_pcd[1:-1, :] - path_pcd[:-2, :], path_pcd[2:, :] - path_pcd[1:-1, :]
-        vec_sum = torch.sum(vec0 * vec1, dim=1)
-        vec0_length, vec1_length = torch.norm(vec0, p=2, dim=1), torch.norm(vec1, p=2, dim=1)
-        return vec_sum / (vec0_length * vec1_length + 1e-16)
+    def sigmoid(data: torch.Tensor, drift=0.0, scale=1.0, sharp=1.0):
+        return scale / (1.0 + torch.exp(-1.0 * (data - drift) * sharp))
 
+
+class CostUtils(object):
     @staticmethod
-    def compute_curvature_cost(path_pcd: torch.Tensor, cfg: Dict):
+    def compute_length_cost(data_xyz: torch.Tensor, cfg: Dict):
         weight = cfg['weight']
-        if cfg['type'] == 'raw':
-            curvature = CostUtils.compute_approximate_curvature(path_pcd)
-            return (curvature.max() + curvature.mean()) * weight
-        elif cfg['type'] == 'upper_value':
-            curvature = CostUtils.compute_approximate_curvature(path_pcd)
-            ratio = (curvature - cfg['value']) / cfg['value']
-            return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
-        elif cfg['type'] == 'cos_raw':
-            cost = 1.0 - CostUtils.compute_cos_val(path_pcd)
-            return (cost.max() + cost.mean()) * weight
+        if cfg['method'] == 'norm_sum':
+            cost = torch.sum(torch.norm(data_xyz[1:, :] - data_xyz[:-1, :], p=2, dim=1)) * weight
+        elif cfg['method'] == 'fix_value':
+            length = torch.sum(torch.norm(data_xyz[1:, :] - data_xyz[:-1, :], p=2, dim=1))
+            cost = torch.pow(length / cfg['value'] - 1.0, 2.0) * weight
+        elif cfg['method'] == 'floor_bound':
+            length = torch.sum(torch.norm(data_xyz[1:, :] - data_xyz[:-1, :], p=2, dim=1))
+            cost = F.relu(1.0 - length / cfg['value']) * weight
+        elif cfg['method'] == 'ceil_bound':
+            length = torch.sum(torch.norm(data_xyz[1:, :] - data_xyz[:-1, :], p=2, dim=1))
+            cost = F.relu(length / cfg['value'] - 1.0) * weight
+        elif cfg['method'] == 'square_sum':
+            square_length = (torch.pow(data_xyz[1:, :] - data_xyz[:-1, :], 2.0)).sum(dim=1)
+            cost = square_length.sum() * weight
         else:
-            raise ValueError
+            raise ValueError(f"[ERROR]: Non-valid cost method {cfg['method']}")
+        return cost
 
     @staticmethod
-    def compute_boundary_constraint(path_data: torch.Tensor, cfg: Dict):
+    def compute_curvature_cost(data: torch.Tensor, cfg: Dict):
         weight = cfg['weight']
-        if cfg['type'] == 'upper_value':
-            ratio = (path_data - cfg['value']) / cfg['value']
-            return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
-        elif cfg['type'] == 'bottom_value':
-            ratio = (cfg['value'] - path_data) / cfg['value']
-            return ((F.relu(ratio)).max() + (F.relu(ratio)).mean()) * weight
+        if cfg['curvature_method'] == 'approximate_curvature':
+            curvature = TorchMath.compute_approximate_curvature(data)
+        elif cfg['curvature_method'] == 'analytical_curvature':
+            curvature = data
         else:
-            raise ValueError
+            raise ValueError(f"[ERROR]: Non-valid curvature method {cfg['curvature_method']}")
+
+        if cfg['method'] == 'max':
+            cost = (curvature.max() + curvature.mean()) * weight
+        elif cfg['method'] == 'mean':
+            cost = curvature.mean() * weight
+        elif cfg['method'] == 'sigmoid':
+            cur_sigmoid = TorchMath.sigmoid(curvature, drift=cfg['value'], sharp=20.0)
+            cost = (curvature * cur_sigmoid).sum() * weight
+        elif cfg['method'] == 'ceil_bound_1':
+            ratio = F.relu(curvature / cfg['value'] - 1.0)
+            cost = (ratio.max() + ratio.mean()) * weight
+        elif cfg['method'] == 'ceil_bound_2':
+            # 调整曲率并不单调整某几个控制点而是应该所有控制点一起调整，relu会cut掉其他控制点的梯度
+            ratio = F.relu(curvature / cfg['value'] - 1.0)
+            ratio_sigmoid = TorchMath.sigmoid(ratio, scale=2.0, sharp=10.0) - 1.0
+            cost = (ratio * ratio_sigmoid).sum() * weight
+        else:
+            raise ValueError(f"[ERROR]: Non-valid cost method {cfg['method']}")
+        return cost
 
     @staticmethod
-    def compute_segment_constraint(path_pcd: torch.Tensor, cfg: Dict):
+    def compute_boundary_cost(data: torch.Tensor, cfg: Dict):
         weight = cfg['weight']
-        if cfg['type'] == 'variance':
-            seg_lengths = torch.norm(path_pcd[1:, :] - path_pcd[:-1, :], p=2, dim=1)
-            cost = torch.pow(seg_lengths - seg_lengths.mean(), 2.0).sum()
-            return cost * weight
-        elif cfg['type'] == 'center_cluster':
-            path_pcd_np = TorchUtils.tensor2np(path_pcd)
-            center_np = (path_pcd_np[:-2, :] + path_pcd_np[2:, :]) * 0.5
-            center_t = TorchUtils.np2tensor(center_np, require_grad=False)
-            cost = torch.pow(path_pcd[1:-1] - center_t, 2.0).sum()
-            return cost * weight
+        if cfg['method'] == 'ceil_bound':
+            ratio = F.relu(data / cfg['value'] - 1.0)
+            cost = (ratio.max() + ratio.mean()) * weight
+        elif cfg['method'] == 'bottom_value':
+            ratio = F.relu(1.0 - data / cfg['value'])
+            cost = (ratio.max() + ratio.mean()) * weight
         else:
-            raise ValueError
+            raise ValueError(f"[ERROR]: Non-valid cost method {cfg['method']}")
+        return cost
 
     @staticmethod
-    def compute_connector_constraint(left_pcd: torch.Tensor, right_pcd: torch.Tensor, cfg: Dict):
-        if cfg['constraint_type'] == 'approximate_curvature':
-            path_pcd = TorchUtils.concatenate([left_pcd[-cfg['left_num']:], right_pcd[:cfg['right_num']]], dim=0)
-            return CostUtils.compute_curvature_cost(path_pcd, cfg)
-        elif cfg['constraint_type'] == 'connector_straight':
-            path_pcd = TorchUtils.concatenate([left_pcd[-cfg['left_num']:], right_pcd[:cfg['right_num']]], dim=0)
-            cost = 1.0 - CostUtils.compute_cos_val(path_pcd)
-            return cost.sum() * cfg['weight']
+    def compute_distribution_cost(data: torch.Tensor, cfg: Dict):
+        weight = cfg['weight']
+        if cfg['method'] == 'length_variance':
+            sub_lengths = torch.norm(data[1:, :] - data[:-1, :], p=2, dim=1)
+            cost = torch.pow(sub_lengths - sub_lengths.mean(), 2.0).sum() * weight
+        elif cfg['method'] == 'center_cluster':
+            xyz_np = TorchUtils.tensor2np(data)
+            center_t = TorchUtils.np2tensor((xyz_np[:-2, :] + xyz_np[2:, :]) * 0.5, require_grad=False)
+            cost = torch.pow(data[1:-1] - center_t, 2.0).sum() * weight
+        elif cfg['method'] == 'value_variance':
+            cost = torch.pow(data - data.mean(), 2.0).sum() * weight
         else:
-            raise ValueError()
+            raise ValueError(f"[ERROR]: Non-valid cost method {cfg['method']}")
+        return cost
+
+    @staticmethod
+    def compute_vector_cost(data_xyz: torch.Tensor, cfg: Dict, method: str):
+        weight = cfg['weight']
+
+        vector = cfg['vector']
+        vector = vector / np.linalg.norm(vector, ord=2)
+        vector = TorchUtils.np2tensor(vector, require_grad=False)
+
+        if method == 'left2any':
+            vecs = data_xyz[1:, :] - data_xyz[0]
+        elif method == 'any2right':
+            vecs = data_xyz[:-1, :] - data_xyz[-1]
+        else:
+            raise ValueError(f"[ERROR]: Non-valid cost method {cfg['method']}")
+
+        vecs_length = torch.norm(vecs, p=2, dim=1)
+        cos_value = torch.sum(vecs * vector, dim=1) / vecs_length
+        sin_square = 1.0 - torch.pow(cos_value, 2.0)
+        cost = (torch.pow(vecs_length, 2.0) * sin_square).sum() * weight
+
+        return cost
 
     @staticmethod
     def compute_shape_conflict_cost(pcd0: torch.Tensor, pcd1: torch.Tensor, require_dist: np.ndarray, weight: float):
         require_dist = TorchUtils.np2tensor(require_dist.reshape((-1, 1)), require_grad=False)
         return F.relu(require_dist - torch.norm(pcd0 - pcd1, p=2, dim=1)) * weight
-
-
-class MeanTestLearner(object):
-    def __init__(self, init_lr: float, stat_num=100, min_lr=1e-3):
-        self.losses = []
-        self.lr = init_lr
-        self.stat_num = stat_num
-        self.min_lr = min_lr
-
-    def get_lr(self, loss: float) -> Dict:
-        self.losses.append(loss)
-
-        num = len(self.losses)
-        if num < (self.stat_num * 2):
-            return {'state': False, 'lr': self.lr}
-
-        if num % self.stat_num == 0:
-            loss_seq0 = np.array(self.losses[-self.stat_num:])
-            loss_seq1 = np.array(self.losses[-self.stat_num * 2: -self.stat_num])
-            p_value = scipy.stats.ttest_ind(loss_seq0, loss_seq1).pvalue
-            if p_value > 0.5:
-                self.lr *= 0.5
-
-            if self.lr <= self.min_lr:
-                return {'state': True, 'lr': None}
-            else:
-                return {'state': False, 'lr': self.lr}
-
-        else:
-            return {'state': False, 'lr': self.lr}
 
 
 def main():

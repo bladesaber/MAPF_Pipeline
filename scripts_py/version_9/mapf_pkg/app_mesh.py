@@ -8,11 +8,13 @@ import argparse
 import subprocess
 import h5py
 import pyvista
+import matplotlib.pyplot as plt
 
 from scripts_py.version_9.mapf_pkg.app_utils import FragmentOpen3d
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 from scripts_py.version_9.mapf_pkg.app_smooth import SmoothApp
-from scripts_py.version_9.mapf_pkg.path2mesh_utils import Path2MeshConverter
+from scripts_py.version_9.mapf_pkg.point_cloud_utils import PathSurfaceGenerator, Pcd2MeshUtils
+from scripts_py.version_9.mapf_pkg.postprocess_utils import GroupRadiusAdjuster
 
 
 class MeshApp(SmoothApp):
@@ -20,118 +22,153 @@ class MeshApp(SmoothApp):
         super().__init__(config=config)
         self.init_path_mesh_widget()
 
-    def _path2pcd_on_click(self):
-        algo_file = os.path.join(self.proj_dir, 'algorithm_setup.json')
-        if not os.path.exists(algo_file):
-            self.console_label.text = "    [ERROR]: No algorithm_setup.json in the project"
-            return
+        self.groupRadiusAdjuster = GroupRadiusAdjuster()
 
-        res_file = os.path.join(self.proj_dir, 'smooth_result.hdf5')
+    def _export_point_cloud_on_click(self):
+        res_file = os.path.join(self.proj_dir, 'radius_adjust_result.hdf5')
         if not os.path.exists(res_file):
-            self.console_label.text = f"    [ERROR]: smooth result isn't exist."
+            self.console_label.text = f"    [ERROR]: finial result isn't exist."
             return
-
-        pcd2mesh_file = os.path.join(self.proj_dir, 'pcd2mesh.json')
-        if not os.path.exists(pcd2mesh_file):
-            pcd2mesh_json = {}
-            for _, group_cell in h5py.File(res_file).items():
-                group_idx = int(group_cell['group_idx'][0])
-                pcd2mesh_json[group_idx] = {}
-                for i, (name, xyzr) in enumerate(group_cell['spline'].items()):
-                    pcd2mesh_json[group_idx][name] = {
-                        'length_reso': 0.2,  # line segment resolution
-                        'sphere_reso': 0.15,  # sphere resolution
-                        'relax_factor': 0.01,  # remove resolution,
-                        'deplicate_format': 3,
-                        'left_clamp_reso': 0.2,
-                        'right_clamp_reso': 0.2,
-                        'left_clamp_relax_factor': 0.01,
-                        'right_clamp_relax_factor': 0.01
-                    }
-            with open(pcd2mesh_file, 'w') as f:
-                json.dump(pcd2mesh_json, f, indent=4)
-        subprocess.run(f"gedit {pcd2mesh_file};", shell=True)
-
-        with open(pcd2mesh_file, 'r') as f:
-            pcd2mesh_json = json.load(f)
-            for key in list(pcd2mesh_json.keys()):
-                pcd2mesh_json[int(key)] = pcd2mesh_json.pop(key)
-
-        with open(algo_file, 'r') as f:
-            algo_json = json.load(f)
-        pipe_cfg = algo_json['pipes']
 
         mesh_dir = os.path.join(self.proj_dir, 'mesh')
         if os.path.exists(mesh_dir):
             shutil.rmtree(mesh_dir)
         os.mkdir(mesh_dir)
 
-        group_mesher = {}
         for _, group_cell in h5py.File(res_file).items():
             group_idx = int(group_cell['group_idx'][0])
-            group_mesher[group_idx] = Path2MeshConverter()
 
-            for i, (seg_name, xyzr) in enumerate(group_cell['spline'].items()):
+            cells = []
+            for name, xyzr in group_cell['segment'].items():
+                cells.append((name, xyzr))
+            for name, xyzr in group_cell['connector'].items():
+                cells.append((name, xyzr))
+
+            group_gen = {}
+            for seg_name, xyzr in cells:
                 xyzr = np.array(xyzr)
-                path, radius = xyzr[:, :3], xyzr[:, -1]
-                left_dire, right_dire = None, None
-                is_left_clamp_invert, is_right_clamp_invert = None, None
-                with_left_clamp, with_right_clamp = False, False
+                generator = PathSurfaceGenerator(xyzr[:, :3], xyzr[:, -1])
+                generator.generate_pcd({
+                    'length_reso': 0.2,  # line segment resolution
+                    'sphere_reso': 0.15,  # sphere resolution
+                    'relax_factor': 0.01,  # remove resolution,
+                    'deplicate_format': 3,
+                    'left_clamp_reso': 0.2,
+                    'right_clamp_reso': 0.2,
+                    'left_clamp_relax_factor': 0.01,
+                    'right_clamp_relax_factor': 0.01,
+                    'with_left_clamp': False,
+                    'with_right_clamp': False
+                })
+                group_gen[seg_name] = generator
 
-                for pipe_name, pipe_info in pipe_cfg.items():
-                    pipe_xyz = np.array(pipe_info['discrete_position'])
-                    pipe_dire = np.array(pipe_info['direction'])
+            for name_i, gen_i in group_gen.items():
+                for name_j, gen_j in group_gen.items():
+                    gen_i.pcd_data = PathSurfaceGenerator.remove_inner_sphere(
+                        gen_i.pcd_data, gen_j.sphere_centers, gen_j.sphere_radius, relax_factor=1e-4,
+                    )
 
-                    if np.all(np.isclose(path[0] - pipe_xyz, 0.0)):
-                        if pipe_info['is_input']:
-                            is_left_clamp_invert = False
-                        else:
-                            is_left_clamp_invert = True
-                        left_dire = pipe_dire
-                        with_left_clamp = True
+            group_pcds = []
+            for name, gen in group_gen.items():
+                group_pcds.append(gen.merge_pcd())
+            group_pcds = np.concatenate(group_pcds, axis=0)
 
-                    if np.all(np.isclose(path[-1] - pipe_xyz, 0.0)):
-                        if pipe_info['is_input']:
-                            is_right_clamp_invert = False
-                        else:
-                            is_right_clamp_invert = True
-                        right_dire = pipe_dire
-                        with_right_clamp = True
+            pcd_ply = pyvista.PolyData(group_pcds)
+            # pcd_ply.plot()
+            Pcd2MeshUtils.save_ply(pcd_ply, file=os.path.join(mesh_dir, f"group_{group_idx}.ply"))
 
-                group_mesher[group_idx].add_segment(
-                    seg_name, path, radius, cfg=pcd2mesh_json[group_idx][seg_name],
-                    left_dire=left_dire, right_dire=right_dire,
-                    is_left_clamp_invert=is_left_clamp_invert, is_right_clamp_invert=is_right_clamp_invert,
-                    with_left_clamp=with_left_clamp, with_right_clamp=with_right_clamp
+    def _setup_radius_adjuster_on_click(self):
+        res_file = os.path.join(self.proj_dir, 'smooth_result.hdf5')
+        if not os.path.exists(res_file):
+            self.console_label.text = f"    [ERROR]: smooth result isn't exist."
+            return
+
+        postprocess_file = os.path.join(self.proj_dir, 'postprocess.json')
+        if not os.path.exists(postprocess_file):
+            postprocess_json = {
+                "run_cfg": {
+                    "lr": 0.002,
+                    "factor": 0.25,
+                    "patience": 1000,
+                    "cooldown": 100,
+                    "min_lr": 0.001,
+                },
+                "cost_cfg": {
+                    "scale_weight": 100.0,
+                    "balance_weight": 1.0,
+                    "keep_weight": 10.0
+                }
+            }
+            with open(postprocess_file, 'w') as f:
+                json.dump(postprocess_json, f, indent=4)
+        subprocess.run(f"gedit {postprocess_file};", shell=True)
+
+        for group_idx, group_layer in h5py.File(res_file).items():
+            for _, cell_layer in group_layer['data'].items():
+                cell_type = str(cell_layer['cell_type'][()])
+                cell_idx = int(cell_layer['idx'][()])
+                cell_flag = f"{group_idx}/{cell_idx}_{cell_type}"
+                ts = np.array(cell_layer['ts'])
+                degree = int(cell_layer['degree'][()])
+                knot = np.array(cell_layer['knot'])
+                c_xyz = np.array(cell_layer['c_xyz'])
+                fill_last_one = bool(cell_layer['fill_last_one'][()])
+                c_radius = np.array(cell_layer['c_radius'])
+                self.groupRadiusAdjuster.add_cell(
+                    cell_flag, ts=ts, degree=degree, knot=knot,
+                    c_xyz=c_xyz, fill_last_one=fill_last_one, c_radius=c_radius
                 )
 
-            # # ------ debug vis
-            # for seg_name, info in group_mesher[group_idx].segment_cell.items():
-            #     info['path_cell'].generate_pcd(info['cfg'])
-            #     info['path_cell'].draw()
-            # # ------
+    def _run_radius_adjust_on_click(self):
+        postprocess_file = os.path.join(self.proj_dir, 'postprocess.json')
+        if not os.path.exists(postprocess_file):
+            self.console_label.text = f"    [ERROR]: postprocess.json isn't exist."
+            return
+        with open(postprocess_file, 'r') as f:
+            postprocess_json = json.load(f)
 
-            group_mesher[group_idx].generate_pcd_data()
-            group_mesher[group_idx].remove_inner_pcd()
-            pcd_data = group_mesher[group_idx].get_pcd_data()
+        loss_record, loss_info = self.groupRadiusAdjuster.optimize(
+            postprocess_json['run_cfg'], postprocess_json['cost_cfg']
+        )
 
-            pcd_ply = pyvista.PolyData(pcd_data)
-            pcd_ply.plot()
-            Path2MeshConverter.save_ply(pcd_ply, file=os.path.join(mesh_dir, f"group_{group_idx}.ply"))
-    
+        plt.title('loss record')
+        plt.plot(loss_record)
+        plt.show()
+
+    def _radius_check_on_click(self):
+        self.groupRadiusAdjuster.draw_error_check()
+
+    def _export_step_on_click(self):
+        raise NotImplementedError
+
     def init_path_mesh_widget(self):
         mesh_layout = gui.CollapsableVert("Path Mesh Setup", self.spacing, self.blank_margins)
         self.panel.add_child(mesh_layout)
 
-        run_pcd2mesh_btn = FragmentOpen3d.get_widget('button', {'name': 'run Pcd to Mesh'})
-        run_pcd2mesh_btn.set_on_clicked(self._path2pcd_on_click)
+        setup_radius_adjuster_btn = FragmentOpen3d.get_widget('button', {'name': 'setupAdjuster'})
+        setup_radius_adjuster_btn.set_on_clicked(self._setup_radius_adjuster_on_click)
+
+        run_adjust_btn = FragmentOpen3d.get_widget('button', {'name': 'runAdjust'})
+        run_adjust_btn.set_on_clicked(self._run_radius_adjust_on_click)
+
+        radius_check_btn = FragmentOpen3d.get_widget('button', {'name': 'radiusCheck'})
+        radius_check_btn.set_on_clicked(self._radius_check_on_click)
+
+        export_step_btn = FragmentOpen3d.get_widget('button', {'name': 'exportSTEP'})
+        export_step_btn.set_on_clicked(self._export_step_on_click)
+        export_pcd_btn = FragmentOpen3d.get_widget('button', {'name': 'exportPcd'})
+        export_pcd_btn.set_on_clicked(self._export_point_cloud_on_click)
 
         mesh_layout.add_child(
             FragmentOpen3d.get_layout_widget('vert', [
-                FragmentOpen3d.get_layout_widget('horiz', [gui.Label("step1:"), run_pcd2mesh_btn]),
+                FragmentOpen3d.get_layout_widget('horiz', [
+                    gui.Label("step1&2:"), setup_radius_adjuster_btn, run_adjust_btn
+                ], 10),
+                FragmentOpen3d.get_layout_widget('horiz', [radius_check_btn]),
+                FragmentOpen3d.get_layout_widget('horiz', [export_step_btn, export_pcd_btn], 10),
             ])
         )
-    
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Fluid Tool")

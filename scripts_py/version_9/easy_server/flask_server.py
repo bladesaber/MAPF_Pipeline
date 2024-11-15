@@ -14,7 +14,7 @@ from flask_cors import *
 from scripts_py.version_9.mapf_pkg.networker_block import SimpleBlocker
 from scripts_py.version_9.mapf_pkg.algo_utils import create_obs_pcd, discrete_pipe_position
 from scripts_py.version_9.mapf_pkg.cbs_utils import CbsSolver
-from scripts_py.version_9.mapf_pkg.smooth_optimizer import PathOptimizer
+# from scripts_py.version_9.mapf_pkg.smooth_optimizer import PathOptimizer
 from scripts_py.version_9.mapf_pkg.shape_utils import ShapeUtils
 
 app = Flask(__name__)
