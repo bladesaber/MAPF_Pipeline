@@ -31,6 +31,7 @@ from typing import Dict, List, Tuple, Union, Literal
 import pandas as pd
 import pyvista
 import torch
+import h5py
 
 from scripts_py.version_9.mapf_pkg.bspline_utils import BsplineUtils
 from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils, CostUtils, TorchMath
@@ -48,8 +49,8 @@ class SegmentCell(object):
         # ------ connector cfg
         self.left_clamp = False
         self.right_clamp = False
-        self.left_vector: np.ndarray = None  # todo 这里仍然需要进出区分吗
-        self.right_vector: np.ndarray = None
+        self.left_vector: np.ndarray = np.array([0., 0., 0.])  # todo 这里仍然需要进出区分吗
+        self.right_vector: np.ndarray = np.array([0., 0., 0.])
 
         self.left_overlap_num: int = None
         self.right_overlap_num: int = None
@@ -620,54 +621,53 @@ class GroupPath(object):
     def is_fix(self) -> List[bool]:
         return (self.c_table[['is_fix']].values == 1).reshape(-1)
 
-    def save(self, save_dir: str):
-        if os.path.exists(save_dir):
-            shutil.rmtree(save_dir)
-        os.mkdir(save_dir)
+    def save(self, file: str = None, writer: h5py.File = None):
+        close_auto = False
+        if writer is None:
+            assert file.endswith('.hdf5')
+            writer = h5py.File(file, mode='w')
+            close_auto = True
 
-        self.c_table.to_csv(os.path.join(save_dir, 'c_table.csv'))
+        group_layer = writer.create_group(f"group_{self.group_idx}")
+        group_layer.create_dataset("group_idx", data=[self.group_idx])
 
-        seg_cfgs = {}
+        table_xyzr = self.c_table[['x', 'y', 'z', 'radius']].values
+        group_layer.create_dataset("c_xyzr", data=table_xyzr)
+        group_layer.create_dataset("c_info", data=self.c_table[['unique_idx', 'is_unique', 'is_fix']].values)
+
+        data_layer = group_layer.create_group('data')
         for seg_idx, seg_cell in self.seg_dict.items():
-            seg_cfgs[seg_idx] = {
-                'idx': seg_cell.idx,
-                'group_idx': seg_cell.group_idx,
-                'c_idxs': seg_cell.c_idxs,
-                'left_clamp': seg_cell.left_clamp,
-                'right_clamp': seg_cell.right_clamp,
-                'left_vector': seg_cell.left_vector,
-                'right_vector': seg_cell.right_vector,
-                'left_overlap_num': seg_cell.left_overlap_num,
-                'right_overlap_num': seg_cell.right_overlap_num,
-                'left_intercept_num': seg_cell.left_intercept_num,
-                'right_intercept_num': seg_cell.right_intercept_num,
-                'degree': seg_cell.degree,
-                'min_conflict_thickness': seg_cell.min_conflict_thickness,
-                'min_obstacle_thickness': seg_cell.min_obstacle_thickness,
-                'cost_cfgs': seg_cell.cost_cfgs,
-            }
+            seg_layer = data_layer.create_group(f"seg_{seg_cell.idx}")
+            seg_layer.create_dataset("idx", data=[seg_cell.idx])
+            seg_layer.create_dataset("cell_type", data=[seg_cell.cell_type])
+            seg_layer.create_dataset("ts", data=seg_cell.ts)
+            seg_layer.create_dataset("degree", data=[seg_cell.degree])
+            seg_layer.create_dataset("fill_last_one", data=[seg_cell.fill_last_one])
+            seg_layer.create_dataset("knot", data=seg_cell.knot)
+            seg_layer.create_dataset("c_idxs", data=seg_cell.c_idxs)
+            seg_layer.create_dataset("c_radius", data=seg_cell.c_radius)
+            seg_layer.create_dataset("spline", data=seg_cell.compute_spline_np(table_xyzr))
+            seg_layer.create_dataset("left_clamp", data=[seg_cell.left_clamp])
+            seg_layer.create_dataset("right_clamp", data=[seg_cell.right_clamp])
+            seg_layer.create_dataset("left_vector", data=seg_cell.left_vector)
+            seg_layer.create_dataset("right_vector", data=seg_cell.right_vector)
 
-        connector_cfgs = {}
         for con_idx, con_cell in self.connector_dict.items():
-            connector_cfgs[con_idx] = {
-                'idx': con_cell.idx,
-                'group_idx': con_cell.group_idx,
-                'left_seg_idx': con_cell.left_seg_idx,
-                'right_seg_idx': con_cell.right_seg_idx,
-                'c_idxs': con_cell.c_idxs,
-                'left_clamp': con_cell.left_clamp,
-                'right_clamp': con_cell.right_clamp,
-                'left_intercept_num': con_cell.left_intercept_num,
-                'right_intercept_num': con_cell.right_intercept_num,
-                'degree': con_cell.degree,
-                'min_conflict_thickness': con_cell.min_conflict_thickness,
-                'min_obstacle_thickness': con_cell.min_obstacle_thickness,
-                'cost_cfgs': con_cell.cost_cfgs,
-            }
+            con_layer = data_layer.create_group(f"con_{con_cell.idx}")
+            con_layer.create_dataset("idx", data=[con_cell.idx])
+            con_layer.create_dataset("cell_type", data=[con_cell.cell_type])
+            con_layer.create_dataset("ts", data=con_cell.ts)
+            con_layer.create_dataset("degree", data=[con_cell.degree])
+            con_layer.create_dataset("fill_last_one", data=[con_cell.fill_last_one])
+            con_layer.create_dataset("knot", data=con_cell.knot)
+            con_layer.create_dataset("c_idxs", data=con_cell.c_idxs)
+            con_layer.create_dataset("c_radius", data=con_cell.c_radius)
+            con_layer.create_dataset("spline", data=con_cell.compute_spline_np(table_xyzr))
+            con_layer.create_dataset("left_clamp", data=[con_cell.left_clamp])
+            con_layer.create_dataset("right_clamp", data=[con_cell.right_clamp])
 
-        save_cfg = {'seg_cfgs': seg_cfgs, 'connector_cfgs': connector_cfgs}
-        with open(os.path.join(save_dir, 'cfg.json')) as f:
-            json.dump(save_cfg, f)
+        if close_auto:
+            writer.close()
 
     def restore(self):
         # todo non-complete
@@ -765,7 +765,7 @@ class GroupPath(object):
         if show_plot:
             vis.show()
 
-    def draw_tensor(self, vis: VisUtils = None, with_curvature=False):
+    def draw_tensor(self, vis: VisUtils = None):
         show_plot = False
         if vis is None:
             vis = VisUtils()
@@ -779,36 +779,34 @@ class GroupPath(object):
 
         for con_idx, con_cell in self.connector_dict.items():
             color = (0., 1., 0.)
-            if with_curvature:
-                color = (0., 0., 1.)
             con_xyzr = TorchUtils.tensor2np(con_cell.spline_xyz_t)
             line_set = VisUtils.create_line_set(np.arange(0, con_xyzr.shape[0], 1))
             mesh = VisUtils.create_line(con_xyzr[:, :3], line_set)
             vis.plot(mesh, color=color, style='wireframe', point_size=0.0, line_width=1.0)
 
-        if with_curvature:
-            cell_list: List[Union[SegmentCell, ConnectorCell]] = []
-            for seg_idx, seg_cell in self.seg_dict.items():
-                cell_list.append(seg_cell)
-            for con_idx, con_cell in self.connector_dict.items():
-                cell_list.append(con_cell)
+        if show_plot:
+            vis.show()
 
-            for cell in cell_list:
-                cur_np = np.zeros(cell.spline_xyz_t.shape[0])
-                xyzr_np = TorchUtils.tensor2np(cell.spline_xyz_t)
+    def draw_curvature(self, vis: VisUtils = None):
+        show_plot = False
+        if vis is None:
+            vis = VisUtils()
+            show_plot = True
 
-                if cell.left_clamp and cell.right_clamp:
-                    cur_np[1:-1] = TorchUtils.tensor2np(cell.spline_curvature_t)
-                elif cell.left_clamp and (not cell.right_clamp):
-                    cur_np[1:] = TorchUtils.tensor2np(cell.spline_curvature_t)
-                elif (not cell.left_clamp) and cell.right_clamp:
-                    cur_np[:-1] = TorchUtils.tensor2np(cell.spline_curvature_t)
-                else:
-                    cur_np = TorchUtils.tensor2np(cell.spline_curvature_t)
+        cell_list: List[Union[SegmentCell, ConnectorCell]] = []
+        for seg_idx, seg_cell in self.seg_dict.items():
+            cell_list.append(seg_cell)
+        for con_idx, con_cell in self.connector_dict.items():
+            cell_list.append(con_cell)
 
-                mesh = pyvista.PointSet(xyzr_np[:, :3])
-                mesh['scalars'] = cur_np
-                vis.plot(mesh, point_size=6, scalars='scalars', show_scalar_bar=True, cmap=plt.cm.rainbow)
+        table_xyzr = self.c_table[['x', 'y', 'z', 'radius']].values
+        for cell in cell_list:
+            xyzr = cell.compute_spline_np(table_xyzr)
+            curvature = cell.compute_curvature_np(table_xyzr)
+
+            mesh = pyvista.PointSet(xyzr[:, :3])
+            mesh['scalars'] = curvature
+            vis.plot(mesh, point_size=6, scalars='scalars', show_scalar_bar=True, cmap=plt.cm.rainbow)
 
         if show_plot:
             vis.show()

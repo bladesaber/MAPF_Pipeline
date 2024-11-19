@@ -2,6 +2,7 @@ import numpy as np
 from typing import List, Union, Dict, Tuple, Literal
 import torch
 from sklearn.neighbors import KDTree
+import h5py
 
 from scripts_py.version_9.mapf_pkg import smooth_seg_utils
 from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils, CostUtils
@@ -423,6 +424,19 @@ class PathOptimizer(object):
 
         return loss_record, loss_info_np
 
+    def save(self, file: str = None, writer: h5py.File = None):
+        close_auto = False
+        if writer is None:
+            assert file.endswith('.hdf5')
+            writer = h5py.File(file, mode='w')
+            close_auto = True
+
+        for group_idx, group_cell in self.group_cells.items():
+            group_cell.save(writer=writer)
+
+        if close_auto:
+            writer.close()
+
     def loss_check(self, lr):
         loss_info = {}
         for group_idx, group_cell in self.group_cells.items():
@@ -555,5 +569,7 @@ class PathOptimizer(object):
             vis.show()
 
     def draw_curvature(self):
-        # todo
-        raise NotImplementedError
+        vis = VisUtils()
+        for group_idx, group_cell in self.group_cells.items():
+            group_cell.draw_curvature(vis)
+        vis.show()

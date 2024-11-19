@@ -541,37 +541,7 @@ class SmoothApp(PathApp):
             return
 
         save_file = os.path.join(self.proj_dir, 'smooth_result.hdf5')
-        with h5py.File(save_file, 'w') as f:
-            for group_idx, group_cell in self.smooth_opt.group_cells.items():
-                group_set = f.create_group(str(group_idx))
-                group_set.create_dataset("group_idx", data=group_idx)
-
-                data_layer = group_set.create_group('data')
-                table_xyzr = group_cell.c_table[['x', 'y', 'z', 'radius']].values
-
-                for seg_idx, seg_cell in group_cell.seg_dict.items():
-                    seg_layer = data_layer.create_group(f"seg_{seg_cell.idx}")
-                    seg_layer.create_dataset("idx", data=seg_cell.idx)
-                    seg_layer.create_dataset("cell_type", data=seg_cell.cell_type)
-                    seg_layer.create_dataset("ts", data=seg_cell.ts)
-                    seg_layer.create_dataset("degree", data=seg_cell.degree)
-                    seg_layer.create_dataset("fill_last_one", data=seg_cell.fill_last_one)
-                    seg_layer.create_dataset("knot", data=seg_cell.knot)
-                    seg_layer.create_dataset("c_xyz", data=table_xyzr[seg_cell.c_idxs, :3])
-                    seg_layer.create_dataset("c_radius", data=seg_cell.c_radius)
-                    seg_layer.create_dataset("spline", data=seg_cell.compute_spline_np(table_xyzr))
-
-                for con_idx, con_cell in group_cell.connector_dict.items():
-                    con_layer = data_layer.create_group(f"con_{con_cell.idx}")
-                    con_layer.create_dataset("idx", data=con_cell.idx)
-                    con_layer.create_dataset("cell_type", data=con_cell.cell_type)
-                    con_layer.create_dataset("ts", data=con_cell.ts)
-                    con_layer.create_dataset("degree", data=con_cell.degree)
-                    con_layer.create_dataset("fill_last_one", data=con_cell.fill_last_one)
-                    con_layer.create_dataset("knot", data=con_cell.knot)
-                    con_layer.create_dataset("c_xyz", data=table_xyzr[con_cell.c_idxs, :3])
-                    con_layer.create_dataset("c_radius", data=con_cell.c_radius)
-                    con_layer.create_dataset("spline", data=con_cell.compute_spline_np(table_xyzr))
+        self.smooth_opt.save(file=save_file)
 
     def loss_check_on_click(self, lr_txt: gui.NumberEdit):
         if self.smooth_opt is None:
@@ -593,12 +563,10 @@ class SmoothApp(PathApp):
             lr_txt.double_value, with_path_conflict=True, with_obstacle_conflict=True, with_real_conflict=True
         )
 
-    def _debug_on_click(self):
-        # todo 需要调整
+    def _draw_curvature_on_click(self):
         if self.smooth_opt is None:
             return
-        for group_idx, group_cell in self.smooth_opt.group_cells.items():
-            group_cell.draw_tensor(with_curvature=True)
+        self.smooth_opt.draw_curvature()
 
     def init_path_smooth_widget(self):
         smoother_layout = gui.CollapsableVert("Path Smooth Setup", self.spacing, self.blank_margins)
@@ -642,9 +610,7 @@ class SmoothApp(PathApp):
         auto_smooth_btn.set_on_clicked(self._auto_smooth)
         save_result_btn = FragmentOpen3d.get_widget('button', {'name': 'save_result'})
         save_result_btn.set_on_clicked(self._save_result)
-        save_project_btn = FragmentOpen3d.get_widget('button', {'name': 'save_project'})
-        # save_result_btn.set_on_clicked(self._save_result)
-        update_control_data_btn = FragmentOpen3d.get_widget('button', {'name': 'update_control_data'})
+        update_control_data_btn = FragmentOpen3d.get_widget('button', {'name': 'adjustControlPcd'})  # todo non-complete
 
         with_control_checkbox = FragmentOpen3d.get_widget('checkbox', widget_info={'name': 'control'})
         with_control_checkbox.checked = True
@@ -670,10 +636,12 @@ class SmoothApp(PathApp):
             filedlg.set_on_done(self._update_cost_cfg)
             self.window.show_dialog(filedlg)
 
-        update_cost_cfg_btn = FragmentOpen3d.get_widget('button', {'name': 'update_config'})
+        update_cost_cfg_btn = FragmentOpen3d.get_widget('button', {'name': 'updateCfg'})
         update_cost_cfg_btn.set_on_clicked(_update_cost_cfg_btn_on_click)
+        vis_curvature_btn = FragmentOpen3d.get_widget('button', {'name': 'visCurvature'})
+        vis_curvature_btn.set_on_clicked(self._draw_curvature_on_click)
         debug_btn = FragmentOpen3d.get_widget('button', {'name': 'debug'})
-        debug_btn.set_on_clicked(self._debug_on_click)
+        # debug_btn.set_on_clicked()
 
         smoother_layout.add_child(
             FragmentOpen3d.get_layout_widget('vert', [
@@ -695,9 +663,9 @@ class SmoothApp(PathApp):
                 FragmentOpen3d.get_layout_widget('horiz', [
                     gui.Label('step3:'), gui.Label('iter:'), run_times_txt, gui.Label('lr:'), lr_txt
                 ]),
-                FragmentOpen3d.get_layout_widget('horiz', [update_control_data_btn], 4),
+                FragmentOpen3d.get_layout_widget('horiz', [update_control_data_btn, vis_curvature_btn], 4),
                 FragmentOpen3d.get_layout_widget('horiz', [run_smooth_btn, auto_smooth_btn], 4),
-                FragmentOpen3d.get_layout_widget('horiz', [save_result_btn, save_project_btn], 4),
+                FragmentOpen3d.get_layout_widget('horiz', [save_result_btn], 4),
                 FragmentOpen3d.get_layout_widget('horiz', [loss_check_btn, revert_result_btn], 4),
                 FragmentOpen3d.get_layout_widget('horiz', [debug_btn], 4),
             ], 3, self.vert_margins)

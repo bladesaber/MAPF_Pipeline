@@ -2,7 +2,7 @@ import numpy as np
 from typing import Union, List, Dict
 import OCC.Core.TopoDS as TopoDS
 
-from OCC.Display.SimpleGui import init_display
+from OCC.Display.SimpleGui import init_display, load_backend
 from OCC.Display.WebGl import threejs_renderer
 
 from OCC.Core.STEPControl import STEPControl_Reader, STEPControl_Writer, STEPControl_AsIs
@@ -17,6 +17,7 @@ from OCC.Core.BRepBuilderAPI import (BRepBuilderAPI_MakeVertex, BRepBuilderAPI_M
                                      BRepBuilderAPI_Sewing)
 from OCC.Core.BRepOffsetAPI import (BRepOffsetAPI_MakePipe, BRepOffsetAPI_ThruSections,
                                     BRepOffsetAPI_MakePipeShell)
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeSphere, BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakeBox
 
 from OCC.Core.TopoDS import TopoDS_Shell
 from OCC.Core.BRep import BRep_Builder
@@ -168,6 +169,7 @@ class OcctProfile(object):
             multiplicities_array.SetValue(i + 1, int(v))
 
         profile = Geom_BSplineCurve(pnt_array, knot_array, multiplicities_array, degree, False)
+
         return profile
 
     @staticmethod
@@ -187,6 +189,7 @@ class OcctProfile(object):
     ) -> Union[TopoDS.TopoDS_Shell, TopoDS.TopoDS_Shape, BRepOffsetAPI_MakePipeShell]:
         pipe = BRepOffsetAPI_MakePipeShell(path)
         pipe.SetLaw(profile, law_runner, False, True)
+
         if return_shape:
             return pipe.Shape()
         return pipe
@@ -200,6 +203,26 @@ class OcctProfile(object):
             ), radius
         )
         return profile
+
+    @staticmethod
+    def make_box(center: gp_Pnt, dx: float, dy: float, dz: float) -> TopoDS.TopoDS_Shape:
+        return BRepPrimAPI_MakeBox(center, dx, dy, dz).Shape()
+
+    @staticmethod
+    def make_sphere(center: gp_Pnt, radius: float) -> TopoDS.TopoDS_Shape:
+        return BRepPrimAPI_MakeSphere(center, radius).Shape()
+
+    @staticmethod
+    def make_cylinder(center: gp_Ax2, radius: float, height: float) -> TopoDS.TopoDS_Shape:
+        return BRepPrimAPI_MakeCylinder(center, radius, height).Shape()
+
+    @staticmethod
+    def make_thruSections(wires: List[TopoDS.TopoDS_Wire], is_solid=True, ruled=True):
+        generator = BRepOffsetAPI_ThruSections(is_solid, ruled)
+        for wire in wires:
+            generator.AddWire(wire)
+        generator.Build()
+        return generator.Shape()
 
 
 class OcctOperation(object):
@@ -268,6 +291,7 @@ class OcctUtil(object):
 
 
 class OcctVis(object):
+    """OCCT是个异步可视化库,不可以与pyvista同步使用"""
     def __init__(self):
         self.display, self.start_display, self.add_menu, self.add_function_to_menu = init_display()
 
@@ -279,6 +303,7 @@ class OcctVis(object):
 
     @staticmethod
     def init_plotter():
+        # load_backend('pyqt5')
         display, start_display, add_menu, add_function_to_menu = init_display()
         return display, start_display, add_menu, add_function_to_menu
 

@@ -89,6 +89,16 @@ class VisUtils(object):
         return mesh
 
     @staticmethod
+    def create_polygon(center: np.ndarray, radius: float, normal: np.ndarray, n_sides=10):
+        mesh = pyvista.Polygon(center, radius, normal, n_sides)
+        return mesh
+
+    @staticmethod
+    def create_plane(center: np.ndarray, vector: np.ndarray, x_size: int, y_size: int):
+        mesh = pyvista.Plane(center, vector, x_size, y_size)
+        return mesh
+
+    @staticmethod
     def multi_tube_example():
         pcd = np.array([
             [0., 0., 0.],
@@ -116,5 +126,3 @@ class VisUtils(object):
 
         # mesh = VisUtils.create_tube(pcd, radius=0.25, lines_set=lines_set)
         # mesh.plot()
-
-
