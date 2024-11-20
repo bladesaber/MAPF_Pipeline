@@ -59,7 +59,6 @@ class OcctIO(object):
     @staticmethod
     def write_STL(file: str, shape: Union[TopoDS.TopoDS_Shell, TopoDS.TopoDS_Solid], is_ascii=True):
         # ------ high possible fail
-        assert file.endswith('.stl')
         saver = StlAPI_Writer()
         saver.SetASCIIMode(is_ascii)
         return saver.Write(shape, file)

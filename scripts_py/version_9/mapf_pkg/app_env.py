@@ -137,7 +137,8 @@ class EnvironmentApp(AppWindow):
             if file_format in ['stp', 'step']:
                 tmp_file = os.path.join(self.save_dir, name.replace('.stp', '.stl').replace('.step', '.stl'))
                 solid = cq.importers.importStep(path)
-                cq.exporters.export(solid, tmp_file)
+                cq.exporters.export(solid, tmp_file, opt={'ascii': True})
+                # cq.exporters.export(solid, tmp_file)
                 path = tmp_file
 
             if sample_num_of_points.int_value == 0:

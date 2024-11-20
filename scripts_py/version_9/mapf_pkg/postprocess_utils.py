@@ -1,17 +1,21 @@
 import os
-
+import json
 import numpy as np
 import torch
 import torch.nn.functional as F
 from typing import Dict
 import matplotlib.pyplot as plt
 import pyvista
+import h5py
+import cadquery as cq
 
 from scripts_py.version_9.mapf_pkg.bspline_utils import BsplineUtils
 from scripts_py.version_9.mapf_pkg.torch_utils import TorchMath, TorchUtils
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 
 from scripts_py.version_9.mapf_pkg.cad_utils import OcctUtil, OcctVis, OcctIO, OcctAux, OcctOperation, OcctProfile
+
+from scripts_py.version_9.simulator.kepsilon_openfoam import KEpsilonSimulator
 
 
 class CellRadiusAdjuster(object):
@@ -287,6 +291,36 @@ class RadiusOptimizer(object):
         if show_plot:
             vis.show()
 
+    def save_terminal_info(self, file: str = None):
+        assert file.endswith('.json')
+        with open(file, 'w') as f:
+            terminal_json = {}
+            for group_idx, group_cell in self.group_dict.items():
+                for cell_name, cell in group_cell.cell_dict.items():
+                    if cell.cell_type == 'connector':
+                        continue
+
+                    radius = cell.compute_radius_np(group_cell.table_radius)
+                    if cell.left_clamp:
+                        terminal_json[f"pipe_{len(terminal_json)}"] = {
+                            'center': cell.spline_xyz[0].tolist(),
+                            'direction': cell.tangent_vec[0].tolist(),
+                            'radius': radius[0],
+                            'group_idx': int(group_idx),
+                            'pipe_type': 'Unknown'
+                        }
+
+                    if cell.right_clamp:
+                        terminal_json[f"pipe_{len(terminal_json)}"] = {
+                            'center': cell.spline_xyz[-1].tolist(),
+                            'direction': cell.tangent_vec[-1].tolist(),
+                            'radius': radius[-1],
+                            'group_idx': int(group_idx),
+                            'pipe_type': 'Unknown'
+                        }
+
+            json.dump(terminal_json, f, indent=4)
+
 
 class StepExporter(object):
     @staticmethod
@@ -323,4 +357,25 @@ class StepExporter(object):
         if with_vis:
             display.DisplayShape(merge_solid, update=True, color='BLUE')
 
-        OcctIO.write_STEP(os.path.join(save_dir, f"solid_{group_cell.group_idx}.STEP"), merge_solid)
+        step_file = os.path.join(save_dir, f"solid_{group_cell.group_idx}.STEP")
+        OcctIO.write_STEP(step_file, merge_solid)
+        # OcctIO.write_STL(os.path.join(save_dir, f"solid_{group_cell.group_idx}.STL"), merge_solid, is_ascii=True)
+
+        cq.exporters.export(
+            cq.importers.importStep(step_file),
+            os.path.join(save_dir, f"solid_{group_cell.group_idx}.stl"),
+            opt={'ascii': True}
+        )
+
+
+class KEpsilonRunner(object):
+    @staticmethod
+    def generate_run_json(stl_file: str):
+        run_json = {
+            'proj_dir': '/home/admin123456/Desktop/work/path_examples/auto_openfoam_01/test',
+            'mesh_file': '/home/admin123456/Desktop/work/path_examples/auto_openfoam_01/model.stl',
+            'gmsh_mesh_cfg': {
+                'meshSizeMin': 0.001,
+                'meshSizeMax': 0.001
+            },
+        }

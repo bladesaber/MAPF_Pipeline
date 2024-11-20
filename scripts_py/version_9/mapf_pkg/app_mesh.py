@@ -160,17 +160,19 @@ class MeshApp(SmoothApp):
             return
         self.radius_opt.draw_wireframe()
 
-    def _export_step_on_click(self):
+    def _export_cad_on_click(self):
         if self.radius_opt is None:
             return
 
-        cad_dir = os.path.join(self.proj_dir, 'STEP')
+        cad_dir = os.path.join(self.proj_dir, 'CAD')
         if os.path.exists(cad_dir):
             shutil.rmtree(cad_dir)
         os.mkdir(cad_dir)
 
         for group_idx, group_cell in self.radius_opt.group_dict.items():
-            StepExporter.to_step(group_cell, cad_dir)
+            StepExporter.to_step(group_cell, cad_dir, with_vis=False)
+
+        self.radius_opt.save_terminal_info(file=os.path.join(cad_dir, 'terminal_info.json'))
 
     def init_path_mesh_widget(self):
         mesh_layout = gui.CollapsableVert("Path Mesh Setup", self.spacing, self.blank_margins)
@@ -185,8 +187,8 @@ class MeshApp(SmoothApp):
         radius_check_btn = FragmentOpen3d.get_widget('button', {'name': 'radiusCheck'})
         radius_check_btn.set_on_clicked(self._radius_check_on_click)
 
-        export_step_btn = FragmentOpen3d.get_widget('button', {'name': 'exportSTEP'})
-        export_step_btn.set_on_clicked(self._export_step_on_click)
+        export_cad_btn = FragmentOpen3d.get_widget('button', {'name': 'exportCAD'})
+        export_cad_btn.set_on_clicked(self._export_cad_on_click)
         export_pcd_btn = FragmentOpen3d.get_widget('button', {'name': 'exportPcd'})
         export_pcd_btn.set_on_clicked(self._export_point_cloud_on_click)
 
@@ -195,8 +197,7 @@ class MeshApp(SmoothApp):
                 FragmentOpen3d.get_layout_widget('horiz', [
                     gui.Label("step1&2:"), setup_radius_adjuster_btn, run_adjust_btn
                 ], 10),
-                FragmentOpen3d.get_layout_widget('horiz', [export_step_btn, export_pcd_btn], 10),
-                FragmentOpen3d.get_layout_widget('horiz', [radius_check_btn]),
+                FragmentOpen3d.get_layout_widget('horiz', [export_cad_btn, export_pcd_btn, radius_check_btn], 5),
             ], 3, self.vert_margins)
         )
 

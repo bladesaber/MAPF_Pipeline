@@ -587,13 +587,13 @@ class SmoothApp(PathApp):
             line_opacity_txt=line_opacity_txt, tube_opacity_txt=tube_opacity_txt
         ))
 
-        define_path_btn = FragmentOpen3d.get_widget('button', {'name': 'define path'})
+        define_path_btn = FragmentOpen3d.get_widget('button', {'name': 'definePath'})
         define_path_btn.set_on_clicked(self._define_path_on_click)
 
-        setup_smooth_runner_btn = FragmentOpen3d.get_widget('button', {'name': 'setup smooth runner'})
+        setup_smooth_runner_btn = FragmentOpen3d.get_widget('button', {'name': 'setupRunner'})
         setup_smooth_runner_btn.set_on_clicked(self._setup_smooth_runner_on_click)
 
-        update_path_visual_btn = FragmentOpen3d.get_widget('button', {'name': 'visPath'})
+        update_path_visual_btn = FragmentOpen3d.get_widget('button', {'name': 'visPathOpen3d'})
         update_path_visual_btn.set_on_clicked(self._update_segments_on_click)
 
         run_times_txt = FragmentOpen3d.get_widget(
@@ -602,13 +602,13 @@ class SmoothApp(PathApp):
         lr_txt = FragmentOpen3d.get_widget(
             'number', {'style': 'double', 'decimal_precision': 6, 'init_value': 0.0025, 'preferred_width': 80}
         )
-        run_smooth_btn = FragmentOpen3d.get_widget('button', {'name': 'run smooth'})
+        run_smooth_btn = FragmentOpen3d.get_widget('button', {'name': 'runOpt'})
         run_smooth_btn.set_on_clicked(partial(self._run_smooth, run_times_txt=run_times_txt, lr_txt=lr_txt))
-        revert_result_btn = FragmentOpen3d.get_widget('button', {'name': 'revert_result'})
+        revert_result_btn = FragmentOpen3d.get_widget('button', {'name': 'revertResult'})
         revert_result_btn.set_on_clicked(self._revert_smooth)
-        auto_smooth_btn = FragmentOpen3d.get_widget('button', {'name': 'auto smooth'})
+        auto_smooth_btn = FragmentOpen3d.get_widget('button', {'name': 'autoRun'})
         auto_smooth_btn.set_on_clicked(self._auto_smooth)
-        save_result_btn = FragmentOpen3d.get_widget('button', {'name': 'save_result'})
+        save_result_btn = FragmentOpen3d.get_widget('button', {'name': 'saveResult'})
         save_result_btn.set_on_clicked(self._save_result)
         update_control_data_btn = FragmentOpen3d.get_widget('button', {'name': 'adjustControlPcd'})  # todo non-complete
 
@@ -654,20 +654,19 @@ class SmoothApp(PathApp):
                 ]),
                 FragmentOpen3d.get_layout_widget('horiz', [vis_search_result_btn, vis_spline_result_btn], space=10),
                 FragmentOpen3d.get_layout_widget('horiz', [
-                    gui.Label('step1:'), define_path_btn, init_obstacle_btn
+                    gui.Label('step1&2:'), define_path_btn, init_obstacle_btn
                 ], space=10),
-                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step2:'), setup_smooth_runner_btn]),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step3:'), setup_smooth_runner_btn]),
+                FragmentOpen3d.get_layout_widget('horiz', [
+                    gui.Label('step4:'), gui.Label('iter:'), run_times_txt, gui.Label('lr:'), lr_txt
+                ]),
+                FragmentOpen3d.get_layout_widget('horiz', [run_smooth_btn, auto_smooth_btn], 4),
                 FragmentOpen3d.get_layout_widget('horiz', [
                     gui.Label('Tool:'), update_path_visual_btn, update_cost_cfg_btn
-                ], space=10),
-                FragmentOpen3d.get_layout_widget('horiz', [
-                    gui.Label('step3:'), gui.Label('iter:'), run_times_txt, gui.Label('lr:'), lr_txt
-                ]),
+                ], space=5),
                 FragmentOpen3d.get_layout_widget('horiz', [update_control_data_btn, vis_curvature_btn], 4),
-                FragmentOpen3d.get_layout_widget('horiz', [run_smooth_btn, auto_smooth_btn], 4),
-                FragmentOpen3d.get_layout_widget('horiz', [save_result_btn], 4),
-                FragmentOpen3d.get_layout_widget('horiz', [loss_check_btn, revert_result_btn], 4),
-                FragmentOpen3d.get_layout_widget('horiz', [debug_btn], 4),
+                FragmentOpen3d.get_layout_widget('horiz', [save_result_btn, revert_result_btn], 4),
+                FragmentOpen3d.get_layout_widget('horiz', [loss_check_btn, debug_btn], 4)
             ], 3, self.vert_margins)
         )
 

@@ -766,4 +766,4 @@ if __name__ == '__main__':
     server_args = parse_args()
     if server_args.server_dir is not None:
         server_manager = ServerManager(server_args.server_dir)
-        app.run(host='192.168.1.155', port=9999, debug=True)
+        app.run(host='192.168.110.47', port=9999, debug=True)
