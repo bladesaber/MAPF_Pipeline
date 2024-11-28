@@ -16,7 +16,7 @@ copy *.stl to root/constant/triSurface/*.stl
 
 
 class KEpsilonSimulator(object):
-    def __init__(self, cfg: Dict, by_method):
+    def __init__(self, cfg: Dict, by_method: str):
         self.cfg = cfg
         self.proj_dir = self.cfg['proj_dir']
         self.mesh_file = None
@@ -494,7 +494,7 @@ class KEpsilonSimulator(object):
     ):
         file_content = KEpsilonSimulator.generate_header(2.0, 'dictionary', 'system', 'blockMeshDict')
         file_content.extend([
-            f"convertToMeters {convertToMeters};",
+            f"scale {convertToMeters};",
             "vertices",
             "(",
             f"   ({xmin - tol} {ymin - tol} {zmin - tol})",
@@ -717,9 +717,9 @@ class KEpsilonSimulator(object):
             sun_content = [
                 "\t{",
                 f"\t\tname {name};",
-                f"patchInfo {{type patch;}}",
-                "constructFrom set;",
-                f"set {name};"
+                f"\t\tpatchInfo {{type patch;}}",
+                "\t\tconstructFrom set;",
+                f"\t\tset {name};",
                 "\t}"
             ]
             file_content.extend(sun_content)
@@ -754,16 +754,31 @@ class KEpsilonSimulator(object):
             f.write(''.join(content))
 
     # ------ post process
-    def run(self):
-        self.exec_cmd(f"cd {self.proj_dir}; {self.cfg['controlDict']['application']} >> simulate.log;")
-        self.exec_cmd(f"cd {self.proj_dir}; foamToVTK -ascii -latestTime -one-boundary -overwrite >> foam2vtk.log;")
+    @staticmethod
+    def run(cfg: Dict):
+        KEpsilonSimulator.exec_cmd(f"cd {cfg['proj_dir']}; "
+                                   f"{cfg['controlDict']['application']} >> simulate.log;")
+        KEpsilonSimulator.exec_cmd(f"cd {cfg['proj_dir']}; "
+                                   f"foamToVTK -ascii -latestTime -one-boundary -overwrite >> foam2vtk.log;")
 
-        vtk_dir = os.path.join(self.proj_dir, 'VTK')
+        vtk_dir = os.path.join(cfg['proj_dir'], 'VTK')
         for name in os.listdir(vtk_dir):
             if name.endswith('.vtm'):
                 vtk_block = pyvista.read(os.path.join(vtk_dir, name))
                 res_vtk = vtk_block['internal']
-                return res_vtk
+                return True, res_vtk
+        return False, None
+
+    @staticmethod
+    def compute_k_epsilon(U, L, viscosity):
+        l = L * 0.07
+        Re = np.abs(U) * L / viscosity
+        I = 0.16 * np.power(Re, -1. / 8.)
+        # I = 0.05
+        k = 3. / 2. * np.power(U * I, 2)
+        C_u = 0.09
+        epsilon = np.power(C_u, 0.75) * np.power(k, 1.5) / l
+        return k, epsilon, Re
 
 
 def main():

@@ -15,6 +15,8 @@ from scripts_py.version_9.mapf_pkg.app_utils import FragmentOpen3d
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 from scripts_py.version_9.mapf_pkg.app_mesh import MeshApp
 
+from scripts_py.version_9.simulator.kepsilon_openfoam import KEpsilonSimulator
+
 
 class SimulateApp(MeshApp):
     def __init__(self, config):
@@ -45,6 +47,8 @@ class SimulateApp(MeshApp):
 
             mesh: pyvista.PolyData = pyvista.read(scale_stl_file)
             xmin, xmax, ymin, ymax, zmin, zmax = mesh.bounds
+            range_xyz = np.array([xmax - xmin, ymax - ymin, zmax - zmin])
+            range_tol = np.min(range_xyz)
 
             # ------ step 2 init json
             terminal_info_file = os.path.join(os.path.join(self.proj_dir, 'CAD'), 'terminal_info.json')
@@ -53,7 +57,8 @@ class SimulateApp(MeshApp):
 
             run_json = {
                 'proj_dir': os.path.join(simulate_dir, 'run_openfoam'),
-                'mesh_file': stl_file,
+                'mesh_file': scale_stl_file,
+                'scale': scale,
                 'group_idx': [],
                 'terminal_info_file': terminal_info_file,
                 'gmsh_mesh_cfg': {
@@ -70,7 +75,7 @@ class SimulateApp(MeshApp):
                     'x_grid': 50,
                     'y_grid': 50,
                     'z_grid': 50,
-                    'tol': 1.0,
+                    'tol': max(range_tol * 0.1, 1e-3),
                     'convertToMeters': 1.0,
                     'inside_x': None,
                     'inside_y': None,
@@ -105,11 +110,11 @@ class SimulateApp(MeshApp):
                     if info['group_idx'] in run_json['group_idx']:
                         run_json['boundary_definition'][name] = {
                             'method': 'cylinder',
-                            'center': info['center'],
+                            'center': (np.array(info['center']) * run_json['scale']).tolist(),
                             'direction': info['direction'],
-                            'tol1': 1e-2,
-                            'tol2': 1e-2,
-                            'radius': info['radius'] + 1e-1,
+                            'tol1': range_tol * 0.1,
+                            'tol2': range_tol * 0.1,
+                            'radius': info['radius'] * 1.05 * run_json['scale'],
                             'source': 'boundary'
                         }
 
@@ -168,14 +173,28 @@ class SimulateApp(MeshApp):
                     'U': {'internalField': [0.0, 0.0, 0.0]},
                     'p': {'internalField': 0.0},
                     'nut': {'internalField': 0.0},
-                    'k': {'internalField': 0.04},
-                    'epsilon': {'internalField': 2.4},
+                    'k': {'internalField': None},
+                    'epsilon': {'internalField': None},
                 })
 
             with open(simulate_json_file, 'w') as f:
                 json.dump(run_json, f, indent=4)
 
         subprocess.run(f"gedit {simulate_json_file};", shell=True)
+
+    @staticmethod
+    def _setup_openfoam_project(json_file: str):
+        assert json_file.endswith('.json')
+        with open(json_file, 'r') as f:
+            run_json = json.load(f)
+        KEpsilonSimulator(run_json, by_method='openfoam')
+
+    @staticmethod
+    def _run_simulate(json_file: str):
+        assert json_file.endswith('.json')
+        with open(json_file, 'r') as f:
+            run_cfg = json.load(f)
+        KEpsilonSimulator.run(run_cfg)
 
     def init_path_simulate_widget(self):
         simulate_layout = gui.CollapsableVert("Simulate Setup", self.spacing, self.blank_margins)
@@ -186,7 +205,7 @@ class SimulateApp(MeshApp):
             'number', {'style': 'double', 'decimal_precision': 4, 'init_value': -1.0, 'preferred_width': 50}
         )
 
-        def _file_dlg_btn_on_click():
+        def _gen_simulate_cfg_btn_on_click():
             filedlg = gui.FileDialog(gui.FileDialog.OPEN, "Select file", self.window.theme)
             filedlg.add_filter(".stl .STL", "Triangle mesh (.stl .STL)")
             filedlg.set_on_cancel(self.window.close_dialog)
@@ -196,12 +215,37 @@ class SimulateApp(MeshApp):
             self.window.show_dialog(filedlg)
 
         gen_json_dlg_btn = FragmentOpen3d.get_widget('button', {'name': 'importStl'})
-        gen_json_dlg_btn.set_on_clicked(_file_dlg_btn_on_click)
+        gen_json_dlg_btn.set_on_clicked(_gen_simulate_cfg_btn_on_click)
 
+        # ------------------------------------------
+        def _setup_openfoam_proj_btn_on_click():
+            filedlg = gui.FileDialog(gui.FileDialog.OPEN, "Select file", self.window.theme)
+            filedlg.add_filter(".json", "Triangle mesh (.json)")
+            filedlg.set_on_cancel(self.window.close_dialog)
+            filedlg.set_on_done(SimulateApp._setup_openfoam_project)
+            self.window.show_dialog(filedlg)
+
+        setup_openfoam_btn = FragmentOpen3d.get_widget('button', {'name': 'setupOpenfoamProject'})
+        setup_openfoam_btn.set_on_clicked(_setup_openfoam_proj_btn_on_click)
+
+        # ------------------------------------------
+        def _run_simulate_btn_on_click():
+            filedlg = gui.FileDialog(gui.FileDialog.OPEN, "Select file", self.window.theme)
+            filedlg.add_filter(".json", "Triangle mesh (.json)")
+            filedlg.set_on_cancel(self.window.close_dialog)
+            filedlg.set_on_done(SimulateApp._run_simulate)
+            self.window.show_dialog(filedlg)
+
+        run_simulate_btn = FragmentOpen3d.get_widget('button', {'name': 'runSim'})
+        run_simulate_btn.set_on_clicked(_run_simulate_btn_on_click)
+
+        # ------------------------------------------
         simulate_layout.add_child(
             FragmentOpen3d.get_layout_widget('vert', [
-                FragmentOpen3d.get_layout_widget('horiz', [gui.Label("step1: taskName"), task_name_txt], 5),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label("step1:taskName"), task_name_txt], 5),
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label("scale:"), scale_txt, gen_json_dlg_btn], 5),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label("step2:"), setup_openfoam_btn]),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label("step3:"), run_simulate_btn]),
             ], 3, self.vert_margins)
         )
 

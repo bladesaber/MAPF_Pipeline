@@ -1,5 +1,6 @@
 import h5py
 from typing import List, Tuple, Dict
+from tensorboardX import SummaryWriter
 
 
 class Hdf5IO(object):
@@ -25,3 +26,16 @@ class Hdf5IO(object):
                     Hdf5IO.print_h5df_tree(val, pre + '│   ')
                 else:
                     print(pre + '├── ' + key + ' (%d)' % len(val))
+
+
+class TensorBoardRecorder(object):
+    def __init__(self, log_dir):
+        self.writer = SummaryWriter(log_dir)
+
+    def write_scalar(self, tag, scalar_value, step):
+        self.writer.add_scalar(tag=tag, scalar_value=scalar_value, global_step=step)
+
+    def write_scalars(self, tag, scalar_dict: Dict[str, float], step):
+        if len(scalar_dict) == 0:
+            return
+        self.writer.add_scalars(tag, scalar_dict, step)

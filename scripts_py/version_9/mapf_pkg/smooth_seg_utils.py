@@ -19,6 +19,7 @@
 #  info.1 还是得重写，直觉上来说只要实际空间包含最优轨迹空间，那不管这个实际空间是什么样子，它都可以达到最优
 #  info.2 connector由于共用控制点,可能自由度不足够
 #  info.3 使用curvature分布优化 info.4 学习率使用近似 CosineAnnealingLR 的多个复合
+#  info.4 锋端曲率缺陷不可避免,路径各个部分的曲率优化进程相矛盾
 
 import os
 import shutil
@@ -31,7 +32,9 @@ from typing import Dict, List, Tuple, Union, Literal
 import pandas as pd
 import pyvista
 import torch
+import torch.nn.functional as F
 import h5py
+from sklearn.neighbors import KDTree
 
 from scripts_py.version_9.mapf_pkg.bspline_utils import BsplineUtils
 from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils, CostUtils, TorchMath
@@ -43,13 +46,13 @@ class SegmentCell(object):
         self.idx = idx
         self.group_idx = group_idx
         self.c_idxs = c_idxs
-        self.parent_cell: GroupPath = parent_cell
+        self.parent_cell: GroupCell = parent_cell
         self.cell_type: Literal["segment", "connector"] = 'segment'
 
         # ------ connector cfg
         self.left_clamp = False
         self.right_clamp = False
-        self.left_vector: np.ndarray = np.array([0., 0., 0.])  # todo 这里仍然需要进出区分吗
+        self.left_vector: np.ndarray = np.array([0., 0., 0.])
         self.right_vector: np.ndarray = np.array([0., 0., 0.])
 
         self.left_overlap_num: int = None
@@ -83,7 +86,9 @@ class SegmentCell(object):
         self.mat_order2_t: torch.Tensor = None
         self.spline_xyz_t: torch.Tensor = None
         self.spline_curvature_t: torch.Tensor = None
+        self.spline_vector_t: torch.Tensor = None
 
+        self.with_analytical_tangent = False
         self.with_analytical_curvature = False
 
     def __str__(self):
@@ -96,6 +101,7 @@ class SegmentCell(object):
         self.degree = cfg['bspline_degree']
         self.density = cfg['bspline_density']
         self.with_analytical_curvature = cfg['with_analytical_curvature_computed']
+        self.with_analytical_tangent = cfg['with_analytical_tangent_computed']
 
         self.seg_scale = cfg['segment_scale']
         c_tabel_idxs = self.parent_cell.c_table.index[self.c_idxs]
@@ -151,6 +157,7 @@ class SegmentCell(object):
 
         length_approx = np.linalg.norm(c_xyz[1:, :] - c_xyz[:-1, :], ord=2, axis=1).sum()
         sample_num_approx = max(math.ceil(length_approx), 5)
+
         length = self.compute_spline_length(c_xyz, sample_num_approx, sample_change_ratio=1.25)
 
         length_change_ratio = np.abs(length / (self.spline_length + 1e-6) - 1.0)
@@ -170,21 +177,23 @@ class SegmentCell(object):
             self.spline_mat = spline_mat
             self.radius = spline_mat.dot(self.c_radius).reshape(-1)
 
+            if self.with_analytical_tangent or self.with_analytical_curvature:
+                self.mat_order1 = BsplineUtils.compute_first_order_mat(ts, n_controls, self.degree, knot)
+
             if self.with_analytical_curvature:
-                mat_order1 = BsplineUtils.compute_first_order_mat(ts, n_controls, self.degree, knot)
-                mat_order2 = BsplineUtils.compute_second_order_mat(ts, n_controls, self.degree, knot)
-                self.mat_order1, self.mat_order2 = mat_order1, mat_order2
+                self.mat_order2 = BsplineUtils.compute_second_order_mat(ts, n_controls, self.degree, knot)
 
             print(f"[DEBUG]: Group[{self.group_idx}]/{self.cell_type}_{self.idx} "
                   f"length:{length:.2f} c_num:{n_controls} t_num:{ts.shape[0]} update")
-
             return True
+
         return False
 
     def prepare_tensor(self):
         self.spline_mat_t = TorchUtils.np2tensor(self.spline_mat, require_grad=False)
-        if self.with_analytical_curvature:
+        if self.with_analytical_tangent or self.with_analytical_curvature:
             self.mat_order1_t = TorchUtils.np2tensor(self.mat_order1, require_grad=False)
+        if self.with_analytical_curvature:
             self.mat_order2_t = TorchUtils.np2tensor(self.mat_order2, require_grad=False)
 
     def update_tensor(self, table_xyz: torch.Tensor):
@@ -193,6 +202,21 @@ class SegmentCell(object):
         # ------ update spline position
         self.spline_xyz_t = self.spline_mat_t.matmul(c_xyz)
 
+        # ------ update spline tangent vector
+        if self.with_analytical_tangent or self.with_analytical_curvature:
+            self.spline_vector_t = self.mat_order1_t.matmul(c_xyz)
+            if self.cell_type == 'segment':
+                if self.left_clamp:
+                    self.spline_vector_t[0, 0] = self.left_vector[0]
+                    self.spline_vector_t[0, 1] = self.left_vector[1]
+                    self.spline_vector_t[0, 2] = self.left_vector[2]
+                if self.right_clamp:
+                    self.spline_vector_t[-1, 0] = self.right_vector[0]
+                    self.spline_vector_t[-1, 1] = self.right_vector[1]
+                    self.spline_vector_t[-1, 2] = self.right_vector[2]
+            self.spline_vector_t = self.spline_vector_t / torch.norm(self.spline_vector_t, p=2, dim=1, keepdim=True)
+
+        # ------ update spline curvature
         if self.with_analytical_curvature:
             # ------ update spline curvature
             pcd_order1 = self.mat_order1_t.matmul(c_xyz)
@@ -200,15 +224,16 @@ class SegmentCell(object):
             norm_vec = torch.cross(pcd_order1, pcd_order2, dim=1)
             a = torch.norm(norm_vec, p=2, dim=1)
             b = torch.pow(torch.norm(pcd_order1, p=2, dim=1), 3.0)
+            curvature = (a / (b + 1e-8))
 
             if self.left_clamp and self.right_clamp:
-                self.spline_curvature_t = (a / (b + 1e-8))[1:-1]
+                self.spline_curvature_t = curvature[1:-1]
             elif self.left_clamp and (not self.right_clamp):
-                self.spline_curvature_t = (a / (b + 1e-8))[1:]
+                self.spline_curvature_t = curvature[1:]
             elif (not self.left_clamp) and self.right_clamp:
-                self.spline_curvature_t = (a / (b + 1e-8))[:-1]
+                self.spline_curvature_t = curvature[:-1]
             else:
-                self.spline_curvature_t = (a / (b + 1e-8))
+                self.spline_curvature_t = curvature
 
     def compute_spline_np(self, table_xyzr: np.ndarray):
         c_xyz = table_xyzr[self.c_idxs, :4]
@@ -217,23 +242,35 @@ class SegmentCell(object):
     def compute_curvature_np(self, table_xyzr: np.ndarray):
         return BsplineUtils.compute_curvature(self.ts, table_xyzr[self.c_idxs, :3], self.degree, self.knot)
 
-    def compute_tensor_cost(self, table_xyz: torch.Tensor):
+    def compute_tangent_np(self, table_xyzr: np.ndarray):
+        c_xyz = table_xyzr[self.c_idxs, :3]
+        vec = self.mat_order1.dot(c_xyz)
+        if self.cell_type == 'segment':
+            if self.left_clamp:
+                vec[0] = self.left_vector
+            if self.right_clamp:
+                vec[-1] = self.right_vector
+        vec = vec / np.linalg.norm(vec, ord=2, axis=1, keepdims=True)
+        return vec
+
+    def compute_cell_cost(self, table_xyz: torch.Tensor, with_default_weight: bool):
         cost_dict = {}
         for cfg in self.cost_cfgs:
             cost_tag = f"{self.group_idx}/{self.cell_type}_{self.idx}/{cfg['cost_type']}"
+            cost_weight = 1.0 if with_default_weight else cfg['weight']
 
             if cfg['cost_type'] == 'length':
                 if cfg['data_type'] == 'spline':
-                    cost_dict[cost_tag] = CostUtils.compute_length_cost(self.spline_xyz_t, cfg)
+                    cost_dict[cost_tag] = CostUtils.compute_length_cost(self.spline_xyz_t, cfg, cost_weight)
                 elif cfg['data_type'] == 'control_points':
-                    cost_dict[cost_tag] = CostUtils.compute_length_cost(table_xyz[self.c_idxs, :3], cfg)
+                    cost_dict[cost_tag] = CostUtils.compute_length_cost(table_xyz[self.c_idxs, :3], cfg, cost_weight)
                 else:
                     raise ValueError(f"[ERROR]: Non-valid data type {cfg['cost_type']}")
 
             elif cfg['cost_type'] == 'curvature':
                 if cfg['curvature_method'] == 'approximate_curvature':
                     cfg['value'] = 1.0 / TorchUtils.np2tensor(self.radius[1:-1] * cfg['curvature_scale'], False)
-                    cost_dict[cost_tag] = CostUtils.compute_curvature_cost(self.spline_xyz_t, cfg)
+                    cost_dict[cost_tag] = CostUtils.compute_curvature_cost(self.spline_xyz_t, cfg, cost_weight)
 
                 elif cfg['curvature_method'] == 'analytical_curvature':
                     if self.left_clamp and self.right_clamp:
@@ -244,36 +281,40 @@ class SegmentCell(object):
                         r_radius = self.radius[:-1]
                     else:
                         r_radius = self.radius
-                    cfg['value'] = 1.0 / TorchUtils.np2tensor(r_radius * cfg['curvature_scale'], False)
-                    cost_dict[cost_tag] = CostUtils.compute_curvature_cost(self.spline_curvature_t, cfg)
+                    cfg['value'] = 1.0 / TorchUtils.np2tensor(r_radius * cfg['curvature_scale'], False) * 0.9
+                    cost_dict[cost_tag] = CostUtils.compute_curvature_cost(self.spline_curvature_t, cfg, cost_weight)
 
             elif cfg['cost_type'] == 'length_distribution':
                 if cfg['data_type'] == 'spline':
-                    cost_dict[cost_tag] = CostUtils.compute_distribution_cost(self.spline_xyz_t, cfg)
+                    cost_dict[cost_tag] = CostUtils.compute_distribution_cost(self.spline_xyz_t, cfg, cost_weight)
                 elif cfg['data_type'] == 'control_points':
-                    cost_dict[cost_tag] = CostUtils.compute_distribution_cost(table_xyz[self.c_idxs, :3], cfg)
+                    cost_dict[cost_tag] = CostUtils.compute_distribution_cost(
+                        table_xyz[self.c_idxs, :3], cfg, cost_weight
+                    )
                 else:
                     raise ValueError(f"[ERROR]: Non-valid data type {cfg['cost_type']}")
 
             elif cfg['cost_type'] == 'curvature_distribution':
                 if cfg['curvature_method'] == 'approximate_curvature':
                     curvature = TorchMath.compute_approximate_curvature(self.spline_xyz_t)
-                    cost_dict[cost_tag] = CostUtils.compute_distribution_cost(curvature, cfg)
+                    cost_dict[cost_tag] = CostUtils.compute_distribution_cost(curvature, cfg, cost_weight)
 
                 elif cfg['curvature_method'] == 'analytical_curvature':
-                    cost_dict[cost_tag] = CostUtils.compute_distribution_cost(self.spline_curvature_t, cfg)
+                    cost_dict[cost_tag] = CostUtils.compute_distribution_cost(
+                        self.spline_curvature_t, cfg, cost_weight
+                    )
 
             elif cfg['cost_type'] == 'clamp_vector':
                 if self.left_clamp:
                     idxs_range = max(math.floor(cfg['vector_length'] / self.density), 2)
                     cost_dict[cost_tag] = CostUtils.compute_vector_cost(
-                        self.spline_xyz_t[:idxs_range], cfg, 'left2any'
+                        self.spline_xyz_t[:idxs_range, :], cfg, 'left2any', cost_weight
                     )
 
                 if self.right_clamp:
                     idxs_range = max(math.floor(cfg['vector_length'] / self.density), 2)
                     cost_dict[cost_tag] = CostUtils.compute_vector_cost(
-                        self.spline_xyz_t[-idxs_range:], cfg, 'any2right'
+                        self.spline_xyz_t[-idxs_range:, :], cfg, 'any2right', cost_weight
                     )
 
             else:
@@ -291,7 +332,7 @@ class ConnectorCell(SegmentCell):
         self.left_seg: SegmentCell = None
         self.right_seg: SegmentCell = None
         self.c_idxs: np.ndarray = None
-        self.parent_cell: GroupPath = parent_cell
+        self.parent_cell: GroupCell = parent_cell
         self.cell_type: Literal["segment", "connector"] = 'connector'
 
         # ------ connector cfg
@@ -326,12 +367,14 @@ class ConnectorCell(SegmentCell):
         self.spline_curvature_t: torch.Tensor = None
 
         self.with_analytical_curvature = False
+        self.with_analytical_tangent = False
 
     def init_cfg(self, cfg: Dict, seg_dict: Dict[int, SegmentCell]):
-        # todo 正反向还没做测试
+        # todo 共用点导致自由度依然不足够，需要独立开来
 
         self.density = cfg['bspline_density']
         self.with_analytical_curvature = cfg['with_analytical_curvature_computed']
+        self.with_analytical_tangent = cfg['with_analytical_tangent_computed']
         self.left_seg = seg_dict[self.left_seg_idx]
         self.right_seg = seg_dict[self.right_seg_idx]
 
@@ -391,12 +434,416 @@ class ConnectorCell(SegmentCell):
         return super().update_spline_NpCfg(table_xyzr, update_threshold, c_radius)
 
 
-class GroupPath(object):
+class AuxCostUtil(object):
+    @staticmethod
+    def compute_point2line_dist(pcd: np.ndarray, pcd_of_line: np.ndarray, vec_of_line: np.ndarray):
+        """ assume vec_of_line is normal vector"""
+        line2point = pcd - pcd_of_line
+        line2point_length = np.linalg.norm(line2point, ord=2, axis=1)
+        cos_length = np.sum(line2point * vec_of_line, axis=1)
+        return np.sqrt(np.power(line2point_length, 2.0) - np.power(cos_length, 2.0))
+
+    @staticmethod
+    def project_point_to_line(pcd: np.ndarray, pcd_of_line: np.ndarray, vec_of_line: np.ndarray):
+        a = np.sum((pcd - pcd_of_line) * vec_of_line, axis=1, keepdims=True)
+        b = np.sum(vec_of_line * vec_of_line, axis=1, keepdims=True)
+        t_closest = a / b
+        project_pcd = pcd_of_line + t_closest * vec_of_line
+        return project_pcd
+
+    @staticmethod
+    def is_pcd_in_same_plane(left_pcd: np.ndarray, right_pcd: np.ndarray, vec: np.ndarray):
+        """assume left_vec and right_vec is normal vector"""
+        left2right_vec = right_pcd - left_pcd
+        return np.sum(left2right_vec * vec, axis=1) == 0.0
+
+    @staticmethod
+    def detect_path_self_conflict(path_pcd: np.ndarray, radius: np.ndarray, unit_length=0.0):
+        tree = KDTree(path_pcd)
+        search_radius = radius + np.max(radius)
+        idxs_list, dist_list = tree.query_radius(path_pcd, search_radius, return_distance=True)
+
+        conflict_pair_idxs = []
+        for pcd_idx, (relate_idxs, dists) in enumerate(zip(idxs_list, dist_list)):
+            conflict_bool = dists < (radius[pcd_idx] + radius[relate_idxs] + unit_length)
+            relate_idxs = relate_idxs[conflict_bool]
+            if len(relate_idxs) == 0:
+                continue
+
+            shift_idx = relate_idxs - pcd_idx
+            while True:
+                is_connect = np.any(shift_idx == 0)
+                if is_connect:
+                    shift_idx = shift_idx - 1.0
+                else:
+                    break
+            conflict_larger_idx = relate_idxs[shift_idx > 0.0]
+
+            shift_idx = relate_idxs - pcd_idx
+            while True:
+                is_connect = np.any(shift_idx == 0)
+                if is_connect:
+                    shift_idx = shift_idx + 1.0
+                else:
+                    break
+            conflict_less_idx = relate_idxs[shift_idx < 0.0]
+
+            conflict_idxs = np.concatenate([conflict_larger_idx, conflict_less_idx], axis=-1)
+            if conflict_idxs.shape[0] == 0:
+                continue
+
+            conflict_pair_idxs.append(
+                np.concatenate([
+                    np.full((conflict_idxs.shape[0], 1), fill_value=pcd_idx),
+                    conflict_idxs.reshape((-1, 1))
+                ], axis=1)
+            )
+
+        if len(conflict_pair_idxs) > 0:
+            return np.concatenate(conflict_pair_idxs, axis=0)
+        else:
+            return np.array([])
+
+    @staticmethod
+    def compute_intersect_pcd(
+            left_pcd: np.ndarray, left_vec: np.ndarray, right_pcd: np.ndarray, right_vec: np.ndarray,
+            is_project_mid_pcd=False, project_orig_pcd=False
+    ):
+        res_pack = {}
+
+        pair_num = left_pcd.shape[0]
+        vec_inter = np.cross(left_vec, right_vec, axisa=1)
+        vec_inter = vec_inter / np.linalg.norm(vec_inter, axis=1, ord=2, keepdims=True)
+
+        A = np.concatenate([
+            np.tile(left_vec[:, np.newaxis, :], (1, 1, 1)),
+            np.tile(right_vec[:, np.newaxis, :], (1, 1, 1)),
+            np.tile(vec_inter[:, np.newaxis, :], (1, 1, 1))
+        ], axis=-2)
+        b = np.concatenate([
+            np.tile(np.sum(left_vec * left_pcd, axis=1, keepdims=True)[:, np.newaxis, :], (1, 1, 1)),
+            np.tile(np.sum(right_vec * right_pcd, axis=1, keepdims=True)[:, np.newaxis, :], (1, 1, 1)),
+            np.zeros((pair_num, 1, 1))
+        ], axis=-2)
+        pcd_inter = np.linalg.solve(A, b)
+        pcd_inter = pcd_inter.reshape((-1, 3))
+
+        # ------ compute the mid point project to intersection line
+        if is_project_mid_pcd:
+            mid_pcd = (left_pcd + right_pcd) * 0.5
+            pcd_inter = AuxCostUtil.project_point_to_line(mid_pcd, pcd_inter, vec_inter)
+
+        if project_orig_pcd:
+            res_pack['left_project_pcd'] = AuxCostUtil.project_point_to_line(left_pcd, pcd_inter, vec_inter)
+            res_pack['right_project_pcd'] = AuxCostUtil.project_point_to_line(right_pcd, pcd_inter, vec_inter)
+
+        # # ------ check
+        # left2inter_vec = pcd_inter - left_pcd
+        # print(f"[CHECK]: Orthogonal to left:{np.all(np.isclose(np.sum(left2inter_vec * left_vec, axis=1), 0.0))}")
+        # right2inter_vec = pcd_inter - right_pcd
+        # print(f"[CHECK]: Orthogonal to right:{np.all(np.isclose(np.sum(right2inter_vec * right_vec, axis=1), 0.0))}")
+        # left_project = AuxCostUtil.compute_point_project2line(left_pcd, pcd_inter, vec_inter)
+        # print(f"[CHECK]: Orthogonal to left pcd:{np.all(np.isclose(np.sum((left_project - left_pcd) * vec_inter, axis=1), 0.0))}")
+        # right_project = AuxCostUtil.compute_point_project2line(right_pcd, pcd_inter, vec_inter)
+        # print(f"[CHECK]: Orthogonal to right pcd:{np.all(np.isclose(np.sum((right_project - right_pcd) * vec_inter, axis=1), 0.0))}")
+        #
+        # for xyz0, vec0, xyz1, vec1, xyz2, vec2 in zip(
+        #         left_pcd, left_vec, right_pcd, right_vec, pcd_inter, vec_inter
+        # ):
+        #     plane_left = VisUtils.create_plane(xyz0, vec0, x_size=5, y_size=5)
+        #     plane_right = VisUtils.create_plane(xyz1, vec1, x_size=5, y_size=5)
+        #     inter_axis = VisUtils.create_cylinder(xyz2, vec2, 0.01, 5.0)
+        #
+        #     sphere0 = VisUtils.create_sphere(xyz0, radius=0.05)
+        #     sphere1 = VisUtils.create_sphere(xyz1, radius=0.05)
+        #     mid_sphere = VisUtils.create_sphere(xyz2, radius=0.05)
+        #
+        #     vis = VisUtils()
+        #     vis.plot(plane_left, color=(0., 1., 0.), opacity=0.35)
+        #     vis.plot(plane_right, color=(0., 0., 1.), opacity=0.35)
+        #     vis.plot(inter_axis, color=(1., 0., 0.))
+        #
+        #     vis.plot(sphere0, color=(0., 1., 0.))
+        #     vis.plot(sphere1, color=(0., 0., 1.))
+        #     vis.plot(mid_sphere, color=(1., 0., 0.))
+        #
+        #     vis.show()
+        # # ------
+
+        res_pack['pcd_inter'] = pcd_inter
+        res_pack['vec_inter'] = vec_inter
+
+        return res_pack
+
+    @staticmethod
+    def detect_adjacent_curvature_conflict(
+            path_pcd: np.ndarray, path_vec: np.ndarray, path_radius: np.ndarray,
+            is_project_mid_pcd, project_orig_pcd, radius_scale=1.0,
+    ):
+        """ assume path_vec is normal vector"""
+        pcd_idxs = np.arange(0, path_pcd.shape[0], 1)
+        left_idxs, right_idxs = pcd_idxs[:-1], pcd_idxs[1:]
+
+        inter_vec = np.cross(path_vec[left_idxs, :], path_vec[right_idxs, :], axisa=1)
+        valid_bool = np.bitwise_and(
+            np.sum(inter_vec, axis=1) != 0., ~np.isnan(np.sum(inter_vec, axis=1))
+        )
+        left_idxs = left_idxs[valid_bool]
+        right_idxs = right_idxs[valid_bool]
+
+        res_pack = AuxCostUtil.compute_intersect_pcd(
+            path_pcd[left_idxs, :], path_vec[left_idxs, :], path_pcd[right_idxs, :], path_vec[right_idxs, :],
+            is_project_mid_pcd, project_orig_pcd
+        )
+        inter_pcd, inter_vec = res_pack['pcd_inter'], res_pack['vec_inter']
+
+        left2line_dist = AuxCostUtil.compute_point2line_dist(path_pcd[left_idxs, :], inter_pcd, inter_vec)
+        right2line_dist = AuxCostUtil.compute_point2line_dist(path_pcd[right_idxs, :], inter_pcd, inter_vec)
+        target_length = (path_radius[left_idxs] + path_radius[right_idxs]) * radius_scale
+        conflict_bool = target_length - (left2line_dist + right2line_dist) > 0.0
+
+        conflict_pair = np.concatenate([
+            left_idxs[conflict_bool].reshape((-1, 1)), right_idxs[conflict_bool].reshape((-1, 1))
+        ], axis=1)
+
+        res_pack['pcd_inter'] = inter_pcd[conflict_bool, :]
+        res_pack['vec_inter'] = inter_vec[conflict_bool, :]
+
+        return conflict_pair, res_pack
+
+
+class PathCell(object):
+    def __init__(
+            self, path_name: str, idx: int, group_idx: int, cell_idxs: List[int], cell_types: List[str], parent_cell
+    ):
+        self.path_name = path_name
+        self.idx = idx
+        self.group_idx = group_idx
+
+        self.parent_cell: GroupCell = parent_cell
+        self.cell_idxs = cell_idxs
+        self.cell_types = cell_types
+        self.cost_cfgs: List[Dict] = []
+        self.element_cost_cfgs: List[Dict] = []
+
+        self.spline_xyz_t: torch.Tensor = None
+        self.radius: np.ndarray = None
+        self.spline_tangent_t: torch.Tensor = None
+
+    def update_tensor(self, with_analytical_tangent=False):
+        path_xyz_list, path_radius = [], []
+        if with_analytical_tangent:
+            path_tangent_list = []
+
+        last_cell: Union[SegmentCell, ConnectorCell] = None
+        for i in range(len(self.cell_idxs)):
+            if self.cell_types[i] == 'segment':
+                cell = self.parent_cell.seg_dict[self.cell_idxs[i]]
+            else:
+                cell = self.parent_cell.connector_dict[self.cell_idxs[i]]
+
+            if i == 0:
+                if self.cell_types[i + 1] == 'segment':
+                    next_cell = self.parent_cell.seg_dict[self.cell_idxs[i + 1]]
+                else:
+                    next_cell = self.parent_cell.connector_dict[self.cell_idxs[i + 1]]
+
+                if cell.c_idxs[-1] in next_cell.c_idxs:
+                    path_xyz_list.append(cell.spline_xyz_t)
+                    path_radius.append(cell.radius)
+                    if with_analytical_tangent:
+                        path_tangent_list.append(cell.spline_vector_t)
+
+                elif cell.c_idxs[0] in next_cell.c_idxs:
+                    path_xyz_list.append(cell.spline_xyz_t.flip(0))
+                    path_radius.append(cell.radius[::-1])
+                    if with_analytical_tangent:
+                        path_tangent_list.append(cell.spline_vector_t * -1.0)
+
+                else:
+                    raise ValueError(f"[ERROR]: Wrong path flags.")
+
+            else:
+                if cell.c_idxs[0] in last_cell.c_idxs:
+                    path_xyz_list.append(cell.spline_xyz_t[1:])
+                    path_radius.append(cell.radius[1:])
+                    if with_analytical_tangent:
+                        path_tangent_list.append(cell.spline_vector_t[1:])
+
+                elif cell.c_idxs[-1] in last_cell.c_idxs:
+                    path_xyz_list.append(cell.spline_xyz_t.flip(0)[1:])
+                    path_radius.append(cell.radius[::-1][1:])
+                    if with_analytical_tangent:
+                        path_tangent_list.append(cell.spline_vector_t[1:] * -1.0)
+
+                else:
+                    raise ValueError(f"[ERROR]: Wrong path flags.")
+
+            last_cell = cell
+
+        self.spline_xyz_t = torch.concatenate(path_xyz_list, dim=0)
+        self.radius = np.concatenate(path_radius)
+        if with_analytical_tangent:
+            self.spline_tangent_t = torch.concatenate(path_tangent_list, dim=0)
+
+    def compute_path_np_info(self):
+        path_xyz_list, path_radius, path_tangent_list = [], [], []
+
+        last_cell: Union[SegmentCell, ConnectorCell] = None
+        table_xyzr = self.parent_cell.c_table[['x', 'y', 'z', 'radius']].values
+
+        for i in range(len(self.cell_idxs)):
+            if self.cell_types[i] == 'segment':
+                cell = self.parent_cell.seg_dict[self.cell_idxs[i]]
+            else:
+                cell = self.parent_cell.connector_dict[self.cell_idxs[i]]
+
+            if i == 0:
+                if self.cell_types[i + 1] == 'segment':
+                    next_cell = self.parent_cell.seg_dict[self.cell_idxs[i + 1]]
+                else:
+                    next_cell = self.parent_cell.connector_dict[self.cell_idxs[i + 1]]
+
+                if cell.c_idxs[-1] in next_cell.c_idxs:
+                    path_xyz_list.append(cell.compute_spline_np(table_xyzr)[:, :3])
+                    path_tangent_list.append(cell.compute_tangent_np(table_xyzr))
+                    path_radius.append(cell.radius)
+                elif cell.c_idxs[0] in next_cell.c_idxs:
+                    path_xyz_list.append(cell.compute_spline_np(table_xyzr)[:, :3][::-1])
+                    path_tangent_list.append(cell.compute_tangent_np(table_xyzr) * -1.0)
+                    path_radius.append(cell.radius[::-1])
+                else:
+                    raise ValueError(f"[ERROR]: Wrong path flags.")
+
+            else:
+                if cell.c_idxs[0] in last_cell.c_idxs:
+                    path_xyz_list.append(cell.compute_spline_np(table_xyzr)[:, :3][1:])
+                    path_tangent_list.append(cell.compute_tangent_np(table_xyzr)[1:])
+                    path_radius.append(cell.radius[1:])
+                elif cell.c_idxs[-1] in last_cell.c_idxs:
+                    path_xyz_list.append(cell.compute_spline_np(table_xyzr)[:, :3][::-1][1:])
+                    path_tangent_list.append(cell.compute_tangent_np(table_xyzr)[1:] * -1.0)
+                    path_radius.append(cell.radius[::-1][1:])
+                else:
+                    raise ValueError(f"[ERROR]: Wrong path flags.")
+
+            last_cell = cell
+
+        return {
+            'spline_xyz': np.concatenate(path_xyz_list, axis=0),
+            'spline_tangent': np.concatenate(path_tangent_list, axis=0),
+            'radius': np.concatenate(path_radius)
+        }
+
+    def init_cfg(self, cfg: Dict):
+        self.update_cost_cfg(cfg['cost_setting'])
+
+    def update_cost_cfg(self, cfg: Dict):
+        self.cost_cfgs = cfg['cost_cfgs']
+        self.element_cost_cfgs = cfg['element_cost_cfgs']
+
+    def compute_set_cost(self, unit_length: float, with_default_weight: bool):
+        cost_dict = {}
+        for cfg in self.cost_cfgs:
+            cost_tag = f"{self.path_name}/{self.idx}/{cfg['cost_type']}"
+            cost_weight = 1.0 if with_default_weight else cfg['weight']
+
+            if cfg['cost_type'] == 'self_conflict':
+                spline_pcd_np = TorchUtils.tensor2np(self.spline_xyz_t)
+
+                radius_conflict_pair = AuxCostUtil.detect_path_self_conflict(
+                    spline_pcd_np, self.radius, unit_length
+                )
+                if radius_conflict_pair.shape[0] > 0:
+                    require_dist = self.radius[radius_conflict_pair[:, 0]] + self.radius[radius_conflict_pair[:, 1]]
+                    self_conflict_cost = CostUtils.compute_shape_conflict_cost(
+                        self.spline_xyz_t[radius_conflict_pair[:, 0]], self.spline_xyz_t[radius_conflict_pair[:, 1]],
+                        require_dist=require_dist, weight=1.0
+                    )
+                    cost_dict[cost_tag] = self_conflict_cost.mean() * cost_weight
+
+            elif cfg['cost_type'] == 'crossSection_curvature':
+                # ------ non-analytical tangent
+                left_tangent = self.spline_xyz_t[1:-1] - self.spline_xyz_t[:-2]
+                right_tangent = self.spline_xyz_t[2:] - self.spline_xyz_t[1:-1]
+                spline_tangent_t = (left_tangent + right_tangent) * 0.5
+                spline_tangent_t = spline_tangent_t / torch.norm(spline_tangent_t, p=2, dim=1, keepdim=True)
+
+                spline_pcd_t = self.spline_xyz_t[1:-1]
+                spline_radius = self.radius[1:-1]
+                # ------
+
+                # ------ analytical tangent
+                # spline_tangent_t = self.spline_tangent_t
+                # spline_pcd_t = self.spline_xyz_t
+                # spline_radius = self.radius
+                # ------
+
+                spline_pcd_np = TorchUtils.tensor2np(spline_pcd_t)
+                spline_tangent_np = TorchUtils.tensor2np(spline_tangent_t)
+                cur_conflict_pair, res_pack = AuxCostUtil.detect_adjacent_curvature_conflict(
+                    spline_pcd_np, spline_tangent_np, spline_radius,
+                    is_project_mid_pcd=True, project_orig_pcd=False, radius_scale=3.0
+                )
+
+                if cur_conflict_pair.shape[0] > 0:
+                    # ------ np process: Fail
+                    inter_pcd_t = TorchUtils.np2tensor(res_pack['pcd_inter'], require_grad=False)
+                    inter_vec_t = TorchUtils.np2tensor(res_pack['vec_inter'], require_grad=False)
+
+                    # # ------ torch process: Fail
+                    # left_pcd_t = path_pcd_t[cur_conflict_pair[:, 0], :]
+                    # left_vec_t = path_vec_t[cur_conflict_pair[:, 0], :]
+                    #
+                    # right_pcd_t = path_pcd_t[cur_conflict_pair[:, 1], :]
+                    # right_vec_t = path_vec_t[cur_conflict_pair[:, 1], :]
+                    #
+                    # res_pack_t = TorchMath.compute_intersect_pcd(
+                    #     left_pcd_t, left_vec_t, right_pcd_t, right_vec_t,
+                    #     is_project_mid_pcd=True, project_orig_pcd=False
+                    # )
+                    # inter_pcd_t = res_pack_t['pcd_inter']
+                    # inter_vec_t = res_pack_t['vec_inter']
+
+                    # ------ Orthogonal distance Fail
+                    left2line_dist = TorchMath.compute_dist_point2line(
+                        spline_pcd_t[cur_conflict_pair[:, 0]], inter_pcd_t, inter_vec_t
+                    )
+                    right2line_dist = TorchMath.compute_dist_point2line(
+                        spline_pcd_t[cur_conflict_pair[:, 1]], inter_pcd_t, inter_vec_t
+                    )
+                    target_scale_t = TorchUtils.np2tensor(
+                        (spline_radius[cur_conflict_pair[:, 0]] + spline_radius[cur_conflict_pair[:, 1]]) * 3.0,
+                        require_grad=False
+                    )
+
+                    cost = (target_scale_t - (left2line_dist + right2line_dist)).mean()
+                    cost_dict[cost_tag] = cost * cost_weight
+
+            elif cfg['cost_type'] == 'tangent_diffusion':
+                left_tangent = self.spline_xyz_t[1:-1] - self.spline_xyz_t[:-2]
+                right_tangent = self.spline_xyz_t[2:] - self.spline_xyz_t[1:-1]
+
+                cos_value = TorchMath.compute_cos_val(left_tangent, right_tangent)
+                rad_value = torch.arccos(cos_value)
+                cost_dict[cost_tag] = CostUtils.compute_distribution_cost(rad_value, cfg, cost_weight)
+
+            else:
+                raise ValueError(f"[ERROR]: Non-valid seg cost type {cfg['cost_type']}")
+
+        return cost_dict
+
+    def compute_element_cost(self, with_default_weight: bool):
+        raise NotImplementedError
+
+
+class GroupCell(object):
     def __init__(self, group_idx: int):
         self.group_idx = group_idx
         self.c_table: pd.DataFrame = None
         self.seg_dict: Dict[int, SegmentCell] = {}
         self.connector_dict: Dict[int, ConnectorCell] = {}
+        self.path_dict: Dict[int, PathCell] = {}
         self.table_xyz_t: torch.Tensor = None
 
     @staticmethod
@@ -476,8 +923,10 @@ class GroupPath(object):
                 terminal_xyz2flags[(xyzr[0], xyzr[1], xyzr[2])] = flag
 
         # ------ Step 3 travel all path to find all segments
-        seg_book, connector_book, terminal_seg_book = {}, [], {}
+        seg_book, connector_book, terminal_seg_book, path_contain_seg_dict = {}, [], {}, {}
         for path_info in aid_path_info:
+            path_name = path_info['name']
+
             from_pos = path_info['from_position']
             from_flag = terminal_xyz2flags[(from_pos[0], from_pos[1], from_pos[2])]
             from_vector = path_info['from_vector']
@@ -488,8 +937,10 @@ class GroupPath(object):
             to_vector = path_info['to_vector']
             to_is_input = path_info['to_is_input']
 
-            path_flags_list = nx.all_simple_paths(tmp_graph, from_flag, to_flag)
+            # ------ use to record path contain seg
+            path_contain_seg_dict[path_name] = []
 
+            path_flags_list = nx.all_simple_paths(tmp_graph, from_flag, to_flag)
             for path_flags in path_flags_list:
                 seg_flag, path_contain_seg = [], []
                 path_length = len(path_flags)
@@ -527,6 +978,9 @@ class GroupPath(object):
                         to_vector = to_vector * -1.0
                     terminal_seg_book[last_tag] = {'right_vector': to_vector, 'right_clamp': True}
 
+                # ------ record path contain seg
+                path_contain_seg_dict[path_name].append(path_contain_seg)
+
         # ------ Step 4 generate all segments & aggregation information
         aggr_df, tmp_seg_tag2idx = [], {}
         for seg_idx, (seg_tag, seg_flags) in enumerate(seg_book.items()):
@@ -561,8 +1015,39 @@ class GroupPath(object):
             if con_flag not in connector_dict.keys():
                 connector_dict[con_flag] = (seg_idx0, seg_idx1)
 
+        tmp_con_tag2idx = {}
         for connector_idx, (_, (seg_idx0, seg_idx1)) in enumerate(connector_dict.items()):
             self.connector_dict[connector_idx] = ConnectorCell(connector_idx, self.group_idx, seg_idx0, seg_idx1, self)
+            tmp_con_tag2idx[(min(seg_idx0, seg_idx1), max(seg_idx0, seg_idx1))] = connector_idx
+
+        # ------ add path contain segments information
+        path_idx = 0
+        for path_name, path_contain_seg_list in path_contain_seg_dict.items():
+            for path_contain_seg in path_contain_seg_list:
+                contain_idxs, contain_types = [], []
+                for i in range(len(path_contain_seg) - 1):
+                    cell_0 = self.seg_dict[tmp_seg_tag2idx[path_contain_seg[i]]]
+                    cell_1 = self.seg_dict[tmp_seg_tag2idx[path_contain_seg[i + 1]]]
+
+                    if i == 0:
+                        contain_idxs.append(cell_0.idx)
+                        contain_types.append(cell_1.cell_type)
+
+                    # ------ record connector
+                    con = self.connector_dict[tmp_con_tag2idx[
+                        (min(cell_0.idx, cell_1.idx), max(cell_0.idx, cell_1.idx))
+                    ]]
+                    contain_idxs.append(con.idx)
+                    contain_types.append(con.cell_type)
+
+                    # ------ record next cell
+                    contain_idxs.append(cell_1.idx)
+                    contain_types.append(cell_1.cell_type)
+
+                self.path_dict[path_idx] = PathCell(
+                    path_name, path_idx, self.group_idx, contain_idxs, contain_types, self
+                )
+                path_idx += 1
 
         # ------ add terminal information
         for tag, cfg in terminal_seg_book.items():
@@ -590,6 +1075,10 @@ class GroupPath(object):
             con_idx = con_cfg['con_idx']
             self.connector_dict[con_idx].init_cfg(cfg=con_cfg, seg_dict=self.seg_dict)
 
+        for path_cfg in setting_cfg['paths']:
+            path_idx = path_cfg['path_idx']
+            self.path_dict[path_idx].init_cfg(path_cfg)
+
     def prepare_tensor(self):
         self.table_xyz_t = TorchUtils.np2tensor(self.c_table[['x', 'y', 'z']].values[:, :3], require_grad=True)
         for _, seg_cell in self.seg_dict.items():
@@ -600,21 +1089,30 @@ class GroupPath(object):
             con_seg.prepare_tensor()
             con_seg.update_tensor(self.table_xyz_t)
 
+        for _, path_cell in self.path_dict.items():
+            path_cell.update_tensor(with_analytical_tangent=False)
+
     def update_state(self, with_tensor: bool, with_np: bool):
         if with_tensor:
             for _, seg_cell in self.seg_dict.items():
                 seg_cell.update_tensor(self.table_xyz_t)
-            for _, con_seg in self.connector_dict.items():
-                con_seg.update_tensor(self.table_xyz_t)
+            for _, con_cell in self.connector_dict.items():
+                con_cell.update_tensor(self.table_xyz_t)
+            for _, path_cell in self.path_dict.items():
+                path_cell.update_tensor(with_analytical_tangent=False)
         if with_np:
             self.c_table.loc[self.c_table.index, ['x', 'y', 'z']] = TorchUtils.tensor2np(self.table_xyz_t)
 
-    def compute_loss(self):
+    def compute_loss(self, unit_length: float, with_default_weight: bool):
         cost_dict = {}
         for seg_idx, seg_cell in self.seg_dict.items():
-            cost_dict.update(seg_cell.compute_tensor_cost(self.table_xyz_t))
+            cost_dict.update(seg_cell.compute_cell_cost(self.table_xyz_t, with_default_weight))
         for con_idx, con_cell in self.connector_dict.items():
-            cost_dict.update(con_cell.compute_tensor_cost(self.table_xyz_t))
+            cost_dict.update(con_cell.compute_cell_cost(self.table_xyz_t, with_default_weight))
+        for path_idx, path_cell in self.path_dict.items():
+            cost_dict.update(path_cell.compute_set_cost(unit_length, with_default_weight))
+        # for path_idx, path_cell in self.path_dict.items():
+        #     cost_dict.update(path_cell.compute_element_cost(with_default_weight))
         return cost_dict
 
     @property
@@ -635,9 +1133,9 @@ class GroupPath(object):
         group_layer.create_dataset("c_xyzr", data=table_xyzr)
         group_layer.create_dataset("c_info", data=self.c_table[['unique_idx', 'is_unique', 'is_fix']].values)
 
-        data_layer = group_layer.create_group('data')
+        seg_group_layer = group_layer.create_group('segment')
         for seg_idx, seg_cell in self.seg_dict.items():
-            seg_layer = data_layer.create_group(f"seg_{seg_cell.idx}")
+            seg_layer = seg_group_layer.create_group(f"seg_{seg_cell.idx}")
             seg_layer.create_dataset("idx", data=[seg_cell.idx])
             seg_layer.create_dataset("cell_type", data=[seg_cell.cell_type])
             seg_layer.create_dataset("ts", data=seg_cell.ts)
@@ -652,8 +1150,9 @@ class GroupPath(object):
             seg_layer.create_dataset("left_vector", data=seg_cell.left_vector)
             seg_layer.create_dataset("right_vector", data=seg_cell.right_vector)
 
+        con_group_layer = group_layer.create_group('connector')
         for con_idx, con_cell in self.connector_dict.items():
-            con_layer = data_layer.create_group(f"con_{con_cell.idx}")
+            con_layer = con_group_layer.create_group(f"con_{con_cell.idx}")
             con_layer.create_dataset("idx", data=[con_cell.idx])
             con_layer.create_dataset("cell_type", data=[con_cell.cell_type])
             con_layer.create_dataset("ts", data=con_cell.ts)
@@ -665,6 +1164,14 @@ class GroupPath(object):
             con_layer.create_dataset("spline", data=con_cell.compute_spline_np(table_xyzr))
             con_layer.create_dataset("left_clamp", data=[con_cell.left_clamp])
             con_layer.create_dataset("right_clamp", data=[con_cell.right_clamp])
+
+        path_group_layer = group_layer.create_group('path')
+        for path_idx, path_cell in self.path_dict.items():
+            path_layer = path_group_layer.create_group(f"path_{path_cell.idx}")
+            path_layer.create_dataset("idx", data=[path_cell.idx])
+            path_layer.create_dataset("path_name", data=[path_cell.path_name])
+            path_layer.create_dataset("cell_idxs", data=path_cell.cell_idxs)
+            path_layer.create_dataset("cell_types", data=path_cell.cell_types)
 
         if close_auto:
             writer.close()
@@ -765,7 +1272,7 @@ class GroupPath(object):
         if show_plot:
             vis.show()
 
-    def draw_tensor(self, vis: VisUtils = None):
+    def draw_cell_tensor(self, vis: VisUtils = None):
         show_plot = False
         if vis is None:
             vis = VisUtils()
@@ -803,10 +1310,61 @@ class GroupPath(object):
         for cell in cell_list:
             xyzr = cell.compute_spline_np(table_xyzr)
             curvature = cell.compute_curvature_np(table_xyzr)
-
             mesh = pyvista.PointSet(xyzr[:, :3])
             mesh['scalars'] = curvature
             vis.plot(mesh, point_size=6, scalars='scalars', show_scalar_bar=True, cmap=plt.cm.rainbow)
 
         if show_plot:
             vis.show()
+
+    def draw_path_info(
+            self, vis: VisUtils = None, with_cross_section=True, with_arrow=False, with_conflict=False
+    ):
+        show_plot = False
+        if vis is None:
+            show_plot = True
+
+        for path_idx, path_cell in self.path_dict.items():
+            path_info_pack = path_cell.compute_path_np_info()
+            spline_pcd: np.ndarray = path_info_pack['spline_xyz']
+            spline_tangent: np.ndarray = path_info_pack['spline_tangent']
+            spline_radius: np.ndarray = path_info_pack['radius']
+
+            if show_plot:
+                vis = VisUtils()
+
+            pcd_mesh = VisUtils.create_point_cloud(spline_pcd)
+            vis.plot(pcd_mesh, point_size=5, color=(0., 1., 0.))
+
+            if with_cross_section:
+                for xyz, vec, r in zip(spline_pcd, spline_tangent, spline_radius):
+                    mesh = VisUtils.create_polygon(xyz, r, vec, n_sides=60)
+                    vis.plot(mesh, color=(0., 0., 1.), opacity=1.0, style='wireframe')
+
+            if with_arrow:
+                vis.plotter.add_arrows(spline_pcd, spline_tangent, mag=0.05, show_scalar_bar=False)
+
+            if with_conflict:
+                radius_conflict_pair = AuxCostUtil.detect_path_self_conflict(spline_pcd, spline_radius)
+                cur_conflict_pair, res_pack = AuxCostUtil.detect_adjacent_curvature_conflict(
+                    spline_pcd, spline_tangent, spline_radius,
+                    is_project_mid_pcd=True, project_orig_pcd=False, radius_scale=1.0
+                )
+
+                if radius_conflict_pair.shape[0] > 0:
+                    radius_conflict_line_set = np.concatenate([
+                        np.full((radius_conflict_pair.shape[0], 1), fill_value=2), radius_conflict_pair
+                    ], axis=1)
+                    radius_conflict_mesh = VisUtils.create_line(spline_pcd, radius_conflict_line_set)
+                    vis.plot(radius_conflict_mesh, color=(1., 1., 0.), opacity=1.0, line_width=4)
+
+                if cur_conflict_pair.shape[0] > 0:
+                    cur_conflict_line_set = np.concatenate([
+                        np.full((cur_conflict_pair.shape[0], 1), fill_value=2), cur_conflict_pair
+                    ], axis=1)
+                    cur_conflict_mesh = VisUtils.create_line(spline_pcd, cur_conflict_line_set)
+                    vis.plot(cur_conflict_mesh, color=(1., 0., 0.), opacity=1.0, line_width=4)
+                    vis.plot(VisUtils.create_point_cloud(res_pack['pcd_inter']), point_size=7, color=(0., 1., 1.))
+
+            if show_plot:
+                vis.show()

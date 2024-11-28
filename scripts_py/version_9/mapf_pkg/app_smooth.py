@@ -18,6 +18,8 @@ from scripts_py.version_9.mapf_pkg.smooth_optimizer import PathOptimizer
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 from scripts_py.version_9.mapf_pkg.shape_utils import ShapeUtils
 
+from scripts_py.version_9.mapf_pkg.utils import TensorBoardRecorder
+
 
 class SmoothApp(PathApp):
     def __init__(self, config):
@@ -123,13 +125,13 @@ class SmoothApp(PathApp):
                 },
                 'setting': [],
                 'auto_run_cfg': {
-                    'lr': 0.0025,
+                    'lr': 0.01,
                     'factor': 0.25,
-                    'patience': 500,
-                    'cooldown': 100,
+                    'patience': 5000,
+                    'cooldown': 5000,
                     'min_lr': 0.001,
-                    'max_iter': 20000,
-                    'outer_loop': 10
+                    'max_iter': 50000,
+                    'outer_loop': 1
                 }
             }
 
@@ -150,7 +152,8 @@ class SmoothApp(PathApp):
                         'seg_node_max': None,
                     },
                     'segments': [],
-                    'connectors': []
+                    'connectors': [],
+                    'paths': []
                 })
             with open(smooth_file, 'w') as f:
                 json.dump(smooth_json, f, indent=4)
@@ -246,11 +249,11 @@ class SmoothApp(PathApp):
             for info in group_setting['aid_path_info']:
                 info_copy = info.copy()
                 info_copy.update({
-                    'from_position': pipes_cfg[info['from_name']]['discrete_position'],
-                    'from_vector': pipes_cfg[info['from_name']]['direction'],
+                    'from_position': np.array(pipes_cfg[info['from_name']]['discrete_position']),
+                    'from_vector': np.array(pipes_cfg[info['from_name']]['direction']),
                     'from_is_input': pipes_cfg[info['from_name']]['is_input'],
-                    'to_position': pipes_cfg[info['to_name']]['discrete_position'],
-                    'to_vector': pipes_cfg[info['to_name']]['direction'],
+                    'to_position': np.array(pipes_cfg[info['to_name']]['discrete_position']),
+                    'to_vector': np.array(pipes_cfg[info['to_name']]['direction']),
                     'to_is_input': pipes_cfg[info['to_name']]['is_input'],
                 })
                 init_cfg[group_idx]['aid_path_info'].append(info_copy)
@@ -268,13 +271,12 @@ class SmoothApp(PathApp):
         # # ------
 
         # ------ Just for human edit
-        # todo be careful bspline_density is very important
         for group_cfg in smooth_json['setting']:
             group_idx = group_cfg['group_idx']
 
             if len(group_cfg['segments']) == 0:
                 for seg_idx, seg_cell in opt.group_cells[group_idx].seg_dict.items():
-                    group_cfg['segments'].append({
+                    seg_run_cfg = {
                         'seg_idx': seg_idx,
                         'bspline_degree': 3,
                         'bspline_density': 0.25,
@@ -284,6 +286,7 @@ class SmoothApp(PathApp):
                         'right_intercept_ratio': 0.5,
                         'segment_scale': 1.0,
                         'with_analytical_curvature_computed': True,
+                        "with_analytical_tangent_computed": False,
                         'cost_setting': {
                             'path_thickness': 0.01,
                             'obstacle_thickness': 0.01,
@@ -303,29 +306,47 @@ class SmoothApp(PathApp):
                                 {
                                     "cost_type": "curvature",
                                     "curvature_method": "analytical_curvature",
-                                    "method": "sigmoid",
+                                    "method": "sigmoid_mean",
                                     "curvature_scale": 3.0,
-                                    "weight": 2.5
+                                    "weight": 10.0
                                 },
-                                {
-                                    "cost_type": "curvature_distribution",
-                                    "curvature_method": "analytical_curvature",
-                                    "method": "value_variance",
-                                    "weight": 1.0
-                                }
+                                # {
+                                #     "cost_type": "curvature_distribution",
+                                #     "curvature_method": "analytical_curvature",
+                                #     "method": "value_variance",
+                                #     "weight": 10.0
+                                # }
                             ]
                         }
-                    })
+                    }
+
+                    if seg_cell.left_clamp:
+                        seg_run_cfg['cost_setting']['cost_cfgs'].append({
+                            "cost_type": "clamp_vector",
+                            "vector_length": 1.0,
+                            "vector": seg_cell.left_vector.tolist(),
+                            "weight": 100.0
+                        })
+                    if seg_cell.right_clamp:
+                        seg_run_cfg['cost_setting']['cost_cfgs'].append({
+                            "cost_type": "clamp_vector",
+                            "vector_length": 1.0,
+                            "vector": seg_cell.right_vector.tolist(),
+                            "weight": 100.0
+                        })
+
+                    group_cfg['segments'].append(seg_run_cfg)
 
             if len(group_cfg['connectors']) == 0:
                 for con_idx, con_cell in opt.group_cells[group_idx].connector_dict.items():
                     group_cfg['connectors'].append({
                         'con_idx': con_idx,
                         'bspline_degree': 3,
-                        'bspline_density': 0.2,
+                        'bspline_density': 0.25,
                         'left_seg_idx': con_cell.left_seg_idx,
                         'right_seg_idx': con_cell.right_seg_idx,
                         'with_analytical_curvature_computed': True,
+                        "with_analytical_tangent_computed": False,
                         'cost_setting': {
                             'path_thickness': 0.01,
                             'obstacle_thickness': 0.01,
@@ -333,18 +354,41 @@ class SmoothApp(PathApp):
                                 {
                                     "cost_type": "curvature",
                                     "curvature_method": "analytical_curvature",
-                                    "method": "sigmoid",
+                                    "method": "sigmoid_mean",
                                     "curvature_scale": 3.0,
-                                    "weight": 2.5
+                                    "weight": 10.0
                                 },
-                                {
-                                    "cost_type": "curvature_distribution",
-                                    "curvature_method": "analytical_curvature",
-                                    "method": "value_variance",
-                                    "weight": 1.0
-                                }
+                                # {
+                                #     "cost_type": "curvature_distribution",
+                                #     "curvature_method": "analytical_curvature",
+                                #     "method": "value_variance",
+                                #     "weight": 10.0
+                                # }
                             ]
                         }
+                    })
+
+            if len(group_cfg['paths']) == 0:
+                for path_idx, path_cell in opt.group_cells[group_idx].path_dict.items():
+                    group_cfg['paths'].append({
+                        'path_idx': path_idx,
+                        'path_name': path_cell.path_name,
+                        'cell_idxs': path_cell.cell_idxs,
+                        'cell_types': path_cell.cell_types,
+                        'cost_setting': {
+                            'cost_cfgs': [
+                                # {
+                                #     'cost_type': 'self_conflict',
+                                #     'weight': 1000.0
+                                # },
+                                {
+                                    'cost_type': 'tangent_diffusion',
+                                    'method': 'abs_variance_max',
+                                    'weight': 10.0
+                                }
+                            ],
+                            'element_cost_cfgs': []
+                        },
                     })
 
         with open(smooth_file, 'w') as f:
@@ -359,7 +403,8 @@ class SmoothApp(PathApp):
             group_idx = group_cfg['group_idx']
             opt.init_optimize_cfg(group_idx, {
                 'segments': group_cfg['segments'],
-                'connectors': group_cfg['connectors']
+                'connectors': group_cfg['connectors'],
+                'paths': group_cfg['paths']
             })
         self.smooth_opt = opt
 
@@ -506,6 +551,8 @@ class SmoothApp(PathApp):
         loss_record, loss_info = self.smooth_opt.run_by_hand(
             max_iter=int(run_times_txt.double_value), lr=lr_txt.double_value
         )
+        for name, value in loss_info.items():
+            print(f"{name}: {value}")
 
         plt.title('loss record')
         plt.plot(loss_record)
@@ -527,7 +574,15 @@ class SmoothApp(PathApp):
         self.smooth_opt.prepare_tensor()
 
         # ------ start running
-        loss_record, loss_info = self.smooth_opt.auto_run(smooth_json['auto_run_cfg'])
+        tensor_log_dir = os.path.join(self.proj_dir, 'tensor_log')
+        if os.path.exists(tensor_log_dir):
+            shutil.rmtree(tensor_log_dir)
+        os.mkdir(tensor_log_dir)
+
+        tensor_recorder = TensorBoardRecorder(tensor_log_dir)
+        loss_record, loss_info = self.smooth_opt.auto_run(smooth_json['auto_run_cfg'], tensor_recorder)
+        for name, value in loss_info.items():
+            print(f"{name}: {value}")
 
         plt.title('loss record')
         plt.plot(loss_record)
@@ -567,6 +622,22 @@ class SmoothApp(PathApp):
         if self.smooth_opt is None:
             return
         self.smooth_opt.draw_curvature()
+
+    def _vis_path_on_click(
+            self, singlePath_checkbox: gui.Checkbox, with_crossSection_checkbox: gui.Checkbox,
+            with_arrow_checkbox: gui.Checkbox, with_conflict_checkbox: gui.Checkbox
+    ):
+        vis = None
+        if not singlePath_checkbox.checked:
+            vis = VisUtils()
+        for group_idx, group_cell in self.smooth_opt.group_cells.items():
+            group_cell.draw_path_info(
+                vis, with_cross_section=with_crossSection_checkbox.checked, with_arrow=with_arrow_checkbox.checked,
+                with_conflict=with_conflict_checkbox.checked
+            )
+
+    def _debug_on_click(self):
+        pass
 
     def init_path_smooth_widget(self):
         smoother_layout = gui.CollapsableVert("Path Smooth Setup", self.spacing, self.blank_margins)
@@ -640,8 +711,25 @@ class SmoothApp(PathApp):
         update_cost_cfg_btn.set_on_clicked(_update_cost_cfg_btn_on_click)
         vis_curvature_btn = FragmentOpen3d.get_widget('button', {'name': 'visCurvature'})
         vis_curvature_btn.set_on_clicked(self._draw_curvature_on_click)
+
+        single_path_checkbox = FragmentOpen3d.get_widget('checkbox', widget_info={'name': 'singlePath'})
+        cross_section_checkbox = FragmentOpen3d.get_widget('checkbox', widget_info={'name': 'crossSection'})
+        arrow_checkbox = FragmentOpen3d.get_widget('checkbox', widget_info={'name': 'arrow'})
+        conflict_checkbox = FragmentOpen3d.get_widget('checkbox', widget_info={'name': 'conflict'})
+        single_path_checkbox.checked = True
+        arrow_checkbox.checked = True
+
+        vis_path_btn = FragmentOpen3d.get_widget('button', {'name': 'visPath'})
+        vis_path_btn.set_on_clicked(partial(
+            self._vis_path_on_click,
+            singlePath_checkbox=single_path_checkbox,
+            with_crossSection_checkbox=cross_section_checkbox,
+            with_arrow_checkbox=arrow_checkbox,
+            with_conflict_checkbox=conflict_checkbox
+        ))
+
         debug_btn = FragmentOpen3d.get_widget('button', {'name': 'debug'})
-        # debug_btn.set_on_clicked()
+        debug_btn.set_on_clicked(self._debug_on_click)
 
         smoother_layout.add_child(
             FragmentOpen3d.get_layout_widget('vert', [
@@ -666,7 +754,10 @@ class SmoothApp(PathApp):
                 ], space=5),
                 FragmentOpen3d.get_layout_widget('horiz', [update_control_data_btn, vis_curvature_btn], 4),
                 FragmentOpen3d.get_layout_widget('horiz', [save_result_btn, revert_result_btn], 4),
-                FragmentOpen3d.get_layout_widget('horiz', [loss_check_btn, debug_btn], 4)
+                FragmentOpen3d.get_layout_widget('horiz', [single_path_checkbox, cross_section_checkbox], 4),
+                FragmentOpen3d.get_layout_widget('horiz', [arrow_checkbox, conflict_checkbox], 4),
+                FragmentOpen3d.get_layout_widget('horiz', [loss_check_btn, vis_path_btn], 4),
+                FragmentOpen3d.get_layout_widget('horiz', [debug_btn], 4)
             ], 3, self.vert_margins)
         )
 

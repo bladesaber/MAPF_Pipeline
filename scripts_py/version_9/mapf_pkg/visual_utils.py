@@ -8,6 +8,12 @@ class VisUtils(object):
         self.plotter: pyvista.Plotter = pyvista.Plotter()
         self.plotter.set_background('white')
 
+    def clear(self):
+        self.plotter.clear()
+
+    def render(self):
+        self.plotter.render()
+
     def show(self, dim: int = None):
         if dim is not None:
             if dim == 2:

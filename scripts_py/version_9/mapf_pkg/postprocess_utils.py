@@ -15,8 +15,6 @@ from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 
 from scripts_py.version_9.mapf_pkg.cad_utils import OcctUtil, OcctVis, OcctIO, OcctAux, OcctOperation, OcctProfile
 
-from scripts_py.version_9.simulator.kepsilon_openfoam import KEpsilonSimulator
-
 
 class CellRadiusAdjuster(object):
     def __init__(
@@ -78,11 +76,6 @@ class CellRadiusAdjuster(object):
 
     def compute_radius_condition(self):
         center_xyz = self.spline_xyz
-        # vec_xyz = np.concatenate([
-        #     self.spline_xyz[1:, :] - self.spline_xyz[:-1, :],
-        #     self.spline_xyz[-1:, :] - self.spline_xyz[-2:-1, :]
-        # ], axis=0)
-        # vec_xyz = vec_xyz / np.linalg.norm(vec_xyz, ord=2, axis=1, keepdims=True)
         vec_xyz = self.tangent_vec
 
         vec_inter_group = np.cross(vec_xyz[:, :, np.newaxis], vec_xyz, axisa=1)
@@ -90,7 +83,7 @@ class CellRadiusAdjuster(object):
 
         inter_info = {}
         for i in range(center_xyz.shape[0]):
-            vec_inter = vec_inter_group[i]
+            vec_inter = vec_inter_group[i]  # [nx3]
             valid_idxs = np.arange(0, center_xyz.shape[0], 1)
 
             valid_idxs = valid_idxs[np.bitwise_and(
@@ -100,10 +93,10 @@ class CellRadiusAdjuster(object):
             if valid_idxs.shape[0] == 0:
                 continue
 
-            xyz0, vec0 = center_xyz[i, :], vec_xyz[i, :]
-            vec_inter_v = vec_inter[valid_idxs, :]
-            vec_xyz_v = vec_xyz[valid_idxs, :]
-            xyz_v = center_xyz[valid_idxs, :]
+            xyz0, vec0 = center_xyz[i, :], vec_xyz[i, :]  # [1x3] [1x3]
+            vec_inter_v = vec_inter[valid_idxs, :]  # [nx3]
+            vec_xyz_v = vec_xyz[valid_idxs, :]      # [nx3]
+            xyz_v = center_xyz[valid_idxs, :]       # [nx3]
 
             A = np.concatenate([
                 np.tile(vec0[np.newaxis, np.newaxis, np.newaxis, :], (1, vec_xyz_v.shape[0], 1, 1)),
@@ -166,6 +159,7 @@ class GroupRadiusAdjuster(object):
         self.table_radius_t = TorchUtils.np2tensor(table_radius, require_grad=True)
 
         self.cell_dict: Dict[str, CellRadiusAdjuster] = {}
+        self.contain_connector = False
 
     def add_cell(
             self, idx: int, group_idx: int, cell_type: str,
@@ -212,7 +206,7 @@ class GroupRadiusAdjuster(object):
                 mesh = VisUtils.create_polygon(xyz, r, vec, n_sides=60)
                 vis.plot(mesh, color=color, opacity=1.0, style='wireframe')
 
-            vis.plotter.add_arrows(cell.spline_xyz, cell.tangent_vec, mag=0.1)
+            vis.plotter.add_arrows(cell.spline_xyz, cell.tangent_vec, mag=0.1, show_scalar_bar=False)
 
         if show_plot:
             vis.show()
@@ -324,7 +318,7 @@ class RadiusOptimizer(object):
 
 class StepExporter(object):
     @staticmethod
-    def to_step(group_cell: GroupRadiusAdjuster, save_dir, with_vis=False):
+    def to_step(group_cell: GroupRadiusAdjuster, save_dir, with_vis=False, with_fuse=False):
         if with_vis:
             display, start_display, _, _ = OcctVis.init_plotter()
 
@@ -348,34 +342,23 @@ class StepExporter(object):
                     display.DisplayShape(wire, update=True, color='RED')
                 # display.DisplayShape(solid, update=True, color='BLUE')
 
-            # OcctIO.write_STEP(os.path.join(save_dir, f"solid_{cell.name}.STEP"), solid)
+            OcctIO.write_STEP(os.path.join(save_dir, f"subSolid_{cell.name}.STEP"), solid)
 
-        merge_solid = solid_list[0]
-        for solid in solid_list[1:]:
-            merge_solid = OcctOperation.fuse(merge_solid, solid)
-
-        if with_vis:
-            display.DisplayShape(merge_solid, update=True, color='BLUE')
+        if with_fuse:
+            merge_solid = solid_list[0]
+            for solid in solid_list[1:]:
+                merge_solid = OcctOperation.fuse(merge_solid, solid)
+                if with_vis:
+                    display.DisplayShape(merge_solid, update=True, color='BLUE')
+        else:
+            merge_solid = OcctProfile.make_pack(solid_list)
 
         step_file = os.path.join(save_dir, f"solid_{group_cell.group_idx}.STEP")
         OcctIO.write_STEP(step_file, merge_solid)
         # OcctIO.write_STL(os.path.join(save_dir, f"solid_{group_cell.group_idx}.STL"), merge_solid, is_ascii=True)
 
-        cq.exporters.export(
-            cq.importers.importStep(step_file),
-            os.path.join(save_dir, f"solid_{group_cell.group_idx}.stl"),
-            opt={'ascii': True}
-        )
-
-
-class KEpsilonRunner(object):
-    @staticmethod
-    def generate_run_json(stl_file: str):
-        run_json = {
-            'proj_dir': '/home/admin123456/Desktop/work/path_examples/auto_openfoam_01/test',
-            'mesh_file': '/home/admin123456/Desktop/work/path_examples/auto_openfoam_01/model.stl',
-            'gmsh_mesh_cfg': {
-                'meshSizeMin': 0.001,
-                'meshSizeMax': 0.001
-            },
-        }
+        # cq.exporters.export(
+        #     cq.importers.importStep(step_file),
+        #     os.path.join(save_dir, f"solid_{group_cell.group_idx}.stl"),
+        #     opt={'ascii': True}
+        # )

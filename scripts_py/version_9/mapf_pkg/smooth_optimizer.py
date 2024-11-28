@@ -7,6 +7,7 @@ import h5py
 from scripts_py.version_9.mapf_pkg import smooth_seg_utils
 from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils, CostUtils
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
+from scripts_py.version_9.mapf_pkg.utils import TensorBoardRecorder
 
 
 class PathConflictCell(object):
@@ -47,7 +48,7 @@ class ObstacleConflictCell(object):
 
 class PathOptimizer(object):
     def __init__(self):
-        self.group_cells: Dict[int, smooth_seg_utils.GroupPath] = {}
+        self.group_cells: Dict[int, smooth_seg_utils.GroupCell] = {}
 
         self.obstacle_xyzr: np.ndarray = None
         self.obstacle_num = 0
@@ -65,7 +66,7 @@ class PathOptimizer(object):
             obstacle_xyzr: np.ndarray, conflict_cfg: Dict
     ):
         for group_idx, group_cfg in init_cfg.items():
-            group_cell = smooth_seg_utils.GroupPath(group_idx)
+            group_cell = smooth_seg_utils.GroupCell(group_idx)
             group_cell.assemble_discrete_graph(
                 path_dict=group_cfg['path_dict'],
                 assemble_cfg=group_cfg['assemble_cfg'],
@@ -121,6 +122,9 @@ class PathOptimizer(object):
                     if is_update:
                         con_cell.prepare_tensor()
                         con_cell.update_tensor(group_cell.table_xyz_t)
+
+                for path_idx, path_cell in group_cell.path_dict.items():
+                    path_cell.update_tensor(with_analytical_tangent=False)
 
             else:
                 group_cell.update_state(with_tensor=True, with_np=False)
@@ -253,7 +257,7 @@ class PathOptimizer(object):
         return self.path_conflict_cells
 
     def compute_conflict_cost(self) -> Dict[str, Union[torch.Tensor, float]]:
-        cost_dict = {'obstacle_cost': 0.0, 'path_conflict_cost': 0.0}
+        cost_dict = {'obstacle_cost': 0.0, 'path_cost': 0.0}
 
         for obs_cell in self.obstacle_conflict_cells:
             if obs_cell.cell_type == 'segment':
@@ -306,7 +310,7 @@ class PathOptimizer(object):
             # ------ compute all cost
             loss_info.clear()
             for group_idx, group_cell in self.group_cells.items():
-                loss_info.update(group_cell.compute_loss())
+                loss_info.update(group_cell.compute_loss(lr_unit, with_default_weight=False))
             loss_info.update(self.compute_conflict_cost())
 
             loss: torch.Tensor = 0.0
@@ -353,7 +357,11 @@ class PathOptimizer(object):
 
         return loss_record, loss_info_np
 
-    def auto_run(self, cfg: Dict):
+    def auto_run(self, cfg: Dict, tensor_writer: TensorBoardRecorder = None):
+        with_tensor_writer = False
+        if tensor_writer is not None:
+            with_tensor_writer = True
+
         loss_record, loss_info = [], {}
         iteration = -1
         for out_iter in range(cfg['outer_loop']):
@@ -378,8 +386,15 @@ class PathOptimizer(object):
                 # ------ compute all cost
                 loss_info.clear()
                 for group_idx, group_cell in self.group_cells.items():
-                    loss_info.update(group_cell.compute_loss())
-                loss_info.update(self.compute_conflict_cost())
+                    group_cost_info = group_cell.compute_loss(lr_unit, with_default_weight=False)
+                    loss_info.update(group_cost_info)
+                    if with_tensor_writer:
+                        tensor_writer.write_scalars(f"{group_idx}_loss", group_cost_info, step=iteration)
+
+                conflict_loos_info = self.compute_conflict_cost()
+                loss_info.update(conflict_loos_info)
+                if with_tensor_writer:
+                    tensor_writer.write_scalars(f"conflict_loss", conflict_loos_info, step=iteration)
 
                 loss: torch.Tensor = 0.0
                 for _, cost_value in loss_info.items():
@@ -389,6 +404,8 @@ class PathOptimizer(object):
                 if (iteration % 100 == 0) or (iteration == 1):
                     loss_record.append(loss.detach().numpy())
                     print(f"[outIter{out_iter}/iter:{iteration}/lr:{lr:.5f}] loss:{loss_record[-1]:.6f}")
+                if with_tensor_writer:
+                    tensor_writer.write_scalar('loss', loss, step=iteration)
 
                 # ------ compute gradient
                 loss.backward()
@@ -402,7 +419,7 @@ class PathOptimizer(object):
                 optimizer.zero_grad()
                 scheduler.step(loss)
 
-                self.update_tensor(iteration=iteration, update_iteration=50)
+                self.update_tensor(iteration=iteration, update_iteration=15)
 
                 # ------ prepare to break
                 if iteration > cfg['max_iter']:
@@ -438,11 +455,12 @@ class PathOptimizer(object):
             writer.close()
 
     def loss_check(self, lr):
+        lr_unit = np.linalg.norm(np.array([lr, lr, lr]))
+
         loss_info = {}
         for group_idx, group_cell in self.group_cells.items():
-            loss_info.update(group_cell.compute_loss())
+            loss_info.update(group_cell.compute_loss(lr_unit, with_default_weight=False))
 
-        lr_unit = np.linalg.norm(np.array([lr, lr, lr]))
         self.find_obstacle_conflict_cells(lr_unit)
         self.find_path_conflict_cells(lr_unit)
         loss_info.update(self.compute_conflict_cost())

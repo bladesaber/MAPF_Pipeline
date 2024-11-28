@@ -131,7 +131,7 @@ class EnvironmentApp(AppWindow):
         if file_format in ['ply', 'obj']:
             self.add_point_cloud_from_file(
                 name, path, is_visible=True,
-                param={'type': 'obstacle', 'shape': 'point_cloud_file', 'file': path, 'rgb':[0.3, 0.3, 0.3]}
+                param={'type': 'obstacle', 'shape': 'point_cloud_file', 'file': path, 'rgb': [0.3, 0.3, 0.3]}
             )
         elif file_format in ['stl', 'stp', 'step']:
             if file_format in ['stp', 'step']:
@@ -148,7 +148,7 @@ class EnvironmentApp(AppWindow):
                 pcd_o3d = mesh.sample_points_poisson_disk(sample_num_of_points.int_value)
                 self.add_point_cloud(
                     name, pcd_o3d, is_visible=True,
-                    param={'type': 'obstacle', 'shape': 'point_cloud_file', 'file': path, 'rgb':[0.3, 0.3, 0.3]}
+                    param={'type': 'obstacle', 'shape': 'point_cloud_file', 'file': path, 'rgb': [0.3, 0.3, 0.3]}
                 )
                 self.adjust_center_camera()
 

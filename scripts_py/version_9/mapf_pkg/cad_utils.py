@@ -18,8 +18,9 @@ from OCC.Core.BRepBuilderAPI import (BRepBuilderAPI_MakeVertex, BRepBuilderAPI_M
 from OCC.Core.BRepOffsetAPI import (BRepOffsetAPI_MakePipe, BRepOffsetAPI_ThruSections,
                                     BRepOffsetAPI_MakePipeShell)
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeSphere, BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakeBox
+from OCC.Core.GeomAPI import GeomAPI_PointsToBSplineSurface
 
-from OCC.Core.TopoDS import TopoDS_Shell
+from OCC.Core.TopoDS import TopoDS_Shell, TopoDS_Compound
 from OCC.Core.BRep import BRep_Builder
 from OCC.Core.Law import Law_Linear, Law_BSpline, Law_BSpFunc, Law_Interpolate, Law_Constant
 from OCC.Core.BRepAlgoAPI import (
@@ -115,6 +116,19 @@ class OcctProfile(object):
     @staticmethod
     def make_point(x, y, z) -> gp_Pnt:
         return gp_Pnt(x, y, z)
+
+    @staticmethod
+    def make_pack(
+            solid_list: List[TopoDS.TopoDS_Shape], builder: BRep_Builder = None, compound: TopoDS_Compound = None
+    ) -> TopoDS_Compound:
+        if compound is None:
+            compound = TopoDS_Compound()
+        if builder is None:
+            builder = BRep_Builder()
+        builder.MakeCompound(compound)
+        for solid in solid_list:
+            builder.Add(compound, solid)
+        return compound
 
     @staticmethod
     def make_direction_vector(vector_x, vector_y, vector_z) -> gp_Dir:
@@ -291,6 +305,7 @@ class OcctUtil(object):
 
 class OcctVis(object):
     """OCCT是个异步可视化库,不可以与pyvista同步使用"""
+
     def __init__(self):
         self.display, self.start_display, self.add_menu, self.add_function_to_menu = init_display()
 

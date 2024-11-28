@@ -85,11 +85,10 @@ class TorchUtils(object):
 
 class TorchMath(object):
     @staticmethod
-    def compute_cos_val(data_xyz: torch.Tensor):
-        vec0, vec1 = data_xyz[1:-1, :] - data_xyz[:-2, :], data_xyz[2:, :] - data_xyz[1:-1, :]
-        vec_sum = torch.sum(vec0 * vec1, dim=1)
-        vec0_length, vec1_length = torch.norm(vec0, p=2, dim=1), torch.norm(vec1, p=2, dim=1)
-        return vec_sum / (vec0_length * vec1_length + 1e-16)
+    def compute_cos_val(left_vec: torch.Tensor, right_vec: torch.Tensor):
+        vec_sum = torch.sum(left_vec * right_vec, dim=1)
+        left_length, right_length = torch.norm(left_vec, p=2, dim=1), torch.norm(right_vec, p=2, dim=1)
+        return vec_sum / (left_length * right_length + 1e-16)
 
     @staticmethod
     def compute_approximate_curvature(data_xyz: torch.Tensor):
@@ -110,11 +109,66 @@ class TorchMath(object):
     def sigmoid(data: torch.Tensor, drift=0.0, scale=1.0, sharp=1.0):
         return scale / (1.0 + torch.exp(-1.0 * (data - drift) * sharp))
 
+    @staticmethod
+    def project_point_to_line(pcd: torch.Tensor, pcd_of_line: torch.Tensor, vec_of_line: torch.Tensor):
+        a = torch.sum((pcd - pcd_of_line) * vec_of_line, dim=1, keepdim=True)
+        b = torch.sum(vec_of_line * vec_of_line, dim=1, keepdim=True)
+        t_closest = a / b
+        project_pcd = pcd_of_line + t_closest * vec_of_line
+        return project_pcd
+
+    @staticmethod
+    def compute_pcd2pcd_dist(left_pcd: torch.Tensor, right_pcd: torch.Tensor):
+        return torch.sum(torch.pow(left_pcd - right_pcd, 2.0), dim=1)
+
+    @staticmethod
+    def compute_intersect_pcd(
+            left_pcd: torch.Tensor, left_vec: torch.Tensor, right_pcd: torch.Tensor, right_vec: torch.Tensor,
+            is_project_mid_pcd=False, project_orig_pcd=False
+    ):
+        res_pack = {}
+
+        pair_num = left_pcd.shape[0]
+        vec_inter = torch.cross(left_vec, right_vec, dim=1)
+        vec_inter = vec_inter / torch.norm(vec_inter, p=2, dim=1, keepdim=True)
+
+        A = torch.concatenate([
+            torch.tile(left_vec[:, None, :], (1, 1, 1)),
+            torch.tile(right_vec[:, None, :], (1, 1, 1)),
+            torch.tile(vec_inter[:, None, :], (1, 1, 1))
+        ], dim=-2)
+        b = torch.concatenate([
+            torch.tile(torch.sum(left_vec * left_pcd, dim=1, keepdim=True)[:, None, :], (1, 1, 1)),
+            torch.tile(torch.sum(right_vec * right_pcd, dim=1, keepdim=True)[:, None, :], (1, 1, 1)),
+            torch.zeros((pair_num, 1, 1))
+        ], axis=-2)
+        pcd_inter = torch.linalg.solve(A, b)
+        pcd_inter = pcd_inter.reshape((-1, 3))
+
+        if is_project_mid_pcd:
+            mid_pcd = (left_pcd + right_pcd) * 0.5
+            pcd_inter = TorchMath.project_point_to_line(mid_pcd, pcd_inter, vec_inter)
+
+        if project_orig_pcd:
+            res_pack['left_project_pcd'] = TorchMath.project_point_to_line(left_pcd, pcd_inter, vec_inter)
+            res_pack['right_project_pcd'] = TorchMath.project_point_to_line(right_pcd, pcd_inter, vec_inter)
+
+        res_pack['pcd_inter'] = pcd_inter
+        res_pack['vec_inter'] = vec_inter
+
+        return res_pack
+
+    @staticmethod
+    def compute_dist_point2line(pcd: torch.Tensor, pcd_of_line: torch.Tensor, vec_of_line: torch.Tensor):
+        line2point = pcd - pcd_of_line
+        line2point_length = torch.norm(line2point, p=2, dim=1)
+        cos_length = torch.sum(line2point * vec_of_line, dim=1)
+        return torch.sqrt(torch.pow(line2point_length, 2.0) - torch.pow(cos_length, 2.0))
+
 
 class CostUtils(object):
     @staticmethod
-    def compute_length_cost(data_xyz: torch.Tensor, cfg: Dict):
-        weight = cfg['weight']
+    def compute_length_cost(data_xyz: torch.Tensor, cfg: Dict, weight: float):
         if cfg['method'] == 'norm_sum':
             cost = torch.sum(torch.norm(data_xyz[1:, :] - data_xyz[:-1, :], p=2, dim=1)) * weight
         elif cfg['method'] == 'fix_value':
@@ -129,13 +183,16 @@ class CostUtils(object):
         elif cfg['method'] == 'square_sum':
             square_length = (torch.pow(data_xyz[1:, :] - data_xyz[:-1, :], 2.0)).sum(dim=1)
             cost = square_length.sum() * weight
+        elif cfg['method'] == 'square_mean':
+            square_length = (torch.pow(data_xyz[1:, :] - data_xyz[:-1, :], 2.0)).sum(dim=1)
+            cost = square_length.mean() * weight
         else:
             raise ValueError(f"[ERROR]: Non-valid cost method {cfg['method']}")
         return cost
 
     @staticmethod
-    def compute_curvature_cost(data: torch.Tensor, cfg: Dict):
-        weight = cfg['weight']
+    def compute_curvature_cost(data: torch.Tensor, cfg: Dict, weight: float):
+        """ 缺陷:由于Bspline只能采样再离散点上，因此永远无法控制曲率均匀度(可以将极端曲率分配在未被采样的点上) """
         if cfg['curvature_method'] == 'approximate_curvature':
             curvature = TorchMath.compute_approximate_curvature(data)
         elif cfg['curvature_method'] == 'analytical_curvature':
@@ -147,24 +204,26 @@ class CostUtils(object):
             cost = (curvature.max() + curvature.mean()) * weight
         elif cfg['method'] == 'mean':
             cost = curvature.mean() * weight
-        elif cfg['method'] == 'sigmoid':
-            cur_sigmoid = TorchMath.sigmoid(curvature, drift=cfg['value'], sharp=20.0)
+        elif cfg['method'] == 'sigmoid_sum':
+            cur_sigmoid = TorchMath.sigmoid(curvature, drift=cfg['value'], sharp=30.0)
             cost = (curvature * cur_sigmoid).sum() * weight
+        elif cfg['method'] == 'sigmoid_mean':
+            cur_sigmoid = TorchMath.sigmoid(curvature, drift=cfg['value'], sharp=30.0)
+            cost = (curvature * cur_sigmoid).sum() / cur_sigmoid.sum() * weight
         elif cfg['method'] == 'ceil_bound_1':
             ratio = F.relu(curvature / cfg['value'] - 1.0)
             cost = (ratio.max() + ratio.mean()) * weight
-        elif cfg['method'] == 'ceil_bound_2':
-            # 调整曲率并不单调整某几个控制点而是应该所有控制点一起调整，relu会cut掉其他控制点的梯度
-            ratio = F.relu(curvature / cfg['value'] - 1.0)
-            ratio_sigmoid = TorchMath.sigmoid(ratio, scale=2.0, sharp=10.0) - 1.0
-            cost = (ratio * ratio_sigmoid).sum() * weight
+        # elif cfg['method'] == 'ceil_bound_2':
+        #     # 调整曲率并不单调整某几个控制点而是应该所有控制点一起调整，relu会cut掉其他控制点的梯度
+        #     ratio = F.relu(curvature / cfg['value'] - 1.0)
+        #     ratio_sigmoid = TorchMath.sigmoid(ratio, scale=2.0, sharp=10.0) - 1.0
+        #     cost = (ratio * ratio_sigmoid).sum() * weight
         else:
             raise ValueError(f"[ERROR]: Non-valid cost method {cfg['method']}")
         return cost
 
     @staticmethod
-    def compute_boundary_cost(data: torch.Tensor, cfg: Dict):
-        weight = cfg['weight']
+    def compute_boundary_cost(data: torch.Tensor, cfg: Dict, weight: float):
         if cfg['method'] == 'ceil_bound':
             ratio = F.relu(data / cfg['value'] - 1.0)
             cost = (ratio.max() + ratio.mean()) * weight
@@ -176,26 +235,28 @@ class CostUtils(object):
         return cost
 
     @staticmethod
-    def compute_distribution_cost(data: torch.Tensor, cfg: Dict):
-        weight = cfg['weight']
+    def compute_distribution_cost(data: torch.Tensor, cfg: Dict, weight: float):
         if cfg['method'] == 'length_variance':
             sub_lengths = torch.norm(data[1:, :] - data[:-1, :], p=2, dim=1)
-            cost = torch.pow(sub_lengths - sub_lengths.mean(), 2.0).sum() * weight
+            cost = torch.pow(sub_lengths - sub_lengths.mean(), 2.0).mean() * weight
         elif cfg['method'] == 'center_cluster':
             xyz_np = TorchUtils.tensor2np(data)
             center_t = TorchUtils.np2tensor((xyz_np[:-2, :] + xyz_np[2:, :]) * 0.5, require_grad=False)
-            cost = torch.pow(data[1:-1] - center_t, 2.0).sum() * weight
+            cost = torch.pow(data[1:-1] - center_t, 2.0).mean() * weight
         elif cfg['method'] == 'value_variance':
-            cost = torch.pow(data - data.mean(), 2.0).sum() * weight
+            cost = torch.pow(data - data.mean(), 2.0).mean() * weight
+        elif cfg['method'] == 'abs_value_variance':
+            cost = torch.abs(data - data.mean()).mean() * weight
+        elif cfg['method'] == 'abs_variance_max':
+            abs_cost = torch.abs(data - data.mean())
+            cost = (abs_cost.mean() + abs_cost.max()) * weight
         else:
             raise ValueError(f"[ERROR]: Non-valid cost method {cfg['method']}")
         return cost
 
     @staticmethod
-    def compute_vector_cost(data_xyz: torch.Tensor, cfg: Dict, method: str):
-        weight = cfg['weight']
-
-        vector = cfg['vector']
+    def compute_vector_cost(data_xyz: torch.Tensor, cfg: Dict, method: str, weight: float):
+        vector = np.array(cfg['vector'])
         vector = vector / np.linalg.norm(vector, ord=2)
         vector = TorchUtils.np2tensor(vector, require_grad=False)
 
@@ -207,15 +268,14 @@ class CostUtils(object):
             raise ValueError(f"[ERROR]: Non-valid cost method {cfg['method']}")
 
         vecs_length = torch.norm(vecs, p=2, dim=1)
-        cos_value = torch.sum(vecs * vector, dim=1) / vecs_length
-        sin_square = 1.0 - torch.pow(cos_value, 2.0)
-        cost = (torch.pow(vecs_length, 2.0) * sin_square).sum() * weight
+        cos_length = torch.sum(vecs * vector, dim=1)
+        cost = (torch.pow(vecs_length, 2.0) - torch.pow(cos_length, 2.0)).mean() * weight
 
         return cost
 
     @staticmethod
     def compute_shape_conflict_cost(pcd0: torch.Tensor, pcd1: torch.Tensor, require_dist: np.ndarray, weight: float):
-        require_dist = TorchUtils.np2tensor(require_dist.reshape((-1, 1)), require_grad=False)
+        require_dist = TorchUtils.np2tensor(require_dist.reshape(-1), require_grad=False)
         return F.relu(require_dist - torch.norm(pcd0 - pcd1, p=2, dim=1)) * weight
 
 
