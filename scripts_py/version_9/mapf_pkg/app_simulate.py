@@ -51,16 +51,16 @@ class SimulateApp(MeshApp):
             range_tol = np.min(range_xyz)
 
             # ------ step 2 init json
-            terminal_info_file = os.path.join(os.path.join(self.proj_dir, 'CAD'), 'terminal_info.json')
-            if not os.path.exists(terminal_info_file):
-                terminal_info_file = None
+            cad_info_file = os.path.join(os.path.join(self.proj_dir, 'CAD'), 'cad_info.json')
+            if not os.path.exists(cad_info_file):
+                cad_info_file = None
 
             run_json = {
                 'proj_dir': os.path.join(simulate_dir, 'run_openfoam'),
                 'mesh_file': scale_stl_file,
                 'scale': scale,
-                'group_idx': [],
-                'terminal_info_file': terminal_info_file,
+                'group_idx': None,
+                'cad_info_file': cad_info_file,
                 'gmsh_mesh_cfg': {
                     'meshSizeMin': 0.001,
                     'meshSizeMax': 0.001
@@ -77,9 +77,6 @@ class SimulateApp(MeshApp):
                     'z_grid': 50,
                     'tol': max(range_tol * 0.1, 1e-3),
                     'convertToMeters': 1.0,
-                    'inside_x': None,
-                    'inside_y': None,
-                    'inside_z': None,
                 },
                 'controlDict': {
                     'application': 'simpleFoam',
@@ -102,24 +99,35 @@ class SimulateApp(MeshApp):
             with open(simulate_json_file, 'r') as f:
                 run_json = json.load(f)
 
-            if (run_json['terminal_info_file'] is not None) and (run_json['group_idx'] is not None):
-                with open(run_json['terminal_info_file'], 'r') as f:
-                    terminal_info_dict: Dict = json.load(f)
+            if (run_json['cad_info_file'] is not None) and (run_json['group_idx'] is not None):
+                with open(run_json['cad_info_file'], 'r') as f:
+                    cad_info_dict: Dict = json.load(f)
 
-                for name, info in terminal_info_dict.items():
-                    if info['group_idx'] in run_json['group_idx']:
-                        run_json['boundary_definition'][name] = {
+                for group_idx_str, group_info in cad_info_dict.items():
+                    group_idx = int(group_idx_str)
+                    if group_idx != run_json['group_idx']:
+                        continue
+
+                    scale = run_json['scale']
+                    run_json['openfoam_mesh_cfg'].update({
+                        'inside_x': group_info['inside_point'][0] * scale,
+                        'inside_y': group_info['inside_point'][1] * scale,
+                        'inside_z': group_info['inside_point'][2] * scale,
+                    })
+
+                    for pipe_name, pipe_info in group_info['pipe_cfgs'].items():
+                        run_json['boundary_definition'][pipe_name] = {
                             'method': 'cylinder',
-                            'center': (np.array(info['center']) * run_json['scale']).tolist(),
-                            'direction': info['direction'],
-                            'tol1': range_tol * 0.1,
-                            'tol2': range_tol * 0.1,
-                            'radius': info['radius'] * 1.05 * run_json['scale'],
+                            'center': (np.array(pipe_info['center']) * run_json['scale']).tolist(),
+                            'direction': pipe_info['direction'],
+                            'tol1': range_tol * 0.01,
+                            'tol2': range_tol * 0.01,
+                            'radius': pipe_info['radius'] * 0.975 * run_json['scale'],
                             'source': 'boundary'
                         }
 
-                        if info['pipe_type'] == 'Inlet':
-                            run_json['simulation_cfg'][name] = {
+                        if pipe_info['pipe_type'] == 'Inlet':
+                            run_json['simulation_cfg'][pipe_name] = {
                                 'U': {
                                     'type': 'fixedValue',
                                     'value': None
@@ -135,8 +143,8 @@ class SimulateApp(MeshApp):
                                     'value': None
                                 },
                             }
-                        elif info['pipe_type'] == 'Outlet':
-                            run_json['simulation_cfg'][name] = {
+                        elif pipe_info['pipe_type'] == 'Outlet':
+                            run_json['simulation_cfg'][pipe_name] = {
                                 'U': {'type': 'zeroGradient'},
                                 'p': {
                                     'type': 'fixedValue',
@@ -150,7 +158,7 @@ class SimulateApp(MeshApp):
                                 'epsilon': {'type': 'zeroGradient'}
                             }
                         else:
-                            run_json['simulation_cfg'][name] = {}
+                            run_json['simulation_cfg'][pipe_name] = {}
 
                 run_json['simulation_cfg']['boundary'] = {
                     'U': {'type': 'noSlip'},

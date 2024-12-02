@@ -14,12 +14,13 @@ from scripts_py.version_9.mapf_pkg.torch_utils import TorchMath, TorchUtils
 from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
 
 from scripts_py.version_9.mapf_pkg.cad_utils import OcctUtil, OcctVis, OcctIO, OcctAux, OcctOperation, OcctProfile
+from scripts_py.version_9.mapf_pkg.smooth_seg_utils import AuxCostUtil
 
 
 class CellRadiusAdjuster(object):
     def __init__(
             self,
-            group_idx: int, idx: int, cell_type: str,
+            group_idx: int, idx: int, cell_type: str, is_line: bool,
             c_idxs: np.ndarray, ts: np.ndarray, knot: np.ndarray,
             degree: int, fill_last_one: bool, c_radius_orig: np.ndarray, table_xyz: np.ndarray,
             left_clamp: bool, right_clamp: bool, left_vector: np.ndarray = None, right_vector: np.ndarray = None
@@ -27,6 +28,7 @@ class CellRadiusAdjuster(object):
         self.idx = idx
         self.group_idx = group_idx
         self.cell_type = cell_type
+        self.is_line = is_line
         self.ts = ts
         self.degree = degree
         self.knot = knot
@@ -51,12 +53,13 @@ class CellRadiusAdjuster(object):
                 self.tangent_vec[-1] = self.right_vector
         self.tangent_vec = self.tangent_vec / np.linalg.norm(self.tangent_vec, ord=2, axis=1, keepdims=True)
 
-        self.mat_t = TorchUtils.np2tensor(self.mat, require_grad=False)
+        if not self.is_line:
+            self.mat_t = TorchUtils.np2tensor(self.mat, require_grad=False)
 
-        self.limit_c_radius = c_radius_orig
-        self.limit_c_radius_t = TorchUtils.np2tensor(c_radius_orig, require_grad=False)
+            self.limit_c_radius = c_radius_orig
+            self.limit_c_radius_t = TorchUtils.np2tensor(c_radius_orig, require_grad=False)
 
-        self.inter_info = self.compute_radius_condition()
+            self.inter_info = self.compute_radius_condition()
 
     def __len__(self):
         return self.n_control
@@ -95,8 +98,8 @@ class CellRadiusAdjuster(object):
 
             xyz0, vec0 = center_xyz[i, :], vec_xyz[i, :]  # [1x3] [1x3]
             vec_inter_v = vec_inter[valid_idxs, :]  # [nx3]
-            vec_xyz_v = vec_xyz[valid_idxs, :]      # [nx3]
-            xyz_v = center_xyz[valid_idxs, :]       # [nx3]
+            vec_xyz_v = vec_xyz[valid_idxs, :]  # [nx3]
+            xyz_v = center_xyz[valid_idxs, :]  # [nx3]
 
             A = np.concatenate([
                 np.tile(vec0[np.newaxis, np.newaxis, np.newaxis, :], (1, vec_xyz_v.shape[0], 1, 1)),
@@ -158,24 +161,28 @@ class GroupRadiusAdjuster(object):
         self.table_radius = table_radius
         self.table_radius_t = TorchUtils.np2tensor(table_radius, require_grad=True)
 
-        self.cell_dict: Dict[str, CellRadiusAdjuster] = {}
-        self.contain_connector = False
+        self.free_cell_dict: Dict[str, CellRadiusAdjuster] = {}
+        self.line_cell_dict: Dict[str, CellRadiusAdjuster] = {}
 
     def add_cell(
             self, idx: int, group_idx: int, cell_type: str,
             ts: np.ndarray, degree: int, knot: np.ndarray,
             c_idxs: np.ndarray, fill_last_one: bool, c_radius: np.ndarray,
-            left_clamp: bool, right_clamp: bool, left_vector: np.ndarray, right_vector: np.ndarray
+            left_clamp: bool, right_clamp: bool, left_vector: np.ndarray, right_vector: np.ndarray,
+            is_line: bool
     ):
         cell = CellRadiusAdjuster(
-            group_idx, idx, cell_type, c_idxs, ts, knot, degree, fill_last_one, c_radius, self.table_xyz,
+            group_idx, idx, cell_type, is_line, c_idxs, ts, knot, degree, fill_last_one, c_radius, self.table_xyz,
             left_clamp, right_clamp, left_vector, right_vector
         )
-        self.cell_dict[str(cell)] = cell
+        if is_line:
+            self.line_cell_dict[(str(cell))] = cell
+        else:
+            self.free_cell_dict[str(cell)] = cell
 
     def compute_tensor_cost(self, cost_cfg: Dict):
         cost_dict = {}
-        for name, cell in self.cell_dict.items():
+        for name, cell in self.free_cell_dict.items():
             cost_dict.update(cell.compute_tensor_cost(self.table_radius_t, cost_cfg))
         return cost_dict
 
@@ -188,7 +195,7 @@ class GroupRadiusAdjuster(object):
             vis = VisUtils()
             show_plot = True
 
-        for cell_name, cell in self.cell_dict.items():
+        for cell_name, cell in self.free_cell_dict.items():
             color = np.random.uniform(0.0, 1.0, size=(3,))
             line_set = VisUtils.create_line_set(np.arange(0, cell.spline_xyz.shape[0], 1))
             radius = cell.compute_radius_np(self.table_radius)
@@ -207,6 +214,10 @@ class GroupRadiusAdjuster(object):
                 vis.plot(mesh, color=color, opacity=1.0, style='wireframe')
 
             vis.plotter.add_arrows(cell.spline_xyz, cell.tangent_vec, mag=0.1, show_scalar_bar=False)
+
+        for cell_name, cell in self.line_cell_dict.items():
+            pcd_mesh = VisUtils.create_point_cloud(cell.spline_xyz)
+            vis.plot(pcd_mesh, color=(1.0, 0.0, 0.0), opacity=1.0)
 
         if show_plot:
             vis.show()
@@ -285,54 +296,105 @@ class RadiusOptimizer(object):
         if show_plot:
             vis.show()
 
-    def save_terminal_info(self, file: str = None):
+    def save_cad_info(self, file: str = None):
         assert file.endswith('.json')
         with open(file, 'w') as f:
-            terminal_json = {}
+            cad_json = {}
+
             for group_idx, group_cell in self.group_dict.items():
-                for cell_name, cell in group_cell.cell_dict.items():
+                pipe_cfgs = {}
+                inside_point = None
+
+                cell_list: list[CellRadiusAdjuster] = []
+                for _, cell in group_cell.free_cell_dict.items():
+                    cell_list.append(cell)
+                for _, cell in group_cell.line_cell_dict.items():
+                    cell_list.append(cell)
+
+                for cell in cell_list:
                     if cell.cell_type == 'connector':
                         continue
 
                     radius = cell.compute_radius_np(group_cell.table_radius)
                     if cell.left_clamp:
-                        terminal_json[f"pipe_{len(terminal_json)}"] = {
+                        pipe_cfgs[f"pipe_{len(pipe_cfgs)}"] = {
                             'center': cell.spline_xyz[0].tolist(),
                             'direction': cell.tangent_vec[0].tolist(),
                             'radius': radius[0],
-                            'group_idx': int(group_idx),
                             'pipe_type': 'Unknown'
                         }
 
                     if cell.right_clamp:
-                        terminal_json[f"pipe_{len(terminal_json)}"] = {
+                        pipe_cfgs[f"pipe_{len(pipe_cfgs)}"] = {
                             'center': cell.spline_xyz[-1].tolist(),
                             'direction': cell.tangent_vec[-1].tolist(),
                             'radius': radius[-1],
-                            'group_idx': int(group_idx),
                             'pipe_type': 'Unknown'
                         }
 
-            json.dump(terminal_json, f, indent=4)
+                    if inside_point is None:
+                        inside_point = cell.spline_xyz[1].tolist()
+
+                group_cfg = {
+                    'group_idx': int(group_idx),
+                    'pipe_cfgs': pipe_cfgs,
+                    'inside_point': inside_point
+                }
+                cad_json[int(group_idx)] = group_cfg
+
+            json.dump(cad_json, f, indent=4)
 
 
 class StepExporter(object):
     @staticmethod
-    def to_step(group_cell: GroupRadiusAdjuster, save_dir, with_vis=False, with_fuse=False):
+    def to_step(group_cell: GroupRadiusAdjuster, save_dir, is_dry_mode=False, with_vis=False, with_fuse=False):
         if with_vis:
             display, start_display, _, _ = OcctVis.init_plotter()
 
         solid_list = []
-        for name, cell in group_cell.cell_dict.items():
+        for name, cell in group_cell.free_cell_dict.items():
             spline_xyz = cell.spline_xyz
             radius_list = cell.compute_radius_np(group_cell.table_radius)
             spline_vec = cell.tangent_vec
 
-            wire_list = []
-            for xyz, vec, radius in zip(spline_xyz, spline_vec, radius_list):
-                circle = OcctProfile.make_circle(xyz, vec, radius)
-                circle_wire = OcctUtil.make_wire(OcctUtil.make_edge(circle))
-                wire_list.append(circle_wire)
+            if is_dry_mode:
+                wire_list = []
+                last_center_xyz, last_vec, last_radius = None, None, None
+                for i, (xyz, vec, radius) in enumerate(zip(spline_xyz, spline_vec, radius_list)):
+                    if i > 0:
+                        inter_vec = np.cross(last_vec, vec)
+                        is_not_parallel = np.sum(inter_vec) != 0. and ~np.isnan(np.sum(inter_vec))
+                        if is_not_parallel:
+                            res_pack = AuxCostUtil.compute_intersect_pcd(
+                                left_pcd=last_center_xyz.reshape((1, 3)),
+                                left_vec=last_vec.reshape((1, 3)),
+                                right_pcd=xyz.reshape((1, 3)),
+                                right_vec=vec.reshape((1, 3)),
+                            )
+                            left2line_dist = AuxCostUtil.compute_point2line_dist(
+                                last_center_xyz.reshape((1, 3)), res_pack['pcd_inter'], res_pack['vec_inter']
+                            )
+                            right2line_dist = AuxCostUtil.compute_point2line_dist(
+                                xyz.reshape((1, 3)), res_pack['pcd_inter'], res_pack['vec_inter']
+                            )
+                            is_conflict = (last_radius + radius) - (left2line_dist + right2line_dist) > 0.0
+                            if is_conflict:
+                                continue
+
+                    circle = OcctProfile.make_circle(xyz, vec, radius)
+                    circle_wire = OcctUtil.make_wire(OcctUtil.make_edge(circle))
+                    wire_list.append(circle_wire)
+
+                    last_center_xyz = xyz
+                    last_vec = vec
+                    last_radius = radius
+
+            else:
+                wire_list = []
+                for xyz, vec, radius in zip(spline_xyz, spline_vec, radius_list):
+                    circle = OcctProfile.make_circle(xyz, vec, radius)
+                    circle_wire = OcctUtil.make_wire(OcctUtil.make_edge(circle))
+                    wire_list.append(circle_wire)
 
             solid = OcctProfile.make_thruSections(wire_list, is_solid=True, ruled=True)
             solid_list.append(solid)
@@ -342,23 +404,34 @@ class StepExporter(object):
                     display.DisplayShape(wire, update=True, color='RED')
                 # display.DisplayShape(solid, update=True, color='BLUE')
 
-            OcctIO.write_STEP(os.path.join(save_dir, f"subSolid_{cell.name}.STEP"), solid)
+            # OcctIO.write_STEP(os.path.join(save_dir, f"subSolid_{str(cell)}.STEP"), solid)
 
-        if with_fuse:
-            merge_solid = solid_list[0]
-            for solid in solid_list[1:]:
-                merge_solid = OcctOperation.fuse(merge_solid, solid)
-                if with_vis:
-                    display.DisplayShape(merge_solid, update=True, color='BLUE')
-        else:
-            merge_solid = OcctProfile.make_pack(solid_list)
+        if len(solid_list) > 0:
+            if with_fuse:
+                merge_solid = solid_list[0]
+                for solid in solid_list[1:]:
+                    merge_solid = OcctOperation.fuse(merge_solid, solid)
+                    if with_vis:
+                        display.DisplayShape(merge_solid, update=True, color='BLUE')
+            else:
+                merge_solid = OcctProfile.make_pack(solid_list)
 
-        step_file = os.path.join(save_dir, f"solid_{group_cell.group_idx}.STEP")
-        OcctIO.write_STEP(step_file, merge_solid)
-        # OcctIO.write_STL(os.path.join(save_dir, f"solid_{group_cell.group_idx}.STL"), merge_solid, is_ascii=True)
+            solid_step_file = os.path.join(save_dir, f"solid_{group_cell.group_idx}.STEP")
+            OcctIO.write_STEP(solid_step_file, merge_solid)
+            # OcctIO.write_STL(os.path.join(save_dir, f"solid_{group_cell.group_idx}.STL"), merge_solid, is_ascii=True)
 
-        # cq.exporters.export(
-        #     cq.importers.importStep(step_file),
-        #     os.path.join(save_dir, f"solid_{group_cell.group_idx}.stl"),
-        #     opt={'ascii': True}
-        # )
+            # cq.exporters.export(
+            #     cq.importers.importStep(step_file),
+            #     os.path.join(save_dir, f"solid_{group_cell.group_idx}.stl"),
+            #     opt={'ascii': True}
+            # )
+
+        line_list = []
+        for name, cell in group_cell.line_cell_dict.items():
+            line_list.append(OcctProfile.make_line(cell.spline_xyz))
+            # line_list.append(OcctProfile.make_point_cloud(cell.spline_xyz))
+
+        if len(line_list) > 0:
+            merge_line = OcctProfile.make_pack(line_list)
+            line_iges_file = os.path.join(save_dir, f"line_{group_cell.group_idx}.iges")
+            OcctIO.write_IGES(line_iges_file, merge_line)

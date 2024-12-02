@@ -77,7 +77,11 @@ class MeshApp(SmoothApp):
             # pcd_ply.plot()
             Pcd2MeshUtils.save_ply(pcd_ply, file=os.path.join(mesh_dir, f"group_{group_idx}.ply"))
 
-    def _setup_radius_adjuster_on_click(self, with_connector_checkbox: gui.Checkbox):
+    def _setup_radius_adjuster_on_click(
+            self,
+            is_segment_line_checkbox: gui.Checkbox,
+            is_connector_line_checkbox: gui.Checkbox,
+    ):
         res_file = os.path.join(self.proj_dir, 'smooth_result.hdf5')
         if not os.path.exists(res_file):
             self.console_label.text = f"    [ERROR]: smooth result isn't exist."
@@ -92,13 +96,13 @@ class MeshApp(SmoothApp):
                     "patience": 1000,
                     "cooldown": 100,
                     "min_lr": 0.001,
+                    "max_iter": 30000
                 },
                 "cost_cfg": {
                     "bound_weight": 1000.0,
                     "scale_weight": 100.0,
                     "balance_weight": 1.0,
-                    "keep_weight": 10.0,
-                    "max_iter": 30000
+                    "keep_weight": 10.0
                 }
             }
             with open(postprocess_file, 'w') as f:
@@ -128,28 +132,26 @@ class MeshApp(SmoothApp):
                 right_vector = np.array(seg_cell_layer['right_vector']).reshape(-1)
                 group_adjuster.add_cell(
                     cell_idx, group_idx, cell_type, ts, degree, knot, c_idxs, fill_last_one,
-                    c_radius, left_clamp, right_clamp, left_vector, right_vector
+                    c_radius, left_clamp, right_clamp, left_vector, right_vector,
+                    is_line=is_segment_line_checkbox.checked
                 )
 
-            if with_connector_checkbox.checked:
-                group_adjuster.contain_connector = True
-                for _, con_cell_layer in group_layer['connector'].items():
-                    cell_idx = con_cell_layer['idx'][0]
-                    cell_type = str(con_cell_layer['cell_type'][0], 'utf-8')
-                    ts = np.array(con_cell_layer['ts']).reshape(-1)
-                    degree = int(con_cell_layer['degree'][0])
-                    knot = np.array(con_cell_layer['knot']).reshape(-1)
-                    fill_last_one = bool(con_cell_layer['fill_last_one'][0])
-                    c_idxs = np.array(con_cell_layer['c_idxs']).reshape(-1)
-                    c_radius = np.array(con_cell_layer['c_radius']).reshape(-1)
-                    left_clamp = bool(con_cell_layer['left_clamp'][0])
-                    right_clamp = bool(con_cell_layer['right_clamp'][0])
-                    group_adjuster.add_cell(
-                        cell_idx, group_idx, cell_type, ts, degree, knot, c_idxs, fill_last_one,
-                        c_radius, left_clamp, right_clamp, left_vector=None, right_vector=None
-                    )
-            else:
-                group_adjuster.contain_connector = False
+            for _, con_cell_layer in group_layer['connector'].items():
+                cell_idx = con_cell_layer['idx'][0]
+                cell_type = str(con_cell_layer['cell_type'][0], 'utf-8')
+                ts = np.array(con_cell_layer['ts']).reshape(-1)
+                degree = int(con_cell_layer['degree'][0])
+                knot = np.array(con_cell_layer['knot']).reshape(-1)
+                fill_last_one = bool(con_cell_layer['fill_last_one'][0])
+                c_idxs = np.array(con_cell_layer['c_idxs']).reshape(-1)
+                c_radius = np.array(con_cell_layer['c_radius']).reshape(-1)
+                left_clamp = bool(con_cell_layer['left_clamp'][0])
+                right_clamp = bool(con_cell_layer['right_clamp'][0])
+                group_adjuster.add_cell(
+                    cell_idx, group_idx, cell_type, ts, degree, knot, c_idxs, fill_last_one,
+                    c_radius, left_clamp, right_clamp, left_vector=None, right_vector=None,
+                    is_line=is_connector_line_checkbox.checked
+                )
 
     def _run_radius_adjust_on_click(self):
         postprocess_file = os.path.join(self.proj_dir, 'postprocess.json')
@@ -182,19 +184,24 @@ class MeshApp(SmoothApp):
         os.mkdir(cad_dir)
 
         for group_idx, group_cell in self.radius_opt.group_dict.items():
-            StepExporter.to_step(group_cell, cad_dir, with_vis=False, with_fuse=False)
+            StepExporter.to_step(group_cell, cad_dir, is_dry_mode=True, with_vis=False, with_fuse=False)
 
-        self.radius_opt.save_terminal_info(file=os.path.join(cad_dir, 'terminal_info.json'))
+        self.radius_opt.save_cad_info(file=os.path.join(cad_dir, 'cad_info.json'))
 
     def init_path_mesh_widget(self):
         mesh_layout = gui.CollapsableVert("Path Mesh Setup", self.spacing, self.blank_margins)
         self.panel.add_child(mesh_layout)
 
-        with_connector_checkbox = FragmentOpen3d.get_widget('checkbox', widget_info={'name': 'with_connector'})
+        is_segment_line_checkbox = FragmentOpen3d.get_widget('checkbox', widget_info={'name': 'is segment line'})
+        is_segment_line_checkbox.checked = False
+        is_connector_line_checkbox = FragmentOpen3d.get_widget('checkbox', widget_info={'name': 'is connector line'})
+        is_connector_line_checkbox.checked = True
+
         setup_radius_adjuster_btn = FragmentOpen3d.get_widget('button', {'name': 'setupAdjuster'})
         setup_radius_adjuster_btn.set_on_clicked(partial(
             self._setup_radius_adjuster_on_click,
-            with_connector_checkbox=with_connector_checkbox
+            is_segment_line_checkbox=is_segment_line_checkbox,
+            is_connector_line_checkbox=is_connector_line_checkbox
         ))
 
         run_adjust_btn = FragmentOpen3d.get_widget('button', {'name': 'runAdjust'})
@@ -210,12 +217,9 @@ class MeshApp(SmoothApp):
 
         mesh_layout.add_child(
             FragmentOpen3d.get_layout_widget('vert', [
-                FragmentOpen3d.get_layout_widget('horiz', [
-                    gui.Label("step1:"), with_connector_checkbox, setup_radius_adjuster_btn
-                ], 10),
-                FragmentOpen3d.get_layout_widget('horiz', [
-                    gui.Label("step2:"), run_adjust_btn
-                ], 10),
+                FragmentOpen3d.get_layout_widget('horiz', [is_segment_line_checkbox, is_connector_line_checkbox]),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label("step1:"), setup_radius_adjuster_btn], 5),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label("step2:"), run_adjust_btn], 5),
                 FragmentOpen3d.get_layout_widget('horiz', [export_cad_btn, export_pcd_btn, radius_check_btn], 5),
             ], 3, self.vert_margins)
         )

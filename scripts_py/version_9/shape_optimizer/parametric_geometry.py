@@ -56,7 +56,7 @@ plotter.add_mesh(pyvista.PointSet(data['orig_data']), color=(1., 0., 0.))
 plotter.show()
 """
 
-"""
+
 # ------ 2D spline
 nu, nv = 30, 30
 u = np.linspace(-4, 4, nu)
@@ -78,7 +78,7 @@ plotter.add_mesh(pyvista.PointSet(data['interpolated']), color=(0., 0., 1.))
 plotter.add_mesh(pyvista.PointSet(data['control_pts']), color=(0., 1., 0.))
 plotter.add_mesh(pyvista.PointSet(data['orig_data']), color=(1., 0., 0.))
 plotter.show()
-"""
+
 
 """ 3 spline
 mesh = pyvista.read('/home/admin123456/Desktop/work/para_geo/model.vtk')

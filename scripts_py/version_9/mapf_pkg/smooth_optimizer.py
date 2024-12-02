@@ -88,6 +88,9 @@ class PathOptimizer(object):
     def init_optimize_cfg(self, group_idx, setting_cfg: Dict):
         self.group_cells[group_idx].init_cfg(setting_cfg)
 
+    def init_cross_seg_cfg(self, group_idx, setting_cfg: Dict):
+        self.group_cells[group_idx].init_cross_seg_cfg(setting_cfg)
+
     def update_spline_NpCfg(self, group_idx: int):
         group_cell = self.group_cells[group_idx]
         table_xyzr = group_cell.c_table[['x', 'y', 'z', 'radius']].values

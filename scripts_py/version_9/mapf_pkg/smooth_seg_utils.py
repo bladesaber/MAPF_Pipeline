@@ -1,26 +1,3 @@
-# todo
-#  1.添加动量项
-#  2.增加不同分段之间的样式（分段之间的连接约束改为特定定义，不采用进出口定义全段）
-#  3.增加半径修改再优化功能
-#  4.增加半径曲率限制的自适应导出功能
-#  5.添加CAD构造功能
-#  6.不同分段之间更改为Bspline，使连接更流畅
-#  7.添加优化中断与回续功能
-#  8.不同分段之间添加半径平滑自适应
-#  9.添加人工修改控制点位置再优化功能
-#  10.提供自由固定控制点再优化功能
-#  11.提供非固定半径优化功能
-#  12.添加仿真功能
-#  13.添加半径与控制点位置手动调整功能
-#  14.曲率Cost添加sigmoid项
-#  15.缺乏半径膨胀配置
-#  16.拓展回退功能
-#  17.添加自动优化功能
-#  info.1 还是得重写，直觉上来说只要实际空间包含最优轨迹空间，那不管这个实际空间是什么样子，它都可以达到最优
-#  info.2 connector由于共用控制点,可能自由度不足够
-#  info.3 使用curvature分布优化 info.4 学习率使用近似 CosineAnnealingLR 的多个复合
-#  info.4 锋端曲率缺陷不可避免,路径各个部分的曲率优化进程相矛盾
-
 import os
 import shutil
 import json
@@ -430,7 +407,7 @@ class ConnectorCell(SegmentCell):
     def update_spline_NpCfg(self, table_xyzr: np.ndarray, update_threshold=0.1):
         seg_scale = self.parent_cell.c_table['seg_scale'].values
         orig_radius = table_xyzr[self.c_idxs, -1] * seg_scale[self.c_idxs]
-        c_radius = np.linspace(orig_radius[0], orig_radius[1], num=self.c_idxs.shape[0])
+        c_radius = np.linspace(orig_radius[0], orig_radius[-1], num=self.c_idxs.shape[0])
         return super().update_spline_NpCfg(table_xyzr, update_threshold, c_radius)
 
 
@@ -837,6 +814,73 @@ class PathCell(object):
         raise NotImplementedError
 
 
+class PairSegCell(object):
+    def __init__(self, idx: int, group_idx: int, left_seg_idx: int, other_seg_idx: int, parent_cell):
+        self.idx = idx
+        self.group_idx = group_idx
+
+        self.parent_cell: GroupCell = parent_cell
+        self.left_seg_idx = left_seg_idx
+        self.other_seg_idx = other_seg_idx
+
+        self.cost_cfgs: List[Dict] = []
+
+    def init_cfg(self, cfg: Dict):
+        self.update_cost_cfg(cfg['cost_setting'])
+
+    def update_cost_cfg(self, cfg: Dict):
+        self.cost_cfgs = cfg['cost_cfgs']
+
+    def find_conflict(self, unit_length: float):
+        left_cell = self.parent_cell.seg_dict[self.left_seg_idx]
+        other_cell = self.parent_cell.seg_dict[self.other_seg_idx]
+
+        left_xyz = TorchUtils.tensor2np(left_cell.spline_xyz_t)
+        left_radius = left_cell.radius
+        other_xyz = TorchUtils.tensor2np(other_cell.spline_xyz_t)
+        other_radius = other_cell.radius
+
+        left_tree = KDTree(left_xyz)
+        search_radius = np.max(left_radius) + np.max(other_radius) + unit_length * 2.0
+        idxs_list, dist_list = left_tree.query_radius(other_xyz, search_radius, return_distance=True)
+
+        left_idxs, other_idxs, require_radius = [], [], []
+        for other_idx, (left_idx_list, dists) in enumerate(zip(idxs_list, dist_list)):
+            if len(left_idx_list) == 0:
+                continue
+
+            for left_idx, dist in zip(left_idx_list, dists):
+                detection_radius = left_radius[left_idx] + other_radius[other_idx] + unit_length * 2.0
+                if dist <= detection_radius:
+                    left_idxs.append(left_idx)
+                    other_idxs.append(other_idx)
+                    require_radius.append(left_radius[left_idx] + other_radius[other_idx])
+
+        return np.array(left_idxs), np.array(other_idxs), np.array(require_radius)
+
+    def compute_cost(self, unit_length: float, with_default_weight: bool):
+        cost_dict = {}
+        for cfg in self.cost_cfgs:
+            cost_tag = f"{self.group_idx}/pair_segment/{self.idx}/{cfg['cost_type']}"
+            cost_weight = 1.0 if with_default_weight else cfg['weight']
+
+            if cfg['cost_type'] == 'pair_conflict':
+                left_idxs, other_idxs, require_dist = self.find_conflict(unit_length)
+                if left_idxs.shape[0] > 0:
+                    costs = CostUtils.compute_shape_conflict_cost(
+                        pcd0=self.parent_cell.seg_dict[self.left_seg_idx].spline_xyz_t[left_idxs, :],
+                        pcd1=self.parent_cell.seg_dict[self.other_seg_idx].spline_xyz_t[other_idxs, :],
+                        require_dist=require_dist,
+                        weight=1.0
+                    )
+                    cost_dict[cost_tag] = costs.mean() * cost_weight
+
+            else:
+                raise ValueError(f"[ERROR]: Non-valid pair seg cost type {cfg['cost_type']}")
+
+        return cost_dict
+
+
 class GroupCell(object):
     def __init__(self, group_idx: int):
         self.group_idx = group_idx
@@ -844,6 +888,7 @@ class GroupCell(object):
         self.seg_dict: Dict[int, SegmentCell] = {}
         self.connector_dict: Dict[int, ConnectorCell] = {}
         self.path_dict: Dict[int, PathCell] = {}
+        self.pair_seg_dict: Dict[int, PairSegCell] = {}
         self.table_xyz_t: torch.Tensor = None
 
     @staticmethod
@@ -889,6 +934,44 @@ class GroupCell(object):
             c_xyzr = np.concatenate([c_xyzr[:1, :], c_xyzr[select_idxs, :], c_xyzr[-1:, :]], axis=0)
 
         return c_xyzr
+
+    def find_pair_cross_segment(self):
+        cell_list: List[ConnectorCell] = []
+        for con_idx, con_cell in self.connector_dict.items():
+            cell_list.append(con_cell)
+        cell_num = len(cell_list)
+
+        pair_dict = {}
+        for i in range(cell_num):
+            cell_i = cell_list[i]
+            for j in range(i + 1, cell_num, 1):
+                cell_j = cell_list[j]
+
+                if cell_i.c_idxs[0] == cell_j.c_idxs[0]:
+                    left_seg_idx, other_seg_idx = cell_i.right_seg_idx, cell_j.right_seg_idx
+                elif cell_i.c_idxs[-1] == cell_j.c_idxs[-1]:
+                    left_seg_idx, other_seg_idx = cell_i.left_seg_idx, cell_j.left_seg_idx
+                elif cell_i.c_idxs[0] == cell_j.c_idxs[-1]:
+                    left_seg_idx, other_seg_idx = cell_i.right_seg_idx, cell_j.left_seg_idx
+                elif cell_i.c_idxs[-1] == cell_j.c_idxs[0]:
+                    left_seg_idx, other_seg_idx = cell_i.left_seg_idx, cell_j.right_seg_idx
+                else:
+                    continue
+
+                tag = (left_seg_idx, other_seg_idx)
+                if tag not in pair_dict.keys():
+                    pair_dict[tag] = True
+
+        for cell in cell_list:
+            left_seg_idx, other_seg_idx = cell.left_seg_idx, cell.right_seg_idx
+            tag = (left_seg_idx, other_seg_idx)
+            if tag not in pair_dict.keys():
+                pair_dict[tag] = True
+
+        for left_seg_idx, other_seg_idx in pair_dict.keys():
+            pair_idx = len(self.pair_seg_dict)
+            cross_cell = PairSegCell(pair_idx, self.group_idx, left_seg_idx, other_seg_idx, self)
+            self.pair_seg_dict[cross_cell.idx] = cross_cell
 
     def assemble_discrete_graph(
             self,
@@ -1079,6 +1162,13 @@ class GroupCell(object):
             path_idx = path_cfg['path_idx']
             self.path_dict[path_idx].init_cfg(path_cfg)
 
+        self.find_pair_cross_segment()
+
+    def init_cross_seg_cfg(self, setting_cfg: Dict):
+        for pair_cfg in setting_cfg['pair_segments']:
+            pair_idx = pair_cfg['pair_idx']
+            self.pair_seg_dict[pair_idx].init_cfg(pair_cfg)
+
     def prepare_tensor(self):
         self.table_xyz_t = TorchUtils.np2tensor(self.c_table[['x', 'y', 'z']].values[:, :3], require_grad=True)
         for _, seg_cell in self.seg_dict.items():
@@ -1113,6 +1203,8 @@ class GroupCell(object):
             cost_dict.update(path_cell.compute_set_cost(unit_length, with_default_weight))
         # for path_idx, path_cell in self.path_dict.items():
         #     cost_dict.update(path_cell.compute_element_cost(with_default_weight))
+        for pair_idx, pair_cell in self.pair_seg_dict.items():
+            cost_dict.update(pair_cell.compute_cost(unit_length, with_default_weight))
         return cost_dict
 
     @property

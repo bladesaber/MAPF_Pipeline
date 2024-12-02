@@ -7,6 +7,7 @@ from OCC.Display.WebGl import threejs_renderer
 
 from OCC.Core.STEPControl import STEPControl_Reader, STEPControl_Writer, STEPControl_AsIs
 from OCC.Core.StlAPI import StlAPI_Writer, StlAPI_Reader
+from OCC.Core.IGESControl import IGESControl_Writer
 from OCC.Core.TColgp import TColgp_Array1OfPnt
 from OCC.Core.TColStd import TColStd_Array1OfReal, TColStd_Array1OfInteger
 from OCC.Core.gp import gp_Pnt, gp_Ax2, gp_Ax3, gp_Dir, gp_Circ
@@ -64,6 +65,12 @@ class OcctIO(object):
         saver.SetASCIIMode(is_ascii)
         return saver.Write(shape, file)
 
+    @staticmethod
+    def write_IGES(file: str, shape: Union[TopoDS.TopoDS_Shell, TopoDS.TopoDS_Wire]):
+        writer = IGESControl_Writer()
+        writer.AddShape(shape)
+        writer.Write(file)
+
 
 class OcctAux(object):
     @staticmethod
@@ -111,7 +118,7 @@ class OcctAux(object):
 class OcctProfile(object):
     @staticmethod
     def make_vertex(point: gp_Pnt):
-        return BRepBuilderAPI_MakeVertex(point)
+        return BRepBuilderAPI_MakeVertex(point).Vertex()
 
     @staticmethod
     def make_point(x, y, z) -> gp_Pnt:
@@ -236,6 +243,25 @@ class OcctProfile(object):
             generator.AddWire(wire)
         generator.Build()
         return generator.Shape()
+
+    @staticmethod
+    def make_line(points: np.ndarray) -> TopoDS.TopoDS_Wire:
+        wire_builder = BRepBuilderAPI_MakeWire()
+        for i in range(points.shape[0] - 1):
+            left_point, right_point = points[i], points[i + 1]
+            edge = BRepBuilderAPI_MakeEdge(
+                OcctProfile.make_point(left_point[0], left_point[1], left_point[2]),
+                OcctProfile.make_point(right_point[0], right_point[1], right_point[2])
+            ).Edge()
+            wire_builder.Add(edge)
+        return wire_builder.Wire()
+
+    @staticmethod
+    def make_point_cloud(points: np.ndarray) -> TopoDS.TopoDS_Compound:
+        pcd = []
+        for point in points:
+            pcd.append(OcctProfile.make_vertex(OcctProfile.make_point(point[0], point[1], point[2])))
+        return OcctProfile.make_pack(pcd)
 
 
 class OcctOperation(object):

@@ -153,7 +153,8 @@ class SmoothApp(PathApp):
                     },
                     'segments': [],
                     'connectors': [],
-                    'paths': []
+                    'paths': [],
+                    'pair_segments': [],
                 })
             with open(smooth_file, 'w') as f:
                 json.dump(smooth_json, f, indent=4)
@@ -404,13 +405,46 @@ class SmoothApp(PathApp):
             opt.init_optimize_cfg(group_idx, {
                 'segments': group_cfg['segments'],
                 'connectors': group_cfg['connectors'],
-                'paths': group_cfg['paths']
+                'paths': group_cfg['paths'],
+                'pair_segments': group_cfg['pair_segments']
             })
-        self.smooth_opt = opt
+
+        # ------ Step4: update crossing segment info
+        for group_cfg in smooth_json['setting']:
+            group_idx = group_cfg['group_idx']
+
+            if len(group_cfg['pair_segments']) == 0:
+                for pair_idx, pair_cell in opt.group_cells[group_idx].pair_seg_dict.items():
+                    group_cfg['pair_segments'].append({
+                        'pair_idx': pair_idx,
+                        'left_seg_idx': pair_cell.left_seg_idx,
+                        'other_seg_idx': pair_cell.other_seg_idx,
+                        'cost_setting': {
+                            'cost_cfgs': [
+                                {
+                                    'cost_type': 'pair_conflict',
+                                    'weight': 1.0
+                                }
+                            ]
+                        },
+                    })
+
+        with open(smooth_file, 'w') as f:
+            json.dump(smooth_json, f, indent=4)
+        subprocess.run(f"gedit {smooth_file};", shell=True)
+
+        with open(smooth_file, 'r') as f:
+            smooth_json = json.load(f)
+
+        for group_cfg in smooth_json['setting']:
+            group_idx = group_cfg['group_idx']
+            opt.init_cross_seg_cfg(group_idx, {'pair_segments': group_cfg['pair_segments']})
 
         # ------ Step4: prepare spline mat
         for group_idx in opt.group_cells.keys():
             opt.update_spline_NpCfg(group_idx)
+
+        self.smooth_opt = opt
 
         # # ------ debug for visualization
         # opt.prepare_tensor()
