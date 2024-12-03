@@ -421,10 +421,10 @@ class SmoothApp(PathApp):
                         'other_seg_idx': pair_cell.other_seg_idx,
                         'cost_setting': {
                             'cost_cfgs': [
-                                {
-                                    'cost_type': 'pair_conflict',
-                                    'weight': 1.0
-                                }
+                                # {
+                                #     'cost_type': 'pair_conflict',
+                                #     'weight': 1.0
+                                # }
                             ]
                         },
                     })

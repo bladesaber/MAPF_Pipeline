@@ -6,8 +6,6 @@ import torch.nn.functional as F
 from typing import Dict
 import matplotlib.pyplot as plt
 import pyvista
-import h5py
-import cadquery as cq
 
 from scripts_py.version_9.mapf_pkg.bspline_utils import BsplineUtils
 from scripts_py.version_9.mapf_pkg.torch_utils import TorchMath, TorchUtils
@@ -190,14 +188,13 @@ class GroupRadiusAdjuster(object):
         self.table_radius = TorchUtils.tensor2np(self.table_radius_t)
 
     def draw_wireframe(self, vis: VisUtils = None):
-        show_plot = False
+        single_plot = False
         if vis is None:
-            vis = VisUtils()
-            show_plot = True
+            single_plot = True
 
         for cell_name, cell in self.free_cell_dict.items():
             color = np.random.uniform(0.0, 1.0, size=(3,))
-            line_set = VisUtils.create_line_set(np.arange(0, cell.spline_xyz.shape[0], 1))
+            # line_set = VisUtils.create_line_set(np.arange(0, cell.spline_xyz.shape[0], 1))
             radius = cell.compute_radius_np(self.table_radius)
 
             # tube_mesh = VisUtils.create_deformation_tube(cell.spline_xyz, line_set, radius=None, scalars=radius)
@@ -205,6 +202,10 @@ class GroupRadiusAdjuster(object):
 
             # line_mesh = VisUtils.create_line(cell.spline_xyz, line_set)
             # vis.plot(line_mesh, color=color, opacity=1.0, style='wireframe')
+
+            if single_plot:
+                print(f"cell_name:{cell_name}")
+                vis = VisUtils()
 
             pcd_mesh = VisUtils.create_point_cloud(cell.spline_xyz)
             vis.plot(pcd_mesh, color=color, opacity=1.0)
@@ -215,12 +216,17 @@ class GroupRadiusAdjuster(object):
 
             vis.plotter.add_arrows(cell.spline_xyz, cell.tangent_vec, mag=0.1, show_scalar_bar=False)
 
-        for cell_name, cell in self.line_cell_dict.items():
-            pcd_mesh = VisUtils.create_point_cloud(cell.spline_xyz)
-            vis.plot(pcd_mesh, color=(1.0, 0.0, 0.0), opacity=1.0)
+            if single_plot:
+                vis.plot(VisUtils.create_sphere(cell.spline_xyz[0], 1.0), color=(1., 0., 0.))
+                vis.plot(VisUtils.create_sphere(cell.spline_xyz[-1], 1.0), color=(0., 0., 1.))
 
-        if show_plot:
-            vis.show()
+            if single_plot:
+                vis.show()
+
+        if not single_plot:
+            for cell_name, cell in self.line_cell_dict.items():
+                pcd_mesh = VisUtils.create_point_cloud(cell.spline_xyz)
+                vis.plot(pcd_mesh, color=(1.0, 0.0, 0.0), opacity=1.0)
 
 
 class RadiusOptimizer(object):
@@ -285,16 +291,16 @@ class RadiusOptimizer(object):
         return loss_record, loss_info_np
 
     def draw_wireframe(self, vis: VisUtils = None):
-        show_plot = False
-        if vis is None:
-            vis = VisUtils()
-            show_plot = True
+        # show_plot = False
+        # if vis is None:
+        #     vis = VisUtils()
+        #     show_plot = True
 
         for group_idx, group_cell in self.group_dict.items():
             group_cell.draw_wireframe(vis)
 
-        if show_plot:
-            vis.show()
+        # if show_plot:
+        #     vis.show()
 
     def save_cad_info(self, file: str = None):
         assert file.endswith('.json')
@@ -347,7 +353,10 @@ class RadiusOptimizer(object):
 
 class StepExporter(object):
     @staticmethod
-    def to_step(group_cell: GroupRadiusAdjuster, save_dir, is_dry_mode=False, with_vis=False, with_fuse=False):
+    def to_step(
+            group_cell: GroupRadiusAdjuster, save_dir, is_dry_mode=False,
+            with_vis=False, with_fuse=False, with_ruled=True
+    ):
         if with_vis:
             display, start_display, _, _ = OcctVis.init_plotter()
 
@@ -396,7 +405,7 @@ class StepExporter(object):
                     circle_wire = OcctUtil.make_wire(OcctUtil.make_edge(circle))
                     wire_list.append(circle_wire)
 
-            solid = OcctProfile.make_thruSections(wire_list, is_solid=True, ruled=True)
+            solid = OcctProfile.make_thruSections(wire_list, is_solid=True, ruled=with_ruled)
             solid_list.append(solid)
 
             if with_vis:

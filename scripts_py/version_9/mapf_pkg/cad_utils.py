@@ -8,10 +8,10 @@ from OCC.Display.WebGl import threejs_renderer
 from OCC.Core.STEPControl import STEPControl_Reader, STEPControl_Writer, STEPControl_AsIs
 from OCC.Core.StlAPI import StlAPI_Writer, StlAPI_Reader
 from OCC.Core.IGESControl import IGESControl_Writer
-from OCC.Core.TColgp import TColgp_Array1OfPnt
+from OCC.Core.TColgp import TColgp_Array1OfPnt, TColgp_Array2OfPnt
 from OCC.Core.TColStd import TColStd_Array1OfReal, TColStd_Array1OfInteger
 from OCC.Core.gp import gp_Pnt, gp_Ax2, gp_Ax3, gp_Dir, gp_Circ
-from OCC.Core.Geom import Geom_BSplineCurve, Geom_BezierCurve
+from OCC.Core.Geom import Geom_BSplineCurve, Geom_BezierCurve, Geom_BSplineSurface
 from OCC.Core.BRepBuilderAPI import (BRepBuilderAPI_MakeVertex, BRepBuilderAPI_MakeEdge,
                                      BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakeWire,
                                      BRepBuilderAPI_MakeSolid, BRepBuilderAPI_MakeShell,
@@ -30,6 +30,8 @@ from OCC.Core.BRepAlgoAPI import (
     BRepAlgoAPI_Section,
     BRepAlgoAPI_Cut,
 )
+
+# from pyspline import Surface
 
 
 class OcctIO(object):
@@ -262,6 +264,59 @@ class OcctProfile(object):
         for point in points:
             pcd.append(OcctProfile.make_vertex(OcctProfile.make_point(point[0], point[1], point[2])))
         return OcctProfile.make_pack(pcd)
+
+    @staticmethod
+    def make_bspline_surface(control_pcd: np.ndarray, degree_u: int, degree_v: int) -> Geom_BSplineSurface:
+        # ku, kv = 3, 3
+        # surf = Surface(x=x, y=y, z=z, ku=ku, kv=kv, nCtlu=20, nCtlv=20, nIter=100)
+        # # surf.writeTecplot('/home/admin123456/Desktop/work/path_examples/test_example/surf.dat')
+        # control_pcd = surf.coef
+
+        n_u, n_v = control_pcd.shape[:2]
+        control_pcd_array = TColgp_Array2OfPnt(1, n_u, 1, n_v)
+        for u in range(n_u):
+            for v in range(n_u):
+                point = control_pcd[u, v, :]
+                control_pcd_array.SetValue(u + 1, v + 1, OcctProfile.make_point(point[0], point[1], point[2]))
+
+        # ------ knot of u
+        n_u_knot = (n_u + degree_u + 1) - 2 * (degree_u + 1) + 2
+        u_knot = np.linspace(0.0, 1.0, n_u_knot)
+        u_knot_array = TColStd_Array1OfReal(1, n_u_knot)
+        for i, k_value in enumerate(u_knot):
+            u_knot_array.SetValue(i + 1, k_value)
+
+        u_mul_value = np.ones(shape=(n_u_knot,), dtype=int)
+        u_mul_value[0] = degree_u + 1
+        u_mul_value[-1] = degree_u + 1
+        u_multiplicities_array = TColStd_Array1OfInteger(1, n_u_knot)
+        for i, v in enumerate(u_mul_value):
+            u_multiplicities_array.SetValue(i + 1, int(v))
+
+        # ------ knot of v
+        n_v_knot = (n_v + degree_v + 1) - 2 * (degree_v + 1) + 2
+        v_knot = np.linspace(0.0, 1.0, n_v_knot)
+        v_knot_array = TColStd_Array1OfReal(1, n_v_knot)
+        for i, k_value in enumerate(v_knot):
+            v_knot_array.SetValue(i + 1, k_value)
+
+        v_mul_value = np.ones(shape=(n_v_knot,), dtype=int)
+        v_mul_value[0] = degree_u + 1
+        v_mul_value[-1] = degree_v + 1
+        v_multiplicities_array = TColStd_Array1OfInteger(1, n_v_knot)
+        for i, v in enumerate(u_mul_value):
+            v_multiplicities_array.SetValue(i + 1, int(v))
+
+        # ------ Step 5: Create B-spline surface
+        bspline_surface = Geom_BSplineSurface(
+            control_pcd_array,
+            u_knot_array, v_knot_array,
+            u_multiplicities_array, v_multiplicities_array,
+            degree_u, degree_v,
+            False, False
+        )
+
+        return bspline_surface
 
 
 class OcctOperation(object):

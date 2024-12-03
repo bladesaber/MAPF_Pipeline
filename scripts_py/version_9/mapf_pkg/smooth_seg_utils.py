@@ -1241,6 +1241,7 @@ class GroupCell(object):
             seg_layer.create_dataset("right_clamp", data=[seg_cell.right_clamp])
             seg_layer.create_dataset("left_vector", data=seg_cell.left_vector)
             seg_layer.create_dataset("right_vector", data=seg_cell.right_vector)
+            seg_layer.create_dataset("tangent_vector", data=seg_cell.compute_tangent_np(table_xyzr))
 
         con_group_layer = group_layer.create_group('connector')
         for con_idx, con_cell in self.connector_dict.items():
@@ -1256,6 +1257,7 @@ class GroupCell(object):
             con_layer.create_dataset("spline", data=con_cell.compute_spline_np(table_xyzr))
             con_layer.create_dataset("left_clamp", data=[con_cell.left_clamp])
             con_layer.create_dataset("right_clamp", data=[con_cell.right_clamp])
+            con_layer.create_dataset("tangent_vector", data=con_cell.compute_tangent_np(table_xyzr))
 
         path_group_layer = group_layer.create_group('path')
         for path_idx, path_cell in self.path_dict.items():
