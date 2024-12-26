@@ -20,6 +20,8 @@ from scripts_py.version_9.mapf_pkg.shape_utils import ShapeUtils
 
 from scripts_py.version_9.mapf_pkg.utils import TensorBoardRecorder
 
+# todo 我怀疑是因为seg_node_max不足够导致的，导致初始体有问题
+
 
 class SmoothApp(PathApp):
     def __init__(self, config):
@@ -154,7 +156,7 @@ class SmoothApp(PathApp):
                     'segments': [],
                     'connectors': [],
                     'paths': [],
-                    'pair_segments': [],
+                    'pair_cells': [],
                 })
             with open(smooth_file, 'w') as f:
                 json.dump(smooth_json, f, indent=4)
@@ -174,22 +176,6 @@ class SmoothApp(PathApp):
             smooth_json['cfg']['orig_obstacle_file'], index_col=0
         )[['x', 'y', 'z', 'radius']].values[:, :3]
         obs_xyz_list = [obs_xyz]
-
-        # ------ create shell
-        min_reso = np.inf
-        for pipe_name in pipe_cfg.keys():
-            min_reso = min(pipe_cfg[pipe_name]['radius'] * pipe_cfg[pipe_name]['radius_scale'], min_reso)
-
-        for pipe_name in pipe_cfg.keys():
-            shell_pcd = ShapeUtils.create_sphere_pcd(
-                center=pipe_cfg[pipe_name]['discrete_position'],
-                vector=pipe_cfg[pipe_name]['direction'],
-                radius=pipe_cfg[pipe_name]['radius'] * pipe_cfg[pipe_name]['radius_scale'] * 1.015,
-                reso=min_reso * 0.3
-                # reso=0.3
-            )
-            obs_xyz_list.append(shell_pcd)
-
         obs_xyz = np.concatenate(obs_xyz_list, axis=0)
 
         # ------ remove inner pcd
@@ -405,40 +391,8 @@ class SmoothApp(PathApp):
             opt.init_optimize_cfg(group_idx, {
                 'segments': group_cfg['segments'],
                 'connectors': group_cfg['connectors'],
-                'paths': group_cfg['paths'],
-                'pair_segments': group_cfg['pair_segments']
+                'paths': group_cfg['paths']
             })
-
-        # ------ Step4: update crossing segment info
-        for group_cfg in smooth_json['setting']:
-            group_idx = group_cfg['group_idx']
-
-            if len(group_cfg['pair_segments']) == 0:
-                for pair_idx, pair_cell in opt.group_cells[group_idx].pair_seg_dict.items():
-                    group_cfg['pair_segments'].append({
-                        'pair_idx': pair_idx,
-                        'left_seg_idx': pair_cell.left_seg_idx,
-                        'other_seg_idx': pair_cell.other_seg_idx,
-                        'cost_setting': {
-                            'cost_cfgs': [
-                                # {
-                                #     'cost_type': 'pair_conflict',
-                                #     'weight': 1.0
-                                # }
-                            ]
-                        },
-                    })
-
-        with open(smooth_file, 'w') as f:
-            json.dump(smooth_json, f, indent=4)
-        subprocess.run(f"gedit {smooth_file};", shell=True)
-
-        with open(smooth_file, 'r') as f:
-            smooth_json = json.load(f)
-
-        for group_cfg in smooth_json['setting']:
-            group_idx = group_cfg['group_idx']
-            opt.init_cross_seg_cfg(group_idx, {'pair_segments': group_cfg['pair_segments']})
 
         # ------ Step4: prepare spline mat
         for group_idx in opt.group_cells.keys():
@@ -453,6 +407,37 @@ class SmoothApp(PathApp):
         #     # group_cell.draw_spline(is_tube=False)
         #     group_cell.draw_tensor()
         # # ------
+
+    def _setup_pair_cfg_on_click(self):
+        """
+        {
+            'pair_idx': pair_idx,
+            'left_idx': pair_cell.left_idx,
+            'left_type': pair_cell.left_type,
+            'right_idx': pair_cell.right_idx,
+            'right_type': pair_cell.right_type,
+            'cost_setting': {
+                'cost_cfgs': [
+                    # {
+                    #     'cost_type': 'pair_conflict',
+                    #     'weight': 1.0
+                    # }
+                ]
+            }
+        }
+        """
+        smooth_file = os.path.join(self.proj_dir, 'smooth_setup.json')
+        if not os.path.exists(smooth_file):
+            self.console_label.text = "    [ERROR]: No smooth_setup.json in the project"
+            return
+
+        subprocess.run(f"gedit {smooth_file};", shell=True)
+        with open(smooth_file, 'r') as f:
+            smooth_json = json.load(f)
+
+        for group_cfg in smooth_json['setting']:
+            group_idx = group_cfg['group_idx']
+            self.smooth_opt.init_cross_cell_cfg(group_idx, {'pair_cells': group_cfg['pair_cells']})
 
     def _update_cost_cfg(self, path: str):
         with open(path, 'r') as f:
@@ -697,6 +682,8 @@ class SmoothApp(PathApp):
 
         setup_smooth_runner_btn = FragmentOpen3d.get_widget('button', {'name': 'setupRunner'})
         setup_smooth_runner_btn.set_on_clicked(self._setup_smooth_runner_on_click)
+        setup_pair_cfg_btn = FragmentOpen3d.get_widget('button', {'name': 'setupPairCfg'})
+        setup_pair_cfg_btn.set_on_clicked(self._setup_pair_cfg_on_click)
 
         update_path_visual_btn = FragmentOpen3d.get_widget('button', {'name': 'visPathOpen3d'})
         update_path_visual_btn.set_on_clicked(self._update_segments_on_click)
@@ -779,8 +766,9 @@ class SmoothApp(PathApp):
                     gui.Label('step1&2:'), define_path_btn, init_obstacle_btn
                 ], space=10),
                 FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step3:'), setup_smooth_runner_btn]),
+                FragmentOpen3d.get_layout_widget('horiz', [gui.Label('step4:'), setup_pair_cfg_btn]),
                 FragmentOpen3d.get_layout_widget('horiz', [
-                    gui.Label('step4:'), gui.Label('iter:'), run_times_txt, gui.Label('lr:'), lr_txt
+                    gui.Label('step5:'), gui.Label('iter:'), run_times_txt, gui.Label('lr:'), lr_txt
                 ]),
                 FragmentOpen3d.get_layout_widget('horiz', [run_smooth_btn, auto_smooth_btn], 4),
                 FragmentOpen3d.get_layout_widget('horiz', [
@@ -797,24 +785,25 @@ class SmoothApp(PathApp):
 
     @staticmethod
     def hdf52csv(proj_dir):
-        data = h5py.File(os.path.join(proj_dir, 'smooth_result.hdf5'))
         save_dir = os.path.join(proj_dir, 'excel')
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
 
-        for group_idx in data.keys():
-            group_data = data[group_idx]
-            spline_data = group_data['spline']
-
-            group_dir = os.path.join(save_dir, f'group_{group_idx}')
+        for group_name, group_layer in h5py.File(os.path.join(proj_dir, 'smooth_result.hdf5')).items():
+            group_dir = os.path.join(save_dir, group_name)
             if os.path.exists(group_dir):
                 shutil.rmtree(group_dir)
             os.mkdir(group_dir)
 
-            for name in spline_data:
-                path = np.array(spline_data[name])
-                path_df = pd.DataFrame(path, columns=['x', 'y', 'z', 'radius'])
-                path_df.to_csv(os.path.join(group_dir, f"{name}.txt"), header=False, index=False)
+            for seg_name, seg_cell_layer in group_layer['segment'].items():
+                spline_xyzr = np.array(seg_cell_layer['spline'])
+                path_df = pd.DataFrame(spline_xyzr, columns=['x', 'y', 'z', 'radius'])
+                path_df.to_csv(os.path.join(group_dir, f"{seg_name}.txt"), header=False, index=False)
+
+            for con_name, con_cell_layer in group_layer['connector'].items():
+                spline_xyzr = np.array(con_cell_layer['spline'])
+                path_df = pd.DataFrame(spline_xyzr, columns=['x', 'y', 'z', 'radius'])
+                path_df.to_csv(os.path.join(group_dir, f"{con_name}.txt"), header=False, index=False)
 
 
 def parse_args():

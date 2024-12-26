@@ -1,0 +1,3648 @@
+{
+    "cfg": {
+        "path_result_hdf5": "/home/admin123456/Desktop/work/path_examples/s3x3/search_result.hdf5",
+        "grid_cfg": {
+            "grid_min": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "grid_max": [
+                165.0,
+                49.0,
+                35.5
+            ],
+            "size_of_x": 660,
+            "size_of_y": 196,
+            "size_of_z": 142,
+            "obstacle_tag": "grid_obstacle",
+            "obstacle_file": "/home/admin123456/Desktop/work/path_examples/s3x3/static_obstacle.csv",
+            "x_grid_length": 0.25,
+            "y_grid_length": 0.25,
+            "z_grid_length": 0.25,
+            "dynamic_constrain_file": "/home/admin123456/Desktop/work/path_examples/s3x3/dynamic_constraints.csv",
+            "smooth_obstacle_file": "/home/admin123456/Desktop/work/path_examples/s3x3/smooth_obstacle.csv"
+        },
+        "pipe_cfg": {
+            "A1": {
+                "radius": 3.4,
+                "position": [
+                    73.69999694824219,
+                    24.5,
+                    0.0
+                ],
+                "direction": [
+                    0,
+                    0,
+                    1
+                ],
+                "group_idx": 0,
+                "is_input": true,
+                "discrete_position": [
+                    73.75,
+                    24.5,
+                    0.0
+                ],
+                "radius_scale": 1.18
+            },
+            "P1": {
+                "radius": 3.4,
+                "position": [
+                    82.5,
+                    14.100000381469727,
+                    0.0
+                ],
+                "direction": [
+                    0,
+                    0,
+                    1
+                ],
+                "group_idx": 1,
+                "is_input": true,
+                "discrete_position": [
+                    82.5,
+                    14.0,
+                    0.0
+                ],
+                "radius_scale": 1.18
+            },
+            "B1": {
+                "radius": 3.4,
+                "position": [
+                    91.30000305175781,
+                    24.5,
+                    0.0
+                ],
+                "direction": [
+                    0,
+                    0,
+                    1
+                ],
+                "group_idx": 2,
+                "is_input": true,
+                "discrete_position": [
+                    91.25,
+                    24.5,
+                    0.0
+                ],
+                "radius_scale": 1.18
+            },
+            "T1": {
+                "radius": 3.4,
+                "position": [
+                    82.5,
+                    35.0,
+                    0.0
+                ],
+                "direction": [
+                    0,
+                    0,
+                    1
+                ],
+                "group_idx": 3,
+                "is_input": true,
+                "discrete_position": [
+                    82.5,
+                    35.0,
+                    0.0
+                ],
+                "radius_scale": 1.18
+            },
+            "P2": {
+                "radius": 3.4,
+                "position": [
+                    31.25,
+                    31.0,
+                    28.799999237060547
+                ],
+                "direction": [
+                    -1,
+                    -1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    31.25,
+                    31.0,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "P3": {
+                "radius": 3.4,
+                "position": [
+                    23.75,
+                    18.0,
+                    28.799999237060547
+                ],
+                "direction": [
+                    1,
+                    1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    23.75,
+                    18.0,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "B2": {
+                "radius": 3.4,
+                "position": [
+                    35.0,
+                    24.5,
+                    28.799999237060547
+                ],
+                "direction": [
+                    -1,
+                    0,
+                    0
+                ],
+                "group_idx": 2,
+                "is_input": false,
+                "discrete_position": [
+                    35.0,
+                    24.5,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "B3": {
+                "radius": 3.4,
+                "position": [
+                    20.0,
+                    24.5,
+                    28.799999237060547
+                ],
+                "direction": [
+                    1,
+                    0,
+                    0
+                ],
+                "group_idx": 2,
+                "is_input": false,
+                "discrete_position": [
+                    20.0,
+                    24.5,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "T2": {
+                "radius": 3.4,
+                "position": [
+                    23.75,
+                    31.0,
+                    28.799999237060547
+                ],
+                "direction": [
+                    1,
+                    -1,
+                    0
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    23.75,
+                    31.0,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "T3": {
+                "radius": 3.4,
+                "position": [
+                    31.25,
+                    18.0,
+                    28.799999237060547
+                ],
+                "direction": [
+                    -1,
+                    1,
+                    0
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    31.25,
+                    18.0,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "A2": {
+                "radius": 3.4,
+                "position": [
+                    35.0,
+                    24.5,
+                    18.5
+                ],
+                "direction": [
+                    -1,
+                    0,
+                    0
+                ],
+                "group_idx": 0,
+                "is_input": false,
+                "discrete_position": [
+                    35.0,
+                    24.5,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "A3": {
+                "radius": 3.4,
+                "position": [
+                    20.0,
+                    24.5,
+                    18.5
+                ],
+                "direction": [
+                    1,
+                    0,
+                    0
+                ],
+                "group_idx": 0,
+                "is_input": false,
+                "discrete_position": [
+                    20.0,
+                    24.5,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "P4": {
+                "radius": 3.4,
+                "position": [
+                    31.25,
+                    18.0,
+                    18.5
+                ],
+                "direction": [
+                    -1,
+                    1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    31.25,
+                    18.0,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "P5": {
+                "radius": 3.4,
+                "position": [
+                    23.75,
+                    31.0,
+                    18.5
+                ],
+                "direction": [
+                    1,
+                    -1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    23.75,
+                    31.0,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "T4": {
+                "radius": 3.4,
+                "position": [
+                    31.25,
+                    31.0,
+                    18.5
+                ],
+                "direction": [
+                    -1,
+                    -1,
+                    0
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    31.25,
+                    31.0,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "T5": {
+                "radius": 3.4,
+                "position": [
+                    23.75,
+                    18.0,
+                    18.5
+                ],
+                "direction": [
+                    1,
+                    1,
+                    0
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    23.75,
+                    18.0,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "P2_2": {
+                "radius": 3.4,
+                "position": [
+                    86.25,
+                    31.0,
+                    28.799999237060547
+                ],
+                "direction": [
+                    -1,
+                    -1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    86.25,
+                    31.0,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "P2_3": {
+                "radius": 3.4,
+                "position": [
+                    141.25,
+                    31.0,
+                    28.799999237060547
+                ],
+                "direction": [
+                    -1,
+                    -1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    141.25,
+                    31.0,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "P3_2": {
+                "radius": 3.4,
+                "position": [
+                    78.75,
+                    18.0,
+                    28.799999237060547
+                ],
+                "direction": [
+                    1,
+                    1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    78.75,
+                    18.0,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "P3_3": {
+                "radius": 3.4,
+                "position": [
+                    133.75,
+                    18.0,
+                    28.799999237060547
+                ],
+                "direction": [
+                    1,
+                    1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    133.75,
+                    18.0,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "B2_2": {
+                "radius": 3.4,
+                "position": [
+                    90.0,
+                    24.5,
+                    28.799999237060547
+                ],
+                "direction": [
+                    -1,
+                    0,
+                    0
+                ],
+                "group_idx": 2,
+                "is_input": false,
+                "discrete_position": [
+                    90.0,
+                    24.5,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "B2_3": {
+                "radius": 3.4,
+                "position": [
+                    145.0,
+                    24.5,
+                    28.799999237060547
+                ],
+                "direction": [
+                    -1,
+                    0,
+                    0
+                ],
+                "group_idx": 2,
+                "is_input": false,
+                "discrete_position": [
+                    145.0,
+                    24.5,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "B3_2": {
+                "radius": 3.4,
+                "position": [
+                    75.0,
+                    24.5,
+                    28.799999237060547
+                ],
+                "direction": [
+                    1,
+                    0,
+                    0
+                ],
+                "group_idx": 2,
+                "is_input": false,
+                "discrete_position": [
+                    75.0,
+                    24.5,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "B3_3": {
+                "radius": 3.4,
+                "position": [
+                    130.0,
+                    24.5,
+                    28.799999237060547
+                ],
+                "direction": [
+                    1,
+                    0,
+                    0
+                ],
+                "group_idx": 2,
+                "is_input": false,
+                "discrete_position": [
+                    130.0,
+                    24.5,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "T2_2": {
+                "radius": 3.4,
+                "position": [
+                    78.75,
+                    31.0,
+                    28.799999237060547
+                ],
+                "direction": [
+                    1,
+                    -1,
+                    0
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    78.75,
+                    31.0,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "T2_3": {
+                "radius": 3.4,
+                "position": [
+                    133.75,
+                    31.0,
+                    28.799999237060547
+                ],
+                "direction": [
+                    1,
+                    -1,
+                    0
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    133.75,
+                    31.0,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "T3_2": {
+                "radius": 3.4,
+                "position": [
+                    86.25,
+                    18.0,
+                    28.799999237060547
+                ],
+                "direction": [
+                    -1,
+                    1,
+                    0
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    86.25,
+                    18.0,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "T3_3": {
+                "radius": 3.4,
+                "position": [
+                    141.25,
+                    18.0,
+                    28.799999237060547
+                ],
+                "direction": [
+                    -1,
+                    1,
+                    0
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    141.25,
+                    18.0,
+                    28.75
+                ],
+                "radius_scale": 1.18
+            },
+            "A2_2": {
+                "radius": 3.4,
+                "position": [
+                    90.0,
+                    24.5,
+                    18.5
+                ],
+                "direction": [
+                    -1,
+                    0,
+                    0
+                ],
+                "group_idx": 0,
+                "is_input": false,
+                "discrete_position": [
+                    90.0,
+                    24.5,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "A2_3": {
+                "radius": 3.4,
+                "position": [
+                    145.0,
+                    24.5,
+                    18.5
+                ],
+                "direction": [
+                    -1,
+                    0,
+                    0
+                ],
+                "group_idx": 0,
+                "is_input": false,
+                "discrete_position": [
+                    145.0,
+                    24.5,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "A3_2": {
+                "radius": 3.4,
+                "position": [
+                    75.0,
+                    24.5,
+                    18.5
+                ],
+                "direction": [
+                    1,
+                    0,
+                    0
+                ],
+                "group_idx": 0,
+                "is_input": false,
+                "discrete_position": [
+                    75.0,
+                    24.5,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "A3_3": {
+                "radius": 3.4,
+                "position": [
+                    130.0,
+                    24.5,
+                    18.5
+                ],
+                "direction": [
+                    1,
+                    0,
+                    0
+                ],
+                "group_idx": 0,
+                "is_input": false,
+                "discrete_position": [
+                    130.0,
+                    24.5,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "P4_2": {
+                "radius": 3.4,
+                "position": [
+                    86.25,
+                    18.0,
+                    18.5
+                ],
+                "direction": [
+                    -1,
+                    1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    86.25,
+                    18.0,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "P4_3": {
+                "radius": 3.4,
+                "position": [
+                    141.25,
+                    18.0,
+                    18.5
+                ],
+                "direction": [
+                    -1,
+                    1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    141.25,
+                    18.0,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "P5_2": {
+                "radius": 3.4,
+                "position": [
+                    78.75,
+                    31.0,
+                    18.5
+                ],
+                "direction": [
+                    1,
+                    -1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    78.75,
+                    31.0,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "P5_3": {
+                "radius": 3.4,
+                "position": [
+                    133.75,
+                    31.0,
+                    18.5
+                ],
+                "direction": [
+                    1,
+                    -1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    133.75,
+                    31.0,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "T4_2": {
+                "radius": 3.4,
+                "position": [
+                    86.25,
+                    31.0,
+                    18.5
+                ],
+                "direction": [
+                    -1,
+                    -1,
+                    0
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    86.25,
+                    31.0,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "T4_3": {
+                "radius": 3.4,
+                "position": [
+                    141.25,
+                    31.0,
+                    18.5
+                ],
+                "direction": [
+                    -1,
+                    -1,
+                    0
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    141.25,
+                    31.0,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "T5_2": {
+                "radius": 3.4,
+                "position": [
+                    78.75,
+                    18.0,
+                    18.5
+                ],
+                "direction": [
+                    1,
+                    1,
+                    0
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    78.75,
+                    18.0,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            },
+            "T5_3": {
+                "radius": 3.4,
+                "position": [
+                    133.75,
+                    18.0,
+                    18.5
+                ],
+                "direction": [
+                    1,
+                    1,
+                    0
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    133.75,
+                    18.0,
+                    18.5
+                ],
+                "radius_scale": 1.18
+            }
+        }
+    },
+    "path_list": [
+        {
+            "name": "A1_A2",
+            "begin_name": "A1",
+            "end_name": "A2"
+        },
+        {
+            "name": "A1_A3",
+            "begin_name": "A1",
+            "end_name": "A3"
+        },
+        {
+            "name": "A1_A2-2",
+            "begin_name": "A1",
+            "end_name": "A2_2"
+        },
+        {
+            "name": "A1_A3-2",
+            "begin_name": "A1",
+            "end_name": "A3_2"
+        },
+        {
+            "name": "A1_A2-3",
+            "begin_name": "A1",
+            "end_name": "A2_3"
+        },
+        {
+            "name": "A1_A3-3",
+            "begin_name": "A1",
+            "end_name": "A3_3"
+        },
+        {
+            "name": "B1_B2",
+            "begin_name": "B1",
+            "end_name": "B2"
+        },
+        {
+            "name": "B1_B3",
+            "begin_name": "B1",
+            "end_name": "B3"
+        },
+        {
+            "name": "B1_B2-2",
+            "begin_name": "B1",
+            "end_name": "B2_2"
+        },
+        {
+            "name": "B1_B3-2",
+            "begin_name": "B1",
+            "end_name": "B3_2"
+        },
+        {
+            "name": "B1_B2-3",
+            "begin_name": "B1",
+            "end_name": "B2_3"
+        },
+        {
+            "name": "B1_B3-3",
+            "begin_name": "B1",
+            "end_name": "B3_3"
+        },
+        {
+            "name": "P1_P2",
+            "begin_name": "P1",
+            "end_name": "P2"
+        },
+        {
+            "name": "P1_P3",
+            "begin_name": "P1",
+            "end_name": "P3"
+        },
+        {
+            "name": "P1_P4",
+            "begin_name": "P1",
+            "end_name": "P4"
+        },
+        {
+            "name": "P1_P5",
+            "begin_name": "P1",
+            "end_name": "P5"
+        },
+        {
+            "name": "P1_P2-2",
+            "begin_name": "P1",
+            "end_name": "P2_2"
+        },
+        {
+            "name": "P1_P3-2",
+            "begin_name": "P1",
+            "end_name": "P3_2"
+        },
+        {
+            "name": "P1_P4-2",
+            "begin_name": "P1",
+            "end_name": "P4_2"
+        },
+        {
+            "name": "P1_P5-2",
+            "begin_name": "P1",
+            "end_name": "P5_2"
+        },
+        {
+            "name": "P1_P2-3",
+            "begin_name": "P1",
+            "end_name": "P2_3"
+        },
+        {
+            "name": "P1_P3-3",
+            "begin_name": "P1",
+            "end_name": "P3_3"
+        },
+        {
+            "name": "P1_P4-3",
+            "begin_name": "P1",
+            "end_name": "P4_3"
+        },
+        {
+            "name": "P1_P5-3",
+            "begin_name": "P1",
+            "end_name": "P5_3"
+        },
+        {
+            "name": "T1_T2",
+            "begin_name": "T1",
+            "end_name": "T2"
+        },
+        {
+            "name": "T1_T3",
+            "begin_name": "T1",
+            "end_name": "T3"
+        },
+        {
+            "name": "T1_T4",
+            "begin_name": "T1",
+            "end_name": "T4"
+        },
+        {
+            "name": "T1_T5",
+            "begin_name": "T1",
+            "end_name": "T5"
+        },
+        {
+            "name": "T1_T2-2",
+            "begin_name": "T1",
+            "end_name": "T2_2"
+        },
+        {
+            "name": "T1_T3-2",
+            "begin_name": "T1",
+            "end_name": "T3_2"
+        },
+        {
+            "name": "T1_T4-2",
+            "begin_name": "T1",
+            "end_name": "T4_2"
+        },
+        {
+            "name": "T1_T5-2",
+            "begin_name": "T1",
+            "end_name": "T5_2"
+        },
+        {
+            "name": "T1_T2-3",
+            "begin_name": "T1",
+            "end_name": "T2_3"
+        },
+        {
+            "name": "T1_T3-3",
+            "begin_name": "T1",
+            "end_name": "T3_3"
+        },
+        {
+            "name": "T1_T4-3",
+            "begin_name": "T1",
+            "end_name": "T4_3"
+        },
+        {
+            "name": "T1_T5-3",
+            "begin_name": "T1",
+            "end_name": "T5_3"
+        }
+    ],
+    "conflict_setting": {
+        "obstacle_conflict_weight": 1000.0,
+        "path_conflict_weight": 100.0,
+        "self_conflict_weight": 100.0
+    },
+    "setting": [
+        {
+            "group_idx": 0,
+            "graph_cfg": {
+                "segment_degree_min": 5,
+                "segment_degree_max": 50
+            },
+            "segments": {
+                "seg_0": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.15628634721874424,
+                        0.922152307573149,
+                        0.18016174728338297
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_1": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.08452253281742872,
+                        0.6117741325121905,
+                        0.8372332264939871
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_2": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.49113584969052826,
+                        0.591702767058782,
+                        0.12042518231464627
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_3": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.24483253639198455,
+                        0.6549541048918258,
+                        0.14401020288019994
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_4": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.030204009157848155,
+                        0.15599111604792903,
+                        0.4855897090723127
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_5": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.48547479110405933,
+                        0.8880961531496993,
+                        0.030794316461165372
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_6": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.04518149659176718,
+                        0.0984839594084963,
+                        0.8808908025866276
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_7": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.6968237754180325,
+                        0.05987462650366848,
+                        0.312771394149451
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_8": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.08373020398230269,
+                        0.9332894166000794,
+                        0.28958708778235787
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_9": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.7904877582396084,
+                        0.6121871367740072,
+                        0.9414597702895015
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_10": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.921543697080419,
+                        0.19110999308058196,
+                        0.07757718520683632
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                }
+            },
+            "paths": {
+                "A1_A2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "A1_A3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "A1_A2-2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "A1_A3-2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "A1_A2-3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "A1_A3-3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ]
+            }
+        },
+        {
+            "group_idx": 1,
+            "graph_cfg": {
+                "segment_degree_min": 5,
+                "segment_degree_max": 50
+            },
+            "segments": {
+                "seg_0": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.976804432396114,
+                        0.4690373734882902,
+                        0.22729039553551078
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_1": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.5335120535405249,
+                        0.45569915917157433,
+                        0.7927829008662495
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_2": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.7282845807532571,
+                        0.7874458702915861,
+                        0.9490860757705022
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_3": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.028316652410135923,
+                        0.4218831761337364,
+                        0.4258766802722391
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_4": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.34485651936152084,
+                        0.4260040327781507,
+                        0.8479463125717736
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_5": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.015864784070965476,
+                        0.9405101845208669,
+                        0.033391283800863314
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_6": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.8388066646160709,
+                        0.30161930942917237,
+                        0.9767580515118427
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_7": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.064235020004059,
+                        0.7287076426559632,
+                        0.844980432811905
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_8": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.0014801908261757868,
+                        0.9146275446172943,
+                        0.2729445681206728
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_9": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.7079732586670524,
+                        0.6583266431330451,
+                        0.5610647717926118
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_10": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.23554993098100607,
+                        0.15022388604772863,
+                        0.4179274289333892
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_11": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.21895306493663136,
+                        0.776015934419556,
+                        0.336772555155875
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_12": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.4445497746028896,
+                        0.9002081692506736,
+                        0.6343992223917757
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_13": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.5476457058901789,
+                        0.6110024288010173,
+                        0.548835188474739
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_14": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.042877372682949666,
+                        0.20112967073991506,
+                        0.6874133494022333
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_15": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.5797404143640722,
+                        0.08141961184808366,
+                        0.9976407023424314
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_16": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.6803110210763252,
+                        0.03277083447987883,
+                        0.6523896535642255
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_17": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.5729213326590418,
+                        0.2578928060772513,
+                        0.08372351676199641
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_18": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.9334951505714851,
+                        0.36002538848950694,
+                        0.3759604278438582
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_19": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.9674376262249602,
+                        0.8022131262755104,
+                        0.11028206816878194
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_20": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.8922355255604656,
+                        0.30749437234092136,
+                        0.4289027465334522
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_21": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.40043783578758463,
+                        0.6226579592256662,
+                        0.6941818987263447
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_22": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.5366220333075861,
+                        0.15773501658442501,
+                        0.05656910391648318
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                }
+            },
+            "paths": {
+                "P1_P2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P4": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P5": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P2-2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P3-2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P4-2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P5-2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P2-3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P3-3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P4-3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "P1_P5-3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ]
+            }
+        },
+        {
+            "group_idx": 2,
+            "graph_cfg": {
+                "segment_degree_min": 5,
+                "segment_degree_max": 50
+            },
+            "segments": {
+                "seg_0": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.695763600767377,
+                        0.5997141650851258,
+                        0.058001029390721714
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_1": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.9893808869103485,
+                        0.8365058956052891,
+                        0.06709311041985677
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_2": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.3633466249071172,
+                        0.17553910796772043,
+                        0.21690234229573802
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_3": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.12886242310523865,
+                        0.3718380939588538,
+                        0.19146746713628937
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_4": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.34231042497390274,
+                        0.45867805292590247,
+                        0.5020576860827145
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_5": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.8273073711123671,
+                        0.43597955212864103,
+                        0.2055658478314567
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_6": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.7128775467391455,
+                        0.7646567909680979,
+                        0.7014309363186011
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_7": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.6421728358414084,
+                        0.5644891850615001,
+                        0.94817756083767
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_8": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.24098789824518052,
+                        0.8602903201891143,
+                        0.35263057471199866
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_9": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.6895799286737228,
+                        0.8396749514690501,
+                        0.2838235074951042
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_10": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.5399092198743879,
+                        0.5823048760515079,
+                        0.6662220896221623
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                }
+            },
+            "paths": {
+                "B1_B2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "B1_B3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "B1_B2-2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "B1_B3-2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "B1_B2-3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "B1_B3-3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ]
+            }
+        },
+        {
+            "group_idx": 3,
+            "graph_cfg": {
+                "segment_degree_min": 5,
+                "segment_degree_max": 50
+            },
+            "segments": {
+                "seg_0": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.1961728409914011,
+                        0.6848184509035109,
+                        0.2167412483278609
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_1": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.08195969132399239,
+                        0.5321955627115569,
+                        0.9517764936351739
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_2": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.9855063711256233,
+                        0.001171972834817847,
+                        0.8842988299803072
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_3": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.8772022318770172,
+                        0.9303306343652437,
+                        0.672817299332464
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_4": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.7549718524614494,
+                        0.4474297079856264,
+                        0.6127552404487862
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_5": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.5262344771446937,
+                        0.863913443323362,
+                        0.6646644154025433
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_6": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.5765845065415157,
+                        0.24035700251338366,
+                        0.8144912130063627
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_7": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.2767415618696726,
+                        0.9290445850301393,
+                        0.020043593538799698
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_8": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.6054133979133798,
+                        0.40520549562361075,
+                        0.625289240096481
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_9": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.8771325122000886,
+                        0.5742597445973185,
+                        0.0475877407765225
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_10": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.08553417591938084,
+                        0.7238738463031087,
+                        0.07494826036590285
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_11": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.5355000769905502,
+                        0.09829488203331671,
+                        0.5325251459037827
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_12": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.46842032956928936,
+                        0.35880724873159786,
+                        0.832057988620758
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_13": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.9313702900422125,
+                        0.2579833455022673,
+                        0.40192762841184126
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_14": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.6559750878028059,
+                        0.04371097048473849,
+                        0.4521419858843736
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_15": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.20404879657067798,
+                        0.10939733493319348,
+                        0.8924041368440604
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_16": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.7208964561016514,
+                        0.9439966307290559,
+                        0.06888608277314245
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_17": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.6985172386340446,
+                        0.29286309276921696,
+                        0.9629246944617703
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_18": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.29136230166773414,
+                        0.64895421879612,
+                        0.7008741980768404
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_19": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.1256115550950847,
+                        0.9840752265221987,
+                        0.10309673256484675
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_20": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.6773480195045205,
+                        0.6262596097463572,
+                        0.23575844901252918
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_21": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.8177108335033911,
+                        0.15932351689992197,
+                        0.18051308018268875
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                },
+                "seg_22": {
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "update_bspline_length_threshold": 0.1,
+                    "spring_radius_conflict_ratio": 0.01,
+                    "min_conflict_thickness": 0.05,
+                    "radius_scale": 1.18,
+                    "color": [
+                        0.9201841570541623,
+                        0.563461430060997,
+                        0.33770078261645453
+                    ],
+                    "costs": [
+                        {
+                            "method": "control_spring_length",
+                            "type": "square_sum",
+                            "weight": 1.0
+                        },
+                        {
+                            "method": "control_distribute_constraint",
+                            "type": "variance",
+                            "weight": 5.0
+                        },
+                        {
+                            "method": "curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "weight": 1.0
+                        }
+                    ]
+                }
+            },
+            "paths": {
+                "T1_T2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T4": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T5": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T2-2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T3-2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T4-2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T5-2": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T2-3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T3-3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T4-3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ],
+                "T1_T5-3": [
+                    [
+                        {
+                            "method": "connector_curvature",
+                            "type": "upper_value",
+                            "radius_scale": 3.0,
+                            "left_num": 3,
+                            "right_num": 3,
+                            "weight": 1.0
+                        }
+                    ]
+                ]
+            }
+        }
+    ],
+    "AutoRun": {
+        "learner": "MeanTestLearner",
+        "init_lr": null,
+        "stat_num": 100,
+        "min_lr": null
+    }
+}

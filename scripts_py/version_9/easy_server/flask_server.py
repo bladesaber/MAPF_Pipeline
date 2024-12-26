@@ -7,15 +7,21 @@ import json
 from typing import Dict
 import argparse
 import h5py
+from io import BytesIO, StringIO
+import tempfile
 
 from flask import Flask, request, jsonify, send_from_directory, Response, send_file
 from flask_cors import *
+
+from OCC.Extend.DataExchange import read_step_file
+from scripts_py.version_9.easy_server.threejs_render import ThreejsRenderer
 
 from scripts_py.version_9.mapf_pkg.networker_block import SimpleBlocker
 from scripts_py.version_9.mapf_pkg.algo_utils import create_obs_pcd, discrete_pipe_position
 from scripts_py.version_9.mapf_pkg.cbs_utils import CbsSolver
 # from scripts_py.version_9.mapf_pkg.smooth_optimizer import PathOptimizer
 from scripts_py.version_9.mapf_pkg.shape_utils import ShapeUtils
+from scripts_py.version_9.mapf_pkg.cad_utils import OcctProfile, OcctUtil, OcctIO
 
 app = Flask(__name__)
 
@@ -60,6 +66,12 @@ def parse_args():
     )
     args = parser.parse_args()
     return args
+
+
+@app.route('/<path:filename>', methods=['GET'])
+@cross_origin()
+def serve_html(filename):
+    return send_from_directory('/home/admin123456/Desktop/work/flask_server/storage', filename)
 
 
 @app.route('/', methods=['GET'])
@@ -344,6 +356,57 @@ def search_run():
         return jsonify({'success': False, 'info': 'Search Fail'})
 
 
+@app.route('/export_STEP', methods=['POST'])
+@cross_origin()
+def export_STEP():
+    json_data = json.load(BytesIO(request.data))
+    df = pd.read_csv(StringIO(json_data['data']))
+
+    spline_xyz = df[['x', 'y', 'z']].values.astype(float)
+    spline_vec = df[['v_x', 'v_y', 'v_z']].values.astype(float)
+    radius_list = df['r'].values.astype(float)
+
+    wire_list = []
+    for xyz, vec, radius in zip(spline_xyz, spline_vec, radius_list):
+        circle = OcctProfile.make_circle(xyz, vec, radius)
+        circle_wire = OcctUtil.make_wire(OcctUtil.make_edge(circle))
+        wire_list.append(circle_wire)
+    solid = OcctProfile.make_thruSections(wire_list, is_solid=True, ruled=True)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        save_file = os.path.join(temp_dir, 'generate.STEP')
+        OcctIO.write_STEP(save_file, solid)
+        return send_file(save_file, as_attachment=False)
+
+
+@app.route('/visualize_STEP', methods=['POST'])
+@cross_origin()
+def visualize_STEP():
+    json_data = json.load(BytesIO(request.data))
+    df = pd.read_csv(StringIO(json_data['data']))
+
+    spline_xyz = df[['x', 'y', 'z']].values.astype(float)
+    spline_vec = df[['v_x', 'v_y', 'v_z']].values.astype(float)
+    radius_list = df['r'].values.astype(float)
+
+    wire_list = []
+    for xyz, vec, radius in zip(spline_xyz, spline_vec, radius_list):
+        circle = OcctProfile.make_circle(xyz, vec, radius)
+        circle_wire = OcctUtil.make_wire(OcctUtil.make_edge(circle))
+        wire_list.append(circle_wire)
+    solid = OcctProfile.make_thruSections(wire_list, is_solid=True, ruled=True)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        save_file = os.path.join(temp_dir, 'generate.STEP')
+        OcctIO.write_STEP(save_file, solid)
+
+        big_shp = read_step_file(save_file)
+        my_renderer = ThreejsRenderer()
+        content = my_renderer.DisplayShape_test(big_shp)
+        return jsonify(content)
+
+
+"""
 @app.route('/configure_smooth_env', methods=['POST'])
 @cross_origin()
 def configure_smooth_env():
@@ -571,7 +634,7 @@ def smooth_run():
     return jsonify({'success': True, 'Loss_info': {
         'loss_record': list(loss_record), 'loss_info': loss_info
     }})
-
+"""
 
 # @app.route('/fetch_control_points', methods=['POST'])
 # def fetch_control_points():

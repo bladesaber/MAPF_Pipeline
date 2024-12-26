@@ -608,6 +608,7 @@ class PathCell(object):
         self.spline_tangent_t: torch.Tensor = None
 
     def update_tensor(self, with_analytical_tangent=False):
+        # print(f"Group idx:{self.group_idx}, name:{self.path_name}, idx:{self.idx}")
         path_xyz_list, path_radius = [], []
         if with_analytical_tangent:
             path_tangent_list = []
@@ -640,6 +641,15 @@ class PathCell(object):
                 else:
                     raise ValueError(f"[ERROR]: Wrong path flags.")
 
+                # # ------ debug visualization
+                # if cell.c_idxs[-1] in next_cell.c_idxs:
+                #     tmp_xyz = TorchUtils.tensor2np(cell.spline_xyz_t)
+                #     print(tmp_xyz[0], tmp_xyz[-1])
+                # elif cell.c_idxs[0] in next_cell.c_idxs:
+                #     tmp_xyz = TorchUtils.tensor2np(cell.spline_xyz_t.flip(0))
+                #     print(tmp_xyz[0], tmp_xyz[-1])
+                # # ------
+
             else:
                 if cell.c_idxs[0] in last_cell.c_idxs:
                     path_xyz_list.append(cell.spline_xyz_t[1:])
@@ -655,6 +665,15 @@ class PathCell(object):
 
                 else:
                     raise ValueError(f"[ERROR]: Wrong path flags.")
+
+                # # ------ debug visualization
+                # if cell.c_idxs[0] in last_cell.c_idxs:
+                #     tmp_xyz = TorchUtils.tensor2np(cell.spline_xyz_t)
+                #     print(tmp_xyz[0], tmp_xyz[-1])
+                # elif cell.c_idxs[-1] in last_cell.c_idxs:
+                #     tmp_xyz = TorchUtils.tensor2np(cell.spline_xyz_t.flip(0))
+                #     print(tmp_xyz[0], tmp_xyz[-1])
+                # # ------
 
             last_cell = cell
 
@@ -814,14 +833,20 @@ class PathCell(object):
         raise NotImplementedError
 
 
-class PairSegCell(object):
-    def __init__(self, idx: int, group_idx: int, left_seg_idx: int, other_seg_idx: int, parent_cell):
+class PairCell(object):
+    def __init__(
+            self, idx: int, group_idx: int,
+            left_idx: int, left_type: str, right_idx: int, right_type: str,
+            parent_cell
+    ):
         self.idx = idx
         self.group_idx = group_idx
 
         self.parent_cell: GroupCell = parent_cell
-        self.left_seg_idx = left_seg_idx
-        self.other_seg_idx = other_seg_idx
+        self.left_idx = left_idx
+        self.left_type = left_type
+        self.right_idx = right_idx
+        self.right_type = right_type
 
         self.cost_cfgs: List[Dict] = []
 
@@ -831,32 +856,33 @@ class PairSegCell(object):
     def update_cost_cfg(self, cfg: Dict):
         self.cost_cfgs = cfg['cost_cfgs']
 
-    def find_conflict(self, unit_length: float):
-        left_cell = self.parent_cell.seg_dict[self.left_seg_idx]
-        other_cell = self.parent_cell.seg_dict[self.other_seg_idx]
-
+    @staticmethod
+    def find_conflict(
+            unit_length: float,
+            left_cell: Union[SegmentCell, ConnectorCell], right_cell: Union[SegmentCell, ConnectorCell]
+    ):
         left_xyz = TorchUtils.tensor2np(left_cell.spline_xyz_t)
         left_radius = left_cell.radius
-        other_xyz = TorchUtils.tensor2np(other_cell.spline_xyz_t)
-        other_radius = other_cell.radius
+        right_xyz = TorchUtils.tensor2np(right_cell.spline_xyz_t)
+        right_radius = right_cell.radius
 
         left_tree = KDTree(left_xyz)
-        search_radius = np.max(left_radius) + np.max(other_radius) + unit_length * 2.0
-        idxs_list, dist_list = left_tree.query_radius(other_xyz, search_radius, return_distance=True)
+        search_radius = np.max(left_radius) + np.max(right_radius) + unit_length * 2.0
+        idxs_list, dist_list = left_tree.query_radius(right_xyz, search_radius, return_distance=True)
 
-        left_idxs, other_idxs, require_radius = [], [], []
-        for other_idx, (left_idx_list, dists) in enumerate(zip(idxs_list, dist_list)):
+        left_idxs, right_idxs, require_radius = [], [], []
+        for right_idx, (left_idx_list, dists) in enumerate(zip(idxs_list, dist_list)):
             if len(left_idx_list) == 0:
                 continue
 
             for left_idx, dist in zip(left_idx_list, dists):
-                detection_radius = left_radius[left_idx] + other_radius[other_idx] + unit_length * 2.0
+                detection_radius = left_radius[left_idx] + right_radius[right_idx] + unit_length * 2.0
                 if dist <= detection_radius:
                     left_idxs.append(left_idx)
-                    other_idxs.append(other_idx)
-                    require_radius.append(left_radius[left_idx] + other_radius[other_idx])
+                    right_idxs.append(right_idx)
+                    require_radius.append(left_radius[left_idx] + right_radius[right_idx])
 
-        return np.array(left_idxs), np.array(other_idxs), np.array(require_radius)
+        return np.array(left_idxs), np.array(right_idxs), np.array(require_radius)
 
     def compute_cost(self, unit_length: float, with_default_weight: bool):
         cost_dict = {}
@@ -864,12 +890,26 @@ class PairSegCell(object):
             cost_tag = f"{self.group_idx}/pair_segment/{self.idx}/{cfg['cost_type']}"
             cost_weight = 1.0 if with_default_weight else cfg['weight']
 
+            if self.left_type == 'segment':
+                left_cell = self.parent_cell.seg_dict[self.left_idx]
+            elif self.left_type == 'connector':
+                left_cell = self.parent_cell.connector_dict[self.left_idx]
+            else:
+                raise ValueError
+
+            if self.right_type == 'segment':
+                right_cell = self.parent_cell.seg_dict[self.right_idx]
+            elif self.right_type == 'connector':
+                right_cell = self.parent_cell.connector_dict[self.right_idx]
+            else:
+                raise ValueError
+
             if cfg['cost_type'] == 'pair_conflict':
-                left_idxs, other_idxs, require_dist = self.find_conflict(unit_length)
+                left_idxs, right_idxs, require_dist = self.find_conflict(unit_length, left_cell, right_cell)
                 if left_idxs.shape[0] > 0:
                     costs = CostUtils.compute_shape_conflict_cost(
-                        pcd0=self.parent_cell.seg_dict[self.left_seg_idx].spline_xyz_t[left_idxs, :],
-                        pcd1=self.parent_cell.seg_dict[self.other_seg_idx].spline_xyz_t[other_idxs, :],
+                        pcd0=left_cell.spline_xyz_t[left_idxs, :],
+                        pcd1=right_cell.spline_xyz_t[right_idxs, :],
                         require_dist=require_dist,
                         weight=1.0
                     )
@@ -888,7 +928,7 @@ class GroupCell(object):
         self.seg_dict: Dict[int, SegmentCell] = {}
         self.connector_dict: Dict[int, ConnectorCell] = {}
         self.path_dict: Dict[int, PathCell] = {}
-        self.pair_seg_dict: Dict[int, PairSegCell] = {}
+        self.pair_seg_dict: Dict[int, PairCell] = {}
         self.table_xyz_t: torch.Tensor = None
 
     @staticmethod
@@ -934,44 +974,6 @@ class GroupCell(object):
             c_xyzr = np.concatenate([c_xyzr[:1, :], c_xyzr[select_idxs, :], c_xyzr[-1:, :]], axis=0)
 
         return c_xyzr
-
-    def find_pair_cross_segment(self):
-        cell_list: List[ConnectorCell] = []
-        for con_idx, con_cell in self.connector_dict.items():
-            cell_list.append(con_cell)
-        cell_num = len(cell_list)
-
-        pair_dict = {}
-        for i in range(cell_num):
-            cell_i = cell_list[i]
-            for j in range(i + 1, cell_num, 1):
-                cell_j = cell_list[j]
-
-                if cell_i.c_idxs[0] == cell_j.c_idxs[0]:
-                    left_seg_idx, other_seg_idx = cell_i.right_seg_idx, cell_j.right_seg_idx
-                elif cell_i.c_idxs[-1] == cell_j.c_idxs[-1]:
-                    left_seg_idx, other_seg_idx = cell_i.left_seg_idx, cell_j.left_seg_idx
-                elif cell_i.c_idxs[0] == cell_j.c_idxs[-1]:
-                    left_seg_idx, other_seg_idx = cell_i.right_seg_idx, cell_j.left_seg_idx
-                elif cell_i.c_idxs[-1] == cell_j.c_idxs[0]:
-                    left_seg_idx, other_seg_idx = cell_i.left_seg_idx, cell_j.right_seg_idx
-                else:
-                    continue
-
-                tag = (left_seg_idx, other_seg_idx)
-                if tag not in pair_dict.keys():
-                    pair_dict[tag] = True
-
-        for cell in cell_list:
-            left_seg_idx, other_seg_idx = cell.left_seg_idx, cell.right_seg_idx
-            tag = (left_seg_idx, other_seg_idx)
-            if tag not in pair_dict.keys():
-                pair_dict[tag] = True
-
-        for left_seg_idx, other_seg_idx in pair_dict.keys():
-            pair_idx = len(self.pair_seg_dict)
-            cross_cell = PairSegCell(pair_idx, self.group_idx, left_seg_idx, other_seg_idx, self)
-            self.pair_seg_dict[cross_cell.idx] = cross_cell
 
     def assemble_discrete_graph(
             self,
@@ -1162,11 +1164,15 @@ class GroupCell(object):
             path_idx = path_cfg['path_idx']
             self.path_dict[path_idx].init_cfg(path_cfg)
 
-        self.find_pair_cross_segment()
-
-    def init_cross_seg_cfg(self, setting_cfg: Dict):
-        for pair_cfg in setting_cfg['pair_segments']:
+    def init_cross_cell_cfg(self, setting_cfg: Dict):
+        for pair_cfg in setting_cfg['pair_cells']:
             pair_idx = pair_cfg['pair_idx']
+            self.pair_seg_dict[pair_idx] = PairCell(
+                pair_idx, self.group_idx,
+                left_idx=pair_cfg['left_idx'], left_type=pair_cfg['left_type'],
+                right_idx=pair_cfg['right_idx'], right_type=pair_cfg['right_type'],
+                parent_cell=self
+            )
             self.pair_seg_dict[pair_idx].init_cfg(pair_cfg)
 
     def prepare_tensor(self):

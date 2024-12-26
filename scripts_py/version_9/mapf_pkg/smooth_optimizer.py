@@ -88,8 +88,8 @@ class PathOptimizer(object):
     def init_optimize_cfg(self, group_idx, setting_cfg: Dict):
         self.group_cells[group_idx].init_cfg(setting_cfg)
 
-    def init_cross_seg_cfg(self, group_idx, setting_cfg: Dict):
-        self.group_cells[group_idx].init_cross_seg_cfg(setting_cfg)
+    def init_cross_cell_cfg(self, group_idx, setting_cfg: Dict):
+        self.group_cells[group_idx].init_cross_cell_cfg(setting_cfg)
 
     def update_spline_NpCfg(self, group_idx: int):
         group_cell = self.group_cells[group_idx]
@@ -340,6 +340,7 @@ class PathOptimizer(object):
             else:
                 with torch.no_grad():
                     for group_idx, group_cell in self.group_cells.items():
+                        grad = group_cell.table_xyz_t.grad
                         # grad = grad / (torch.norm(grad, p=2, dim=1, keepdim=True) + 1e-8)
                         grad = grad / grad.abs().max()  # it works
                         group_cell.table_xyz_t -= grad * lr

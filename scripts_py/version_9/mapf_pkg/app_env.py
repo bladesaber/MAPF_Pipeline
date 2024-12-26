@@ -133,9 +133,10 @@ class EnvironmentApp(AppWindow):
                 name, path, is_visible=True,
                 param={'type': 'obstacle', 'shape': 'point_cloud_file', 'file': path, 'rgb': [0.3, 0.3, 0.3]}
             )
-        elif file_format in ['stl', 'stp', 'step']:
-            if file_format in ['stp', 'step']:
+        elif file_format in ['stl', 'stp', 'step', 'STEP', 'STP']:
+            if file_format in ['stp', 'step', 'STEP', 'STP']:
                 tmp_file = os.path.join(self.save_dir, name.replace('.stp', '.stl').replace('.step', '.stl'))
+                tmp_file = os.path.join(self.save_dir, name.replace('.STP', '.stl').replace('.STEP', '.stl'))
                 solid = cq.importers.importStep(path)
                 cq.exporters.export(solid, tmp_file, opt={'ascii': True})
                 # cq.exporters.export(solid, tmp_file)

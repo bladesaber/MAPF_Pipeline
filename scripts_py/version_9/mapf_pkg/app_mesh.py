@@ -111,7 +111,7 @@ class MeshApp(SmoothApp):
                 select_ratio_dict = {}
                 for seg_name, seg_cell_layer in group_layer['segment'].items():
                     num_ts = np.array(seg_cell_layer['ts']).reshape(-1).shape[0]
-                    select_idxs = np.arange(0, num_ts, 1)[::5].tolist()
+                    select_idxs = np.arange(0, num_ts, 1)[::2].tolist()
                     if select_idxs[-1] != num_ts - 1:
                         select_idxs.append(num_ts - 1)
                     select_ratio_dict[seg_name] = {
@@ -119,7 +119,7 @@ class MeshApp(SmoothApp):
                     }
                 for con_name, con_cell_layer in group_layer['connector'].items():
                     num_ts = np.array(con_cell_layer['ts']).reshape(-1).shape[0]
-                    select_idxs = np.arange(0, num_ts, 1)[::5].tolist()
+                    select_idxs = np.arange(0, num_ts, 1)[::2].tolist()
                     if select_idxs[-1] != num_ts - 1:
                         select_idxs.append(num_ts - 1)
                     select_ratio_dict[con_name] = {
@@ -201,11 +201,11 @@ class MeshApp(SmoothApp):
     def _radius_check_on_click(self):
         if self.radius_opt is None:
             return
-        # vis = VisUtils()
-        # self.radius_opt.draw_wireframe(vis)
-        # vis.show()
+        vis = VisUtils()
+        self.radius_opt.draw_wireframe(vis)
+        vis.show()
 
-        self.radius_opt.draw_wireframe()
+        # self.radius_opt.draw_wireframe()
 
     def _export_cad_on_click(self, is_linear_link_checkbox: gui.Checkbox):
         if self.radius_opt is None:

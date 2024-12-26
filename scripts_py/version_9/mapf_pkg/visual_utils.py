@@ -105,6 +105,14 @@ class VisUtils(object):
         return mesh
 
     @staticmethod
+    def create_customer_mesh(pcd: np.ndarray, connectivity: np.ndarray):
+        connectivity_pyvista = np.concatenate([
+            np.full((connectivity.shape[0], 1), fill_value=connectivity.shape[1]),
+            connectivity
+        ], axis=1)
+        return pyvista.PolyData(pcd, connectivity_pyvista)
+
+    @staticmethod
     def multi_tube_example():
         pcd = np.array([
             [0., 0., 0.],

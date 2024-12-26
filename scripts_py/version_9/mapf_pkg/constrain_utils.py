@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import pandas as pd
 from typing import Dict, List
@@ -25,17 +27,18 @@ class DynamicHumanConstrain(object):
         self.xyzr_idx.append([x, y, z, radius, group_idx])
 
     def generate_straight_line_constrains(
-            self, begin_grid: np.ndarray, end_grid: np.ndarray, radius: float, group_idx: int
+            self, begin_xyz: np.ndarray, end_xyz: np.ndarray, radius: float, group_idx: int,
+            reso: float, inflate_threshold=1.0
     ):
-        vec = end_grid - begin_grid
-        vec_sign = np.sign(vec)
-        step = int(np.sum(np.abs(vec)) / np.sum(np.abs(vec_sign)))
+        vec_xyz = end_xyz - begin_xyz
+        vec_length = np.linalg.norm(vec_xyz, ord=2)
+        vec_xyz = vec_xyz / vec_length
+        step = max(math.ceil(vec_length / reso), 2)
         for i in range(step + 1):
-            inter_grid = begin_grid + vec_sign * i
-            x, y, z = self.grid_env.grid2xyz(
-                x_grid=inter_grid[0], y_grid=inter_grid[1], z_grid=inter_grid[2]
+            inter_xyz = begin_xyz + vec_xyz * i / step * vec_length
+            self.xyzr_idx.append(
+                [inter_xyz[0], inter_xyz[1], inter_xyz[2], radius * inflate_threshold, group_idx]
             )
-            self.xyzr_idx.append([x, y, z, radius, group_idx])
 
     def generate(self, constrain_list: List[Dict], pipe_cfg: Dict):
         for info in constrain_list:
@@ -50,14 +53,21 @@ class DynamicHumanConstrain(object):
 
                 begin_xyz = np.array(pipe_info['discrete_position'])
                 end_xyz = begin_xyz + direction * info['length']
-                begin_grid = np.array(self.grid_env.xyz2grid(
-                    x=begin_xyz[0], y=begin_xyz[1], z=begin_xyz[2]
-                ))
-                end_grid = np.array(self.grid_env.xyz2grid(
-                    x=end_xyz[0], y=end_xyz[1], z=end_xyz[2]
-                ))
+
+                # begin_grid = np.array(self.grid_env.xyz2grid(
+                #     x=begin_xyz[0], y=begin_xyz[1], z=begin_xyz[2]
+                # ))
+                # end_grid = np.array(self.grid_env.xyz2grid(
+                #     x=end_xyz[0], y=end_xyz[1], z=end_xyz[2]
+                # ))
+
+                # self.generate_straight_line_constrains(
+                #     begin_grid, end_grid, pipe_info['radius'], pipe_info['group_idx']
+                # )
+                # todo reso is the problem here
                 self.generate_straight_line_constrains(
-                    begin_grid, end_grid, pipe_info['radius'], pipe_info['group_idx']
+                    begin_xyz, end_xyz, pipe_info['radius'], pipe_info['group_idx'],
+                    reso=info['reso'], inflate_threshold=info['inflate_threshold']
                 )
 
     def to_csv(self, file: str):

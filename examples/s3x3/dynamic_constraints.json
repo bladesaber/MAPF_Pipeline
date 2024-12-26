@@ -1,0 +1,209 @@
+{
+    "constrains": [
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "A1",
+            "length": 1.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "B1",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P1",
+            "length": 1.5
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T1",
+            "length": 1.5
+        },
+
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P2",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P4",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P5",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T2",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T4",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T5",
+            "length": 7.0
+        },
+
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "B2",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "B3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "A2",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "A3",
+            "length": 7.0
+        },
+
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P2_2",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P3_2",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P4_2",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P5_2",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T2_2",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T3_2",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T4_2",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T5_2",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "B2_2",
+            "length": 1.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "B3_2",
+            "length": 1.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "A2_2",
+            "length": 1.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "A3_2",
+            "length": 1.0
+        },
+
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P2_3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P3_3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P4_3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "P5_3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T2_3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T3_3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T4_3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "T5_3",
+            "length": 7.0
+        },
+
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "B2_3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "B3_3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "A2_3",
+            "length": 7.0
+        },
+        {
+            "type": "terminate_straight_line_constrains",
+            "name": "A3_3",
+            "length": 7.0
+        }
+    ]
+}
