@@ -1,0 +1,2138 @@
+{
+    "cfg": {
+        "path_result_hdf5": "/home/admin123456/Desktop/work/path_examples/D7_01/search_result.hdf5",
+        "orig_obstacle_file": "/home/admin123456/Desktop/work/path_examples/D7_01/static_obstacle.csv",
+        "pipe_cfg": {
+            "P0": {
+                "radius": 8.0,
+                "position": [
+                    61.0,
+                    68.0,
+                    0.0
+                ],
+                "direction": [
+                    0,
+                    0,
+                    1
+                ],
+                "group_idx": 0,
+                "is_input": true,
+                "discrete_position": [
+                    61.0,
+                    68.0,
+                    0.0
+                ],
+                "radius_scale": 1.15
+            },
+            "A0": {
+                "radius": 8.0,
+                "position": [
+                    45.0,
+                    27.0,
+                    0.0
+                ],
+                "direction": [
+                    0,
+                    0,
+                    1
+                ],
+                "group_idx": 1,
+                "is_input": true,
+                "discrete_position": [
+                    45.0,
+                    27.0,
+                    0.0
+                ],
+                "radius_scale": 1.15
+            },
+            "B0": {
+                "radius": 8.0,
+                "position": [
+                    77.0,
+                    27.0,
+                    0.0
+                ],
+                "direction": [
+                    0,
+                    0,
+                    1
+                ],
+                "group_idx": 2,
+                "is_input": true,
+                "discrete_position": [
+                    77.0,
+                    27.0,
+                    0.0
+                ],
+                "radius_scale": 1.15
+            },
+            "T0": {
+                "radius": 8.0,
+                "position": [
+                    29.5,
+                    68.0,
+                    0.0
+                ],
+                "direction": [
+                    0,
+                    0,
+                    1
+                ],
+                "group_idx": 3,
+                "is_input": true,
+                "discrete_position": [
+                    29.5,
+                    68.0,
+                    0.0
+                ],
+                "radius_scale": 1.15
+            },
+            "P1": {
+                "radius": 8.0,
+                "position": [
+                    45.0,
+                    56.5,
+                    63.5
+                ],
+                "direction": [
+                    0,
+                    -1,
+                    -1
+                ],
+                "group_idx": 0,
+                "is_input": false,
+                "discrete_position": [
+                    45.0,
+                    56.5,
+                    63.5
+                ],
+                "radius_scale": 1.15
+            },
+            "P2": {
+                "radius": 8.0,
+                "position": [
+                    45.0,
+                    38.5,
+                    32.0
+                ],
+                "direction": [
+                    0,
+                    1,
+                    1
+                ],
+                "group_idx": 0,
+                "is_input": false,
+                "discrete_position": [
+                    45.0,
+                    38.5,
+                    32.0
+                ],
+                "radius_scale": 1.15
+            },
+            "A1": {
+                "radius": 8.0,
+                "position": [
+                    29.0,
+                    29.5,
+                    48.0
+                ],
+                "direction": [
+                    0,
+                    1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    29.0,
+                    29.5,
+                    48.0
+                ],
+                "radius_scale": 1.15
+            },
+            "A2": {
+                "radius": 8.0,
+                "position": [
+                    29.0,
+                    65.5,
+                    48.0
+                ],
+                "direction": [
+                    0,
+                    -1,
+                    0
+                ],
+                "group_idx": 1,
+                "is_input": false,
+                "discrete_position": [
+                    29.0,
+                    65.5,
+                    48.0
+                ],
+                "radius_scale": 1.15
+            },
+            "P3": {
+                "radius": 8.0,
+                "position": [
+                    85.0,
+                    38.5,
+                    63.5
+                ],
+                "direction": [
+                    0,
+                    1,
+                    -1
+                ],
+                "group_idx": 0,
+                "is_input": false,
+                "discrete_position": [
+                    85.0,
+                    38.5,
+                    63.5
+                ],
+                "radius_scale": 1.15
+            },
+            "P4": {
+                "radius": 8.0,
+                "position": [
+                    85.0,
+                    56.5,
+                    32.0
+                ],
+                "direction": [
+                    0,
+                    -1,
+                    1
+                ],
+                "group_idx": 0,
+                "is_input": false,
+                "discrete_position": [
+                    85.0,
+                    56.5,
+                    32.0
+                ],
+                "radius_scale": 1.15
+            },
+            "B1": {
+                "radius": 8.0,
+                "position": [
+                    101.0,
+                    29.5,
+                    48.0
+                ],
+                "direction": [
+                    0,
+                    1,
+                    0
+                ],
+                "group_idx": 2,
+                "is_input": false,
+                "discrete_position": [
+                    101.0,
+                    29.5,
+                    48.0
+                ],
+                "radius_scale": 1.15
+            },
+            "B2": {
+                "radius": 8.0,
+                "position": [
+                    101.0,
+                    65.5,
+                    48.0
+                ],
+                "direction": [
+                    0,
+                    -1,
+                    0
+                ],
+                "group_idx": 2,
+                "is_input": false,
+                "discrete_position": [
+                    101.0,
+                    65.5,
+                    48.0
+                ],
+                "radius_scale": 1.15
+            },
+            "T1": {
+                "radius": 8.0,
+                "position": [
+                    45.0,
+                    38.5,
+                    63.5
+                ],
+                "direction": [
+                    0,
+                    1,
+                    -1
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    45.0,
+                    38.5,
+                    63.5
+                ],
+                "radius_scale": 1.15
+            },
+            "T2": {
+                "radius": 8.0,
+                "position": [
+                    45.0,
+                    56.5,
+                    32.0
+                ],
+                "direction": [
+                    0,
+                    -1,
+                    1
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    45.0,
+                    56.5,
+                    32.0
+                ],
+                "radius_scale": 1.15
+            },
+            "T3": {
+                "radius": 8.0,
+                "position": [
+                    85.0,
+                    56.5,
+                    63.5
+                ],
+                "direction": [
+                    0,
+                    -1,
+                    -1
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    85.0,
+                    56.5,
+                    63.5
+                ],
+                "radius_scale": 1.15
+            },
+            "T4": {
+                "radius": 8.0,
+                "position": [
+                    85.0,
+                    38.5,
+                    32.0
+                ],
+                "direction": [
+                    0,
+                    1,
+                    1
+                ],
+                "group_idx": 3,
+                "is_input": false,
+                "discrete_position": [
+                    85.0,
+                    38.5,
+                    32.0
+                ],
+                "radius_scale": 1.15
+            }
+        },
+        "smooth_obstacle_file": "/home/admin123456/Desktop/work/path_examples/D7_01/smooth_obstacle.csv"
+    },
+    "conflict_setting": {
+        "obstacle_conflict_weight": 1000.0,
+        "path_conflict_weight": 100.0,
+        "self_conflict_weight": 100.0
+    },
+    "setting": [
+        {
+            "group_idx": 0,
+            "aid_path_info": [
+                {
+                    "name": "P0_P1",
+                    "from_name": "P0",
+                    "to_name": "P1"
+                },
+                {
+                    "name": "P0_P2",
+                    "from_name": "P0",
+                    "to_name": "P2"
+                },
+                {
+                    "name": "P0_P3",
+                    "from_name": "P0",
+                    "to_name": "P3"
+                },
+                {
+                    "name": "P0_P4",
+                    "from_name": "P0",
+                    "to_name": "P4"
+                }
+            ],
+            "graph_cfg": {
+                "seg_node_min": 15,
+                "seg_node_max": 50
+            },
+            "segments": [
+                {
+                    "seg_idx": 0,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    0,
+                                    1
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 1,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 2,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    -1,
+                                    -1
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 3,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    1,
+                                    1
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 4,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 5,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    1,
+                                    -1
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 6,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    -1,
+                                    1
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                }
+            ],
+            "connectors": [
+                {
+                    "con_idx": 0,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 0,
+                    "right_seg_idx": 1,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "con_idx": 1,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 1,
+                    "right_seg_idx": 2,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "con_idx": 2,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 1,
+                    "right_seg_idx": 3,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "con_idx": 3,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 0,
+                    "right_seg_idx": 4,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "con_idx": 4,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 4,
+                    "right_seg_idx": 5,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "con_idx": 5,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 4,
+                    "right_seg_idx": 6,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                }
+            ],
+            "paths": [
+                {
+                    "path_idx": 0,
+                    "path_name": "P0_P1",
+                    "cell_idxs": [
+                        0,
+                        0,
+                        1,
+                        1,
+                        2
+                    ],
+                    "cell_types": [
+                        "segment",
+                        "connector",
+                        "segment",
+                        "connector",
+                        "segment"
+                    ],
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "tangent_diffusion",
+                                "method": "abs_variance_max",
+                                "weight": 50.0
+                            }
+                        ],
+                        "element_cost_cfgs": []
+                    }
+                },
+                {
+                    "path_idx": 1,
+                    "path_name": "P0_P2",
+                    "cell_idxs": [
+                        0,
+                        0,
+                        1,
+                        2,
+                        3
+                    ],
+                    "cell_types": [
+                        "segment",
+                        "connector",
+                        "segment",
+                        "connector",
+                        "segment"
+                    ],
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "tangent_diffusion",
+                                "method": "abs_variance_max",
+                                "weight": 50.0
+                            }
+                        ],
+                        "element_cost_cfgs": []
+                    }
+                },
+                {
+                    "path_idx": 2,
+                    "path_name": "P0_P3",
+                    "cell_idxs": [
+                        0,
+                        3,
+                        4,
+                        4,
+                        5
+                    ],
+                    "cell_types": [
+                        "segment",
+                        "connector",
+                        "segment",
+                        "connector",
+                        "segment"
+                    ],
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "tangent_diffusion",
+                                "method": "abs_variance_max",
+                                "weight": 50.0
+                            }
+                        ],
+                        "element_cost_cfgs": []
+                    }
+                },
+                {
+                    "path_idx": 3,
+                    "path_name": "P0_P4",
+                    "cell_idxs": [
+                        0,
+                        3,
+                        4,
+                        5,
+                        6
+                    ],
+                    "cell_types": [
+                        "segment",
+                        "connector",
+                        "segment",
+                        "connector",
+                        "segment"
+                    ],
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "tangent_diffusion",
+                                "method": "abs_variance_max",
+                                "weight": 50.0
+                            }
+                        ],
+                        "element_cost_cfgs": []
+                    }
+                }
+            ],
+            "pair_cells": [
+                {
+                    "pair_idx": 0,
+                    "left_idx": 1,
+                    "left_type": "segment",
+                    "right_idx": 3,
+                    "right_type": "segment",
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "pair_conflict",
+                                "weight": 10.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "pair_idx": 0,
+                    "left_idx": 4,
+                    "left_type": "segment",
+                    "right_idx": 6,
+                    "right_type": "segment",
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "pair_conflict",
+                                "weight": 10.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "pair_idx": 0,
+                    "left_idx": 4,
+                    "left_type": "segment",
+                    "right_idx": 1,
+                    "right_type": "segment",
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "pair_conflict",
+                                "weight": 10.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "pair_idx": 0,
+                    "left_idx": 5,
+                    "left_type": "segment",
+                    "right_idx": 6,
+                    "right_type": "segment",
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "pair_conflict",
+                                "weight": 10.0
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "group_idx": 1,
+            "aid_path_info": [
+                {
+                    "name": "A0_A1",
+                    "from_name": "A0",
+                    "to_name": "A1"
+                },
+                {
+                    "name": "A0_A2",
+                    "from_name": "A0",
+                    "to_name": "A2"
+                }
+            ],
+            "graph_cfg": {
+                "seg_node_min": 15,
+                "seg_node_max": 50
+            },
+            "segments": [
+                {
+                    "seg_idx": 0,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    0,
+                                    1
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 1,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    1,
+                                    0
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 2,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    -1,
+                                    0
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                }
+            ],
+            "connectors": [
+                {
+                    "con_idx": 0,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 0,
+                    "right_seg_idx": 1,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "con_idx": 1,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 0,
+                    "right_seg_idx": 2,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                }
+            ],
+            "paths": [
+                {
+                    "path_idx": 0,
+                    "path_name": "A0_A1",
+                    "cell_idxs": [
+                        0,
+                        0,
+                        1
+                    ],
+                    "cell_types": [
+                        "segment",
+                        "connector",
+                        "segment"
+                    ],
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "tangent_diffusion",
+                                "method": "abs_variance_max",
+                                "weight": 50.0
+                            }
+                        ],
+                        "element_cost_cfgs": []
+                    }
+                },
+                {
+                    "path_idx": 1,
+                    "path_name": "A0_A2",
+                    "cell_idxs": [
+                        0,
+                        1,
+                        2
+                    ],
+                    "cell_types": [
+                        "segment",
+                        "connector",
+                        "segment"
+                    ],
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "tangent_diffusion",
+                                "method": "abs_variance_max",
+                                "weight": 50.0
+                            }
+                        ],
+                        "element_cost_cfgs": []
+                    }
+                }
+            ],
+            "pair_cells": []
+        },
+        {
+            "group_idx": 2,
+            "aid_path_info": [
+                {
+                    "name": "B0_B1",
+                    "from_name": "B0",
+                    "to_name": "B1"
+                },
+                {
+                    "name": "B0_B2",
+                    "from_name": "B0",
+                    "to_name": "B2"
+                }
+            ],
+            "graph_cfg": {
+                "seg_node_min": 15,
+                "seg_node_max": 50
+            },
+            "segments": [
+                {
+                    "seg_idx": 0,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    0,
+                                    1
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 1,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    1,
+                                    0
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 2,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    -1,
+                                    0
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                }
+            ],
+            "connectors": [
+                {
+                    "con_idx": 0,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 0,
+                    "right_seg_idx": 1,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "con_idx": 1,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 0,
+                    "right_seg_idx": 2,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                }
+            ],
+            "paths": [
+                {
+                    "path_idx": 0,
+                    "path_name": "B0_B1",
+                    "cell_idxs": [
+                        0,
+                        0,
+                        1
+                    ],
+                    "cell_types": [
+                        "segment",
+                        "connector",
+                        "segment"
+                    ],
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "tangent_diffusion",
+                                "method": "abs_variance_max",
+                                "weight": 50.0
+                            }
+                        ],
+                        "element_cost_cfgs": []
+                    }
+                },
+                {
+                    "path_idx": 1,
+                    "path_name": "B0_B2",
+                    "cell_idxs": [
+                        0,
+                        1,
+                        2
+                    ],
+                    "cell_types": [
+                        "segment",
+                        "connector",
+                        "segment"
+                    ],
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "tangent_diffusion",
+                                "method": "abs_variance_max",
+                                "weight": 50.0
+                            }
+                        ],
+                        "element_cost_cfgs": []
+                    }
+                }
+            ],
+            "pair_cells": []
+        },
+        {
+            "group_idx": 3,
+            "aid_path_info": [
+                {
+                    "name": "T0_T1",
+                    "from_name": "T0",
+                    "to_name": "T1"
+                },
+                {
+                    "name": "T0_T2",
+                    "from_name": "T0",
+                    "to_name": "T2"
+                },
+                {
+                    "name": "T0_T3",
+                    "from_name": "T0",
+                    "to_name": "T3"
+                },
+                {
+                    "name": "T0_T4",
+                    "from_name": "T0",
+                    "to_name": "T4"
+                }
+            ],
+            "graph_cfg": {
+                "seg_node_min": 15,
+                "seg_node_max": 50
+            },
+            "segments": [
+                {
+                    "seg_idx": 0,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    0,
+                                    1
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 1,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 2,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 3,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    1,
+                                    -1
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 4,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    -1,
+                                    1
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 5,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    -1,
+                                    -1
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "seg_idx": 6,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_overlap_ratio": 0.35,
+                    "right_overlap_ratio": 0.35,
+                    "left_intercept_ratio": 0.6,
+                    "right_intercept_ratio": 0.6,
+                    "segment_scale": 1.0,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "length",
+                                "data_type": "control_points",
+                                "method": "square_sum",
+                                "weight": 1.0
+                            },
+                            {
+                                "cost_type": "length_distribution",
+                                "data_type": "control_points",
+                                "method": "length_variance",
+                                "weight": 100.0
+                            },
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            },
+                            {
+                                "cost_type": "clamp_vector",
+                                "vector_length": 4.0,
+                                "vector": [
+                                    0,
+                                    1,
+                                    1
+                                ],
+                                "weight": 100.0
+                            }
+                        ]
+                    }
+                }
+            ],
+            "connectors": [
+                {
+                    "con_idx": 0,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 0,
+                    "right_seg_idx": 1,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "con_idx": 1,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 1,
+                    "right_seg_idx": 2,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "con_idx": 2,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 2,
+                    "right_seg_idx": 3,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "con_idx": 3,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 0,
+                    "right_seg_idx": 4,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "con_idx": 4,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 1,
+                    "right_seg_idx": 5,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                },
+                {
+                    "con_idx": 5,
+                    "bspline_degree": 3,
+                    "bspline_density": 0.25,
+                    "left_seg_idx": 2,
+                    "right_seg_idx": 6,
+                    "with_analytical_curvature_computed": true,
+                    "with_analytical_tangent_computed": false,
+                    "cost_setting": {
+                        "path_thickness": 1.8,
+                        "obstacle_thickness": 1.0,
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "curvature",
+                                "curvature_method": "analytical_curvature",
+                                "method": "sigmoid_mean",
+                                "curvature_scale": 3.0,
+                                "weight": 50.0
+                            }
+                        ]
+                    }
+                }
+            ],
+            "paths": [
+                {
+                    "path_idx": 0,
+                    "path_name": "T0_T1",
+                    "cell_idxs": [
+                        0,
+                        0,
+                        1,
+                        1,
+                        2,
+                        2,
+                        3
+                    ],
+                    "cell_types": [
+                        "segment",
+                        "connector",
+                        "segment",
+                        "connector",
+                        "segment",
+                        "connector",
+                        "segment"
+                    ],
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "tangent_diffusion",
+                                "method": "abs_variance_max",
+                                "weight": 50.0
+                            }
+                        ],
+                        "element_cost_cfgs": []
+                    }
+                },
+                {
+                    "path_idx": 1,
+                    "path_name": "T0_T2",
+                    "cell_idxs": [
+                        0,
+                        3,
+                        4
+                    ],
+                    "cell_types": [
+                        "segment",
+                        "connector",
+                        "segment"
+                    ],
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "tangent_diffusion",
+                                "method": "abs_variance_max",
+                                "weight": 50.0
+                            }
+                        ],
+                        "element_cost_cfgs": []
+                    }
+                },
+                {
+                    "path_idx": 2,
+                    "path_name": "T0_T3",
+                    "cell_idxs": [
+                        0,
+                        0,
+                        1,
+                        4,
+                        5
+                    ],
+                    "cell_types": [
+                        "segment",
+                        "connector",
+                        "segment",
+                        "connector",
+                        "segment"
+                    ],
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "tangent_diffusion",
+                                "method": "abs_variance_max",
+                                "weight": 50.0
+                            }
+                        ],
+                        "element_cost_cfgs": []
+                    }
+                },
+                {
+                    "path_idx": 3,
+                    "path_name": "T0_T4",
+                    "cell_idxs": [
+                        0,
+                        0,
+                        1,
+                        1,
+                        2,
+                        5,
+                        6
+                    ],
+                    "cell_types": [
+                        "segment",
+                        "connector",
+                        "segment",
+                        "connector",
+                        "segment",
+                        "connector",
+                        "segment"
+                    ],
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "tangent_diffusion",
+                                "method": "abs_variance_max",
+                                "weight": 50.0
+                            }
+                        ],
+                        "element_cost_cfgs": []
+                    }
+                }
+            ],
+            "pair_cells": [
+                {
+                    "pair_idx": 0,
+                    "left_idx": 1,
+                    "left_type": "segment",
+                    "right_idx": 4,
+                    "right_type": "segment",
+                    "cost_setting": {
+                        "cost_cfgs": [
+                            {
+                                "cost_type": "pair_conflict",
+                                "weight": 10.0
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ],
+    "auto_run_cfg": {
+        "lr": 0.01,
+        "factor": 0.5,
+        "patience": 1500,
+        "cooldown": 1000,
+        "min_lr": 0.001,
+        "max_iter": 50000,
+        "outer_loop": 1
+    }
+}

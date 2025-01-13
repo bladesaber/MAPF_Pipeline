@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Tuple
 import OCC.Core.TopoDS as TopoDS
 
 from OCC.Display.SimpleGui import init_display, load_backend
@@ -17,7 +17,7 @@ from OCC.Core.BRepBuilderAPI import (BRepBuilderAPI_MakeVertex, BRepBuilderAPI_M
                                      BRepBuilderAPI_MakeSolid, BRepBuilderAPI_MakeShell,
                                      BRepBuilderAPI_Sewing)
 from OCC.Core.BRepOffsetAPI import (BRepOffsetAPI_MakePipe, BRepOffsetAPI_ThruSections,
-                                    BRepOffsetAPI_MakePipeShell)
+                                    BRepOffsetAPI_MakePipeShell, BRepOffsetAPI_MakeFilling)
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeSphere, BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakeBox
 from OCC.Core.GeomAPI import GeomAPI_PointsToBSplineSurface
 
@@ -30,6 +30,10 @@ from OCC.Core.BRepAlgoAPI import (
     BRepAlgoAPI_Section,
     BRepAlgoAPI_Cut,
 )
+from OCC.Core.GeomAbs import GeomAbs_G1, GeomAbs_G2, GeomAbs_C0
+from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
+from OCC.Core.GCPnts import GCPnts_AbscissaPoint, GCPnts_UniformAbscissa
+
 
 # from pyspline import Surface
 
@@ -239,7 +243,9 @@ class OcctProfile(object):
         return BRepPrimAPI_MakeCylinder(center, radius, height).Shape()
 
     @staticmethod
-    def make_thruSections(wires: List[TopoDS.TopoDS_Wire], is_solid=True, ruled=True):
+    def make_thruSections(
+            wires: List[TopoDS.TopoDS_Wire], is_solid=True, ruled=True
+    ) -> Union[TopoDS.TopoDS_Shell, TopoDS.TopoDS_Solid]:
         generator = BRepOffsetAPI_ThruSections(is_solid, ruled)
         for wire in wires:
             generator.AddWire(wire)
@@ -317,6 +323,54 @@ class OcctProfile(object):
         )
 
         return bspline_surface
+
+    @staticmethod
+    def divide_edge_by_nr_of_points(edge: TopoDS.TopoDS_Edge, n_pts):
+        """returns a nested list of parameters and points on the edge
+        at the requested interval [(param, gp_Pnt),...]
+        """
+        curve_adapt = BRepAdaptor_Curve(edge)
+        _lbound, _ubound = curve_adapt.FirstParameter(), curve_adapt.LastParameter()
+
+        if n_pts <= 1:
+            # minimally two points or a Standard_ConstructionError is raised
+            raise AssertionError("minimally 2 points required")
+
+        npts = GCPnts_UniformAbscissa(curve_adapt, n_pts, _lbound, _ubound)
+        if npts.IsDone():
+            tmp = []
+            for i in range(1, npts.NbPoints() + 1):
+                param = npts.Parameter(i)
+                pnt = curve_adapt.Value(param)
+                tmp.append((param, pnt))
+            return tmp
+        raise ValueError("[ERROR]: divide_edge_by_nr_of_points Fail")
+
+    @staticmethod
+    def fill_surface_from_curve_network(
+            boundaries: List[Tuple[TopoDS.TopoDS_Edge, TopoDS.TopoDS_Face]],
+            guide_lines: List[TopoDS.TopoDS_Edge], enforce_tangency=False, sample_num: int = 12
+    ):
+        brep_plate_builder = BRepOffsetAPI_MakeFilling()
+        if enforce_tangency:
+            brep_plate_builder.SetConstrParam(
+                0.0001, 0.001, 0.01, 0.01
+            )  # Tol2d=1.0, Tol3d=1.0, TolAng=1.0, TolCurv=1.0
+            brep_plate_builder.SetApproxParam(8, 240)  # MaxDeg=8, MaxSegments=9
+
+        for boundary_edge, constraint_face in boundaries:
+            if constraint_face is None:
+                brep_plate_builder.Add(boundary_edge, GeomAbs_C0)
+            else:
+                brep_plate_builder.Add(boundary_edge, constraint_face, GeomAbs_C0)
+
+        for guide_line in guide_lines:
+            for pt in OcctProfile.divide_edge_by_nr_of_points(guide_line, sample_num)[2:-2]:  # 不可以包含起点与终点
+                brep_plate_builder.Add(pt[1])
+
+        brep_plate_builder.Build()
+        face: TopoDS.TopoDS_Face = brep_plate_builder.Shape()
+        return face
 
 
 class OcctOperation(object):
