@@ -221,7 +221,9 @@ class OcctProfile(object):
         return pipe
 
     @staticmethod
-    def make_circle(point: Union[List, np.ndarray], vector: Union[List, np.ndarray], radius: float) -> gp_Circ:
+    def make_circle(
+            point: Union[List, np.ndarray], vector: Union[List, np.ndarray], radius: float
+    ) -> gp_Circ:
         profile = gp_Circ(
             OcctProfile.make_AX2(
                 OcctProfile.make_point(point[0], point[1], point[2]),
@@ -229,6 +231,24 @@ class OcctProfile(object):
             ), radius
         )
         return profile
+
+    @staticmethod
+    def make_arc_circle(
+            point: Union[List, np.ndarray], vector: Union[List, np.ndarray], radius: float,
+            start_point: Union[List, np.ndarray], end_point: Union[List, np.ndarray]
+    ) -> TopoDS.TopoDS_Edge:
+        profile = gp_Circ(
+            OcctProfile.make_AX2(
+                OcctProfile.make_point(point[0], point[1], point[2]),
+                OcctProfile.make_direction_vector(vector[0], vector[1], vector[2])
+            ), radius
+        )
+        arc = BRepBuilderAPI_MakeEdge(
+            profile,
+            OcctProfile.make_point(start_point[0], start_point[1], start_point[2]),
+            OcctProfile.make_point(end_point[0], end_point[1], end_point[2]),
+        ).Edge()
+        return arc
 
     @staticmethod
     def make_box(center: gp_Pnt, dx: float, dy: float, dz: float) -> TopoDS.TopoDS_Shape:
@@ -414,8 +434,11 @@ class OcctUtil(object):
         return BRepBuilderAPI_MakeEdge(profile).Edge()
 
     @staticmethod
-    def make_wire(edge: TopoDS.TopoDS_Edge) -> TopoDS.TopoDS_Wire:
-        return BRepBuilderAPI_MakeWire(edge).Wire()
+    def make_wire(edges: List[TopoDS.TopoDS_Edge]) -> TopoDS.TopoDS_Wire:
+        builder = BRepBuilderAPI_MakeWire()
+        for edge in edges:
+            builder.Add(edge)
+        return builder.Wire()
 
     @staticmethod
     def make_face(wire: TopoDS.TopoDS_Wire) -> TopoDS.TopoDS_Face:

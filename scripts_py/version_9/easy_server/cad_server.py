@@ -21,38 +21,64 @@ class CadServer:
         return tess.ExportShapeToThreejsJSONString(name)
 
     @staticmethod
-    def make_circle_thruSections(
-            positions_xyz: np.ndarray, radius_list: np.ndarray, tangent_vecs: np.ndarray, ruled=True
-    ):
+    def make_arbitrary_edge(edge_info) -> TopoDS.TopoDS_Edge:
+        if edge_info['type'] == 'bspline':
+            edge: TopoDS.TopoDS_Edge = OcctUtil.make_edge(OcctProfile.create_bspline(
+                np.array(edge_info['control_pcd']), edge_info['degree'],
+                left_clamp=True, right_clamp=True
+            ))
+        elif edge_info['type'] == 'circle':
+            edge: TopoDS.TopoDS_Edge = OcctUtil.make_edge(OcctProfile.make_circle(
+                np.array(edge_info['center']),
+                np.array(edge_info['tangent_vec']),
+                edge_info['radius']
+            ))
+        elif edge_info['type'] == 'arc_circle':
+            edge: TopoDS.TopoDS_Edge = OcctProfile.make_arc_circle(
+                point=np.array(edge_info['center']),
+                vector=np.array(edge_info['tangent_vec']),
+                radius=edge_info['radius'],
+                start_point=np.array(edge_info['start_point']),
+                end_point=np.array(edge_info['end_point']),
+            )
+        else:
+            raise ValueError("[ERROR]: Non-valid Edge config")
+        return edge
+
+    @staticmethod
+    def make_arbitrary_wire(wire_info) -> TopoDS.TopoDS_Wire:
+        if wire_info['type'] == 'circle':
+            circle = CadServer.make_arbitrary_edge(wire_info)
+            wire: TopoDS.TopoDS_Wire = OcctUtil.make_wire([circle])
+        elif wire_info['type'] == 'arbitrary':
+            edge_list = []
+            for edge_info in wire_info['edge_cfgs']:
+                edge_list.append(CadServer.make_arbitrary_edge(edge_info))
+            wire: TopoDS.TopoDS_Wire = OcctUtil.make_wire(edge_list)
+        else:
+            raise ValueError("[ERROR]: Non-valid Wire config")
+        return wire
+
+    @staticmethod
+    def make_arbitrary_thruSections(path_info: List[Dict], ruled=True):
         wire_list: List[TopoDS.TopoDS_Wire] = []
-        for xyz, vec, radius in zip(positions_xyz, tangent_vecs, radius_list):
-            circle = OcctProfile.make_circle(xyz, vec, radius)
-            circle_wire = OcctUtil.make_wire(OcctUtil.make_edge(circle))
-            wire_list.append(circle_wire)
-        entity: TopoDS.TopoDS_Shell = OcctProfile.make_thruSections(
-            wire_list, False, ruled
-        )
+        for info in path_info:
+            wire_list.append(CadServer.make_arbitrary_wire(info))
+        entity: TopoDS.TopoDS_Shell = OcctProfile.make_thruSections(wire_list, False, ruled)
         return entity
 
     @staticmethod
-    def make_spline_surface(boundaries_info: List[Dict], guide_lines_info: Dict):
+    def make_spline_surface(boundaries_info: List[Dict], guide_lines_info: Dict, sample_num: int):
         boundaries = []
-        for boundary_info in boundaries_info:
-            if boundary_info['type'] == 'bspline':
-                edge: TopoDS.TopoDS_Edge = OcctUtil.make_edge(OcctProfile.create_bspline(
-                    np.array(boundary_info['control_pcd']), boundary_info['degree'],
-                    left_clamp=True, right_clamp=True
-                ))
-                boundaries.append((edge, None))
+        for info in boundaries_info:
+            boundaries.append((CadServer.make_arbitrary_edge(info), None))
 
         guide_lines = []
-        for guide_info in guide_lines_info:
-            edge: TopoDS.TopoDS_Edge = OcctUtil.make_edge(OcctProfile.create_bspline(
-                np.array(guide_info['control_pcd']), guide_info['degree'],
-                left_clamp=True, right_clamp=True
-            ))
-            guide_lines.append(edge)
+        for info in guide_lines_info:
+            guide_lines.append(CadServer.make_arbitrary_edge(info))
 
-        face: TopoDS.TopoDS_Face = OcctProfile.fill_surface_from_curve_network(boundaries, guide_lines)
+        face: TopoDS.TopoDS_Face = OcctProfile.fill_surface_from_curve_network(
+            boundaries, guide_lines, sample_num=sample_num + 2
+        )
         shell = OcctUtil.face2shell(face)
         return shell

@@ -391,7 +391,7 @@ class StepExporter(object):
                                 continue
 
                     circle = OcctProfile.make_circle(xyz, vec, radius)
-                    circle_wire = OcctUtil.make_wire(OcctUtil.make_edge(circle))
+                    circle_wire = OcctUtil.make_wire([OcctUtil.make_edge(circle)])
                     wire_list.append(circle_wire)
 
                     last_center_xyz = xyz
@@ -402,7 +402,7 @@ class StepExporter(object):
                 wire_list = []
                 for xyz, vec, radius in zip(spline_xyz, spline_vec, radius_list):
                     circle = OcctProfile.make_circle(xyz, vec, radius)
-                    circle_wire = OcctUtil.make_wire(OcctUtil.make_edge(circle))
+                    circle_wire = OcctUtil.make_wire([OcctUtil.make_edge(circle)])
                     wire_list.append(circle_wire)
 
             solid = OcctProfile.make_thruSections(wire_list, is_solid=True, ruled=with_ruled)

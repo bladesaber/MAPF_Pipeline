@@ -368,7 +368,7 @@ def export_STEP():
     wire_list = []
     for xyz, vec, radius in zip(spline_xyz, spline_vec, radius_list):
         circle = OcctProfile.make_circle(xyz, vec, radius)
-        circle_wire = OcctUtil.make_wire(OcctUtil.make_edge(circle))
+        circle_wire = OcctUtil.make_wire([OcctUtil.make_edge(circle)])
         wire_list.append(circle_wire)
     solid = OcctProfile.make_thruSections(wire_list, is_solid=True, ruled=True)
 
@@ -382,13 +382,7 @@ def export_STEP():
 @cross_origin()
 def cad_generate_pipe_shell():
     pipe_cfg = json.loads(request.data)
-
-    shell = CadServer.make_circle_thruSections(
-        positions_xyz=np.array(pipe_cfg['positions_xyz']),
-        radius_list=np.array(pipe_cfg['radius_list']),
-        tangent_vecs=np.array(pipe_cfg['tangent_vecs']),
-        ruled=pipe_cfg['ruled']
-    )
+    shell = CadServer.make_arbitrary_thruSections(pipe_cfg['path_cfg'], ruled=pipe_cfg['ruled'])
     content = CadServer.generate_shape_json(pipe_cfg['name'], shell)
     return jsonify(content)
 
@@ -397,10 +391,10 @@ def cad_generate_pipe_shell():
 @cross_origin()
 def cad_generate_bspline_surface():
     surface_cfg = json.loads(request.data)
-
     shell = CadServer.make_spline_surface(
         boundaries_info=surface_cfg['boundaries_info'],
-        guide_lines_info=surface_cfg['guide_lines_info']
+        guide_lines_info=surface_cfg['guide_lines_info'],
+        sample_num=surface_cfg['sample_num']
     )
     content = CadServer.generate_shape_json(surface_cfg['name'], shell)
     return jsonify(content)
