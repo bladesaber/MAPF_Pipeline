@@ -4,7 +4,7 @@ from typing import Dict, List
 import os
 import pyvista
 
-from ..simulator.openfoam_simulators import OpenFoamComSimulator, OpenFoamOrgSimulator
+from ..simulator.openfoam_simulator import OpenFoamComSimulator, OpenFoamOrgSimulator
 from ..dolfinx_Grad.dolfinx_utils import MeshUtils
 
 

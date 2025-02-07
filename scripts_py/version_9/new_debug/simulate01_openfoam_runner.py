@@ -1,7 +1,7 @@
 import os
 import numpy as np
 
-from scripts_py.version_9.simulator.openfoam_simulators import OpenFoamOrgSimulator
+from scripts_py.version_9.simulator.openfoam_simulator import OpenFoamOrgSimulator
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 

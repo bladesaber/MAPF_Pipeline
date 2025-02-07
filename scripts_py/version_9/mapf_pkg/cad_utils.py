@@ -368,8 +368,10 @@ class OcctProfile(object):
 
     @staticmethod
     def fill_surface_from_curve_network(
-            boundaries: List[Tuple[TopoDS.TopoDS_Edge, TopoDS.TopoDS_Face]],
-            guide_lines: List[TopoDS.TopoDS_Edge], enforce_tangency=False, sample_num: int = 12
+            boundaries: List[Tuple[TopoDS.TopoDS_Edge, Union[TopoDS.TopoDS_Face, None]]],
+            guide_lines: List[TopoDS.TopoDS_Edge] = [],
+            guide_points: np.ndarray = None,
+            enforce_tangency=False, sample_num: int = 12
     ):
         brep_plate_builder = BRepOffsetAPI_MakeFilling()
         if enforce_tangency:
@@ -387,6 +389,10 @@ class OcctProfile(object):
         for guide_line in guide_lines:
             for pt in OcctProfile.divide_edge_by_nr_of_points(guide_line, sample_num)[2:-2]:  # 不可以包含起点与终点
                 brep_plate_builder.Add(pt[1])
+
+        if guide_points is not None:
+            for guide_point in guide_points:
+                brep_plate_builder.Add(OcctProfile.make_point(guide_point[0], guide_points[1], guide_point[2]))
 
         brep_plate_builder.Build()
         face: TopoDS.TopoDS_Face = brep_plate_builder.Shape()

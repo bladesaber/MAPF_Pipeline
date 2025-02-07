@@ -4,7 +4,7 @@ import os
 from functools import partial
 
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
-from scripts_py.version_9.simulator.dolfin_simulators import StokeSimulator
+from scripts_py.version_9.simulator.dolfin_simulator import StokeSimulator
 from scripts_py.version_9.dolfinx_Grad.dolfinx_utils import MeshUtils
 
 proj_dir = '/home/admin123456/Desktop/work/path_examples/topo_path_03'

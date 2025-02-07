@@ -9,7 +9,7 @@ import dolfinx
 
 # from ..simulator.dolfin_simulators import FluidSimulator
 # from ..dolfinx_Grad.vis_mesh_utils import VisUtils
-from scripts_py.version_9.simulator.dolfin_simulators import FluidSimulator
+from scripts_py.version_9.simulator.dolfin_simulator import FluidSimulator
 from scripts_py.version_9.dolfinx_Grad.vis_mesh_utils import VisUtils
 
 """

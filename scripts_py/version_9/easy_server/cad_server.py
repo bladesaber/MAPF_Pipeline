@@ -68,17 +68,29 @@ class CadServer:
         return entity
 
     @staticmethod
-    def make_spline_surface(boundaries_info: List[Dict], guide_lines_info: Dict, sample_num: int):
+    def make_spline_surface(boundaries_info: List[Dict], guide_info: Dict, sample_num: int):
         boundaries = []
         for info in boundaries_info:
             boundaries.append((CadServer.make_arbitrary_edge(info), None))
 
+        guide_points = []
         guide_lines = []
-        for info in guide_lines_info:
-            guide_lines.append(CadServer.make_arbitrary_edge(info))
+        for info in guide_info:
+            if info['type'] != 'points':
+                guide_lines.append(CadServer.make_arbitrary_edge(info))
+            else:
+                guide_points.append(np.array(info['pcd']))
+
+        if len(guide_points) > 0:
+            guide_points = np.concatenate(guide_points, axis=0)
+        else:
+            guide_points = None
 
         face: TopoDS.TopoDS_Face = OcctProfile.fill_surface_from_curve_network(
-            boundaries, guide_lines, sample_num=sample_num + 2
+            boundaries,
+            guide_lines=guide_lines,
+            guide_points=guide_points,
+            sample_num=sample_num + 2
         )
         shell = OcctUtil.face2shell(face)
         return shell
