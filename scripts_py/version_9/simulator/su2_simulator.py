@@ -8,8 +8,7 @@ import shutil
 
 
 class Su2Simulator(object):
-    def __init__(self, proj_dir, mesh_path: str):
-        self.proj_dir = proj_dir
+    def __init__(self, mesh_path: str):
         self.n_dim = None
         self.n_elem = None
         self.n_point = None
@@ -81,15 +80,21 @@ class Su2Simulator(object):
             self.cells = np.array(cells, dtype=int)
             self.points = np.array(points, dtype=float)
 
-    def encode_su2(self, mesh_path):
+    def encode_su2(self, mesh_path, with_idx=False):
         with open(mesh_path, 'w') as f:
             f.write(f'NDIME= {self.n_dim}\n')
             f.write(f'NELEM= {self.n_elem}\n')
             for idx, cell in enumerate(self.cells):
-                f.write(f"{' '.join([str(r) for r in cell])} {idx}\n")
+                if with_idx:
+                    f.write(f"{' '.join([str(r) for r in cell])} {idx}\n")
+                else:
+                    f.write(f"{' '.join([str(r) for r in cell])}\n")
             f.write(f'NPOIN= {self.n_point}\n')
             for idx, point in enumerate(self.points):
-                f.write(f"{' '.join([str(r) for r in point])} {idx}\n")
+                if with_idx:
+                    f.write(f"{' '.join([str(r) for r in point])} {idx}\n")
+                else:
+                    f.write(f"{' '.join([str(r) for r in point])}\n")
             f.write(f'NMARK= {self.n_mark}\n')
             for tag, info in self.marker_dict.items():
                 f.write(f'MARKER_TAG= {tag}\n')
@@ -97,17 +102,15 @@ class Su2Simulator(object):
                 for cell in info['marker_cell']:
                     f.write(f"{' '.join([str(r) for r in cell])}\n")
 
-    @staticmethod
-    def prepare_simulate_cfg(
-            cfg_file: str, mesh_filename: str,
+    def prepare_sim_proj(
+            self,
+            proj_dir: str, mesh_filename: str,
             inlets_info: Dict, outlets_info: Dict, walls_info: Dict,
             restart_filename='restart_flow.dat', restart_sol=False,
-            density=877.0, init_vel=(1., 0., 0.),
+            density=877.0, init_vel=(1., 0., 0.), constant_viscosity=0.04,
             conv_field='RMS_PRESSURE', conv_level=-6, conv_filename='conv_history',
             run_iter=1000, body_force=(0., 0., 0.)
     ):
-        assert cfg_file.endswith('.cfg') and mesh_filename.endswith('.su2')
-
         inlet_types, marker_inlet = [], []
         for name, info in inlets_info.items():
             inlet_types.append(info['type'])
@@ -190,6 +193,10 @@ FREESTREAM_TEMPERATURE= 300.0
 FREESTREAM_VELOCITY= (1.0, 0.0, 0.0)
 VISCOSITY_MODEL= CONSTANT_VISCOSITY
 THERMODYNAMIC_PRESSURE= 73528282.41
+MU_CONSTANT= {constant_viscosity}
+MU_POLYCOEFFS= (0.0, 0.0, 0.0, 0.0, 0.0)
+MU_REF= 1.716e-05
+MU_T_REF= 273.15
 
 % --------------------------- CONVERGENCE PARAMETERS --------------------------%
 %
@@ -277,21 +284,38 @@ SCREEN_OUTPUT= (INNER_ITER, WALL_TIME, RMS_PRESSURE)
 TABULAR_FORMAT= CSV
 """
 
-        with open(cfg_file, 'w') as f:
+        if os.path.exists(proj_dir):
+            shutil.rmtree(proj_dir)
+        os.mkdir(proj_dir)
+
+        with open(os.path.join(proj_dir, 'simulate.cfg'), 'w') as f:
             f.write(cfg_content)
+        self.encode_su2(os.path.join(proj_dir, mesh_filename))
 
     @staticmethod
-    def simulate(cfg_file: str) -> pyvista.UnstructuredGrid:
-        run_dir = os.path.dirname(cfg_file)
-        run_bash = f"cd {run_dir}; SU2_CFD {cfg_file} >> screen_output.log"
+    def run(run_dir: str, with_monitor=False) -> pyvista.UnstructuredGrid:
+        cfg_file = os.path.join(run_dir, 'simulate.cfg')
+        run_bash = f"cd {run_dir}; SU2_CFD {cfg_file}"
+        if not with_monitor:
+            run_bash += ' >> screen_output.log'
         subprocess.run(run_bash, shell=True, check=True)
         res = pyvista.read(os.path.join(run_dir, 'flow.vtu'))
         return res
 
+    @staticmethod
+    def msh_to_su2(msh_file: str, su2_file: str):
+        assert msh_file.endswith('.msh') and su2_file.endswith('.su2')
+        run_bash = f"gmsh {msh_file} -format su2 -o {su2_file} -save"
+        subprocess.run(run_bash, shell=True, check=True)
 
-if __name__ == '__main__':
-    # simulator = Su2Simulator('/home/admin123456/Desktop/work/SU2_test/case05')
-    # simulator.prepare_cfg(
+
+def debug():
+    # proj_dir = '/home/admin123456/Desktop/work/topopt_exps/new_test/example01/su2_cache'
+    # simulator = Su2Simulator(
+    #     mesh_path='/home/admin123456/Desktop/work/topopt_exps/new_test/example01/model.su2'
+    # )
+    # simulator.prepare_sim_proj(
+    #     proj_dir=proj_dir,
     #     mesh_filename='model.su2',
     #     inlets_info={
     #         'inlet': {
@@ -318,7 +342,44 @@ if __name__ == '__main__':
     #     },
     #     conv_level=-8
     # )
-    # simulator.run()
+    # simulator.run(proj_dir, with_monitor=True)
 
-    a = os.path.dirname('/home/admin123456/Desktop/work/SU2_test/case05/model.su2')
-    print(a)
+    # ---------------------------------------------------------------
+    Su2Simulator.msh_to_su2(
+        msh_file='/home/admin123456/Desktop/work/topopt_exps/new_test/example01/model.msh',
+        su2_file='/home/admin123456/Desktop/work/topopt_exps/new_test/example01/model_transform.su2'
+    )
+
+    proj_dir = '/home/admin123456/Desktop/work/topopt_exps/new_test/example01/su2_cache'
+    simulator = Su2Simulator(
+        mesh_path='/home/admin123456/Desktop/work/topopt_exps/new_test/example01/model_transform.su2'
+    )
+    simulator.prepare_sim_proj(
+        proj_dir=proj_dir,
+        mesh_filename='model_transform.su2',
+        inlets_info={
+            'inlet': {
+                'type': 'VELOCITY_INLET',
+                'temperature': 300.0,
+                'vel_scale': 1.0,
+                'direction': (1., 0., 0.)
+            }
+        },
+        outlets_info={
+            'outlet': {
+                'type': 'PRESSURE_OUTLET',
+                'pressure': 0.0,
+            }
+        },
+        walls_info={
+            'wall': {
+                'temperature': 300.0,
+            },
+        },
+        conv_level=-8
+    )
+    simulator.run(proj_dir, with_monitor=True)
+
+
+if __name__ == '__main__':
+    debug()
