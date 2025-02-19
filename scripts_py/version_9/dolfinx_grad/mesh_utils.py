@@ -5,6 +5,7 @@ import pyvista
 import subprocess
 import collections
 from typing import Union, Callable, List, Sequence, Literal
+from sklearn.neighbors import KDTree
 
 import dolfinx
 from dolfinx import geometry
@@ -174,9 +175,9 @@ class MeshUtils(object):
     def cell_connectivity(mesh: Union[dolfinx.mesh.Mesh, pyvista.UnstructuredGrid], dim: int = None) -> np.ndarray:
         if isinstance(mesh, pyvista.UnstructuredGrid):
             if dim == 2:
-                return mesh.cells.reshape(-1, 4)
+                return mesh.cells.reshape(-1, 4)[:, 1:]
             else:
-                return mesh.cells.reshape(-1, 5)
+                return mesh.cells.reshape(-1, 5)[:, 1:]
         elif isinstance(mesh, dolfinx.mesh.Mesh):
             con = []
             adjacency_list: dolfinx.cpp.graph.AdjacencyList_int32 = mesh.topology.connectivity(mesh.topology.dim, 0)
@@ -244,9 +245,9 @@ class MeshObj(object):
     def points(self):
         return self.domain.geometry.x
 
-    def deform(self, coord_dif: np.ndarray):
-        assert self.domain.geometry.x.shape == coord_dif.shape
-        self.domain.geometry.x[:] += coord_dif
+    def deform(self, displacement_np: np.ndarray):
+        assert self.domain.geometry.x.shape == displacement_np.shape
+        self.domain.geometry.x[:] += displacement_np
 
     def is_collision(self):
         cell_idxs = MeshUtils.cell_indices_of_points(self.domain, self.points)
@@ -342,13 +343,32 @@ class MeshObj(object):
         assert file.endswith('.vtu')
         self.grid.save(file, binary=False)
 
+    def detect_obstacle(self, obs_pcd: np.ndarray, obs_radius: float, unit_lr: float):
+        tree = KDTree(self.points)
+        idxs_list, dists_list = tree.query_radius(obs_pcd, r=obs_radius + unit_lr, return_distance=True)
+
+        conflict_mesh_idxs, conflict_obs_idxs = [], []
+        for obs_idx, (mesh_idxs, dists) in enumerate(zip(idxs_list, dists_list)):
+            if len(mesh_idxs) == 0:
+                continue
+            conflict_mesh_idxs.append(np.array(mesh_idxs))
+            conflict_obs_idxs.append(np.full(shape=(len(mesh_idxs)), fill_value=obs_idx, dtype=int))
+
+        if len(conflict_mesh_idxs) > 0:
+            conflict_mesh_idxs = np.concatenate(conflict_mesh_idxs, axis=-1)
+            conflict_obs_idxs = np.concatenate(conflict_obs_idxs, axis=-1)
+            return conflict_mesh_idxs, conflict_obs_idxs
+        else:
+            return np.array([]), np.array([])
+
 
 def debug():
-    domain, cell_tags, facet_tags = MeshUtils.read_msh(
-        '/home/admin123456/Desktop/work/topopt_exps/fluid_shape1/pipe_1.msh', dim=2
+    mesh = MeshObj(
+        mesh_file='/home/admin123456/Desktop/work/topopt_exps/new_test/example03/model.msh',
+        dim=2
     )
+    mesh.detect_obstacle(None)
 
-    # domain = create_unit_square(MPI.COMM_WORLD, 10, 10)
     # plotter = pyvista.Plotter()
     # plotter.add_mesh(grid, style='wireframe', color='red')
     # plotter.add_mesh(np.asarray(grid.cell_centers().points), color='green')

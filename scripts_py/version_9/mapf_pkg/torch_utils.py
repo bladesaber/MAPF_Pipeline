@@ -33,15 +33,19 @@ class TorchUtils(object):
         return para
 
     @staticmethod
-    def tensor2np(data: torch.Tensor):
+    def tensor2np(data: torch.Tensor, with_copy=False):
         if data.requires_grad:
-            return data.detach().numpy()
+            data_np = data.detach().numpy()
         else:
-            return data.numpy()
+            data_np = data.numpy()
+        if with_copy:
+            return np.copy(data_np)
+        else:
+            return data_np
 
     @staticmethod
-    def grad2np(data: torch.Tensor):
-        return TorchUtils.tensor2np(data.grad)
+    def grad2np(data: torch.Tensor, with_copy=False):
+        return TorchUtils.tensor2np(data.grad, with_copy)
 
     @staticmethod
     def compute_grad(loss: torch.Tensor):

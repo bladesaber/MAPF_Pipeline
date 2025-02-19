@@ -2,6 +2,7 @@ import numpy as np
 from typing import List, Dict, Union
 import pyvista
 import re
+import torch
 
 from pyspline import Curve, Surface, Volume
 from scripts_py.version_9.mapf_pkg.bspline_utils import BsplineUtils
@@ -112,10 +113,11 @@ class SurfaceBspline(object):
 
 class VolumeBspline(object):
     """for 3d solid"""
+
     def __init__(
             self,
             cube_range: List[List[float]], cube_num: List[int], cube_degree: List[int],
-            volume_pcd: np.ndarray, fit_nIter=100
+            volume_pcd: np.ndarray, fit_nIter=100, with_torch=False
     ):
         self.uvw_num = cube_num
         self.uvw_degree = cube_degree
@@ -147,6 +149,11 @@ class VolumeBspline(object):
             self.knot['u'], self.knot['v'], self.knot['w']
         )
 
+        self.with_torch = with_torch
+        if with_torch:
+            self.mat_torch = torch.tensor(self.mat, dtype=torch.float32)
+            self.mat_torch.requires_grad = False
+
     @staticmethod
     def compute_mat(uvws: np.ndarray, uvw_num, uvw_degree, u_knot, v_knot, w_knot):
         u_mat = BsplineUtils.compute_mat(uvws[:, 0], uvw_num[0], uvw_degree[0], u_knot, fill_last_one=False)
@@ -171,13 +178,37 @@ class VolumeBspline(object):
         res = self.mat[..., np.newaxis] * self.coef
         return np.sum(np.sum(np.sum(res, axis=1), axis=1), axis=1)
 
+    def deform_coef(self, coef_dif: np.ndarray):
+        self.coef += coef_dif
+
+    @staticmethod
+    def get_pcd_torch(mat: torch.Tensor, coef: torch.Tensor):
+        res = mat[..., None] * coef
+        return res.sum(dim=(1, 2, 3))
+
+    def compute_coef_gradient(self, pcd_grad: np.ndarray):
+        if self.with_torch:
+            coef_torch = torch.tensor(self.coef, dtype=torch.float32)
+            coef_torch.requires_grad = True
+
+            pcd_grad_torch = torch.tensor(pcd_grad, dtype=torch.float32)
+            pcd_grad_torch.requires_grad = False
+
+            pcd = self.get_pcd_torch(self.mat_torch, coef_torch)
+            pcd.backward(pcd_grad_torch)
+
+            coef_grad = coef_torch.grad.numpy()
+            return True, coef_grad
+        return False, False
+
 
 class AreaBspline(object):
     """for 2d solid"""
+
     def __init__(
             self,
             uv_range: List[List[float]], uv_num: List[int], uv_degree: List[int],
-            pcd_area: np.ndarray, fit_nIter=100
+            pcd_area: np.ndarray, fit_nIter=100, with_torch=False
     ):
         """pcd_area: shape is [n, 2]"""
         assert pcd_area.shape[-1] == 2
@@ -217,6 +248,11 @@ class AreaBspline(object):
             self.knot['u'], self.knot['v']
         )
 
+        self.with_torch = with_torch
+        if with_torch:
+            self.mat_torch = torch.tensor(self.mat, dtype=torch.float32)
+            self.mat_torch.requires_grad = False
+
     @staticmethod
     def compute_mat(uvs: np.ndarray, uv_num, uv_degree, u_knot, v_knot):
         u_mat = BsplineUtils.compute_mat(uvs[:, 0], uv_num[0], uv_degree[0], u_knot, fill_last_one=False)
@@ -227,6 +263,29 @@ class AreaBspline(object):
     def get_pcd(self):
         res = self.mat[..., np.newaxis] * self.coef
         return np.sum(np.sum(res, axis=1), axis=1)
+
+    def deform_coef(self, coef_dif: np.ndarray):
+        self.coef += coef_dif
+
+    @staticmethod
+    def get_pcd_torch(mat: torch.Tensor, coef: torch.Tensor):
+        res = mat[..., None] * coef
+        return res.sum(dim=(1, 2))
+
+    def compute_coef_gradient(self, pcd_grad: np.ndarray):
+        if self.with_torch:
+            coef_torch = torch.tensor(self.coef, dtype=torch.float32)
+            coef_torch.requires_grad = True
+
+            pcd_grad_torch = torch.tensor(pcd_grad, dtype=torch.float32)
+            pcd_grad_torch.requires_grad = False
+
+            pcd = self.get_pcd_torch(self.mat_torch, coef_torch)
+            pcd.backward(pcd_grad_torch)
+
+            coef_grad = coef_torch.grad.numpy()
+            return True, coef_grad
+        return False, False
 
 
 def debug_surface():

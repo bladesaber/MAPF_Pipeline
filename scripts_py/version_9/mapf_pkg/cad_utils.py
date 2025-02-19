@@ -392,7 +392,8 @@ class OcctProfile(object):
 
         if guide_points is not None:
             for guide_point in guide_points:
-                brep_plate_builder.Add(OcctProfile.make_point(guide_point[0], guide_points[1], guide_point[2]))
+                x, y, z = float(guide_point[0]), float(guide_point[1]), float(guide_point[2])
+                brep_plate_builder.Add(OcctProfile.make_point(x, y, z))
 
         brep_plate_builder.Build()
         face: TopoDS.TopoDS_Face = brep_plate_builder.Shape()

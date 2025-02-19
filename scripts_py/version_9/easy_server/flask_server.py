@@ -390,7 +390,7 @@ def cad_generate_pipe_shell():
 @app.route('/cad_generate_bspline_surface', methods=['POST'])
 @cross_origin()
 def cad_generate_bspline_surface():
-    surface_cfg = json.loads(json.loads(request.data)['data'])
+    surface_cfg = json.loads(request.data)['data']
     shell = CadServer.make_spline_surface(
         boundaries_info=surface_cfg['boundaries_info'],
         guide_info=surface_cfg['guide_info'],
