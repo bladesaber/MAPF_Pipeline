@@ -32,8 +32,9 @@ class VisUtils(object):
         )
 
     def plot_grad(
-            self, pos_xyz: np.ndarray, grad: np.ndarray, plotter: pyvista.Plotter = None, mag=1.0, color=(1., 0., 0.)
+            self, pos_xyz: np.ndarray, grad: np.ndarray, plotter: pyvista.Plotter = None,
+            mag=1.0, color=(1., 0., 0.), opacity=1.0
     ):
         if plotter is None:
             plotter = self.plotter
-        plotter.add_arrows(pos_xyz, grad, mag=mag, color=color)
+        plotter.add_arrows(pos_xyz, grad, mag=mag, color=color, opacity=opacity)

@@ -245,6 +245,9 @@ class MeshObj(object):
     def points(self):
         return self.domain.geometry.x
 
+    def re_init_points(self, points: np.ndarray):
+        self.domain.geometry.x[:] = points
+
     def deform(self, displacement_np: np.ndarray):
         assert self.domain.geometry.x.shape == displacement_np.shape
         self.domain.geometry.x[:] += displacement_np

@@ -1,8 +1,7 @@
 import numpy as np
 import pyvista
 import dolfinx
-from typing import Union, Callable, List, Sequence, Literal
-import torch
+from typing import Union, Callable, List, Sequence, Literal, Dict
 
 from scripts_py.version_9.dolfinx_grad.mesh_utils import MeshObj, MeshUtils
 from scripts_py.version_9.dolfinx_grad.deform_geometry import VolumeBspline, AreaBspline
@@ -65,45 +64,3 @@ class FFDMeshObj(MeshObj):
         if self.fix_dofs is not None:
             plotter.add_mesh(pyvista.PointSet(self.points[self.fix_dofs, :]), color=(0., 0., 1.))
         plotter.show()
-
-
-class SpringMeshObj(MeshObj):
-    def __init__(
-            self,
-            mesh_file: str = None, mesh_name='model', dim=None,
-            domain: dolfinx.mesh.Mesh = None,
-            cell_tags: dolfinx.mesh.MeshTags = None,
-            facet_tags: dolfinx.mesh.MeshTags = None,
-    ):
-        super().__init__(
-            mesh_file=mesh_file, mesh_name=mesh_name, dim=dim,
-            domain=domain, cell_tags=cell_tags, facet_tags=facet_tags
-        )
-
-        self.bc_free_marker = []
-        self.bc_free_dofs: np.ndarray = None
-
-        self.bc_fix_marker = []
-        self.bc_fix_dofs: np.ndarray = None
-        self.bc_fix_var: np.ndarray = None
-
-        self.internal_dof: np.ndarray = None
-
-    def set_dofs(
-            self,
-            bc_fix_dofs: np.ndarray, bc_fix_marker: List[int],
-            bc_free_dofs: np.ndarray, bc_free_marker: List[int]
-    ):
-        self.bc_free_marker = bc_free_marker
-        self.bc_free_dofs = bc_free_dofs
-
-        self.bc_fix_marker = bc_fix_marker
-        self.bc_fix_dofs = bc_fix_dofs
-        self.bc_fix_var = np.asarray(self.points[self.bc_fix_dofs, :])
-
-        self.internal_dof = np.array(
-            set(np.arange(0, self.num_points, 1)) - set(self.bc_fix_dofs) - set(self.bc_fix_dofs)
-        )
-
-    def extract_region_connectivity(self):
-        pass

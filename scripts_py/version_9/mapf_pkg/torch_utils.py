@@ -4,11 +4,15 @@ import torch.nn.functional as F
 from torch import optim
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau, CosineAnnealingLR
 import numpy as np
-from typing import List, Callable, Dict
+from typing import List, Callable, Dict, Union, Literal
 import scipy
 
 
 class TorchUtils(object):
+    @staticmethod
+    def scalar2tensor(x: Union[float, int]):
+        return torch.tensor(x)
+
     @staticmethod
     def np2tensor(data: np.ndarray, require_grad: bool, device: str = 'cpu'):
         tensor = torch.tensor(data, dtype=torch.float64)
@@ -56,8 +60,19 @@ class TorchUtils(object):
         return torch.concatenate(datas, dim=dim)
 
     @staticmethod
-    def get_optimizer(parameters: List[torch.Tensor], lr: float) -> torch.optim.Optimizer:
-        return optim.Adam(parameters, lr=lr)
+    def get_optimizer(
+            parameters: List[torch.Tensor], lr: float,
+            method: Literal['adam', 'sgd', 'sgd_momentum'] = 'adam',
+            **kwargs
+    ) -> torch.optim.Optimizer:
+        if method == 'adam':
+            return optim.Adam(parameters, lr=lr)
+        elif method == 'sgd':
+            return optim.SGD(parameters, lr=lr)
+        elif method == 'sgd_momentum':
+            return optim.SGD(parameters, lr=lr, momentum=kwargs.get('momentum', 0.9))
+        else:
+            raise ValueError(f'[Error] Non-valid optimizer method {method}.')
 
     @staticmethod
     def get_lr_scheduler(
@@ -85,6 +100,15 @@ class TorchUtils(object):
             for para in parameters:
                 para -= para.grad * lr
                 para.grad.zero_()
+
+    @staticmethod
+    def clip_grad(parameters: List[torch.Tensor], method: Literal['clip_norm', 'clip_value'], **kwargs):
+        if method == 'clip_norm':
+            torch.nn.utils.clip_grad_norm_(parameters, kwargs['max_norm'])
+        elif method == 'clip_value':
+            torch.nn.utils.clip_grad_value_(parameters, kwargs['max_value'])
+        else:
+            raise ValueError('[Error]: Non-valid clip method.')
 
 
 class TorchMath(object):
