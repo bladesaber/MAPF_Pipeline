@@ -474,8 +474,8 @@ class OcctVis(object):
     def __init__(self):
         self.display, self.start_display, self.add_menu, self.add_function_to_menu = init_display()
 
-    def plot(self, shape: TopoDS.TopoDS_Shape):
-        self.display.DisplayShape(shape, update=True)
+    def plot(self, shape: TopoDS.TopoDS_Shape, color: Tuple[float, float, float] = None):
+        self.display.DisplayShape(shape, update=True, color=color)
 
     def show(self):
         self.start_display()

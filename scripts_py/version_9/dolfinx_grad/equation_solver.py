@@ -197,7 +197,7 @@ class LinearProblemSolver(object):
         x, is_solved = ScipySparseUtils.linear_solve(a_mat, b_vec, method='bicg')
         res_dict = {'is_solved': is_solved}
         if res_dict['is_solved']:
-            uh.vector.x[:] = x
+            uh.x.array[:] = x
             res_dict.update({'res': uh})
 
         if with_debug:

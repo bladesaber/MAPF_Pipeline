@@ -14,10 +14,7 @@ from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils
 from scripts_py.version_9.dolfinx_grad.deform_mesh_utils import MeshObj, MeshUtils
 from scripts_py.version_9.dolfinx_grad.vis_utils import VisUtils
 from scripts_py.version_9.dolfinx_grad.equation_solver import LinearProblemSolver
-
-
-# todo 磁性力流体能自动回避障碍物，相当于navier-stoke方程的external force项替补为力场项，
-#  流体会尽可能回避相斥力场，相当于减少势能损耗，基于SU2做
+from scripts_py.version_9.dolfinx_grad.remesh_utils import ReMeshObj
 
 
 class SpringTorchMeshObj(MeshObj):
@@ -428,7 +425,7 @@ class SpringFeaMeshObj(MeshObj):
         self.ds = MeshUtils.define_ds(self.domain, self.facet_tags)
         self.dx = MeshUtils.define_dx(self.domain)
 
-        self.internal_line_conn: Dict[int, np.ndarray] = {}
+        self.re_mesh_obj: ReMeshObj = None
 
     def set_dofs(
             self,
@@ -451,19 +448,11 @@ class SpringFeaMeshObj(MeshObj):
         self.num_fix_points = self.bc_fix_dofs.shape[0]
         self.num_free_points = self.free_dofs.shape[0]
 
-        line_conn = self.grid.extract_all_edges().lines.reshape((-1, 3))[:, 1:3]
-        graph = nx.Graph()
-        graph.add_edges_from(line_conn)
-
-        internal_line_dict: Dict[int, List[List[int]]] = {}
-        for p_idx in self.internal_dofs:
-            neg_idxs = list(graph.neighbors(p_idx))
-            neg_len = len(neg_idxs)
-            if neg_len not in internal_line_dict.keys():
-                internal_line_dict[neg_len] = []
-            internal_line_dict[neg_len].append([p_idx] + neg_idxs)
-        for neg_len, combin_pack in internal_line_dict.items():
-            self.internal_line_conn[neg_len] = np.array(combin_pack)
+        self.re_mesh_obj = ReMeshObj(
+            grid=self.grid, dim=self.topology_dim,
+            bc_dofs=np.concatenate([self.bc_free_dofs, self.bc_fix_dofs], axis=-1),
+            internal_dofs=self.internal_dofs
+        )
 
     @staticmethod
     def epsilon(u):
@@ -474,38 +463,16 @@ class SpringFeaMeshObj(MeshObj):
     def sigma(u, lambda_v, mu):
         return lambda_v * ufl.nabla_div(u) * ufl.Identity(len(u)) + 2 * mu * SpringFeaMeshObj.epsilon(u)
 
-    def re_mesh(self, max_iteration=1000, tol=1e-2):
-        # ------ laplacian smoothing: moves each internal point to the average position of its neighbors
-        # todo problem is re-mesh will cause more small cell
-        debug_bar = tqdm()
-        coord_cur = self.points.copy()
-        iteration = -1
-        while True:
-            p_idxs, coord_new = [], []
-            for neg_len, line_pack in self.internal_line_conn.items():
-                new_pos = np.mean(coord_cur[line_pack[:, 1:]], axis=1)
-                p_idxs.append(line_pack[:, 0])
-                coord_new.append(new_pos)
-
-            p_idxs = np.concatenate(p_idxs, axis=-1)
-            coord_new = np.concatenate(coord_new, axis=0)
-
-            error = np.max(np.linalg.norm(coord_cur[p_idxs, :] - coord_new, ord=2, axis=1))
-            coord_cur[p_idxs, :] = coord_new
-
-            debug_bar.set_description(f'[Info]: re-mesh error{error}')
-            debug_bar.update(iteration)
-
-            iteration += 1
-            if iteration > max_iteration:
-                print(f'[Info]: reach max iteration, laplacian smoothing re-mesh error:{error}.')
-                break
-
-            if error <= tol:
-                print(f'[Info]: converge, laplacian smoothing re-mesh error:{error}.')
-                break
-
-        self.re_init_points(coord_cur)
+    def re_mesh(self, max_iteration=1000, tol=1e-2, with_debug=False):
+        res_dict = self.re_mesh_obj.laplacian_balance_smoothing(
+            max_iteration=max_iteration, tol=tol, with_debug=with_debug
+        )
+        if res_dict['is_valid']:
+            res_pcd = res_dict['res_pcd']
+            if self.topology_dim == 2:
+                res_pcd = np.concatenate([res_pcd, np.zeros(shape=(res_pcd.shape[0], 1))], axis=1)
+            self.re_init_points(res_pcd)
+        return res_dict['is_valid']
 
     def fit_disp(
             self,

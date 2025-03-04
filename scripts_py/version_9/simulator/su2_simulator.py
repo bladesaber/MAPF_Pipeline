@@ -109,7 +109,8 @@ class Su2Simulator(object):
             restart_filename='restart_flow.dat', restart_sol=False,
             density=877.0, init_vel=(1., 0., 0.), constant_viscosity=0.04,
             conv_field='RMS_PRESSURE', conv_level=-6, conv_filename='conv_history',
-            run_iter=1000, body_force=(0., 0., 0.)
+            run_iter=1000, body_force=(0., 0., 0.),
+            with_screen_output=True, output_wrt_freq=100
     ):
         inlet_types, marker_inlet = [], []
         for name, info in inlets_info.items():
@@ -132,6 +133,20 @@ class Su2Simulator(object):
         for name, info in walls_info.items():
             marker_wall.extend([name, str(info['temperature'])])
         marker_wall_content = ', '.join(marker_wall)
+
+        if restart_filename.endswith('.dat'):
+            output_paras = ', '.join(['RESTART', 'PARAVIEW'])
+            read_binary_restart = 'YES'
+        elif restart_filename.endswith('.csv'):
+            output_paras = ', '.join(['RESTART_ASCII', 'PARAVIEW'])
+            read_binary_restart = 'NO'
+        else:
+            raise ValueError(f'[Error]: non-valid restart filename {restart_filename}.')
+
+        if with_screen_output:
+            screen_output = ', '.join(['INNER_ITER', 'WALL_TIME', 'RMS_PRESSURE'])
+        else:
+            screen_output = 'COARSE'
 
         cfg_content = f"""
 % ------------- DIRECT, ADJOINT, AND LINEARIZED PROBLEM DEFINITION ------------%
@@ -260,7 +275,7 @@ MESH_FILENAME= {mesh_filename}
 MESH_FORMAT= SU2
 
 RESTART_FILENAME= {restart_filename}
-% READ_BINARY_RESTART= NO
+READ_BINARY_RESTART= {read_binary_restart}
 % WRT_RESTART_OVERWRITE= YES
 RESTART_SOL= {'YES' if restart_sol else 'NO'} % Restart solution (NO, YES)
 
@@ -271,16 +286,16 @@ SOLUTION_FILENAME= {restart_filename} % filename that will be used to restart
 SURFACE_FILENAME= surface_flow
 
 % OUTPUT_FILES= (RESTART_ASCII, PARAVIEW_MULTIBLOCK)
-OUTPUT_FILES= (RESTART, PARAVIEW)
+OUTPUT_FILES= ({output_paras})
 % OUTPUT_FILES= (RESTART, PARAVIEW, SURFACE_CSV)
-OUTPUT_WRT_FREQ= (50, 50)
+OUTPUT_WRT_FREQ= ({output_wrt_freq})
 
 VOLUME_FILENAME= flow
 % VOLUME_OUTPUT= (COORDINATES, RESIDUAL, SOLUTION, PRIMITIVE)
 VOLUME_OUTPUT= (COORDINATES, SOLUTION, PRIMITIVE)
 % WRT_VOLUME_OVERWRITE= YES
 
-SCREEN_OUTPUT= (INNER_ITER, WALL_TIME, RMS_PRESSURE)
+SCREEN_OUTPUT= ({screen_output})
 TABULAR_FORMAT= CSV
 """
 
@@ -293,9 +308,12 @@ TABULAR_FORMAT= CSV
         self.encode_su2(os.path.join(proj_dir, mesh_filename))
 
     @staticmethod
-    def run(run_dir: str, with_monitor=False) -> pyvista.UnstructuredGrid:
+    def run(run_dir: str, parallel_num=1, with_monitor=False) -> pyvista.UnstructuredGrid:
         cfg_file = os.path.join(run_dir, 'simulate.cfg')
-        run_bash = f"cd {run_dir}; SU2_CFD {cfg_file}"
+        if parallel_num > 1:
+            run_bash = f"cd {run_dir}; mpirun -n {parallel_num} SU2_CFD {cfg_file}"
+        else:
+            run_bash = f"cd {run_dir}; SU2_CFD {cfg_file}"
         if not with_monitor:
             run_bash += ' >> screen_output.log'
         subprocess.run(run_bash, shell=True, check=True)

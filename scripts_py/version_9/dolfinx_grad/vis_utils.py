@@ -38,3 +38,13 @@ class VisUtils(object):
         if plotter is None:
             plotter = self.plotter
         plotter.add_arrows(pos_xyz, grad, mag=mag, color=color, opacity=opacity)
+
+    @staticmethod
+    def set_point_data(grid: pyvista.UnstructuredGrid, data: np.ndarray, name: str):
+        grid.point_data[name] = data
+        return grid
+
+    @staticmethod
+    def set_cell_data(grid: pyvista.UnstructuredGrid, data: np.ndarray, name: str):
+        grid.cell_data[name] = data
+        return grid

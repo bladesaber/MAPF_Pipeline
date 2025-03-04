@@ -3,7 +3,7 @@ import shutil
 import numpy as np
 import pandas as pd
 import dolfinx
-from typing import Dict, List, Union, Callable, Literal
+from typing import Dict, List, Union, Callable, Literal, Tuple
 
 import ufl
 from ufl import inner, grad, div
@@ -72,13 +72,16 @@ class StokeSimulator(FluidSimulator):
         super().__init__(name=name, mesh=mesh)
         self.equation_map = {'bcs': {}}
 
-    def define_equation(self, nu_value: float):
+    def define_equation(self, nu_value: float, body_force=(0., 0., 0.)):
         u, p = ufl.split(ufl.TrialFunction(self.W))
         v, q = ufl.split(ufl.TestFunction(self.W))
 
         nu = dolfinx.fem.Function(self.nu_function_space)
         nu.x.array[:] = nu_value
-        f = dolfinx.fem.Constant(self.mesh.domain, np.zeros(self.mesh.topology_dim))
+        # f = dolfinx.fem.Constant(self.mesh.domain, np.zeros(self.mesh.topology_dim))
+        # f = dolfinx.fem.Constant(self.mesh.domain, body_force[:self.mesh.topology_dim])
+        f = dolfinx.fem.Function(self.V_map_space, name='body_force')
+        f.x.array[:] = np.tile(np.array(body_force[:self.mesh.topology_dim]), (self.mesh.num_points, 1)).reshape(-1)
 
         stoke_form = (
                 nu * inner(grad(u), grad(v)) * self.dx
@@ -191,14 +194,17 @@ class NavierStokeSimulator(FluidSimulator):
         super().__init__(name=name, mesh=mesh)
         self.equation_map = {'bcs': {}}
 
-    def define_equation(self, nu_value: float, constant_nu=True):
+    def define_equation(self, nu_value: float, constant_nu=True, body_force=(0., 0., 0.)):
         up = dolfinx.fem.Function(self.W, name='state')
         u, p = ufl.split(up)
         v, q = ufl.split(ufl.TestFunction(self.W))
 
         nu = dolfinx.fem.Function(self.nu_function_space)
         nu.x.array[:] = nu_value
-        f = dolfinx.fem.Constant(self.mesh.domain, np.zeros(self.mesh.topology_dim))
+        # f = dolfinx.fem.Constant(self.mesh.domain, np.zeros(self.mesh.topology_dim))
+        # f = dolfinx.fem.Constant(self.mesh.domain, body_force[:self.mesh.topology_dim])
+        f = dolfinx.fem.Function(self.V_map_space, name='body_force')
+        f.x.array[:] = np.tile(np.array(body_force[:self.mesh.topology_dim]), (self.mesh.num_points, 1)).reshape(-1)
 
         navier_stoke_form = (
                 nu * inner(grad(u), grad(v)) * ufl.dx

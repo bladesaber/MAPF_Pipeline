@@ -11,14 +11,12 @@ from scripts_py.version_9.dolfinx_grad.equation_solver import LinearProblemSolve
 
 def t_grad(u: Union[ufl.Argument, dolfinx.fem.Function], n: ufl.FacetNormal):
     """Computes the tangential gradient of u.
-
     Args:
         u: The argument, whose tangential gradient is to be computed.
         n: The unit outer normal vector.
-
     Returns:
         The tangential gradient of u.
-
+    ufl.inner为Frobenius内积
     """
     return ufl.grad(u) - ufl.outer(ufl.grad(u) * n, n)
 
@@ -267,84 +265,87 @@ class BarycenterRegularization(object):
         self.weight = weight
 
 
-"""
 class CurvatureRegularization(object):
+    """Todo: Fail method"""
+    ksp_option = {
+        'ksp_type': 'preonly',
+        'pc_type': 'lu',
+        "pc_factor_mat_solver_type": "mumps",
+        "mat_mumps_icntl_24": 1
+    }
+
     def __init__(
             self,
+            name: str,
             shape_problem: ShapeDataBase,
-            mu: float,
-            ksp_option,
-            name='CurvatureRegularization'
+            weight: float,
+            ksp_option: Dict = None
     ):
         self.name = name
         self.shape_problem = shape_problem
-        self.mu = mu
-        self.ksp_option = ksp_option
-
-        self.is_active = False
-        if self.mu > 0.0:
-            self.is_active = True
+        self.weight = weight
+        self.ksp_option = ksp_option if ksp_option is not None else self.ksp_option
+        self.is_active = True if self.weight > 0.0 else False
 
         self.kappa_curvature = dolfinx.fem.Function(self.shape_problem.deformation_space)
         self.n = MeshUtils.define_facet_norm(self.shape_problem.domain)
         self.coord = MeshUtils.define_coordinate(self.shape_problem.domain)
         self.ds = MeshUtils.define_ds(self.shape_problem.domain)
-
-        self.a_curvature_form = ufl.inner(
-            ufl.TrialFunction(self.shape_problem.deformation_space),
-            ufl.TestFunction(self.shape_problem.deformation_space)
-        ) * self.ds
-
-        self.l_curvature_form = ufl.inner(
-            t_grad(self.coord, self.n),
-            t_grad(ufl.TestFunction(self.shape_problem.deformation_space), self.n),
-        ) * self.ds
-
         self.test_v = ufl.TestFunction(self.shape_problem.deformation_space)
+
+        self.a_form = ufl.inner(ufl.TrialFunction(self.shape_problem.deformation_space), self.test_v) * self.ds
+        self.l_form = ufl.inner(t_grad(self.coord, self.n), t_grad(self.test_v, self.n)) * self.ds
+        self.loss_form = ufl.inner(self.kappa_curvature, self.kappa_curvature) * self.ds
+        self.is_solved = False
 
     def compute_shape_derivative(self):
         if self.is_active:
+            # 这是抄cashocs的表达式,似乎并不可行
             identity = ufl.Identity(self.shape_problem.domain.geometry.dim)
-
-            shape_form = self.mu * ufl.inner(
-                (identity - (t_grad(self.coord, self.n) + (t_grad(self.coord, self.n)).T)) * t_grad(self.test_v,
-                                                                                                    self.n),
-                t_grad(self.kappa_curvature, self.n)
-            ) * self.ds + 0.5 * t_div(self.test_v, self.n) * t_div(self.kappa_curvature, self.n) * self.ds
-
+            coord_tang = t_grad(self.coord, self.n)
+            shape_form = (
+                    self.weight *
+                    ufl.inner(
+                        (identity - (coord_tang + coord_tang.T)) * t_grad(self.test_v, self.n),
+                        t_grad(self.kappa_curvature, self.n)
+                    ) * self.ds
+                    + 0.5 * t_div(self.test_v, self.n) * t_div(self.kappa_curvature, self.n) * self.ds
+            )
+            # shape_form = ufl.derivative(self.weight * self.loss_form, self.coord, self.test_v)
             return shape_form
         else:
             return 0.0
 
-    def compute_objective(self):
+    def compute_objective(self, force_update=False):
         value = 0.0
-
         if self.is_active:
-            self._compute_curvature()
-
-            curvature_val = AssembleUtils.assemble_scalar(dolfinx.fem.form(
-                ufl.inner(self.kappa_curvature, self.kappa_curvature) * self.ds
-            ))
-            value += 0.5 * self.mu * curvature_val
-
+            self._compute_curvature(force_update=force_update)
+            curvature_val = AssembleUtils.assemble_scalar(dolfinx.fem.form(self.loss_form))
+            value += 0.5 * self.weight * curvature_val
         return value
 
-    def _compute_curvature(self):
-        res_dict = LinearProblemSolver.solve_by_petsc_form(
-            comm=self.shape_problem.domain.comm,
-            uh=self.kappa_curvature,
-            a_form=self.a_curvature_form,
-            L_form=self.l_curvature_form,
-            bcs=[],
-            ksp_option=self.ksp_option
-        )
+    def _compute_curvature(self, force_update=False, with_debug=False):
+        if (not self.is_solved) or force_update:
+            res_dict = LinearProblemSolver.solve_fea_petsc(
+                comm=self.shape_problem.domain.comm,
+                uh=self.kappa_curvature,
+                a_form=dolfinx.fem.form(self.a_form),
+                l_form=dolfinx.fem.form(self.l_form),
+                bcs=[],
+                mat_assemble_method='lift',
+                ksp_option=self.ksp_option,
+                with_debug=with_debug
+            )
+            self.is_solved = True
+            return res_dict['is_solved']
+        return True
 
     def update(self):
+        self.is_solved = False
         self._compute_curvature()
 
-    def update_weight(self, mu):
-        self.mu = mu
-"""
+    def update_weight(self, weight):
+        raise NotImplementedError
 
 
 class ShapeRegularizationPipe(object):

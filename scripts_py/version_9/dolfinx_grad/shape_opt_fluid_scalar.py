@@ -13,21 +13,24 @@ from scripts_py.version_9.dolfinx_grad.dolfinx_utils import AssembleUtils
 from scripts_py.version_9.dolfinx_grad.mesh_utils import MeshUtils
 from scripts_py.version_9.dolfinx_grad.dynamic_recorder import VtuRecorder
 from scripts_py.version_9.simulator.su2_simulator import Su2Simulator
-from scripts_py.version_9.dolfinx_grad.vis_utils import VisUtils
 
 from scripts_py.version_9.dolfinx_grad.lagrange_method.problem_state import StateProblem
 from scripts_py.version_9.dolfinx_grad.lagrange_method.solver_optimize import OptimalShapeProblem
 from scripts_py.version_9.dolfinx_grad.lagrange_method.type_database import create_shape_problem, create_state_problem
 from scripts_py.version_9.dolfinx_grad.lagrange_method.shape_regularization import VolumeRegularization, \
-    ShapeRegularizationPipe
+    ShapeRegularizationPipe, CurvatureRegularization
 from scripts_py.version_9.dolfinx_grad.lagrange_method.cost_functions import IntegralFunctional, \
     ScalarTrackingFunctional
 
 from scripts_py.version_9.dolfinx_grad.gard_fuse_utils import GradRawFusion, GradSpringFeaFusion
 from scripts_py.version_9.dolfinx_grad.spring_mesh_utils import SpringTorchMeshObj, SpringFeaMeshObj
+from scripts_py.version_9.dolfinx_grad.other_grad import CurvatureGrad
 
 
-# todo 使用SU2仿真并无法到达最优点，需要refit吗?
+# todo 1.使用SU2仿真并无法到达最优点，需要refit吗?
+#  2.表面曲率控制
+#  3.obstacle点抑制
+#  4.加速运算
 
 
 class Su2SimulatorPacker(Su2Simulator):
@@ -55,22 +58,49 @@ class Su2SimulatorPacker(Su2Simulator):
         self.mesh_to_su2_indices = idxs_list
         self.su2_to_mesh_indices = np.argsort(idxs_list)
 
+    def prepare_sim_proj(
+            self,
+            proj_dir: str, mesh_filename: str,
+            inlets_info: Dict, outlets_info: Dict, walls_info: Dict,
+            restart_filename='restart_flow.csv', restart_sol=False,
+            density=877.0, init_vel=(1., 0., 0.), constant_viscosity=0.04,
+            conv_field='RMS_PRESSURE', conv_level=-8, conv_filename='conv_history',
+            run_iter=1000, body_force=(0., 0., 0.), **kwargs
+    ):
+        super().prepare_sim_proj(
+            proj_dir=proj_dir,
+            mesh_filename=mesh_filename,
+            inlets_info=inlets_info,
+            outlets_info=outlets_info,
+            walls_info=walls_info,
+            restart_filename=restart_filename,
+            restart_sol=restart_sol,
+            density=density,
+            init_vel=init_vel,
+            constant_viscosity=constant_viscosity,
+            conv_field=conv_field,
+            conv_level=conv_level,
+            conv_filename=conv_filename,
+            run_iter=run_iter,
+            body_force=body_force
+        )
+        if restart_sol:
+            df = pd.read_csv(kwargs['restart_sol_file'], index_col=0)
+            df[['x', 'y']] = self.points[:, :2]
+            if self.n_dim == 3:
+                df['z'] = self.points[:, 2]
+            df.to_csv(os.path.join(proj_dir, restart_filename))
+
     def simulate(self, run_dir, with_monitor):
         res_vtu = self.run(run_dir=run_dir, with_monitor=with_monitor)
         velocity = np.asarray(res_vtu.point_data['Velocity'])
         velocity = velocity[self.su2_to_mesh_indices, :]
         pressure = np.asarray(res_vtu.point_data['Pressure'])
         pressure = pressure[self.su2_to_mesh_indices]
-        return {
-            'point_velocity': velocity,
-            'point_pressure': pressure,
-        }
+        return {'point_velocity': velocity, 'point_pressure': pressure}
 
     def update_geometry(self):
-        if self.mesh.topology_dim == 2:
-            self.points = self.mesh.points[self.mesh_to_su2_indices, :2]
-        else:
-            self.points = self.mesh.points[self.mesh_to_su2_indices, :]
+        self.points = self.mesh.points[self.mesh_to_su2_indices, :self.n_dim]
 
 
 class ShapeFluidOptimizer(object):
@@ -123,7 +153,8 @@ class ShapeFluidOptimizer(object):
 
         self.bcs_control = []
         self.regularization_list: List[Dict] = []
-        self.problem_cfgs = {}
+        self.problem_cfgs: Dict[str, Dict] = {}
+        self.other_problem_cfgs: Dict[str, Union[CurvatureGrad]] = {}
 
         self.recorder = VtuRecorder(self.mesh, save_dir=os.path.join(result_dir, 'result_vtu'), is_binary=True)
 
@@ -152,7 +183,6 @@ class ShapeFluidOptimizer(object):
                     )
                 )
                 bc_free_dofs.append(bc_dofs)
-
             else:
                 bc_value = dolfinx.fem.Function(self.vector_point_functionSpace, name=f'bry_control_{name}')
                 bc_dofs = MeshUtils.extract_entity_dofs(
@@ -191,17 +221,19 @@ class ShapeFluidOptimizer(object):
         vq = dolfinx.fem.Function(self.W, name=f"adjoint")
         v, q = ufl.split(vq)  # please don't use vq.split()
 
-        f = dolfinx.fem.Constant(self.mesh.domain, np.zeros(self.mesh.topology_dim))
+        # force_body = dolfinx.fem.Constant(self.mesh.domain, np.zeros(self.mesh.topology_dim))
+        force_body = dolfinx.fem.Function(self.vector_point_functionSpace, name='body_force')
+
         nut = dolfinx.fem.Function(self.scalar_point_functionSpace, name=f"nut")
         nut.x.array[:] = constant_nu
 
         # ------ govern equation
         if fluid_type == 'stoke':
             govern_form = (
-                    inner(grad(u), grad(v)) * ufl.dx
+                    nut * inner(grad(u), grad(v)) * ufl.dx
                     - div(v) * p * ufl.dx
                     - q * div(u) * ufl.dx
-                    - inner(f, v) * ufl.dx
+                    - inner(force_body, v) * ufl.dx
             )
         elif fluid_type == 'rans':
             govern_form = (
@@ -209,7 +241,7 @@ class ShapeFluidOptimizer(object):
                     + inner(grad(u) * u, v) * ufl.dx
                     - inner(p, div(v)) * ufl.dx
                     + inner(div(u), q) * ufl.dx
-                    - inner(f, v) * ufl.dx
+                    - inner(force_body, v) * ufl.dx
             )
         else:
             raise ValueError('[Error]: Non-valid simulator_type')
@@ -273,6 +305,7 @@ class ShapeFluidOptimizer(object):
         # ------ simulator
         if fluid_type == 'rans':
             simulator = Su2SimulatorPacker(self.su2_file, self.mesh)
+            simulator.first_run = True
 
             su2_cache_dir = os.path.join(self.result_dir, f'{problem_name}_su2')
             simulator_cfg = {
@@ -285,6 +318,8 @@ class ShapeFluidOptimizer(object):
                 'conv_level': -12,
                 'run_iter': su2_cfg.get('run_iter', 1000),
                 'refit_by_fenics': su2_cfg.get('refit_by_fenics', False),
+                'restart_filename': 'restart_flow.csv',
+                'restart_sol_file': os.path.join(self.result_dir, 'restart_flow.csv')
             }
             for name, cfg in inlet_cfg.items():
                 vel_value = np.array(cfg['value'])
@@ -343,10 +378,11 @@ class ShapeFluidOptimizer(object):
                 cost_functional_list.append(cost_fun)
 
             elif cfg['style'] == 'minimum_stress':
-                area = AssembleUtils.assemble_scalar(dolfinx.fem.form(
-                    dolfinx.fem.Constant(self.mesh.domain, 1.0) * self.ds(cfg['marker'])
-                ))
-                cost_form = (1.0 / area) * p * self.ds(cfg['marker'])
+                # area = AssembleUtils.assemble_scalar(dolfinx.fem.form(
+                #     dolfinx.fem.Constant(self.mesh.domain, 1.0) * self.ds(cfg['marker'])
+                # ))
+                # cost_form = (1.0 / area) * p * self.ds(cfg['marker'])
+                cost_form = p * self.ds(cfg['marker'])
                 cost_fun = IntegralFunctional(
                     name=f'{problem_name}_loss_minimum_stress_{cfg["marker"]}',
                     domain=self.mesh.domain, form=cost_form, weight=cfg['weight']
@@ -370,6 +406,14 @@ class ShapeFluidOptimizer(object):
                 cost_fun = IntegralFunctional(
                     name=f'{problem_name}_loss_maximum_flux_{cfg["marker"]}',
                     domain=self.mesh.domain, form=flux_form, weight=cfg['weight']
+                )
+                cost_functional_list.append(cost_fun)
+
+            elif cfg['style'] == 'minimum_dissipation_v2':
+                cost_form = inner(grad(u), grad(u)) * ufl.dx
+                cost_fun = IntegralFunctional(
+                    name=f'{problem_name}_loss_minimum_dissipation',
+                    domain=self.mesh.domain, form=cost_form, weight=cfg['weight']
                 )
                 cost_functional_list.append(cost_fun)
 
@@ -412,11 +456,20 @@ class ShapeFluidOptimizer(object):
             raise ValueError(f'[Error]: Non-valid scalar product method:{scalar_product_method}.')
 
         self.problem_cfgs[problem_name] = {
-            'uh': uh, 'nut': nut, 'opt_problem': opt_problem,
-            'fluid_type': fluid_type,
+            'uh': uh, 'nut': nut, 'force_body': force_body, 'opt_problem': opt_problem,
+            'run_type': fluid_type,
             'simulator': simulator if fluid_type == 'rans' else None,
             'simulator_cfg': simulator_cfg if fluid_type == 'rans' else None,
         }
+
+    def add_other_problem(self, problem_type, **kwargs):
+        if problem_type == 'curvature_reg':
+            self.other_problem_cfgs[problem_type] = CurvatureGrad(
+                mesh=self.mesh, weight=kwargs['weight'],
+                ksp_option_curvature=kwargs.get('ksp_option_curvature', self.state_ksp_option),
+                ksp_option_norm=kwargs.get('ksp_option_norm', self.state_ksp_option),
+            )
+            self.other_problem_cfgs[problem_type].set_fix_boundary(self.mesh.bc_fix_dofs)
 
     def compute_fluid_grad(
             self,
@@ -459,23 +512,16 @@ class ShapeFluidOptimizer(object):
             problem_grad[name] = np.copy(grad_var.x.array)
         return True, problem_grad
 
-    # def compute_obstacle_grad(self, obs_pcd: np.ndarray, obs_radius: float, unit_lr: float, weight: float):
-    #     """depreciated"""
-    #     conf_mesh_idxs, conf_obs_idxs, require_dist = self.mesh.detect_obstacle(obs_pcd, obs_radius, unit_lr)
-    #     if len(conf_mesh_idxs) > 0:
-    #         mesh_pcd_t = TorchUtils.np2tensor(self.mesh.points, require_grad=True)
-    #         obs_pcd_t = TorchUtils.np2tensor(obs_pcd, require_grad=False)
-    #         require_dist_t = TorchUtils.np2tensor(require_dist.reshape(-1) + unit_lr, require_grad=False)
-    #
-    #         dist_t = torch.norm(mesh_pcd_t[conf_mesh_idxs, :] - obs_pcd_t[conf_obs_idxs, :], p=2, dim=1)
-    #         loss = (F.relu(require_dist_t - dist_t)).sum() * weight
-    #
-    #         loss.backward()
-    #         with torch.no_grad():
-    #             grad_np = TorchUtils.grad2np(mesh_pcd_t, with_copy=True)
-    #         return {'loss': loss.detach().numpy(), 'grad': grad_np}
-    #     else:
-    #         return {'loss': 0.0, 'grad': None}
+    def compute_other_problem_grad(self, mat_step: float, with_debug=False):
+        problem_grad = {}
+        for name, grader in self.other_problem_cfgs.items():
+            is_solved = grader.update(with_debug=with_debug)
+            if not is_solved:
+                return False, None
+            grader.compute_shape_derivative(max_step=mat_step)
+            # grader.draw_problem(with_surface_norm=True, with_grad=True, norm_mag=0.1, grad_mag=0.001)
+            problem_grad[name] = np.copy(grader.grad_vec)
+        return True, problem_grad
 
     def simulate(
             self,
@@ -483,14 +529,21 @@ class ShapeFluidOptimizer(object):
             with_debug=False
     ):
         for name, cfg in self.problem_cfgs.items():
-            if cfg['fluid_type'] == 'stoke':
+            if cfg['run_type'] == 'other':
                 opt_problem: OptimalShapeProblem = cfg['opt_problem']
                 opt_problem.compute_state(
                     self.mesh.domain.comm,
                     mat_assemble_method=mat_assemble_method,
                     with_debug=with_debug
                 )
-            elif cfg['fluid_type'] == 'rans':
+            elif cfg['run_type'] == 'stoke':
+                opt_problem: OptimalShapeProblem = cfg['opt_problem']
+                opt_problem.compute_state(
+                    self.mesh.domain.comm,
+                    mat_assemble_method=mat_assemble_method,
+                    with_debug=with_debug
+                )
+            elif cfg['run_type'] == 'rans':
                 simulator: Su2SimulatorPacker = cfg['simulator']
                 simulator_cfg = cfg['simulator_cfg']
                 simulator.prepare_sim_proj(
@@ -502,9 +555,20 @@ class ShapeFluidOptimizer(object):
                     density=1.0,  # 由于上式fenics的naiver stoke form不包含密度，因此这里一定为1
                     constant_viscosity=simulator_cfg['constant_viscosity'],
                     conv_level=simulator_cfg['conv_level'],
-                    run_iter=simulator_cfg['run_iter']
+                    run_iter=simulator_cfg['run_iter'],
+                    restart_filename=simulator_cfg['restart_filename'],
+                    restart_sol=not simulator.first_run,
+                    with_screen_output=False,
+                    output_wrt_freq=int(simulator_cfg['run_iter'] * 0.2),
+                    restart_sol_file=simulator_cfg['restart_sol_file'],
                 )
                 res_dict = simulator.simulate(simulator_cfg['proj_dir'], with_monitor=False)
+                simulator.first_run = False
+                shutil.copy(
+                    os.path.join(simulator_cfg['proj_dir'], simulator_cfg['restart_filename']),
+                    simulator_cfg['restart_sol_file']
+                )
+
                 point_velocity = res_dict['point_velocity']
                 if self.mesh.topology_dim == 2:
                     point_velocity = point_velocity[:, :2]
@@ -531,7 +595,6 @@ class ShapeFluidOptimizer(object):
                         mat_assemble_method=mat_assemble_method,
                         with_debug=True
                     )
-
             else:
                 raise ValueError('[Error]: Non-valid fluid type.')
 
@@ -600,109 +663,10 @@ class ShapeFluidOptimizer(object):
             return False
 
         for name, cfg in self.problem_cfgs.items():
-            if cfg['fluid_type'] == 'rans':
+            if cfg['run_type'] == 'rans':
                 simulator: Su2SimulatorPacker = cfg['simulator']
                 simulator.update_geometry()
         return True
-
-    def run_debug_with_constraint(
-            self,
-            max_iteration=200,
-            state_mat_assemble_method: Literal['Identity_row', 'lift'] = 'lift',
-            adjoint_mat_assemble_method: Literal['Identity_row', 'lift'] = 'lift',
-            gradient_mat_assemble_method: Literal['Identity_row', 'lift'] = 'lift',
-            with_debug=False,
-            obs_pcd: np.ndarray = None,
-            obs_r=0.0
-    ):
-        """
-        if isinstance(self.mesh, SpringTorchMeshObj):
-            fuser = GradSpringFusionTorchObj(self.mesh, obs_pcd, obs_r=obs_r)
-        elif isinstance(self.mesh, SpringFeaMeshObj):
-            fuser = GradSpringFusionFeaObj(self.mesh, obs_pcd, obs_r=obs_r)
-        else:
-            raise ValueError('[Error]: Non-valid mesh.')
-
-        step, min_fluid_loss = 0, np.inf
-        while True:
-            is_solved, grad_fluid_dict = self.compute_fluid_grad(
-                state_mat_assemble_method=state_mat_assemble_method,
-                adjoint_mat_assemble_method=adjoint_mat_assemble_method,
-                gradient_mat_assemble_method=gradient_mat_assemble_method,
-                with_debug=with_debug
-            )
-            if not is_solved:
-                return False
-
-            for name, pcd_grad in grad_fluid_dict.items():
-                pcd_grad = pcd_grad.reshape((-1, self.mesh.topology_dim)) * -1.0
-                fuser.add_var(name, pcd_grad)
-
-            if isinstance(fuser, GradSpringFusionTorchObj):
-                grad_fused = fuser.solve_disp(max_scale=0.04)
-            elif isinstance(fuser, GradSpringFusionFeaObj):
-                is_valid, grad_fused = fuser.solve_disp(
-                    # method='poisson_eq',
-                    # method='linear_elastic', kwargs={'stiff_cof': 1.0, 'lambda': 1.25, 'mu': 1.0},
-                    method='linear_elastic_obs', kwargs={
-                        'stiff_cof': 20.0, 'lambda': 1.25, 'mu': 1.0, 'step_scale': 0.05
-                    },
-                    max_scale=0.05,
-                    with_debug=False
-                )
-                if not is_valid:
-                    print('[Info]: solving linear elastic equation fail.')
-                    break
-            else:
-                raise ValueError('[Error]: Non-valid fuser')
-
-            if self.mesh.topology_dim == 2:
-                grad_fused = np.concatenate([grad_fused, np.zeros((grad_fused.shape[0], 1))], axis=1)
-
-            loss_fluid_dict = self.evaluate_cost(update_state=False)
-            loss_fluid_sum = np.sum(list(loss_fluid_dict.values()))
-
-            loss_dict = self.get_loss_dict(update_state=False)
-            desc = f'[iter:{step}] '
-            for loss_n, loss_f in loss_dict.items():
-                desc += f'{loss_n}:{loss_f:.3f} '
-            desc += f'loss:{loss_fluid_sum:.3f}'
-            print(desc)
-
-            self.log(step)
-
-            is_valid = self.update_geometry(
-                displacement=grad_fused, deform_method='safe',
-                with_vol_check=False, with_angle_check=False
-            )
-            if not is_valid:
-                print('[Info]: update geometry fail.')
-                return False
-
-            self.mesh.re_mesh()  # todo need more adjust
-
-            step += 1
-            if step > max_iteration:
-                print('[Info]: reach max iteration.')
-                break
-
-            min_fluid_loss = np.minimum(min_fluid_loss, loss_fluid_sum)
-            if loss_fluid_sum > min_fluid_loss * 1.1:
-                print('[Info]: loss overfit.')
-                break
-
-        loss_fluid_dict = self.evaluate_cost(
-            update_state=True,
-            mat_assemble_method=state_mat_assemble_method,
-            with_debug=with_debug
-        )
-        loss_fluid_sum = np.sum(list(loss_fluid_dict.values()))
-        print(f"[Debug]: Step_{step} loss_fluid:{loss_fluid_sum:.3f}")
-        self.log(step)
-
-        return True
-        """
-        pass
 
     def log(self, step):
         for name, cfg in self.problem_cfgs.items():
@@ -748,20 +712,29 @@ def run_optimize(
             with_debug=with_debug
         )
         if not is_solved:
-            print('[Info]: solving linear elastic equation fail.')
+            print('[Info]: solving gradient equation fail.')
+            return False
+
+        is_solved, grad_other_dict = optim.compute_other_problem_grad(mat_step=0.05)
+        if not is_solved:
+            print('[Info]: solving other gradient equation fail.')
             return False
 
         for name, pcd_grad in grad_fluid_dict.items():
             pcd_grad = pcd_grad.reshape((-1, optim.mesh.topology_dim)) * -1.0
             fuser.add_grad(name, pcd_grad)
 
+        for name, pcd_grad in grad_other_dict.items():
+            fuser.add_grad(name, pcd_grad * -1.0)
+
         if fuser.style == 'GradRawFusion':
             disp = fuser.solve_disp(max_step=0.05)
+            # fuser.draw_problem(disp)
         elif fuser.style == 'GradSpringFeaFusion':
             is_valid, disp = fuser.solve_disp(
                 # method='poisson_eq',
                 # method='linear_elastic', kwargs={'stiff_cof': 1.0, 'lambda': 1.25, 'mu': 1.0},
-                method='linear_elastic_obs', kwargs={'stiff_cof': 20.0, 'lambda': 1.25, 'mu': 1.0, 'step_scale': 0.05},
+                method='linear_elastic_obs', kwargs={'stiff_cof': 50.0, 'lambda': 1.25, 'mu': 1.0, 'step_scale': 0.05},
                 max_step=0.05,
                 with_debug=False
             )
@@ -781,6 +754,8 @@ def run_optimize(
         loss_dict = optim.get_loss_dict(
             update_state=False, mat_assemble_method=state_mat_assemble_method, with_debug=with_debug
         )
+        for name, other_pro in optim.other_problem_cfgs.items():
+            loss_dict.update({f'loss_{name}': other_pro.compute_loss()})
         # loss_fluid_dict = optim.evaluate_cost(update_state=False)
         loss_sum = np.sum(list(loss_dict.values()))
 
@@ -799,18 +774,25 @@ def run_optimize(
                 min_deform=min_deformation,
                 max_deform=max_deformation,
                 line_search_step=5,
+                with_vol_check=True,
+                with_angle_check=False
             )
         else:
             is_valid = optim.update_geometry(
-                displacement=disp, deform_method='safe',
-                with_vol_check=False, with_angle_check=False
+                displacement=disp,
+                deform_method='safe',
+                with_vol_check=True,
+                with_angle_check=False
             )
         if not is_valid:
             print('[Info]: update geometry fail.')
             return False
 
         if with_re_mesh:
-            optim.mesh.re_mesh()  # todo need more adjust
+            is_valid = optim.mesh.re_mesh()
+            if not is_valid:
+                print('[Info]: re-mesh geometry fail.')
+                return False
 
         step += 1
         if step > max_iteration:
@@ -840,47 +822,51 @@ def run_optimize(
 
 def debug_non_constraint():
     optim = ShapeFluidOptimizer(
-        mesh_file='/home/admin123456/Desktop/work/topopt_exps/new_test/example03/model.msh',
+        mesh_file='/home/admin123456/Desktop/work/topopt_exps/new_test/example04/model.msh',
         dim=2,
-        result_dir='/home/admin123456/Desktop/work/topopt_exps/new_test/example03/cache',
+        result_dir='/home/admin123456/Desktop/work/topopt_exps/new_test/example04/cache',
     )
     optim.add_regularization(
         reg_type='volume_regularization',
-        target_volume_rho=1.0,
-        weight=2000.0
+        target_volume_rho=0.85,
+        weight=1000.0
     )
+    # optim.add_regularization(
+    #     reg_type='curvature_regularization',
+    #     weight=0.1
+    # )
+
     optim.define_control_wall({
-        'inlet': {'marker': 13, 'is_free': False},
-        'outlet': {'marker': 14, 'is_free': False},
-        'wallFixed': {'marker': 15, 'is_free': False},
-        'wallFree': {'marker': 16, 'is_free': True},
+        'inlet': {'marker': 35, 'is_free': False},
+        'outlet': {'marker': 36, 'is_free': False},
+        'wall': {'marker': 37, 'is_free': True},
     })
     # optim.mesh.draw_mesh()
+
+    # ------ add_other_problem必须在define_control_wall后
+    # optim.add_other_problem(problem_type='curvature_reg', weight=1.0)
 
     optim.add_problem(
         problem_name='cond1',
         inlet_cfg={
             'inlet': {
-                'marker': 13,
-                'value': [3., 0., 0.]
+                'marker': 35,
+                'value': [1., 0., 0.]
             }
         },
         outlet_cfg={
             'outlet': {
-                'marker': 14,
+                'marker': 36,
                 'value': 0.0
             }
         },
         wall_cfg={
-            'wallFixed': {
-                'marker': 15
-            },
-            'wallFree': {
-                'marker': 16
+            'wall': {
+                'marker': 37
             }
         },
         constant_nu=0.01,
-        fluid_type='stoke',
+        fluid_type='rans',
         loss_cfgs=[
             {
                 'style': 'minimum_dissipation',
@@ -901,11 +887,14 @@ def debug_non_constraint():
     # ------ test optimize
     run_optimize(
         optim=optim,
-        max_iteration=150,
+        max_iteration=100,
+        max_deformation=0.03,
+        min_deformation=0.01,
         state_mat_assemble_method='lift',
         adjoint_mat_assemble_method='lift',
         gradient_mat_assemble_method='Identity_row',  # 必须使用Identity_row否则边界条件不正确
-        with_debug=False
+        with_debug=False,
+        with_re_mesh=True
     )
 
 
@@ -975,5 +964,5 @@ def debug_constraint():
 
 
 if __name__ == '__main__':
-    # debug_non_constraint()
-    debug_constraint()
+    debug_non_constraint()
+    # debug_constraint()

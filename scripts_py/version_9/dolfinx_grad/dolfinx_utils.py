@@ -114,6 +114,7 @@ class BoundaryUtils(object):
             elif isinstance(value_type, dolfinx.fem.Function):
                 new_value = dolfinx.fem.Function(value_type.function_space)
                 new_value.x.array[:] = 0.0
+                # todo 不知为什么当V为不是类似流体那种复合空间时会报错，必须使用None
                 return dolfinx.fem.dirichletbc(new_value, dofs, V)
             else:
                 raise NotImplementedError
@@ -178,6 +179,18 @@ class AssembleUtils(object):
             # dolfinx.fem.petsc._assemble_vector_vec
             dolfinx.fem.petsc.assemble_vector(b_vec, L_form)
         return b_vec
+
+    @staticmethod
+    def assemble_form_vec(
+            l_form: ufl.Form, function_space: dolfinx.fem.FunctionSpaceBase,
+            b_vec: PETSc.Vec = None, clear_vec=False
+    ) -> PETSc.Vec:
+        """
+        l_form must without ufl.dx or ufl.ds
+        function_space: scalar function space or vector function space
+        """
+        agg_form = ufl.inner(l_form, ufl.TestFunction(function_space)) * ufl.dx
+        return AssembleUtils.assemble_vec(dolfinx.fem.form(agg_form), b_vec=b_vec, clear_vec=clear_vec)
 
     @staticmethod
     def assemble_scalar(form: dolfinx.fem.Form):
