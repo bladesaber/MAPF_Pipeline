@@ -70,7 +70,7 @@ def parse_args():
 @app.route('/<path:filename>', methods=['GET'])
 @cross_origin()
 def serve_html(filename):
-    return send_from_directory('/home/admin123456/Desktop/work/flask_server/storage', filename)
+    return send_from_directory('/home/admin123456/Desktop/work/flask_server/static_dir', filename)
 
 
 @app.route('/', methods=['GET'])

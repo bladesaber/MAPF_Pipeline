@@ -620,60 +620,67 @@ class PathCell(object):
             else:
                 cell = self.parent_cell.connector_dict[self.cell_idxs[i]]
 
-            if i == 0:
-                if self.cell_types[i + 1] == 'segment':
-                    next_cell = self.parent_cell.seg_dict[self.cell_idxs[i + 1]]
+            if len(self.cell_idxs) > 1:
+                if i == 0:
+                    if self.cell_types[i + 1] == 'segment':
+                        next_cell = self.parent_cell.seg_dict[self.cell_idxs[i + 1]]
+                    else:
+                        next_cell = self.parent_cell.connector_dict[self.cell_idxs[i + 1]]
+
+                    if cell.c_idxs[-1] in next_cell.c_idxs:
+                        path_xyz_list.append(cell.spline_xyz_t)
+                        path_radius.append(cell.radius)
+                        if with_analytical_tangent:
+                            path_tangent_list.append(cell.spline_vector_t)
+
+                    elif cell.c_idxs[0] in next_cell.c_idxs:
+                        path_xyz_list.append(cell.spline_xyz_t.flip(0))
+                        path_radius.append(cell.radius[::-1])
+                        if with_analytical_tangent:
+                            path_tangent_list.append(cell.spline_vector_t * -1.0)
+
+                    else:
+                        raise ValueError(f"[ERROR]: Wrong path flags.")
+
+                    # # ------ debug visualization
+                    # if cell.c_idxs[-1] in next_cell.c_idxs:
+                    #     tmp_xyz = TorchUtils.tensor2np(cell.spline_xyz_t)
+                    #     print(tmp_xyz[0], tmp_xyz[-1])
+                    # elif cell.c_idxs[0] in next_cell.c_idxs:
+                    #     tmp_xyz = TorchUtils.tensor2np(cell.spline_xyz_t.flip(0))
+                    #     print(tmp_xyz[0], tmp_xyz[-1])
+                    # # ------
+
                 else:
-                    next_cell = self.parent_cell.connector_dict[self.cell_idxs[i + 1]]
+                    if cell.c_idxs[0] in last_cell.c_idxs:
+                        path_xyz_list.append(cell.spline_xyz_t[1:])
+                        path_radius.append(cell.radius[1:])
+                        if with_analytical_tangent:
+                            path_tangent_list.append(cell.spline_vector_t[1:])
 
-                if cell.c_idxs[-1] in next_cell.c_idxs:
-                    path_xyz_list.append(cell.spline_xyz_t)
-                    path_radius.append(cell.radius)
-                    if with_analytical_tangent:
-                        path_tangent_list.append(cell.spline_vector_t)
+                    elif cell.c_idxs[-1] in last_cell.c_idxs:
+                        path_xyz_list.append(cell.spline_xyz_t.flip(0)[1:])
+                        path_radius.append(cell.radius[::-1][1:])
+                        if with_analytical_tangent:
+                            path_tangent_list.append(cell.spline_vector_t[1:] * -1.0)
 
-                elif cell.c_idxs[0] in next_cell.c_idxs:
-                    path_xyz_list.append(cell.spline_xyz_t.flip(0))
-                    path_radius.append(cell.radius[::-1])
-                    if with_analytical_tangent:
-                        path_tangent_list.append(cell.spline_vector_t * -1.0)
+                    else:
+                        raise ValueError(f"[ERROR]: Wrong path flags.")
 
-                else:
-                    raise ValueError(f"[ERROR]: Wrong path flags.")
-
-                # # ------ debug visualization
-                # if cell.c_idxs[-1] in next_cell.c_idxs:
-                #     tmp_xyz = TorchUtils.tensor2np(cell.spline_xyz_t)
-                #     print(tmp_xyz[0], tmp_xyz[-1])
-                # elif cell.c_idxs[0] in next_cell.c_idxs:
-                #     tmp_xyz = TorchUtils.tensor2np(cell.spline_xyz_t.flip(0))
-                #     print(tmp_xyz[0], tmp_xyz[-1])
-                # # ------
-
+                    # # ------ debug visualization
+                    # if cell.c_idxs[0] in last_cell.c_idxs:
+                    #     tmp_xyz = TorchUtils.tensor2np(cell.spline_xyz_t)
+                    #     print(tmp_xyz[0], tmp_xyz[-1])
+                    # elif cell.c_idxs[-1] in last_cell.c_idxs:
+                    #     tmp_xyz = TorchUtils.tensor2np(cell.spline_xyz_t.flip(0))
+                    #     print(tmp_xyz[0], tmp_xyz[-1])
+                    # # ------
+            
             else:
-                if cell.c_idxs[0] in last_cell.c_idxs:
-                    path_xyz_list.append(cell.spline_xyz_t[1:])
-                    path_radius.append(cell.radius[1:])
-                    if with_analytical_tangent:
-                        path_tangent_list.append(cell.spline_vector_t[1:])
-
-                elif cell.c_idxs[-1] in last_cell.c_idxs:
-                    path_xyz_list.append(cell.spline_xyz_t.flip(0)[1:])
-                    path_radius.append(cell.radius[::-1][1:])
-                    if with_analytical_tangent:
-                        path_tangent_list.append(cell.spline_vector_t[1:] * -1.0)
-
-                else:
-                    raise ValueError(f"[ERROR]: Wrong path flags.")
-
-                # # ------ debug visualization
-                # if cell.c_idxs[0] in last_cell.c_idxs:
-                #     tmp_xyz = TorchUtils.tensor2np(cell.spline_xyz_t)
-                #     print(tmp_xyz[0], tmp_xyz[-1])
-                # elif cell.c_idxs[-1] in last_cell.c_idxs:
-                #     tmp_xyz = TorchUtils.tensor2np(cell.spline_xyz_t.flip(0))
-                #     print(tmp_xyz[0], tmp_xyz[-1])
-                # # ------
+                path_xyz_list.append(cell.spline_xyz_t)
+                path_radius.append(cell.radius)
+                if with_analytical_tangent:
+                    path_tangent_list.append(cell.spline_vector_t)
 
             last_cell = cell
 
@@ -1109,29 +1116,38 @@ class GroupCell(object):
         path_idx = 0
         for path_name, path_contain_seg_list in path_contain_seg_dict.items():
             for path_contain_seg in path_contain_seg_list:
-                contain_idxs, contain_types = [], []
-                for i in range(len(path_contain_seg) - 1):
-                    cell_0 = self.seg_dict[tmp_seg_tag2idx[path_contain_seg[i]]]
-                    cell_1 = self.seg_dict[tmp_seg_tag2idx[path_contain_seg[i + 1]]]
 
-                    if i == 0:
-                        contain_idxs.append(cell_0.idx)
+                if len(path_contain_seg) > 1:
+                    contain_idxs, contain_types = [], []
+                    for i in range(len(path_contain_seg) - 1):
+                        cell_0 = self.seg_dict[tmp_seg_tag2idx[path_contain_seg[i]]]
+                        cell_1 = self.seg_dict[tmp_seg_tag2idx[path_contain_seg[i + 1]]]
+
+                        if i == 0:
+                            contain_idxs.append(cell_0.idx)
+                            contain_types.append(cell_0.cell_type)
+
+                        # ------ record connector
+                        con = self.connector_dict[tmp_con_tag2idx[
+                            (min(cell_0.idx, cell_1.idx), max(cell_0.idx, cell_1.idx))
+                        ]]
+                        contain_idxs.append(con.idx)
+                        contain_types.append(con.cell_type)
+
+                        # ------ record next cell
+                        contain_idxs.append(cell_1.idx)
                         contain_types.append(cell_1.cell_type)
 
-                    # ------ record connector
-                    con = self.connector_dict[tmp_con_tag2idx[
-                        (min(cell_0.idx, cell_1.idx), max(cell_0.idx, cell_1.idx))
-                    ]]
-                    contain_idxs.append(con.idx)
-                    contain_types.append(con.cell_type)
-
-                    # ------ record next cell
-                    contain_idxs.append(cell_1.idx)
-                    contain_types.append(cell_1.cell_type)
-
-                self.path_dict[path_idx] = PathCell(
-                    path_name, path_idx, self.group_idx, contain_idxs, contain_types, self
-                )
+                    self.path_dict[path_idx] = PathCell(
+                        path_name, path_idx, self.group_idx, contain_idxs, contain_types, self
+                    )
+                
+                else:
+                    cell = self.seg_dict[tmp_seg_tag2idx[path_contain_seg[0]]]
+                    self.path_dict[path_idx] = PathCell(
+                        path_name, path_idx, self.group_idx, [cell.idx], [cell.cell_type], self
+                    )
+                
                 path_idx += 1
 
         # ------ add terminal information
