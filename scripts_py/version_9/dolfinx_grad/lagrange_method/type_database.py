@@ -34,7 +34,7 @@ class GovDataBase(object):
         self.is_linear = is_linear
         self.bcs: List[dolfinx.fem.DirichletBC] = []
         self.bcs_infos: List[Tuple[
-            dolfinx.fem.FunctionSpaceBase, np.ndarray, Union[float, np.ndarray, dolfinx.fem.Function]
+            dolfinx.fem.FunctionSpace, np.ndarray, Union[float, np.ndarray, dolfinx.fem.Function]
         ]] = []
         self.homogenize_bcs: List[dolfinx.fem.DirichletBC] = []
 
@@ -79,7 +79,7 @@ class GovDataBase(object):
 
     def add_bc(
             self,
-            bc: dolfinx.fem.DirichletBC, bc_V: dolfinx.fem.FunctionSpaceBase,
+            bc: dolfinx.fem.DirichletBC, bc_V: dolfinx.fem.FunctionSpace,
             bc_dofs: np.ndarray, value_type: Union[float, np.ndarray, dolfinx.fem.Function]
     ):
         self.bcs.append(bc)
@@ -117,7 +117,7 @@ class ControlDataBase(object):
 
         self.bcs: Dict[str, List[dolfinx.fem.DirichletBC]] = {}
         self.bcs_infos: Dict[str, List[Tuple[
-            dolfinx.fem.FunctionSpaceBase, np.ndarray, Union[float, np.ndarray, dolfinx.fem.Function]
+            dolfinx.fem.FunctionSpace, np.ndarray, Union[float, np.ndarray, dolfinx.fem.Function]
         ]]] = {}
 
         self.control_eq_forms = {}
@@ -141,7 +141,7 @@ class ControlDataBase(object):
     def add_bc(
             self, name,
             bc: dolfinx.fem.DirichletBC,
-            bc_V: dolfinx.fem.FunctionSpaceBase,
+            bc_V: dolfinx.fem.FunctionSpace,
             bc_dofs: np.ndarray,
             value_type: Union[float, np.ndarray, dolfinx.fem.Function]
     ):
@@ -171,12 +171,11 @@ class ShapeDataBase(object):
         self.gradient_ksp_option = gradient_ksp_option if (gradient_ksp_option is not None) else self.default_ksp_option
 
         coordinate_space = domain.ufl_domain().ufl_coordinate_element()
-        self.deformation_space = dolfinx.fem.FunctionSpace(self.domain, coordinate_space)
-        # self.deformation_space = dolfinx.fem.VectorFunctionSpace(self.domain, ("CG", 1))  # be replaced
+        self.deformation_space = dolfinx.fem.functionspace(self.domain, coordinate_space)
 
         self.bcs: List[dolfinx.fem.DirichletBC] = []
         self.bcs_infos: List[Tuple[
-            dolfinx.fem.FunctionSpaceBase, np.ndarray, Union[float, np.ndarray, dolfinx.fem.Function]
+            dolfinx.fem.FunctionSpace, np.ndarray, Union[float, np.ndarray, dolfinx.fem.Function]
         ]] = []
 
         self.shape_grad = dolfinx.fem.Function(self.deformation_space, name='shape_grad')
@@ -188,14 +187,14 @@ class ShapeDataBase(object):
         self.gradient_rhs_dolfin: dolfinx.fem.Form = None
 
     def add_bc(
-            self, bc: dolfinx.fem.DirichletBC, bc_V: dolfinx.fem.FunctionSpaceBase,
+            self, bc: dolfinx.fem.DirichletBC, bc_V: dolfinx.fem.FunctionSpace,
             bc_dofs: np.ndarray, value_type: Union[float, np.ndarray, dolfinx.fem.Function]
     ):
         self.bcs.append(bc)
         self.bcs_infos.append((bc_V, bc_dofs, value_type))
 
     @staticmethod
-    def define_fixed_boundary(bc_dofs: np.ndarray, bc_V: dolfinx.fem.FunctionSpaceBase):
+    def define_fixed_boundary(bc_dofs: np.ndarray, bc_V: dolfinx.fem.FunctionSpace):
         """
         bc_V is always larger than 1, at least 2 dimension
         """
@@ -205,21 +204,21 @@ class ShapeDataBase(object):
         return bc, bc_V, bc_dofs, bc_value
 
     @staticmethod
-    def define_fixed_x_boundary(bc_dofs: np.ndarray, bc_V: dolfinx.fem.FunctionSpaceBase):
+    def define_fixed_x_boundary(bc_dofs: np.ndarray, bc_V: dolfinx.fem.FunctionSpace):
         bc_value = 0.0
         bc_sub_space = bc_V.sub(0)
         bc = dolfinx.fem.dirichletbc(bc_value, bc_dofs, bc_sub_space)
         return bc, bc_sub_space, bc_dofs, bc_value
 
     @staticmethod
-    def define_fixed_y_boundary(bc_dofs: np.ndarray, bc_V: dolfinx.fem.FunctionSpaceBase):
+    def define_fixed_y_boundary(bc_dofs: np.ndarray, bc_V: dolfinx.fem.FunctionSpace):
         bc_value = 0.0
         bc_sub_space = bc_V.sub(1)
         bc = dolfinx.fem.dirichletbc(bc_value, bc_dofs, bc_sub_space)
         return bc, bc_sub_space, bc_dofs, bc_value
 
     @staticmethod
-    def define_fixed_z_boundary(bc_dofs: np.ndarray, bc_V: dolfinx.fem.FunctionSpaceBase):
+    def define_fixed_z_boundary(bc_dofs: np.ndarray, bc_V: dolfinx.fem.FunctionSpace):
         bc_value = 0.0
         bc_sub_space = bc_V.sub(2)
         bc = dolfinx.fem.dirichletbc(bc_value, bc_dofs, bc_sub_space)
@@ -240,7 +239,7 @@ def create_state_problem(
         adjoint: Union[dolfinx.fem.Function, ufl.TestFunction],
         is_linear: bool,
         bcs_info: List[Tuple[
-            dolfinx.fem.DirichletBC, dolfinx.fem.FunctionSpaceBase,
+            dolfinx.fem.DirichletBC, dolfinx.fem.FunctionSpace,
             np.ndarray, Union[float, np.ndarray, dolfinx.fem.Function]
         ]],
         state_ksp_option: KspOption = None,
@@ -262,7 +261,7 @@ def create_state_problem(
 def create_control_problem(
         controls: List[dolfinx.fem.Function],
         bcs_info: Dict[str, List[Tuple[
-            dolfinx.fem.DirichletBC, dolfinx.fem.FunctionSpaceBase,
+            dolfinx.fem.DirichletBC, dolfinx.fem.FunctionSpace,
             np.ndarray, Union[float, np.ndarray, dolfinx.fem.Function]
         ]]] = None,
         gradient_ksp_options: Dict[str, KspOption] = None,
@@ -277,7 +276,7 @@ def create_control_problem(
 def create_shape_problem(
         domain: dolfinx.mesh.Mesh,
         bcs_info: List[Tuple[
-            dolfinx.fem.DirichletBC, dolfinx.fem.FunctionSpaceBase,
+            dolfinx.fem.DirichletBC, dolfinx.fem.FunctionSpace,
             np.ndarray, Union[float, np.ndarray, dolfinx.fem.Function]
         ]],
         gradient_ksp_option: Dict = None,

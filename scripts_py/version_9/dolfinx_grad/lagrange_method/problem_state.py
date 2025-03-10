@@ -35,7 +35,7 @@ class StateProblem(object):
             self,
             comm,
             jacobi_form: ufl.Form = None,
-            state_func_space: dolfinx.fem.FunctionSpaceBase = None,
+            state_func_space: dolfinx.fem.FunctionSpace = None,
             mat_assemble_method: Literal['Identity_row', 'lift'] = 'lift',
             with_debug=False
     ):

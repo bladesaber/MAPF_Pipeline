@@ -8,6 +8,7 @@ from typing import Dict, Union, List, Literal, Tuple
 from ufl import grad, inner, div, dot
 import pyvista
 from sklearn.neighbors import KDTree
+from basix.ufl import element, mixed_element
 
 from scripts_py.version_9.dolfinx_grad.dolfinx_utils import AssembleUtils
 from scripts_py.version_9.dolfinx_grad.mesh_utils import MeshUtils
@@ -30,7 +31,6 @@ from scripts_py.version_9.dolfinx_grad.other_grad import CurvatureGrad
 # todo 1.使用SU2仿真并无法到达最优点，需要refit吗?
 #  2.表面曲率控制
 #  3.obstacle点抑制
-#  4.加速运算
 
 
 class Su2SimulatorPacker(Su2Simulator):
@@ -125,20 +125,32 @@ class ShapeFluidOptimizer(object):
         Su2Simulator.msh_to_su2(self.mesh_file, su2_file=self.su2_file)
         self.mesh = SpringFeaMeshObj(mesh_file=mesh_file, dim=dim)
 
-        self.W = dolfinx.fem.FunctionSpace(
-            self.mesh.domain, ufl.MixedElement([
-                ufl.VectorElement("Lagrange", self.mesh.domain.ufl_cell(), 2),
-                ufl.FiniteElement("Lagrange", self.mesh.domain.ufl_cell(), 1)
-            ])
+        self.velocity_element = element(
+            "Lagrange", self.mesh.domain.basix_cell(), degree=2, shape=(self.mesh.topology_dim,)
         )
+        # can't use shape=(1, ), dolfinx will see it as vector of shape 1
+        # self.pressure_element = element("Lagrange", self.mesh.domain.basix_cell(), degree=1, shape=(1,))  # error
+        self.pressure_element = element("Lagrange", self.mesh.domain.basix_cell(), degree=1)
+        self.mix_element = mixed_element([self.velocity_element, self.pressure_element])
+
+        self.vector_point_element = element(
+            "CG", self.mesh.domain.basix_cell(), degree=1, shape=(self.mesh.topology_dim,)
+        )
+        self.scalar_point_element = element("CG", self.mesh.domain.basix_cell(), degree=1)
+        self.vector_cell_element = element(
+            "DG", self.mesh.domain.basix_cell(), degree=0, shape=(self.mesh.topology_dim,)
+        )
+        self.scalar_cell_element = element("DG", self.mesh.domain.basix_cell(), degree=0)
+
+        self.W = dolfinx.fem.functionspace(self.mesh.domain, self.mix_element)
         self.W0, self.W1 = self.W.sub(0), self.W.sub(1)
         self.V, self.V_to_W_dofs = self.W0.collapse()
         self.Q, self.Q_to_W_dofs = self.W1.collapse()
 
-        self.vector_cell_functionSpace = dolfinx.fem.VectorFunctionSpace(self.mesh.domain, ("DG", 0))
-        self.scalar_cell_functionSpace = dolfinx.fem.FunctionSpace(self.mesh.domain, ("DG", 0))
-        self.vector_point_functionSpace = dolfinx.fem.VectorFunctionSpace(self.mesh.domain, ("CG", 1))
-        self.scalar_point_functionSpace = dolfinx.fem.FunctionSpace(self.mesh.domain, ("CG", 1))
+        self.vector_cell_functionSpace = dolfinx.fem.functionspace(self.mesh.domain, self.vector_cell_element)
+        self.scalar_cell_functionSpace = dolfinx.fem.functionspace(self.mesh.domain, self.scalar_cell_element)
+        self.vector_point_functionSpace = dolfinx.fem.functionspace(self.mesh.domain, self.vector_point_element)
+        self.scalar_point_functionSpace = dolfinx.fem.functionspace(self.mesh.domain, self.scalar_point_element)
 
         self.n_vec = MeshUtils.define_facet_norm(self.mesh.domain)
         self.ds = MeshUtils.define_ds(self.mesh.domain, self.mesh.facet_tags)
@@ -866,7 +878,7 @@ def debug_non_constraint():
             }
         },
         constant_nu=0.01,
-        fluid_type='rans',
+        fluid_type='stoke',
         loss_cfgs=[
             {
                 'style': 'minimum_dissipation',

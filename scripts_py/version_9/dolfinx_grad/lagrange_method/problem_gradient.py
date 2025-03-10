@@ -5,6 +5,7 @@ from typing import Callable, Union, Dict, List, Literal
 from ufl import inner, div, grad
 from functools import partial
 from ufl.core import expr
+from basix.ufl import element
 
 from scripts_py.version_9.dolfinx_grad.lagrange_method.cost_functions import LagrangianFunction
 from scripts_py.version_9.dolfinx_grad.lagrange_method.type_database import ControlDataBase, ShapeDataBase
@@ -211,8 +212,10 @@ class ShapeGradientProblem(object):
         self.trial_u = ufl.TrialFunction(self.shape_problem.deformation_space)
         self.test_v = ufl.TestFunction(self.shape_problem.deformation_space)
         self.coord = MeshUtils.define_coordinate(self.shape_problem.domain)
-        self.dg_functon_space = dolfinx.fem.FunctionSpace(self.shape_problem.domain, ('DG', 0))
-        self.cg_functon_space = dolfinx.fem.FunctionSpace(self.shape_problem.domain, ('CG', 1))
+        self.scalar_point_element = element("CG", self.shape_problem.domain.basix_cell(), degree=1)
+        self.scalar_cell_element = element("DG", self.shape_problem.domain.basix_cell(), degree=0)
+        self.dg_functon_space = dolfinx.fem.functionspace(self.shape_problem.domain, self.scalar_cell_element)
+        self.cg_functon_space = dolfinx.fem.functionspace(self.shape_problem.domain, self.scalar_point_element)
         self.cell_volume_expr = DolfinUtils.create_expression(
             ufl.CellVolume(self.shape_problem.domain), self.dg_functon_space
         )

@@ -9,6 +9,7 @@ import networkx as nx
 import ufl
 import scipy
 from scipy import sparse
+from basix.ufl import element
 
 from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils
 from scripts_py.version_9.dolfinx_grad.deform_mesh_utils import MeshObj, MeshUtils
@@ -419,8 +420,11 @@ class SpringFeaMeshObj(MeshObj):
         self.num_fix_points: int = None
         self.num_free_points: int = None
 
-        self.vector_point_functionSpace = dolfinx.fem.VectorFunctionSpace(self.domain, ("CG", 1))
-        self.scalar_point_functionSpace = dolfinx.fem.FunctionSpace(self.domain, ("CG", 1))
+        self.vector_point_element = element("CG", self.domain.basix_cell(), degree=1, shape=(self.topology_dim,))
+        self.scalar_point_element = element("CG", self.domain.basix_cell(), degree=1)
+
+        self.vector_point_functionSpace = dolfinx.fem.functionspace(self.domain, self.vector_point_element)
+        self.scalar_point_functionSpace = dolfinx.fem.functionspace(self.domain, self.scalar_point_element)
         self.n_vec = MeshUtils.define_facet_norm(self.domain)
         self.ds = MeshUtils.define_ds(self.domain, self.facet_tags)
         self.dx = MeshUtils.define_dx(self.domain)

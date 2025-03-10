@@ -174,7 +174,7 @@ class LinearProblemSolver(object):
         PETSc.garbage_cleanup()
 
         if res_dict['is_solved']:
-            uh.vector.aypx(0.0, res_dict['res'])
+            uh.x.petsc_vec.aypx(0.0, res_dict['res'])
             res_dict.update({'res': uh})
 
         return res_dict
@@ -224,8 +224,8 @@ class PetscNonlinearPdeHelper:
 
         # ------ update the solution in the F_form
         x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
-        x.copy(solution.vector)
-        solution.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+        x.copy(solution.x.petsc_vec)
+        solution.x.petsc_vec.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
         # ------ clear rhs(right hand side, residual)
         with F_vec.localForm() as f_local:
@@ -237,10 +237,10 @@ class PetscNonlinearPdeHelper:
         # ------ apply boundary function to residual
         if mat_assemble_method == 'lift':
             # apply_lifting = scale * (bc.value[dof] - x0[dof])
-            petsc.apply_lifting(F_vec, [jacobi_form], bcs=[bcs], x0=[x], scale=-1.0)
+            petsc.apply_lifting(F_vec, [jacobi_form], bcs=[bcs], x0=[x], alpha=-1.0)
             F_vec.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
 
-        petsc.set_bc(F_vec, bcs, x0=x, scale=-1.0)  # x0[dof] - bc.value[dof] 促使x等于Dirichlet边界的值
+        petsc.set_bc(F_vec, bcs, x0=x, alpha=-1.0)  # x0[dof] - bc.value[dof] 促使x等于Dirichlet边界的值
         F_vec.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
 
     @staticmethod
@@ -416,8 +416,8 @@ class NonLinearProblemSolver(object):
 
         # ------ newton setting
         solver.setConvergenceHistory()
-        solver.solve(None, uh.vector)
-        uh.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
+        solver.solve(None, uh.x.petsc_vec)
+        uh.x.petsc_vec.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
 
         res_dict = {
             'res': uh,
@@ -450,8 +450,6 @@ class NonLinearProblemSolver(object):
 
 
 def debug():
-    # todo 测试scipy
-
     from scripts_py.version_9.dolfinx_grad.mesh_utils import MeshUtils, MeshObj
     from ufl import inner, grad, div
 

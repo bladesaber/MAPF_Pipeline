@@ -12,11 +12,13 @@ vec.aypx(x, y) = vec * x + y
 
 class PetscUtils(object):
     @staticmethod
-    def create_mat(size=None):
+    def create_mat(size=None, assemble=False):
         """please assemble when use"""
         mat = PETSc.Mat().create()
         if size is not None:
             mat.setSizes(size)
+        if assemble:
+            mat.assemble()
         return mat
 
     @staticmethod
@@ -102,19 +104,19 @@ class ScipySparseUtils(object):
 
     @staticmethod
     def linear_solve(
-            A_mat: Union[sparse.coo_matrix, sparse.csr_matrix, sparse.csc_matrix], b_vec: np.ndarray,
+            a_mat: Union[sparse.coo_matrix, sparse.csr_matrix, sparse.csc_matrix], b_vec: np.ndarray,
             method: Literal['spsolve', 'bicg', 'gmres', 'lsqr'] = 'bicg'
     ):
         if method == 'spsolve':
-            return sparse.linalg.spsolve(A_mat, b_vec)
+            return sparse.linalg.spsolve(a_mat, b_vec)
         elif method == 'bicg':
-            (x, state_code) = sparse.linalg.bicg(A_mat, b_vec, maxiter=None)
+            (x, state_code) = sparse.linalg.bicg(a_mat, b_vec, maxiter=None)
             return x, state_code == 0
         elif method == 'gmres':
-            (x, state_code) = sparse.linalg.gmres(A_mat, b_vec, maxiter=None)
+            (x, state_code) = sparse.linalg.gmres(a_mat, b_vec, maxiter=None)
             return x, state_code == 0
         elif method == 'lsqr':
-            res = sparse.linalg.lsqr(A_mat, b_vec)
+            res = sparse.linalg.lsqr(a_mat, b_vec)
             x, state_code = res[0], res[1]
             return x, state_code == 1
         else:
@@ -122,8 +124,11 @@ class ScipySparseUtils(object):
 
 
 def debug():
-    a: sparse.csr_matrix = sparse.random(4, 4, format='csr', density=0.1)
-    a[2, 2] = 10.0
+    mat = PetscUtils.create_mat((5, 5))
+    mat.assemble()
+    a = PetscUtils.convert_mat_to_scipy(mat)
+    print(a, type(a))
+    a[0, 0] = 1.0
     print(a)
 
 

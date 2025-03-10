@@ -318,6 +318,7 @@ TABULAR_FORMAT= CSV
             run_bash += ' >> screen_output.log'
         subprocess.run(run_bash, shell=True, check=True)
         res = pyvista.read(os.path.join(run_dir, 'flow.vtu'))
+        res.save(os.path.join(run_dir, 'flow_remark.vtu'), binary=False)  #  SU2 output vtu may not be used in paraview
         return res
 
     @staticmethod

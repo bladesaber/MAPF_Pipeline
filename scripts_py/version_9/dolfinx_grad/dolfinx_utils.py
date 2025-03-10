@@ -22,7 +22,7 @@ class DolfinUtils(object):
         return dolfinx.fem.form(form)
 
     @staticmethod
-    def create_expression(form: expr, V: dolfinx.fem.FunctionSpaceBase):
+    def create_expression(form: expr, V: dolfinx.fem.FunctionSpace):
         exp = dolfinx.fem.Expression(form, V.element.interpolation_points())
         return exp
 
@@ -182,7 +182,7 @@ class AssembleUtils(object):
 
     @staticmethod
     def assemble_form_vec(
-            l_form: ufl.Form, function_space: dolfinx.fem.FunctionSpaceBase,
+            l_form: ufl.Form, function_space: dolfinx.fem.FunctionSpace,
             b_vec: PETSc.Vec = None, clear_vec=False
     ) -> PETSc.Vec:
         """

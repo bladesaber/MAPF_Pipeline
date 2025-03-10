@@ -152,7 +152,7 @@ class MeshUtils(object):
     @staticmethod
     def cell_indices_of_points(
             mesh: Union[dolfinx.mesh.Mesh, pyvista.UnstructuredGrid], pcd_xyz: np.ndarray
-    ) -> List[List[int]]:
+    ) -> Union[List[List[int]], List[int]]:
         if isinstance(mesh, pyvista.UnstructuredGrid):
             cell_idxs = mesh.find_containing_cell(pcd_xyz)  # 只能返回最接近1个cell
         elif isinstance(mesh, dolfinx.mesh.Mesh):
