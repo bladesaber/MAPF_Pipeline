@@ -1,0 +1,29 @@
+import { PointObj, VecPointObj } from '../classes/geo_obj'
+import { LineObj, CircleObj, ArcObj, BsplineObj, DiskObj, TorusObj } from '../classes/geo_obj'
+import { PathObj, PipeShellObj, BsplineSurfaceObj } from '../classes/board_obj.ts'
+
+export interface TreeNode {
+  id?: string;
+  label: string;
+  children?: TreeNode[];
+  style?: string;
+  [key: string]: any;
+}
+
+export interface PathResultData {
+  [key: string]: {
+    coefficients: number[][];
+    segments: {
+      [key: string]: {
+        coefficient_idxs: number[];
+        knots: number[];
+        radius: number[];
+        degree: number[];
+      }
+    }
+  }
+}
+
+export const PointTypes = ['point', 'vec_point'] as const;
+export const LineTypes = ['line', 'circle', 'arc', 'bspline', 'torus', 'path'] as const;
+export const SurfaceTypes = ['pipe_shell', 'bspline_surface', 'disk'] as const;

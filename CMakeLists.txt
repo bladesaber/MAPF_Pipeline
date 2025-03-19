@@ -7,7 +7,7 @@ message("PACKAGE_TOP_DIR: " ${PACKAGE_TOP_DIR})
 set(ThirdPartyDir ${PACKAGE_TOP_DIR}/thirdparty)
 message("ThirdPartyDir: " ${ThirdPartyDir})
 
-find_package(PCL 1.14 REQUIRED)
+find_package(PCL REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
 # message("Boost_INCLUDE_DIRS: " ${Boost_INCLUDE_DIRS})

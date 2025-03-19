@@ -13,7 +13,7 @@ import tempfile
 from flask import Flask, request, jsonify, send_from_directory, Response, send_file
 from flask_cors import *
 
-from scripts_py.version_9.easy_server.cad_server import CadServer
+from scripts_py.version_9.easy_server_tst.cad_server import CadServer
 
 from scripts_py.version_9.mapf_pkg.networker_block import SimpleBlocker
 from scripts_py.version_9.mapf_pkg.algo_utils import create_obs_pcd, discrete_pipe_position
@@ -70,7 +70,7 @@ def parse_args():
 @app.route('/<path:filename>', methods=['GET'])
 @cross_origin()
 def serve_html(filename):
-    return send_from_directory('/home/admin123456/Desktop/work/flask_server/static_dir', filename)
+    return send_from_directory('/home/admin123456/Desktop/work/flask_server', filename)
 
 
 @app.route('/', methods=['GET'])
@@ -404,4 +404,4 @@ if __name__ == '__main__':
     server_args = parse_args()
     if server_args.server_dir is not None:
         server_manager = ServerManager(server_args.server_dir)
-        app.run(host='192.168.110.47', port=9999, debug=True)
+        app.run(host='192.168.110.54', port=9999, debug=True)
