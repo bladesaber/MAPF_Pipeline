@@ -21,18 +21,21 @@
         <template #title>Tools</template>
         <el-sub-menu index="3-1">
           <template #title>PointTool</template>
-          <el-menu-item index="3-1-1">Generate Point</el-menu-item>
-          <el-menu-item index="3-1-2">Generate Vector Point</el-menu-item>
+          <el-menu-item index="3-1-1" @click="handlePointToolClick('3-1-1')">Generate Point</el-menu-item>
+          <el-menu-item index="3-1-2" @click="handlePointToolClick('3-1-2')">Generate Vector Point</el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="3-2">
           <template #title>LineTool</template>
-          <el-menu-item index="3-2-1">Generate Line</el-menu-item>
-          <el-menu-item index="3-2-2">Generate Bspline</el-menu-item>
+          <el-menu-item index="3-2-1" @click="handleLineToolClick('3-2-1')">Generate Line</el-menu-item>
+          <el-menu-item index="3-2-2" @click="handleLineToolClick('3-2-2')">Generate Circle</el-menu-item>
+          <el-menu-item index="3-2-3" @click="handleLineToolClick('3-2-3')">Generate Arc</el-menu-item>
+          <el-menu-item index="3-2-4" @click="handleLineToolClick('3-2-4')">Generate Bspline</el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="3-3">
           <template #title>SurfaceTool</template>
-          <el-menu-item index="3-3-1">Generate PipeShell</el-menu-item>
-          <el-menu-item index="3-3-2">Generate Bspline Surface</el-menu-item>
+          <el-menu-item index="3-3-1" @click="handleSurfaceToolClick('3-3-1')">Generate PipeShell</el-menu-item>
+          <el-menu-item index="3-3-2" @click="handleSurfaceToolClick('3-3-2')">Generate Bspline Surface</el-menu-item>
+          <el-menu-item index="3-3-3" @click="handleSurfaceToolClick('3-3-3')">Generate Disk</el-menu-item>
         </el-sub-menu>
       </el-sub-menu>
       <el-sub-menu index="4">
@@ -68,8 +71,23 @@
 
       <!-- 3D Viewer -->
       <el-main class="viewer">
-        <ThreeViewer @select-object="handleLeftClickMeshSelect" @right-click="handleRightClickMeshSelect"/>
+        <ThreeViewer 
+          @leftClick-select-object="handleLeftClickMeshSelect"
+          @rightClick-select-object="handleRightClickMeshSelect"
+        />
       </el-main>
+
+      <PointTool
+        v-model="pointToolVisible"
+        :point-mode="pointMode"
+        @generate="handlePointGenerate"
+      />
+
+      <MeshContextTool
+        v-model="meshContextToolVisible"
+        :mode="meshContextToolMode"
+      />
+
     </div>
 
     <!-- Context Menu -->
@@ -79,8 +97,20 @@
       :style="contextMenuStyle"
     >
       <el-menu>
-        <el-menu-item>Hide/Vis</el-menu-item>
         <el-menu-item>Edit</el-menu-item>
+      </el-menu>
+    </div>
+
+    <!-- Mesh Context Menu -->
+    <div 
+      v-show="meshContextMenuVisible"
+      class="context-menu"
+      :style="contextMenuStyle"
+    >
+      <el-menu>
+        <el-menu-item @click="handleMeshContextMenuClick('Hide/Vis')">Hide/Vis</el-menu-item>
+        <el-menu-item @click="handleMeshContextMenuClick('Move')">Move</el-menu-item>
+        <el-menu-item @click="handleMeshContextMenuClick('Edit')">Edit</el-menu-item>
       </el-menu>
     </div>
 
@@ -92,6 +122,7 @@
       accept=".h5,.hdf5"
       @change="handleFileSelected"
     />
+     
   </div>
 </template>
 
@@ -99,6 +130,8 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, provide } from 'vue'
 import { Document, Setting, Tools } from '@element-plus/icons-vue'
 import ThreeViewer from '../components/ThreeViewer.vue'
+import PointTool from '../components/PointTool.vue'
+import MeshContextTool from '../components/MeshContextTool.vue'
 import { RootObj } from '../classes/store_obj.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { tr } from 'element-plus/es/locales.mjs'
@@ -110,6 +143,7 @@ import type { TreeNode } from '../types/data_type.ts'
 
 import { PointObj } from '../classes/geo_obj.ts'
 import { PathObj } from '../classes/board_obj.ts'
+import { pass } from 'three/tsl'
 
 // ----------------
 const scene = new THREE.Scene();
@@ -117,8 +151,19 @@ const rootObj = new RootObj(scene);
 provide('storeObj', rootObj);
 provide('main_message', "Main Window Running...");
 
-// ---------------- Tree View ----------------
+// ---------------- Left Sidebar Click Event Handling ----------------
+const treeData = ref<TreeNode[]>([])
+
+const contextMenuVisible = ref(false)
+const contextMenuPosition = reactive({ x: 0, y: 0 })
+const contextMenuStyle = computed(() => ({
+  position: 'fixed' as const,
+  left: `${contextMenuPosition.x}px`,
+  top: `${contextMenuPosition.y}px`
+}))
+
 const handleLeftTreeClick = (data: any) => {
+  console.log('Left tree click:', data)
 }
 
 const handleRightTreeClick = (event: MouseEvent, data: any) => {
@@ -126,6 +171,7 @@ const handleRightTreeClick = (event: MouseEvent, data: any) => {
   contextMenuPosition.x = event.clientX
   contextMenuPosition.y = event.clientY
   contextMenuVisible.value = true
+  meshContextMenuVisible.value = false
 }
 
 const sidebarWidth = ref(250)
@@ -152,9 +198,6 @@ const stopResize = () => {
   document.removeEventListener('mousemove', startResize)
   document.removeEventListener('mouseup', stopResize)
 }
-
-// Tree data
-const treeData = ref<TreeNode[]>([])
 
 const updateTreeData = () => {
   const pointsNode: TreeNode = {
@@ -206,32 +249,7 @@ const updateTreeData = () => {
   treeData.value = tree
 }
 
-// ---------------- Context menu ---------------- 
-const contextMenuVisible = ref(false)
-const contextMenuPosition = reactive({ x: 0, y: 0 })
-const contextMenuStyle = computed(() => ({
-  position: 'fixed' as const,
-  left: `${contextMenuPosition.x}px`,
-  top: `${contextMenuPosition.y}px`
-}))
-
-const handleClickEvent = (event: MouseEvent) => {
-  const target = event.target as HTMLElement
-  if (!target.closest('.context-menu')) {
-    // contextMenuVisible.value = false
-  }
-}
-
-// ---------------- Event handling ----------------
-onMounted(() => {
-  document.addEventListener('click', handleClickEvent)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('click', handleClickEvent)
-})
-
-// ---------------- click mesh event ----------------
+// ---------------- Mesh Click Event Handling ----------------
 const handleLeftClickMeshSelect = (objectName: string) => {
   // // Find the object in the tree data
   // const findNode = (nodes: TreeNode[]): TreeNode | null => {
@@ -255,7 +273,12 @@ const handleLeftClickMeshSelect = (objectName: string) => {
   console.log('Left click detected:', objectName)
 }
 
-const handleRightClickMeshSelect = (objectName: string) => {
+const meshContextMenuVisible = ref(false)
+const handleRightClickMeshSelect = (objectName: string, clickEventX: number, clickEventY: number) => {
+  contextMenuPosition.x = clickEventX
+  contextMenuPosition.y = clickEventY
+  meshContextMenuVisible.value = true
+  contextMenuVisible.value = false
   console.log('Right click detected:', objectName)
 }
 
@@ -328,6 +351,106 @@ const processPathResultData = (data: PathResultData, fileName: string) => {
   })
   
   updateTreeData()
+}
+
+// ---------------- Visable Dictionary ----------------
+const pointToolVisible = ref(false)
+const lineToolVisible = ref(false)
+const surfaceToolVisible = ref(false)
+const meshContextToolVisible = ref(false)
+
+const visable_dict = {
+  'pointToolVisible': pointToolVisible,
+  'lineToolVisible': lineToolVisible,
+  'surfaceToolVisible': surfaceToolVisible,
+  'meshContextToolVisible': meshContextToolVisible
+}
+function setVisableDict(active_key: string, single_mode: boolean = false) {
+  if (single_mode) {
+    Object.keys(visable_dict).forEach(key => {
+      if (key !== active_key) {
+        visable_dict[key as keyof typeof visable_dict].value = false
+      }
+    })
+  }
+  visable_dict[active_key as keyof typeof visable_dict].value = true
+}
+
+// ---------------- Point Tool ----------------
+const handlePointGenerate = (data: any) => {
+  console.log('Point generate:', data)
+}
+
+const pointMode = ref("Point")
+const handlePointToolClick = (index: string) => {
+  pointMode.value = index === '3-1-2' ? "VectorPoint" : "Point"
+  setVisableDict('pointToolVisible', true)
+}
+
+// ---------------- Line Tool ----------------
+const lineMode = ref("Line")
+const handleLineToolClick = (index: string) => {
+  if (index === '3-2-1') {  
+    lineMode.value = "Line"
+  }
+  else if (index === '3-2-2') {
+    lineMode.value = "Circle"
+  }
+  else if (index === '3-2-3') {
+    lineMode.value = "Arc"
+  }
+  else if (index === '3-2-4') {
+    lineMode.value = "Bspline"
+  }
+  setVisableDict('lineToolVisible', true)
+}
+
+// ---------------- Surface Tool ----------------
+const surfaceMode = ref("PipeShell")
+const handleSurfaceToolClick = (index: string) => {
+  if (index === '3-3-1') {
+    surfaceMode.value = "PipeShell"
+  }
+  else if (index === '3-3-2') {
+    surfaceMode.value = "BsplineSurface"
+  }
+  else if (index === '3-3-3') {
+    surfaceMode.value = "Disk"
+  }
+  setVisableDict('surfaceToolVisible', true)
+}
+
+const meshContextToolMode = ref("Move")
+const handleMeshContextMenuClick = (mode: string) => {
+  console.log('Mesh context menu click:', mode)
+  if (mode === 'Hide/Vis') {
+    pass
+  }
+  else if (mode === 'Move') {
+    meshContextToolMode.value = "Move"
+    setVisableDict('meshContextToolVisible', true)
+  }
+  else if (mode === 'Edit') {
+    meshContextToolMode.value = "Edit"
+    setVisableDict('meshContextToolVisible', true)
+  }
+}
+
+// ---------------- Click Event handling ----------------
+onMounted(() => {
+  document.addEventListener('click', handleClickEvent)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickEvent)
+})
+
+const handleClickEvent = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  if (!target.closest('.context-menu')) {
+    contextMenuVisible.value = false
+  }
+  meshContextMenuVisible.value = false
 }
 
 </script>

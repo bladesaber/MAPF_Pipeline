@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { Scene, Object3D, BufferGeometry, Float32BufferAttribute, CylinderGeometry,
   Points, Line, LineBasicMaterial, PointsMaterial, Mesh, MeshBasicMaterial } from 'three'
-import { pass } from 'three/tsl'
+import { color, pass } from 'three/tsl'
 import { sample_bspline } from './math_utils.ts'
 
 interface VisualizationOptions {
@@ -10,6 +10,21 @@ interface VisualizationOptions {
   segments?: number
   resolution?: number
   output_mesh?: boolean
+}
+
+export function setMeshColor(mesh: THREE.Mesh, color: number) {
+  if (mesh.material instanceof THREE.MeshStandardMaterial) {
+    mesh.material.color.setHex(color)
+  }
+  else if (mesh.material instanceof THREE.MeshPhysicalMaterial) {
+    mesh.material.color.setHex(color)
+  }
+  else if (mesh.material instanceof THREE.MeshBasicMaterial) {
+    mesh.material.color.setHex(color)
+  }
+  else {
+    throw new Error('Unsupported material type')
+  }
 }
 
 export function add_mesh(scene: THREE.Scene, mesh: THREE.Mesh, force_update = false): void {
