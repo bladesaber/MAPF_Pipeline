@@ -1,6 +1,6 @@
-import { PointObj, VecPointObj } from '../classes/geo_obj'
-import { LineObj, CircleObj, ArcObj, BsplineObj, DiskObj, TorusObj } from '../classes/geo_obj'
-import { PathObj, PipeShellObj, BsplineSurfaceObj } from '../classes/board_obj.ts'
+import { PointObj, VecPointObj } from '../classes/point_obj.ts'
+import { LineObj, CircleObj, ArcObj, BsplineObj, TorusObj } from '../classes/line_obj.ts'
+import { PathObj, PipeShellObj, BsplineSurfaceObj, DiskObj } from '../classes/surface_obj.ts'
 
 export interface TreeNode {
   id?: string;

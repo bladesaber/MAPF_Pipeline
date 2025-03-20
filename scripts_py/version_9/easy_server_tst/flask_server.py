@@ -48,6 +48,9 @@ class ServerManager(object):
 
     def get_proj_info(self, proj_id: str):
         proj_dir = os.path.join(self.server_dir, proj_id)
+
+        print(proj_dir)
+
         return {
             'status': os.path.exists(proj_dir),
             'proj_dir': proj_dir,

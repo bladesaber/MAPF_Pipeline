@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { BaseGeometryObj } from './geo_obj'
+import { BaseGeometryObj } from './point_obj.ts'
 
 export class RootObj {
   private scene: THREE.Scene;

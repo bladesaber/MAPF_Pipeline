@@ -3,7 +3,7 @@
   <div class="mesh-context-tool" v-show="modelValue">
     <div class="tool-header">
       <span>{{ mode === 'Move' ? 'Move Tool' : 'Edit Tool' }}</span>
-      <el-button type="text" @click="$emit('update:modelValue', false)">
+      <el-button link @click="$emit('update:modelValue', false)">
         <el-icon><Close /></el-icon>
       </el-button>
     </div>

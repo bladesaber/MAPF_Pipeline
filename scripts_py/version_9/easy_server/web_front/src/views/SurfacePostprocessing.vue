@@ -23,6 +23,7 @@
           <template #title>PointTool</template>
           <el-menu-item index="3-1-1" @click="handlePointToolClick('3-1-1')">Generate Point</el-menu-item>
           <el-menu-item index="3-1-2" @click="handlePointToolClick('3-1-2')">Generate Vector Point</el-menu-item>
+          <el-menu-item index="3-1-3" @click="handlePointToolClick('3-1-3')">Generate Point From Skeleton</el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="3-2">
           <template #title>LineTool</template>
@@ -30,6 +31,7 @@
           <el-menu-item index="3-2-2" @click="handleLineToolClick('3-2-2')">Generate Circle</el-menu-item>
           <el-menu-item index="3-2-3" @click="handleLineToolClick('3-2-3')">Generate Arc</el-menu-item>
           <el-menu-item index="3-2-4" @click="handleLineToolClick('3-2-4')">Generate Bspline</el-menu-item>
+          <el-menu-item index="3-2-5" @click="handleLineToolClick('3-2-5')">Generate Skeleton</el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="3-3">
           <template #title>SurfaceTool</template>
@@ -37,6 +39,7 @@
           <el-menu-item index="3-3-2" @click="handleSurfaceToolClick('3-3-2')">Generate Bspline Surface</el-menu-item>
           <el-menu-item index="3-3-3" @click="handleSurfaceToolClick('3-3-3')">Generate Disk</el-menu-item>
         </el-sub-menu>
+        <el-menu-item index="3-4">Visual Group</el-menu-item>
       </el-sub-menu>
       <el-sub-menu index="4">
         <template #title>Setting</template>
@@ -78,9 +81,17 @@
       </el-main>
 
       <PointTool
+        ref="pointToolRef"
         v-model="pointToolVisible"
         :point-mode="pointMode"
-        @generate="handlePointGenerate"
+        @generate="handlePointTool"
+      />
+
+      <LineTool
+        ref="lineToolRef"
+        v-model="lineToolVisible"
+        :line-mode="lineMode"
+        @generate="handleLineTool"
       />
 
       <MeshContextTool
@@ -128,22 +139,27 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, provide } from 'vue'
-import { Document, Setting, Tools } from '@element-plus/icons-vue'
 import ThreeViewer from '../components/ThreeViewer.vue'
 import PointTool from '../components/PointTool.vue'
+import LineTool from '../components/LineTool.vue'
 import MeshContextTool from '../components/MeshContextTool.vue'
 import { RootObj } from '../classes/store_obj.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { tr } from 'element-plus/es/locales.mjs'
 import type { Scene, Object3D } from 'three'
 import * as THREE from 'three'
 import type { PathResultData } from '../types/data_type.ts'
 import { PointTypes, LineTypes, SurfaceTypes } from '../types/data_type.ts'
 import type { TreeNode } from '../types/data_type.ts'
 
-import { PointObj } from '../classes/geo_obj.ts'
-import { PathObj } from '../classes/board_obj.ts'
+import { PointObj } from '../classes/point_obj.ts'
+import { BsplineObj } from '../classes/line_obj.ts'
 import { pass } from 'three/tsl'
+import { 
+  generate_point, generate_vector_point, 
+  generate_line_from_points, generate_circle, generate_arc, generate_bspline_from_points, 
+  generate_skeleton, generate_surface_points_from_skeletons,
+  generate_disk 
+} from '../utils/operation_utils.ts'
 
 // ----------------
 const scene = new THREE.Scene();
@@ -250,27 +266,36 @@ const updateTreeData = () => {
 }
 
 // ---------------- Mesh Click Event Handling ----------------
-const handleLeftClickMeshSelect = (objectName: string) => {
-  // // Find the object in the tree data
-  // const findNode = (nodes: TreeNode[]): TreeNode | null => {
-  //   for (const node of nodes) {
-  //     if (node.label === objectName) {
-  //       return node
-  //     }
-  //     if (node.children) {
-  //       const found = findNode(node.children)
-  //       if (found) return found
-  //     }
-  //   }
-  //   return null
-  // }
+function findNode(nodes: TreeNode[], objectName: string): TreeNode | null {
+  for (const node of nodes) {
+    if (node.label === objectName) {
+      return node
+    }
+    if (node.children) {
+      const found = findNode(node.children, objectName)
+      if (found) return found
+    }
+  }
+  return null
+}
 
-  // const selectedNode = findNode(treeData.value)
-  // if (selectedNode) {
-  //   // You can add additional handling here, like highlighting the tree node
-  //   console.log('Selected node:', selectedNode)
-  // }
-  console.log('Left click detected:', objectName)
+const pointToolRef = ref()
+const lineToolRef = ref()
+const handleLeftClickMeshSelect = (objectName: string) => {
+  if (pointToolVisible.value) {
+    const selectedNode = findNode(treeData.value, objectName)
+    if (selectedNode) {
+      pointToolRef.value?.addItem({name: selectedNode.label, style: selectedNode.style})
+    }
+  }
+  else if (lineToolVisible.value) {
+    // Only item from tree data can be selected
+    const selectedNode = findNode(treeData.value, objectName)
+    if (selectedNode) {
+      lineToolRef.value?.addItem({name: selectedNode.label, style: selectedNode.style})
+    }
+  }
+  // console.log('Left click detected:', objectName)
 }
 
 const meshContextMenuVisible = ref(false)
@@ -337,12 +362,11 @@ const processPathResultData = (data: PathResultData, fileName: string) => {
     
     Object.entries(data.segments).forEach(([segment_name, segment]) => {
       const control_point_list = segment.coefficient_idxs.map((idx: number) => point_list[idx])
-      const path = new PathObj(
+      const path = new BsplineObj(
         `${group_name}/${segment_name}`, 
         control_point_list, 
         segment.knots, 
         segment.degree[0],
-        segment.radius[0],
         rootObj.get_scene()
       )
       rootObj.add_obj(path)
@@ -377,18 +401,53 @@ function setVisableDict(active_key: string, single_mode: boolean = false) {
 }
 
 // ---------------- Point Tool ----------------
-const handlePointGenerate = (data: any) => {
-  console.log('Point generate:', data)
+const handlePointTool = (data: any) => {
+  if (data.name === '') {
+    ElMessage.error('Name is required')
+    return
+  }
+  let result = {success: false}
+  if (data.style === 'vector_point') {
+    result = generate_vector_point(
+      data.name, data.x, data.y, data.z, data.vectorX, data.vectorY, data.vectorZ, rootObj
+    )
+  }
+  else if (data.style === 'point') {
+    result = generate_point(data.name, data.x, data.y, data.z, rootObj)
+  }
+  else if (data.style === 'PointFromSkeleton') {
+    result = generate_surface_points_from_skeletons(
+      data.name, 
+      data.selectedItems.map((item: any) => rootObj.get_obj(item.name)), 
+      data.selectedItems.map((item: any) => item.sample_num), 
+      rootObj
+    )
+  }
+  else {
+    ElMessage.error('Invalid style')
+    return
+  }
+  if (result.success) {
+    updateTreeData()
+  }
 }
 
 const pointMode = ref("Point")
 const handlePointToolClick = (index: string) => {
-  pointMode.value = index === '3-1-2' ? "VectorPoint" : "Point"
+  if (index === '3-1-1') {
+    pointMode.value = "Point"
+  }
+  else if (index === '3-1-2') {
+    pointMode.value = "VectorPoint"
+  }
+  else if (index === '3-1-3') {
+    pointMode.value = "PointFromSkeleton"
+  }
   setVisableDict('pointToolVisible', true)
 }
 
 // ---------------- Line Tool ----------------
-const lineMode = ref("Line")
+const lineMode = ref<'Line' | 'Circle' | 'Arc' | 'Bspline' | 'Skeleton'>('Line')
 const handleLineToolClick = (index: string) => {
   if (index === '3-2-1') {  
     lineMode.value = "Line"
@@ -402,7 +461,57 @@ const handleLineToolClick = (index: string) => {
   else if (index === '3-2-4') {
     lineMode.value = "Bspline"
   }
+  else if (index === '3-2-5') {
+    lineMode.value = "Skeleton"
+  }
   setVisableDict('lineToolVisible', true)
+}
+
+const handleLineTool = (data: any) => {
+  if (data.name === '') {
+    ElMessage.error('Name is required')
+    return
+  }
+  let result = {success: false}
+  if (data.style === 'Line') {
+    result = generate_line_from_points(
+      data.name, 
+      data.selectedItems.map((item: any) => rootObj.get_obj(item.name)), 
+      rootObj
+    )
+  }
+  else if (data.style === 'Circle') {
+    result = generate_circle(data.name, data.x, data.y, data.z, data.radius, data.vectorX, data.vectorY, data.vectorZ, rootObj)
+  }
+  else if (data.style === 'Arc') {
+    result = generate_arc(data.name, data.x, data.y, data.z, data.radius, data.vectorX, data.vectorY, data.vectorZ, data.startAngle, data.endAngle, rootObj)
+  }
+  else if (data.style === 'Bspline') {
+    result = generate_bspline_from_points(
+      data.name, 
+      data.selectedItems.map((item: any) => rootObj.get_obj(item.name)), 
+      data.knots, 
+      data.degree, 
+      rootObj
+    )
+  }
+  else if (data.style === 'Skeleton') {
+    const radius = data.selectedItems.map((item: any) => item.radius)
+    result = generate_skeleton(
+      data.name, 
+      rootObj.get_obj(data.spline_name) as BsplineObj, 
+      data.selectedItems.map((item: any) => item.percentage), 
+      radius[0], 
+      rootObj
+    )
+  }
+  else {
+    ElMessage.error('Invalid style')
+    return
+  }
+  if (result.success) {
+    updateTreeData()
+  }
 }
 
 // ---------------- Surface Tool ----------------

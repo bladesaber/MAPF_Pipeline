@@ -4,7 +4,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, inject } from 'vue'
+import { ref, onMounted, onBeforeUnmount, inject, computed } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RootObj } from '../classes/store_obj.ts'
@@ -53,6 +53,15 @@ const init = () => {
   // Controls
   controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
+  controls.mouseButtons = {
+    LEFT: THREE.MOUSE.ROTATE,
+    MIDDLE: undefined,
+    RIGHT: THREE.MOUSE.PAN
+  }
+  // controls.enableZoom = true
+  // controls.enablePan = true
+  // controls.enableRotate = true
+  // controls.zoomSpeed = 1.0
 
   // Add click event listener
   renderer.domElement.addEventListener('click', onMouseLeftClick)

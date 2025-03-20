@@ -1,7 +1,8 @@
 import * as THREE from 'three'
-import { BaseGeometryObj, BsplineObj, VecPointObj, PointObj, TorusObj } from './geo_obj'
-import { create_bspline, add_mesh, get_mesh_from_name, remove_mesh, read_mesh_json } from '../utils/visulize_utils'
+import { BaseGeometryObj, VecPointObj, PointObj } from './point_obj.ts'
+import { create_bspline, add_mesh, remove_mesh, read_mesh_json, create_disk } from '../utils/visulize_utils'
 import { sample_bspline, compute_path_tangent } from '../utils/math_utils'
+import { BsplineObj, TorusObj } from './line_obj.ts'
 
 export class PathObj extends BaseGeometryObj {
   style: string = 'path'
@@ -88,6 +89,53 @@ export class PathObj extends BaseGeometryObj {
       degree: this.spline_mesh.degree,
       radius: this.radius,
       sample_num: this.sample_num,
+      style: this.style
+    }
+  }
+}
+
+export class DiskObj extends BaseGeometryObj {
+  x: number
+  y: number
+  z: number
+  radius: number
+  vec_x: number
+  vec_y: number
+  vec_z: number
+  style: string = 'disk'
+  layer: number = 2
+  
+  constructor(
+    name: string, x: number, y: number, z: number, radius: number, 
+    vec_x: number, vec_y: number, vec_z: number, scene: THREE.Scene
+  ) {
+    super(name)
+    this.x = x
+    this.y = y
+    this.z = z
+    this.radius = radius
+    this.vec_x = vec_x
+    this.vec_y = vec_y
+    this.vec_z = vec_z
+    this.add_mesh(scene)
+  }
+
+  add_mesh(scene: THREE.Scene) {
+    this.mesh = create_disk(this.x, this.y, this.z, this.radius, this.vec_x, this.vec_y, this.vec_z) as THREE.Mesh
+    this.mesh.name = this.name
+    add_mesh(scene, this.mesh)
+  }
+
+  toJSON() {
+    return {
+      name: this.name,
+      x: this.x,
+      y: this.y,
+      z: this.z,
+      radius: this.radius,
+      vec_x: this.vec_x,
+      vec_y: this.vec_y,
+      vec_z: this.vec_z,
       style: this.style
     }
   }
