@@ -1,4 +1,5 @@
-import { BaseGeometryObj, PointObj, VecPointObj } from "./point_obj";
+import { BaseGeometryObj, BaseNode, GroupNode } from './base_obj.ts'
+import { PointObj } from "./point_obj.ts";
 import * as THREE from "three";
 import {
   add_mesh,
@@ -8,51 +9,85 @@ import {
   create_bspline,
   create_torus_mesh,
 } from "../utils/visulize_utils";
+import { RootObj } from "./store_obj.ts";
 
 export class LineObj extends BaseGeometryObj {
-  points: PointObj[] = [];
+  point_nodes: (BaseNode|GroupNode)[] = [];
   style: string = "line";
-  layer: number = 1;
 
-  constructor(name: string, points: PointObj[], scene: THREE.Scene) {
-    super(name);
-    this.points = points;
-    this.add_mesh(scene);
+  constructor(name: string, points_node: (BaseNode|GroupNode)[], node_style: BaseNode|GroupNode, rootObj: RootObj) {
+    super(name, node_style);
+    this.point_nodes = points_node;
+    this.add_mesh(rootObj);
   }
 
   add_var(var_obj: PointObj, index: number = -1) {
-    if (index === -1) {
-      this.points.push(var_obj);
-    } else {
-      this.points.splice(index, 0, var_obj);
-    }
+    //Todo non-finish
+    // if (var_obj.node_style.style === 'BaseNode') {
+    //   this.point_nodes.splice(index, 0, var_obj.node_style)
+    // } else if (var_obj.node_style.style === 'GroupNode') {
+    //   this.point_nodes.splice(index, 0, var_obj.node_style as GroupNode)
+    // } else {
+    //   throw new Error(`Unknown node style: ${var_obj.node_style.style}`)
+    // }
+    // this.update_hooks();
     // after adding a point, we need to update the mesh
+    throw new Error("Not implemented");
   }
 
-  remove_var(name: string) {
-    this.points = this.points.filter((point) => point.name !== name);
+  remove_var(var_obj: PointObj) {
+    // //Todo non-finish
+    // if (var_obj.node_style.style === 'BaseNode') {
+    //   this.point_nodes = this.point_nodes.filter((node) => node.name !== var_obj.node_style.name)
+    // } else if (var_obj.node_style.style === 'GroupNode') {
+    //   this.point_nodes = this.point_nodes.filter((node) => node.name !== (var_obj.node_style as GroupNode).group_name)
+    // } else {
+    //   throw new Error(`Unknown node style: ${var_obj.node_style.style}`)
+    // }
+    // this.update_hooks();
     // after removing a point, we need to update the mesh
+    throw new Error("Not implemented");
   }
 
-  add_mesh(scene: THREE.Scene) {
-    if (this.points.length <= 1) {
-      throw new Error("LineObj must have at least 2 points")
+  add_mesh(rootObj: RootObj) {
+    const point_objs: PointObj[] = []
+    for (const node of this.point_nodes) {
+      let obj = rootObj.request_obj(node)
+      if (obj) {
+        point_objs.push(obj as PointObj)
+      }
     }
-    this.mesh = create_multi_lines(this.points.map((point) => [point.x, point.y, point.z]), { output_mesh: true }) as THREE.Mesh;
+    if (point_objs.length <= 1) {
+      throw new Error("LineObj must have at least 2 points")
+      return;
+    }
+
+    this.mesh = create_multi_lines(
+      point_objs.map((point) => [point.x, point.y, point.z]), 
+      { output_mesh: true }
+    ) as THREE.Mesh;
     this.mesh.name = this.name;
-    add_mesh(scene, this.mesh);
+    add_mesh(rootObj.get_scene(), this.mesh);
+    
+    this.point_nodes = point_objs.map((point) => point.node_style)
     this.update_hooks();
   }
 
   update_hooks() {
-    let hook_name = this.points.map((point) => point.name);
-    super.update_hooks(hook_name, true);
+    const hook_names: string[] = []
+    this.point_nodes.forEach((node) => {
+      if (node.style === 'BaseNode') {
+        hook_names.push(node.name)
+      } else if (node.style === 'GroupNode') {
+        hook_names.push((node as GroupNode).group_name)
+      }
+    })
+    super.update_hooks(hook_names, true);
   }
 
   toJSON() {
     return {
       name: this.name,
-      points: this.points.map((point) => point.toJSON()),
       style: this.style,
     };
   }
@@ -67,7 +102,6 @@ export class CircleObj extends BaseGeometryObj {
   vec_y: number;
   vec_z: number;
   style: string = "circle";
-  layer: number = 1;
 
   constructor(
     name: string,
@@ -78,9 +112,10 @@ export class CircleObj extends BaseGeometryObj {
     vec_x: number,
     vec_y: number,
     vec_z: number,
-    scene: THREE.Scene
+    node_style: BaseNode|GroupNode,
+    rootObj: RootObj
   ) {
-    super(name);
+    super(name, node_style);
     this.x = x;
     this.y = y;
     this.z = z;
@@ -88,13 +123,16 @@ export class CircleObj extends BaseGeometryObj {
     this.vec_x = vec_x;
     this.vec_y = vec_y;
     this.vec_z = vec_z;
-    this.add_mesh(scene);
+    this.add_mesh(rootObj);
   }
 
-  add_mesh(scene: THREE.Scene) {
-    this.mesh = create_circle(this.x, this.y, this.z, this.radius, this.vec_x, this.vec_y, this.vec_z, { output_mesh: true }) as THREE.Mesh;
+  add_mesh(rootObj: RootObj) {
+    this.mesh = create_circle(
+      this.x, this.y, this.z, this.radius, this.vec_x, this.vec_y, this.vec_z, 
+      { output_mesh: true }
+    ) as THREE.Mesh;
     this.mesh.name = this.name;
-    add_mesh(scene, this.mesh);
+    add_mesh(rootObj.get_scene(), this.mesh);
   }
 
   toJSON() {
@@ -123,7 +161,6 @@ export class ArcObj extends BaseGeometryObj {
   start_angle: number;
   end_angle: number;
   style: string = "arc";
-  layer: number = 1;
 
   constructor(
     name: string,
@@ -136,9 +173,10 @@ export class ArcObj extends BaseGeometryObj {
     vec_z: number,
     start_angle: number,
     end_angle: number,
-    scene: THREE.Scene
+    node_style: BaseNode|GroupNode,
+    rootObj: RootObj
   ) {
-    super(name);
+    super(name, node_style);
     this.x = x;
     this.y = y;
     this.z = z;
@@ -148,10 +186,10 @@ export class ArcObj extends BaseGeometryObj {
     this.vec_z = vec_z;
     this.start_angle = start_angle;
     this.end_angle = end_angle;
-    this.add_mesh(scene);
+    this.add_mesh(rootObj);
   }
 
-  add_mesh(scene: THREE.Scene) {
+  add_mesh(rootObj: RootObj) {
     this.mesh = create_arc(
       this.x,
       this.y,
@@ -161,10 +199,11 @@ export class ArcObj extends BaseGeometryObj {
       this.vec_y,
       this.vec_z,
       this.start_angle,
-      this.end_angle
+      this.end_angle,
+      { output_mesh: true }
     ) as THREE.Mesh;
     this.mesh.name = this.name;
-    add_mesh(scene, this.mesh);
+    add_mesh(rootObj.get_scene(), this.mesh);
   }
 
   toJSON() {
@@ -185,65 +224,86 @@ export class ArcObj extends BaseGeometryObj {
 }
 
 export class BsplineObj extends BaseGeometryObj {
-  control_points: PointObj[] = [];
+  control_point_nodes: (BaseNode|GroupNode)[] = [];
   knots: number[] = [];
   degree: number = 3;
   sample_num: number = 50;
   style: string = "bspline";
-  layer: number = 1;
 
   constructor(
     name: string,
-    control_points: PointObj[],
+    control_point_nodes: (BaseNode|GroupNode)[],
     knots: number[],
     degree: number,
-    scene: THREE.Scene
+    node_style: BaseNode|GroupNode,
+    rootObj: RootObj,
+    sample_num: number = 50
   ) {
-    super(name);
-    this.control_points = control_points;
+    super(name, node_style);
+    this.control_point_nodes = control_point_nodes;
     this.knots = knots;
     this.degree = degree;
-    this.add_mesh(scene);
+    this.sample_num = sample_num;
+    this.add_mesh(rootObj);
   }
 
   add_var(point: PointObj, index: number = -1) {
-    if (index === -1) {
-      this.control_points.push(point);
-    } else {
-      this.control_points.splice(index, 0, point);
+    // Todo non-finish
+    throw new Error("Not implemented");
+    // if (index === -1) {
+    //   this.control_points.push(point);
+    // } else {
+    //   this.control_points.splice(index, 0, point);
+    // }
+  }
+
+  remove_var(point: PointObj) {
+    // Todo non-finish
+    throw new Error("Not implemented");
+    // this.control_points = this.control_points.filter((point) => point.name !== name);
+  }
+
+  add_mesh(rootObj: RootObj) {
+    const control_point_objs: PointObj[] = []
+    for (const node of this.control_point_nodes) {
+      let obj = rootObj.request_obj(node)
+      if (obj) {
+        control_point_objs.push(obj as PointObj)
+      }
     }
-  }
-
-  remove_var(name: string) {
-    this.control_points = this.control_points.filter((point) => point.name !== name);
-  }
-
-  add_mesh(scene: THREE.Scene) {
-    if (this.control_points.length <= this.degree + 1) {
+    if (control_point_objs.length < this.degree + 1) {
       throw new Error("BsplineObj must have at least degree + 1 control points");
     }
 
     this.mesh = create_bspline(
-      this.control_points.map((point) => [point.x, point.y, point.z]),
+      control_point_objs.map((point) => [point.x, point.y, point.z]),
       this.knots,
       this.degree,
       this.sample_num,
       { output_mesh: true }
     ) as THREE.Mesh;
     this.mesh.name = this.name;
-    add_mesh(scene, this.mesh);
+    add_mesh(rootObj.get_scene(), this.mesh);
+
+    this.control_point_nodes = control_point_objs.map((point) => point.node_style)
     this.update_hooks();
   }
 
   update_hooks() {
-    let hook_name = this.control_points.map((point) => point.name);
-    super.update_hooks(hook_name, true);
+    const hook_names: string[] = []
+    this.control_point_nodes.forEach((node) => {
+      if (node.style === 'BaseNode') {
+        hook_names.push(node.name)
+      } else if (node.style === 'GroupNode') {
+        hook_names.push((node as GroupNode).group_name)
+      }
+    })
+    super.update_hooks(hook_names, true);
   }
 
   toJSON() {
     return {
       name: this.name,
-      control_points: this.control_points.map((point) => point.toJSON()),
       knots: this.knots,
       degree: this.degree,
       style: this.style,
@@ -261,7 +321,6 @@ export class TorusObj extends BaseGeometryObj {
   vec_y: number;
   vec_z: number;
   style: string = "torus";
-  layer: number = 1;
 
   constructor(
     name: string,
@@ -273,9 +332,10 @@ export class TorusObj extends BaseGeometryObj {
     vec_x: number,
     vec_y: number,
     vec_z: number,
-    scene: THREE.Scene
+    node_style: BaseNode|GroupNode,
+    rootObj: RootObj
   ) {
-    super(name);
+    super(name, node_style);
     this.x = x;
     this.y = y;
     this.z = z;
@@ -284,16 +344,16 @@ export class TorusObj extends BaseGeometryObj {
     this.vec_x = vec_x;
     this.vec_y = vec_y;
     this.vec_z = vec_z;
-    this.add_mesh(scene);
+    this.add_mesh(rootObj);
   }
 
-  add_mesh(scene: THREE.Scene) {
+  add_mesh(rootObj: RootObj) {
     this.mesh = create_torus_mesh(
       this.x, this.y, this.z, this.radius, this.tube_radius, this.vec_x, this.vec_y, this.vec_z,
       32, 32, 2 * Math.PI, { output_mesh: true }
     ) as THREE.Mesh;
     this.mesh.name = this.name;
-    add_mesh(scene, this.mesh);
+    add_mesh(rootObj.get_scene(), this.mesh);
   }
 
   toJSON() {

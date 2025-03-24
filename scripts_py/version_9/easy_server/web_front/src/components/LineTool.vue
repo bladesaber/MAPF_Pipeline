@@ -347,7 +347,7 @@ const formData = ref({
   degree: 3,
   sample_num: 50,
   skeleton_radius: 1.0,
-  skeleton_sample_num: 100,
+  skeleton_sample_num: 20,
   spline_name: '',
 })
 
@@ -380,11 +380,11 @@ const addItem = ({name, style}: {name: string, style: string}) => {
 }
 
 const handleGenerate = () => {
-  if (selectedItems.value.length === 0) {
-    ElMessage.warning('Please select at least one item')
-    return
-  }
   if (props.lineMode === 'Line') {
+    if (selectedItems.value.length === 0) {
+      ElMessage.warning('Please select at least one item')
+      return
+    }
     emit('generate', {
       style: 'Line',
       name: formData.value.name,
@@ -415,8 +415,8 @@ const handleGenerate = () => {
       vector_x: formData.value.vector_x,
       vector_y: formData.value.vector_y,
       vector_z: formData.value.vector_z,
-      start_angle: formData.value.start_angle,
-      end_angle: formData.value.end_angle,
+      startAngle: formData.value.start_angle,
+      endAngle: formData.value.end_angle,
     })
   }
   else if (props.lineMode === 'Bspline') {
@@ -432,6 +432,7 @@ const handleGenerate = () => {
     emit('generate', {
       style: 'Skeleton',
       name: formData.value.name,
+      splineName: formData.value.spline_name,
       selectedItems: selectedItems.value
     })
   }
@@ -462,9 +463,8 @@ const sampleSkeletonPoints = () => {
   selectedItems.value = []
   
   for (let i = 0; i < numPoints; i++) {
-    const percentage = (i / (numPoints - 1)) * 100
     selectedItems.value.push({
-      percentage: percentage,
+      percentage: i / (numPoints - 1),
       radius: formData.value.skeleton_radius
     })
   }

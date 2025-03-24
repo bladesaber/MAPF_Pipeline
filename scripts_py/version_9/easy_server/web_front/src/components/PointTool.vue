@@ -122,7 +122,7 @@
         height="200px"
       >
         <el-table-column prop="name" label="Selected" />
-        <el-table-column label="Number" width="100">
+        <el-table-column label="Sample Num" width="120">
           <template #default="{ row }">
             <el-input-number
               v-model="row.sample_num"
@@ -146,6 +146,9 @@
         </el-table-column>
       </el-table>
 
+      <div class="button-group">
+        <el-button type="primary" @click="handleGenerate">Generate</el-button>
+      </div>
     </div>
 
   </div>
@@ -171,7 +174,7 @@ const formData = reactive({
   vectorX: 0,
   vectorY: 0,
   vectorZ: 0,
-  sample_num: 10
+  sample_num: 50
 })
 
 const selectedItems = ref<Array<{ name: string, sample_num: number }>>([])

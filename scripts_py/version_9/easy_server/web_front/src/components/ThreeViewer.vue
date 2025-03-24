@@ -164,7 +164,7 @@ const onMouseRightClick = (event: MouseEvent) => {
 
 const onRightMouseUp = () => {
   const rightClickDuration = Date.now() - rightClickStartTime
-  if (rightClickDuration < 200) {
+  if (rightClickDuration < 300) {
     if (selectedMesh_right) {
       if (selectedMesh_left) {
         setMeshColor(selectedMesh_left, 0xff00ff)
@@ -172,9 +172,13 @@ const onRightMouseUp = () => {
       }
       setMeshColor(selectedMesh_right, 0xffff00)
       emit('rightClick-select-object', selectedMesh_right.name, clickEventX, clickEventY)
-      document.removeEventListener('mouseup', onRightMouseUp)
     }
   }
+  document.removeEventListener('mouseup', onRightMouseUp)
+}
+
+const onContextMenu = (event: MouseEvent) => {
+  event.preventDefault()
 }
 
 const animate = () => {
@@ -201,6 +205,9 @@ const onWindowResize = () => {
 onMounted(() => {
   init()
   animate()
+  renderer.domElement.addEventListener('mousedown', onMouseRightClick)
+  renderer.domElement.addEventListener('mouseup', onRightMouseUp)
+  renderer.domElement.addEventListener('contextmenu', onContextMenu)
 
   // Add ResizeObserver for container size changes
   const resizeObserver = new ResizeObserver(() => {
@@ -215,7 +222,9 @@ onMounted(() => {
     resizeObserver.disconnect()
     window.removeEventListener('resize', onWindowResize)
     renderer.domElement.removeEventListener('click', onMouseLeftClick)
-    renderer.domElement.removeEventListener('contextmenu', onMouseRightClick)
+    renderer.domElement.removeEventListener('mousedown', onMouseRightClick)
+    renderer.domElement.removeEventListener('mouseup', onRightMouseUp)
+    renderer.domElement.removeEventListener('contextmenu', onContextMenu)
     renderer.dispose()
   })
 })

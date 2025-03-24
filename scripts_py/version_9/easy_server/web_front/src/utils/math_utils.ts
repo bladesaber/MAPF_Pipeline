@@ -84,7 +84,6 @@ export function sample_bspline(control_pcd: number[][], degree: number, knots: n
   return curvePoints;
 }
 
-// TODO: check if we need it
 export function compute_path_tangent(path_pcd: number[][]): number[][] {
   const tangents: number[][] = [];
   for (let i = 0; i < path_pcd.length - 1; i++) {
@@ -93,7 +92,46 @@ export function compute_path_tangent(path_pcd: number[][]): number[][] {
     const tangent = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]];
     tangents.push(norm_vector(tangent));
   }
+  tangents.push(tangents[tangents.length - 1]);
   return tangents;
+}
+
+export function interpolate_by_bspline(values: number[], knots: number[], degree: number, ts: number[]): number[] {
+  const n = values.length - 1; // Number of control points minus 1
+  const m = knots.length - 1; // Number of knots minus 1
+
+  // Ensure the number of knots is correct
+  if (m !== n + degree + 1) {
+    throw new Error("Invalid number of knots. Expected (n + degree + 1) knots.");
+  }
+
+  // Function to compute the basis function
+  function basisFunction(i: number, p: number, t: number, knots: number[]): number {
+    if (p === 0) {
+      if (t === knots[m] && t === knots[i + 1]) {
+        return 1;
+      }
+      return (knots[i] <= t && t < knots[i + 1]) ? 1 : 0;
+    }
+    const left = (knots[i + p] - knots[i]) === 0 ? 0 : 
+      ((t - knots[i]) / (knots[i + p] - knots[i])) * basisFunction(i, p - 1, t, knots);
+    const right = (knots[i + p + 1] - knots[i + 1]) === 0 ? 0 : 
+      ((knots[i + p + 1] - t) / (knots[i + p + 1] - knots[i + 1])) * basisFunction(i + 1, p - 1, t, knots);
+    return left + right;
+  }
+
+  // Compute the B-spline curve points
+  const interpolatedValues: number[] = [];
+  for (const t of ts) {
+    let interpolated_value = 0.0
+    for (let i = 0; i <= n; i++) {
+      const basis = basisFunction(i, degree, t, knots);
+      interpolated_value += values[i] * basis;
+    }
+    interpolatedValues.push(interpolated_value);
+  }
+
+  return interpolatedValues;
 }
 
 export function map_point_to_plane(point: number[], plane_point: number[], plane_normal: number[]): number[] {

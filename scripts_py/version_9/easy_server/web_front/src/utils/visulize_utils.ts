@@ -170,13 +170,13 @@ export function create_circle(
       const circleVector = perpVector1.clone().multiplyScalar(Math.cos(theta))
         .add(perpVector2.clone().multiplyScalar(Math.sin(theta)))
         .multiplyScalar(radius)
-      
       const px = x + circleVector.x
       const py = y + circleVector.y
       const pz = z + circleVector.z
       points.push([px, py, pz])
     }
-    const mesh = create_tube(points, radius, options)
+    // const mesh = create_tube(points, 0.2, options)
+    const mesh = create_multi_lines(points, options)
     return mesh
 
   } else {
@@ -186,7 +186,6 @@ export function create_circle(
       const circleVector = perpVector1.clone().multiplyScalar(Math.cos(theta))
         .add(perpVector2.clone().multiplyScalar(Math.sin(theta)))
         .multiplyScalar(radius)
-      
       const px = x + circleVector.x
       const py = y + circleVector.y
       const pz = z + circleVector.z
@@ -219,35 +218,29 @@ export function create_arc(
   }
   perpVector2.crossVectors(normal, perpVector1)
 
+  const points: number[][] = []
+  for (let i = 0; i <= segments; i++) {
+    const theta = ((i / segments) * (end_angle - start_angle) + start_angle) * Math.PI / 180
+    const circleVector = perpVector1.clone().multiplyScalar(Math.cos(theta))
+      .add(perpVector2.clone().multiplyScalar(Math.sin(theta)))
+      .multiplyScalar(radius)
+    const px = x + circleVector.x
+    const py = y + circleVector.y
+    const pz = z + circleVector.z
+    points.push([px, py, pz])
+  }
+
+  console.log(points)
+
   if (options.output_mesh) {
-    const points: number[][] = []
-    for (let i = 0; i <= segments; i++) {
-      const theta = (i / segments) * (end_angle - start_angle) + start_angle
-      const circleVector = perpVector1.clone().multiplyScalar(Math.cos(theta))
-        .add(perpVector2.clone().multiplyScalar(Math.sin(theta)))
-        .multiplyScalar(radius)
-      
-      const px = x + circleVector.x
-      const py = y + circleVector.y
-      const pz = z + circleVector.z
-      points.push([px, py, pz])
-    }
-    const mesh = create_tube(points, radius, options)
+    const mesh = create_multi_lines(points, options)
     return mesh
   } else {
     const positions = new Float32Array((segments + 1) * 3)
-    for (let i = 0; i <= segments; i++) {
-      const theta = (i / segments) * (end_angle - start_angle) + start_angle
-      const circleVector = perpVector1.clone().multiplyScalar(Math.cos(theta))
-        .add(perpVector2.clone().multiplyScalar(Math.sin(theta)))
-        .multiplyScalar(radius)
-      
-      const px = x + circleVector.x
-      const py = y + circleVector.y
-      const pz = z + circleVector.z
-      positions[i * 3] = px
-      positions[i * 3 + 1] = py
-      positions[i * 3 + 2] = pz
+    for (let i = 0; i <= segments; i++) {      
+      positions[i * 3] = points[i][0]
+      positions[i * 3 + 1] = points[i][1]
+      positions[i * 3 + 2] = points[i][2]
     }
     const geometry = new BufferGeometry()
     geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))

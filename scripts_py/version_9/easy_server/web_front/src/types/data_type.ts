@@ -1,7 +1,3 @@
-import { PointObj, VecPointObj } from '../classes/point_obj.ts'
-import { LineObj, CircleObj, ArcObj, BsplineObj, TorusObj } from '../classes/line_obj.ts'
-import { PathObj, PipeShellObj, BsplineSurfaceObj, DiskObj } from '../classes/surface_obj.ts'
-
 export interface TreeNode {
   id?: string;
   label: string;
@@ -24,6 +20,7 @@ export interface PathResultData {
   }
 }
 
-export const PointTypes = ['point', 'vec_point'] as const;
-export const LineTypes = ['line', 'circle', 'arc', 'bspline', 'torus', 'path'] as const;
+export const PointTypes = ['point', 'vec_point', 'vec_radius_point'] as const;
+export const LineTypes = ['line', 'circle', 'arc', 'bspline', 'torus'] as const;
+export const GroupTypes = ['spline_skeleton', 'circle_surface_points'] as const;
 export const SurfaceTypes = ['pipe_shell', 'bspline_surface', 'disk'] as const;

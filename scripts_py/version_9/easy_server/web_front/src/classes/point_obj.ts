@@ -1,107 +1,37 @@
-import { 
-  add_mesh, remove_mesh, get_mesh_from_name, 
-  create_sphere, create_disk, create_torus_mesh
-} from '../utils/visulize_utils'
-import * as THREE from 'three'
-
-export class BaseGeometryObj {
-  name: string
-  mesh: THREE.Mesh | null = null
-
-  hooks: string[] = []
-  layer: number = -1
-  style: string = 'base_geometry'
-
-  constructor(name: string) {
-    this.name = name
-  }
-
-  add_mesh(scene: THREE.Scene) {
-    throw new Error('Not implemented')
-  }
-
-  remove_mesh(scene: THREE.Scene) {
-    if (get_mesh_from_name(scene, this.name)) {
-      remove_mesh(scene, this.name)
-    }
-  }
-
-  add_var(var_obj: BaseGeometryObj, index: number = -1) {
-    throw new Error('Not implemented')
-  }
-
-  remove_var(name: string) {
-    throw new Error('Not implemented')
-  }
-
-  destory(scene: THREE.Scene) {
-    this.remove_mesh(scene)
-    if (this.mesh) {
-      this.mesh.geometry.dispose()
-      this.mesh = null
-    }
-  }
-
-  update_mesh(scene: THREE.Scene) {
-    this.destory(scene)
-    this.add_mesh(scene)
-  }
-
-  hide_mesh() {
-    if (this.mesh) {
-      this.mesh.visible = false
-    }
-  }
-
-  show_mesh() {
-    if (this.mesh) {
-      this.mesh.visible = true
-    }
-  }
-
-  update_hooks(hooks_name: string[], clear: boolean = false) {
-    if (clear) {
-      this.hooks = []
-    }
-    this.hooks.push(...hooks_name)
-  }
-
-  toJSON() {
-    return {
-      name: this.name,
-      style: this.style
-    }
-  }
-}
+import { add_mesh, remove_mesh, create_sphere} from '../utils/visulize_utils'
+import { BaseGeometryObj, BaseNode, GroupNode } from './base_obj.ts'
+import { RootObj } from './store_obj.ts'
+import * as THREE from "three";
 
 export class PointObj extends BaseGeometryObj {
   x: number
   y: number
   z: number
-  radius: number
   style: string = 'point'
-  layer: number = 0
 
   constructor(
     name: string,
     x: number,
     y: number,
     z: number,
-    radius: number,
-    scene: THREE.Scene
+    node_style: BaseNode|GroupNode,
+    rootObj: RootObj
   ) {
-    super(name)
+    super(name, node_style)
     this.x = x
     this.y = y
     this.z = z
-    this.radius = radius
-    this.add_mesh(scene)
+    this.add_mesh(rootObj)
   }
 
-  add_mesh(scene: THREE.Scene) {
-    this.mesh = create_sphere(this.x, this.y, this.z, this.radius)
+  add_mesh(rootObj: RootObj) {
+    this.mesh = create_sphere(this.x, this.y, this.z, 0.2)
     this.mesh.name = this.name
-    add_mesh(scene, this.mesh)
+    add_mesh(rootObj.get_scene(), this.mesh)
+  }
+
+  update_mesh(rootObj: RootObj) {
+    this.mesh?.position.set(this.x, this.y, this.z)
   }
 
   toJSON() {
@@ -120,20 +50,19 @@ export class VecPointObj extends PointObj {
   vec_y: number
   vec_z: number
   style: string = 'vec_point'
-  layer: number = 0
   
   constructor(
     name: string,
     x: number,
     y: number,
     z: number,
-    radius: number,
     vec_x: number,
     vec_y: number,
     vec_z: number,
-    scene: THREE.Scene
+    node_style: BaseNode|GroupNode,
+    rootObj: RootObj
   ) {
-    super(name, x, y, z, radius, scene)
+    super(name, x, y, z, node_style, rootObj)
     this.vec_x = vec_x
     this.vec_y = vec_y
     this.vec_z = vec_z
@@ -151,4 +80,26 @@ export class VecPointObj extends PointObj {
       vec_z: this.vec_z
     }
   }
+}
+
+export class VecRadiusPointObj extends VecPointObj {
+  radius: number
+  style: string = 'vec_radius_point'
+
+  constructor(
+    name: string,
+    x: number,
+    y: number,
+    z: number,
+    vec_x: number,
+    vec_y: number,
+    vec_z: number,
+    radius: number,
+    node_style: BaseNode|GroupNode,
+    rootObj: RootObj
+  ) {
+    super(name, x, y, z, vec_x, vec_y, vec_z, node_style, rootObj)
+    this.radius = radius
+  }
+  
 }
