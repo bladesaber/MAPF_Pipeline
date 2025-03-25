@@ -98,8 +98,7 @@ class CadServerUtils:
                         tess.GetEdgeVertex(i_edge, i_vert) 
                         for i_vert in range(nbr_vertices)
                     ]
-                    edge_hash = f"edg{uuid.uuid4().hex}"
-                    edges_data.append(CadServerUtils.export_edgedata_to_json(f"{name}_edge", edge_point_set))
+                    edges_data.append(CadServerUtils.export_edgedata_to_json(f"{name}_edge_{i_edge}", edge_point_set))
                 
                 shape_data["edges"] = edges_data
                 
@@ -126,7 +125,7 @@ class CadServerUtils:
         n_control = control_pcd.shape[0]
         pnt_array = TColgp_Array1OfPnt(1, n_control)
         for i, point in enumerate(control_pcd):
-            pnt_array.SetValue(i + 1, gp_Pnt(point[0], point[1], point[2]))
+            pnt_array.SetValue(i + 1, gp_Pnt(float(point[0]), float(point[1]), float(point[2])))
 
         if left_clamp and right_clamp:
             n_knot = (n_control + degree + 1) - 2 * (degree + 1) + 2
@@ -165,8 +164,8 @@ class CadServerUtils:
 
     @staticmethod
     def make_OCC_edge(info: Dict) -> TopoDS.TopoDS_Edge:
-        if info['type'] == 'bspline':
-            points_array = np.array(info['points'])
+        if info['style'] == 'bspline':
+            points_array = np.array(info['control_points'])
             curve = CadServerUtils.create_bspline(
                 control_pcd=points_array,
                 degree=info['degree'],
@@ -175,14 +174,14 @@ class CadServerUtils:
             )
             return BRepBuilderAPI_MakeEdge(curve).Edge()
             
-        elif info['type'] == 'circle':
+        elif info['style'] == 'circle':
             center = gp_Pnt(info['center'][0], info['center'][1], info['center'][2])
             normal = gp_Dir(info['normal'][0], info['normal'][1], info['normal'][2])
             axis = gp_Ax2(center, normal)
             circle = gp_Circ(axis, info['radius'])
             return BRepBuilderAPI_MakeEdge(circle).Edge()
             
-        elif info['type'] == 'arc_circle':
+        elif info['style'] == 'arc_circle':
             center = gp_Pnt(info['center'][0], info['center'][1], info['center'][2])
             normal = gp_Dir(info['normal'][0], info['normal'][1], info['normal'][2])
             axis = gp_Ax2(center, normal)
@@ -191,7 +190,7 @@ class CadServerUtils:
             end_point = gp_Pnt(info['end_point'][0], info['end_point'][1], info['end_point'][2])
             return BRepBuilderAPI_MakeEdge(circle, start_point, end_point).Edge()
             
-        elif info['type'] == 'multi_lines':
+        elif info['style'] == 'multi_lines':
             wire_builder = BRepBuilderAPI_MakeWire()
             points = info['points']
             for i in range(len(points) - 1):
@@ -205,7 +204,7 @@ class CadServerUtils:
             else:
                 return wire_builder.Wire()  # Note: This actually returns a wire
 
-        elif info['type'] == 'poly_line':
+        elif info['style'] == 'poly_line':
             points = info['points']
             pnt_array = TColgp_Array1OfPnt(1, len(points))
             for i, pt in enumerate(points):
@@ -216,7 +215,7 @@ class CadServerUtils:
             return edge
 
         else:
-            raise ValueError(f"Unknown edge type: {info['type']}")
+            raise ValueError(f"Unknown edge style: {info['style']}")
 
     @staticmethod
     def make_OCC_wire(info: Dict) -> TopoDS.TopoDS_Wire:
@@ -227,12 +226,12 @@ class CadServerUtils:
             return edge
 
     @staticmethod
-    def make_OCC_thruSections(path_info: List[Dict], ruled=True) -> TopoDS.TopoDS_Shell:
+    def make_OCC_thruSections(path_info: List[Dict], ruled=True, isSolid=False) -> TopoDS.TopoDS_Shell:
         wire_list: List[TopoDS.TopoDS_Wire] = []
         for info in path_info:
             wire = CadServerUtils.make_OCC_wire(info)
             wire_list.append(wire)
-        generator = BRepOffsetAPI_ThruSections(isSolid=False, ruled=ruled)
+        generator = BRepOffsetAPI_ThruSections(isSolid, ruled)
         for wire in wire_list:
             generator.AddWire(wire)
         generator.Build()

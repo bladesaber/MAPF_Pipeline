@@ -138,13 +138,9 @@ export class CircleObj extends BaseGeometryObj {
   toJSON() {
     return {
       name: this.name,
-      x: this.x,
-      y: this.y,
-      z: this.z,
+      center: [this.x, this.y, this.z],
+      normal: [this.vec_x, this.vec_y, this.vec_z],
       radius: this.radius,
-      vec_x: this.vec_x,
-      vec_y: this.vec_y,
-      vec_z: this.vec_z,
       style: this.style,
     };
   }
@@ -209,13 +205,9 @@ export class ArcObj extends BaseGeometryObj {
   toJSON() {
     return {
       name: this.name,
-      x: this.x,
-      y: this.y,
-      z: this.z,
+      center: [this.x, this.y, this.z],
+      normal: [this.vec_x, this.vec_y, this.vec_z],
       radius: this.radius,
-      vec_x: this.vec_x,
-      vec_y: this.vec_y,
-      vec_z: this.vec_z,
       start_angle: this.start_angle,
       end_angle: this.end_angle,
       style: this.style,
@@ -225,6 +217,7 @@ export class ArcObj extends BaseGeometryObj {
 
 export class BsplineObj extends BaseGeometryObj {
   control_point_nodes: (BaseNode|GroupNode)[] = [];
+  control_points: number[][] = [];
   knots: number[] = [];
   degree: number = 3;
   sample_num: number = 50;
@@ -275,8 +268,9 @@ export class BsplineObj extends BaseGeometryObj {
       throw new Error("BsplineObj must have at least degree + 1 control points");
     }
 
+    this.control_points = control_point_objs.map((point) => [point.x, point.y, point.z])
     this.mesh = create_bspline(
-      control_point_objs.map((point) => [point.x, point.y, point.z]),
+      this.control_points,
       this.knots,
       this.degree,
       this.sample_num,
@@ -304,6 +298,7 @@ export class BsplineObj extends BaseGeometryObj {
   toJSON() {
     return {
       name: this.name,
+      control_points: this.control_points,
       knots: this.knots,
       degree: this.degree,
       style: this.style,
@@ -359,14 +354,10 @@ export class TorusObj extends BaseGeometryObj {
   toJSON() {
     return {
       name: this.name,
-      x: this.x,
-      y: this.y,
-      z: this.z,
+      center: [this.x, this.y, this.z],
       radius: this.radius,
       tube_radius: this.tube_radius,
-      vec_x: this.vec_x,
-      vec_y: this.vec_y,
-      vec_z: this.vec_z,
+      normal: [this.vec_x, this.vec_y, this.vec_z],
       style: this.style,
     };
   }

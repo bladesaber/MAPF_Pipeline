@@ -230,8 +230,6 @@ export function create_arc(
     points.push([px, py, pz])
   }
 
-  console.log(points)
-
   if (options.output_mesh) {
     const mesh = create_multi_lines(points, options)
     return mesh
@@ -267,7 +265,7 @@ export function create_bspline(
 
   const curvePoints = sample_bspline(controlPoints, degree, knots, ts)
   if (options.output_mesh) {
-    const mesh = create_tube(curvePoints, options.size || 0.1, options)
+    const mesh = create_tube(curvePoints, options.size || 0.05, options)
     return mesh
   } else {
     // Create geometry from curve points
@@ -291,7 +289,7 @@ export function create_bspline(
 
 export function create_multi_lines(points: number[][], options: VisualizationOptions = {}): Line | Mesh {
   if (options.output_mesh) {
-    const mesh = create_tube(points, options.size || 0.1, options)
+    const mesh = create_tube(points, options.size || 0.05, options)
     return mesh
   } else {
     const positions = new Float32Array(points.length * 3)
@@ -312,7 +310,7 @@ export function create_disk(
   options: VisualizationOptions = {}
 ): Mesh {
   const geometry = new THREE.CircleGeometry(radius, options.segments || 32)
-  const material = new MeshBasicMaterial({color: options.color || 0x000000})
+  const material = new MeshBasicMaterial({color: options.color || 0x000000, side: THREE.DoubleSide})
   const mesh = new Mesh(geometry, material)
   mesh.position.set(x, y, z)
 
@@ -328,8 +326,8 @@ export function create_disk(
 
 export function read_mesh_json(mesh_json: any, options: VisualizationOptions = {}): THREE.Mesh {
   const loader = new THREE.BufferGeometryLoader()
-  const geometry = loader.parse(JSON.parse(mesh_json))
-  const material = new THREE.MeshBasicMaterial({color: options.color || 0x00ff00})
+  const geometry = loader.parse(mesh_json)
+  const material = new THREE.MeshBasicMaterial({color: options.color || 0x00ff00, side: THREE.DoubleSide})
   const mesh = new THREE.Mesh(geometry, material)
   return mesh
 }

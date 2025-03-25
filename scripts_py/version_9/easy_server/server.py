@@ -86,6 +86,64 @@ def read_h5():
             os.unlink(h5_path)
             return jsonify({'error': str(e)}), 500
 
+@app.route('/cad/make_circle_pipe_shell', methods=['POST'])
+def make_circle_pipe_shell():
+    data = request.json
+    path_info = []
+    for info in data.get('skeleton_cfgs', []):
+        if info['style'] == 'torus':
+            info.update({'style': 'circle'})
+        path_info.append(info)
+        
+    if len(path_info) == 0:
+        return jsonify({'error': 'No valid skeleton configurations found'}), 400
+
+    shell = CadServerUtils.make_OCC_thruSections(path_info, ruled=data.get('ruled', True))
+    result = CadServerUtils.convert_shape_to_json(
+        name=data.get('name', 'circle_pipe_shell'),
+        shape=shell,
+        export_edges=data.get('export_edges', False),
+        mesh_quality=1.0
+    )
+    return jsonify(result)
+
+@app.route('/cad/make_bspline_surface', methods=['POST'])
+def make_bspline_surface():
+    data = request.json
+    boundary_infos = []
+    guide_infos = []
+    
+    # Process boundary objects
+    for info in data.get('body', {}).get('boundary_objs', []):
+        if info['style'] == 'bspline':
+            info.update({
+                'left_clamp': True,
+                'right_clamp': True,
+            })
+        boundary_infos.append(info)
+        
+    # Process guide objects
+    for info in data.get('body', {}).get('guide_objs', []):
+        info.update({
+            'left_clamp': True,
+            'right_clamp': True,
+        })
+        guide_infos.append(info)
+    
+    if not boundary_infos:
+        return jsonify({'error': 'No valid boundary configurations found'}), 400
+    if not guide_infos:
+        return jsonify({'error': 'No valid guide configurations found'}), 400
+            
+    shell = CadServerUtils.make_OCC_shell(boundary_infos, guide_infos)
+    result = CadServerUtils.convert_shape_to_json(
+        name=data.get('name', 'bspline_surface'),
+        shape=shell,
+        export_edges=data.get('export_edges', False),
+        mesh_quality=1.0
+    )
+    return jsonify(result)
+
 
 if __name__ == '__main__':
     app.run(host='192.168.110.54', port=9998, debug=True)

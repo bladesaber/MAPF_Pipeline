@@ -596,17 +596,17 @@ const handleSurfaceTool = (data: any) => {
   else if (data.style === 'CirclePipeShell') {
     result = generate_pipe_shell(
       data.name,
-      'http://192.168.110.54:9998/cad/pipe_shell', // TODO: change to the correct url
-      data.selectedItems.map((item: any) => rootObj.get_obj(item.name)),
+      'http://192.168.110.54:9998/cad/make_circle_pipe_shell',
+      data.selectedItems.map((item: any) => rootObj.get_obj_deep(item.name)),
       rootObj
     )
   }
   else if (data.style === 'BsplineSurface') {
     result = generate_bspline_surface(
       data.name,
-      'http://192.168.110.54:9998/cad/bspline_surface', // TODO: change to the correct url
-      data.selectedItems.map((item: any) => rootObj.get_obj(item.name)),
-      data.selectedItems.map((item: any) => item.sample_num),
+      'http://192.168.110.54:9998/cad/make_bspline_surface',
+      data.boundaryItems.map((item: any) => rootObj.get_obj_deep(item.name)),
+      data.guideItems.map((item: any) => rootObj.get_obj_deep(item.name)),
       rootObj
     )
   }

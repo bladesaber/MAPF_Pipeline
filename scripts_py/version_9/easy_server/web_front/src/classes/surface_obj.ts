@@ -60,36 +60,30 @@ export class HttpObj extends BaseGeometryObj {
   constructor(name: string, url: string, node_style: BaseNode|GroupNode, rootObj: RootObj) {
     super(name, node_style)
     this.url = url
-    this.add_mesh(rootObj)
   }
 
   async fetchAndAddMesh(rootObj: RootObj, options: any) {
     try {
       const response = await fetch(this.url, {
-        method: options.method || 'POST',
+        method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          ...options.headers
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          name: this.name,
-          url: this.url,
-          ...options.body
-        }),
-        ...options
+        body: JSON.stringify(options)
       })
       const mesh_json = await response.json()
       return mesh_json
+      
     } catch (error) {
       console.error('Error fetching mesh:', error)
       return null
     }
   }
 
-  add_mesh(rootObj: RootObj) {
-    const mesh_json = this.fetchAndAddMesh(rootObj, this.options)
+  async add_mesh(rootObj: RootObj) {
+    const mesh_json = await this.fetchAndAddMesh(rootObj, this.options)
     if (!mesh_json) return
-    this.mesh = read_mesh_json(mesh_json)
+    this.mesh = read_mesh_json(mesh_json['shapes'][0])
     this.mesh.name = this.name
     add_mesh(rootObj.get_scene(), this.mesh)
   }
@@ -108,7 +102,7 @@ export class PipeShellObj extends HttpObj {
     this.add_mesh(rootObj)
   }
 
-  add_mesh(rootObj: RootObj) {
+  async add_mesh(rootObj: RootObj) {
     const torus_objs: TorusObj[] = []
     this.skeleton_nodes.forEach(obj => {
       const torus_obj = rootObj.request_obj(obj) as TorusObj
@@ -119,7 +113,9 @@ export class PipeShellObj extends HttpObj {
     
     this.options = {
       name: this.name,
-      skeleton_cfgs: []
+      skeleton_cfgs: [],
+      ruled: true,
+      export_edges: false
     }
     torus_objs.forEach(torus => {
       this.options.skeleton_cfgs.push(torus.toJSON())
@@ -148,7 +144,7 @@ export class BsplineSurfaceObj extends HttpObj {
     this.add_mesh(rootObj)
   }
 
-  add_mesh(rootObj: RootObj) {
+  async add_mesh(rootObj: RootObj) {
     const boundary_objs: BsplineObj[] = []
     this.boundary_nodes.forEach(obj => {
       const boundary_obj = rootObj.request_obj(obj) as BsplineObj
@@ -168,10 +164,10 @@ export class BsplineSurfaceObj extends HttpObj {
     this.options = {
       name: this.name,
       body: {
-        boundary_objs: boundary_objs.map(obj => obj.toJSON()),
-        guide_objs: guide_objs.map(obj => obj.toJSON())
+        boundary_objs: boundary_objs.map(obj => ({...obj.toJSON(), type: 'edge', 'sample_num': 50})),
+        guide_objs: guide_objs.map(obj => ({...obj.toJSON(), type: 'edge', 'sample_num': 50}))
       }
-    }
+    }    
     super.add_mesh(rootObj) 
 
     this.boundary_nodes = boundary_objs.map((obj) => obj.node_style)

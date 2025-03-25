@@ -50,7 +50,7 @@ export class SplineSkeletonObj extends GroupGeometryObj {
       const torus_name = `${this.name}/skeleton_torus_${i}`
       const torus = new TorusObj(
         torus_name,
-        point[0], point[1], point[2], this.radius[i], 0.2, 
+        point[0], point[1], point[2], this.radius[i], 0.05, 
         tangents[i][0], tangents[i][1], tangents[i][2], 
         new GroupNode(torus_name, this.name), 
         rootObj

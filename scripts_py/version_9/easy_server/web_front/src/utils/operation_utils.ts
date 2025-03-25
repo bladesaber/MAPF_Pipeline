@@ -246,7 +246,7 @@ export function generate_pipe_shell(
     const pipe_shell = new PipeShellObj(
         name, url, torus_objs.map(torus_obj => torus_obj.node_style), new BaseNode(name), rootObj
     )
-    rootObj.add_objs([pipe_shell])
+    // rootObj.add_objs([pipe_shell])
     return {name: name, success: true};
 }
 
@@ -278,6 +278,7 @@ export function generate_bspline_surface(
             return {name: '', success: false};
         }
     })
+    
     const bspline_surface = new BsplineSurfaceObj(
         name, url, 
         boundary_objs.map(boundary_obj => boundary_obj.node_style), 

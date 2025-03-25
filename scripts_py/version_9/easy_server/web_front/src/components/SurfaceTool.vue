@@ -139,7 +139,7 @@
 
       <div class="table-section">
         <div class="table-header">
-          <span>Guide Lines</span>
+          <span>Guide Lines (Press Ctrl to add)</span>
         </div>
         <el-table
           :data="guideItems"
@@ -168,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -194,6 +194,36 @@ const selectedItems = ref<Array<{ name: string }>>([])
 const boundaryItems = ref<Array<{ name: string }>>([])
 const guideItems = ref<Array<{ name: string }>>([])
 
+const isCtrlPressed = ref(false)
+
+const handleKeyDown = (e: KeyboardEvent) => {
+  if (props.modelValue && props.surfaceMode === 'BsplineSurface' && e.key === 'Control') {
+    isCtrlPressed.value = true
+  }
+}
+
+const handleKeyUp = (e: KeyboardEvent) => {
+  if (props.modelValue && props.surfaceMode === 'BsplineSurface' && e.key === 'Control') {
+    isCtrlPressed.value = false
+  }
+}
+
+// Add event listeners for ctrl key
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('keyup', handleKeyUp)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('keyup', handleKeyUp)
+})
+
+// Reset ctrl pressed state when component becomes invisible or mode changes
+watch(() => [props.modelValue, props.surfaceMode], () => {
+  isCtrlPressed.value = false
+})
+
 const removeItem = (index: number) => {
   selectedItems.value.splice(index, 1)
 }
@@ -208,16 +238,20 @@ const removeGuideItem = (index: number) => {
 
 const addItem = ({name, style}: {name: string, style: string}) => {
   if (props.surfaceMode === 'CirclePipeShell') {
-    if (style === 'bspline' && !selectedItems.value.some(item => item.name === name)) {
+    if (style === 'torus' && !selectedItems.value.some(item => item.name === name)) {
       selectedItems.value.push({ name: name })
     }
   }
   else if (props.surfaceMode === 'BsplineSurface') {
     if (style === 'bspline') {
-      if (boundaryItems.value.length < 4 && !boundaryItems.value.some(item => item.name === name)) {
-        boundaryItems.value.push({ name: name })
-      } else if (!guideItems.value.some(item => item.name === name)) {
-        guideItems.value.push({ name: name })
+      if (isCtrlPressed.value) {
+        if (!guideItems.value.some(item => item.name === name)) {
+          guideItems.value.push({ name: name })
+        }
+      } else {
+        if (boundaryItems.value.length < 4 && !boundaryItems.value.some(item => item.name === name)) {
+          boundaryItems.value.push({ name: name })
+        }
       }
     }
   }
@@ -254,8 +288,12 @@ const handleGenerate = () => {
     })
   }
   else if (props.surfaceMode === 'BsplineSurface') {
-    if (boundaryItems.value.length !== 4) {
-      ElMessage.warning('Please select exactly 4 boundary lines')
+    if (boundaryItems.value.length < 2) {
+      ElMessage.warning('Please select at least 2 boundary lines')
+      return
+    }
+    if (guideItems.value.length < 1) {
+      ElMessage.warning('Please select at least 1 guide line')
       return
     }
     emit('generate', {
