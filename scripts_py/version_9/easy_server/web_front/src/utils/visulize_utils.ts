@@ -327,7 +327,36 @@ export function create_disk(
 export function read_mesh_json(mesh_json: any, options: VisualizationOptions = {}): THREE.Mesh {
   const loader = new THREE.BufferGeometryLoader()
   const geometry = loader.parse(mesh_json)
-  const material = new THREE.MeshBasicMaterial({color: options.color || 0x00ff00, side: THREE.DoubleSide})
+  // const material = new THREE.MeshBasicMaterial({color: options.color || 0x00ff00, side: THREE.DoubleSide})
+  const material = new THREE.MeshPhysicalMaterial({
+    color: options.color || 0x00ff00, side: THREE.DoubleSide
+  })
   const mesh = new THREE.Mesh(geometry, material)
   return mesh
+}
+
+export function create_line_set(
+  points: number[][], line_set: number[][], options: VisualizationOptions = {}
+): THREE.LineSegments {
+  const vertices = new Float32Array(points.flat());
+  
+  // Convert line_set (indices) to Uint16Array or Uint32Array
+  const indices = new Uint16Array(line_set.flat());
+  
+  // Create a BufferGeometry
+  const geometry = new THREE.BufferGeometry();
+  
+  // Set position attribute
+  geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+  
+  // Set index for line segments
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  
+  // Default material (white lines)
+  const material = new THREE.LineBasicMaterial({
+    color: options.color !== undefined ? options.color : 0xff0000
+  });
+  
+  // Return LineSegments (not Mesh, since we're rendering lines)
+  return new THREE.LineSegments(geometry, material);
 }

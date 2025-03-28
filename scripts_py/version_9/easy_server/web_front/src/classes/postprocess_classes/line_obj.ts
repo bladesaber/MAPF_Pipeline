@@ -8,7 +8,7 @@ import {
   create_arc,
   create_bspline,
   create_torus_mesh,
-} from "../utils/visulize_utils";
+} from "../../utils/visulize_utils.ts";
 import { RootObj } from "./store_obj.ts";
 
 export class LineObj extends BaseGeometryObj {

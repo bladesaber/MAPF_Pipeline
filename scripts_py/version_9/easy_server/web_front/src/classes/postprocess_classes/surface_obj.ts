@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { BaseGeometryObj, BaseNode, GroupNode } from './base_obj.ts'
 import { VecPointObj, PointObj } from './point_obj.ts'
-import { add_mesh, read_mesh_json, create_disk } from '../utils/visulize_utils'
+import { add_mesh, read_mesh_json, create_disk } from '../../utils/visulize_utils.ts'
 import { BsplineObj, TorusObj } from './line_obj.ts'
 import { RootObj } from './store_obj.ts'
 

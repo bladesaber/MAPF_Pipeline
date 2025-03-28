@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { GroupTypes } from '../types/data_type.ts'
+import { GroupTypes } from '../../types/data_type.ts'
 import { BaseGeometryObj, BaseNode, GroupNode, GroupGeometryObj } from './base_obj.ts'
 
 export class RootObj {

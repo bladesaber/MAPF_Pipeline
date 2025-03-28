@@ -1,4 +1,4 @@
-import { add_mesh, remove_mesh, create_sphere} from '../utils/visulize_utils'
+import { add_mesh, remove_mesh, create_sphere} from '../../utils/visulize_utils.ts'
 import { BaseGeometryObj, BaseNode, GroupNode } from './base_obj.ts'
 import { RootObj } from './store_obj.ts'
 import * as THREE from "three";

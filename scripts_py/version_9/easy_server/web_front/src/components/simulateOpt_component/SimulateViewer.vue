@@ -1,4 +1,4 @@
-<!-- ThreeViewer.vue -->
+<!-- PostViewer.vue -->
 <template>
   <div ref="container" class="viewer-container"></div>
 </template>
@@ -7,9 +7,9 @@
 import { ref, onMounted, onBeforeUnmount, inject, computed } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { RootObj } from '../classes/store_obj.ts'
+import { SimulateRootObj } from '../../classes/simulateOpt_classes/simulate_entity.ts'
 import { el } from 'element-plus/es/locales.mjs'
-import { setMeshColor } from '../utils/visulize_utils.ts'
+import { setMeshColor } from '../../utils/visulize_utils.ts'
 
 const container = ref<HTMLElement | null>(null)
 let camera: THREE.PerspectiveCamera
@@ -23,7 +23,7 @@ let clickEventY: number = 0
 const emit = defineEmits([
   'leftClick-select-object', 'rightClick-select-object'
 ])
-const rootObj = inject<RootObj>('storeObj', new RootObj(new THREE.Scene()))
+const rootObj = inject<SimulateRootObj>('simulateRootObj', new SimulateRootObj(new THREE.Scene()))
 
 const init = () => {
   if (!container.value || !rootObj) return

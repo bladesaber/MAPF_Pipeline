@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
+import SurfacePostprocessing from '../views/SurfacePostprocessing.vue'
+import SimulateOptimize from '../views/SimulateOptimize.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -8,6 +10,16 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: HomeView,
+    },
+    {
+      path: '/surface-postprocessing',
+      name: 'surface-postprocessing',
+      component: SurfacePostprocessing,
+    },
+    {
+      path: '/simulate-optimize',
+      name: 'simulate-optimize',
+      component: SimulateOptimize,
     },
     {
       path: '/about',

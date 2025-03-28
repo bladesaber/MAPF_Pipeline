@@ -74,7 +74,7 @@
 
       <!-- 3D Viewer -->
       <el-main class="viewer">
-        <ThreeViewer 
+        <PostViewer 
           @leftClick-select-object="handleLeftClickMeshSelect"
           @rightClick-select-object="handleRightClickMeshSelect"
         />
@@ -146,12 +146,12 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, provide } from 'vue'
-import ThreeViewer from '../components/ThreeViewer.vue'
-import PointTool from '../components/PointTool.vue'
-import LineTool from '../components/LineTool.vue'
-import MeshContextTool from '../components/MeshContextTool.vue'
-import SurfaceTool from '../components/SurfaceTool.vue'
-import { RootObj } from '../classes/store_obj.ts'
+import PostViewer from '../components/postprocess_component/PostViewer.vue'
+import PointTool from '../components/postprocess_component/PointTool.vue'
+import LineTool from '../components/postprocess_component/LineTool.vue'
+import MeshContextTool from '../components/postprocess_component/MeshContextTool.vue'
+import SurfaceTool from '../components/postprocess_component/SurfaceTool.vue'
+import { RootObj } from '../classes/postprocess_classes/store_obj.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Scene, Object3D } from 'three'
 import * as THREE from 'three'
@@ -159,10 +159,10 @@ import type { PathResultData } from '../types/data_type.ts'
 import { PointTypes, LineTypes, SurfaceTypes, GroupTypes } from '../types/data_type.ts'
 import type { TreeNode } from '../types/data_type.ts'
 
-import { BaseNode, GroupNode } from '../classes/base_obj.ts'
-import { PointObj } from '../classes/point_obj.ts'
-import { BsplineObj } from '../classes/line_obj.ts'
-import { BaseGeometryObj, GroupGeometryObj } from '../classes/base_obj.ts'
+import { BaseNode, GroupNode } from '../classes/postprocess_classes/base_obj.ts'
+import { PointObj } from '../classes/postprocess_classes/point_obj.ts'
+import { BsplineObj } from '../classes/postprocess_classes/line_obj.ts'
+import { BaseGeometryObj, GroupGeometryObj } from '../classes/postprocess_classes/base_obj.ts'
 import { pass } from 'three/tsl'
 import { 
   generate_point, generate_vector_point, generate_vec_radius_point,

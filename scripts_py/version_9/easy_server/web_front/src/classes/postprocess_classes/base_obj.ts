@@ -1,4 +1,4 @@
-import { add_mesh, remove_mesh, create_sphere } from "../utils/visulize_utils";
+import { add_mesh, remove_mesh, create_sphere } from "../../utils/visulize_utils.ts";
 import * as THREE from "three";
 import { RootObj } from "./store_obj.ts";
 
