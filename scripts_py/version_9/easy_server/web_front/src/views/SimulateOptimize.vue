@@ -19,8 +19,7 @@
       </el-sub-menu>
       <el-sub-menu index="3">
         <template #title>Tools</template>
-        <el-menu-item index="3-1">Simulation</el-menu-item>
-        <el-menu-item index="3-2">Optimization</el-menu-item>
+        <el-menu-item index="3-1">Optimization</el-menu-item>
       </el-sub-menu>
       <el-sub-menu index="4">
         <template #title>Setting</template>
@@ -64,29 +63,38 @@
       <DefineSimulateGroup
         ref="defineSimulateGroupRef"
         v-model="defineSimulateGroupVisible"
+        :currentTagDict="currentTagDict"
         @generate="handleGenerateGroup"
       />
 
       <DefineSimulateCondition
         ref="defineSimulateConditionRef"
         v-model="defineSimulateConditionVisible"
+        :currentTagDict="currentTagDict"
         @generate="handleGenerateCondition"
       />
 
-      <DefineSimulateBoundary
-        ref="defineSimulateBoundaryRef"
-        v-model="defineSimulateBoundaryVisible"
-        @generate="handleGenerateBoundary"
-      />
-
       <GenerateSimulateMesh
+        ref="generateSimulateMeshRef"
         v-model="generateSimulateMeshVisible"
+        :currentTagDict="currentTagDict"
         @generate="handleGenerateMesh"
       />
 
     </div>
 
     <!-- Tree Node Context Menu -->
+    <div 
+      v-show="nodeEntityContextMenuVisible"
+      class="context-menu"
+      :style="contextMenuStyle"
+    >
+      <el-menu>
+        <el-menu-item @click="handleTreeContextMenu('nodeEntity/HideEntity')">Hide Entity</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('nodeEntity/ShowEntity')">Show Entity</el-menu-item>
+      </el-menu>
+    </div>
+
     <div 
       v-show="nodeGroupsContextMenuVisible"
       class="context-menu"
@@ -106,6 +114,8 @@
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('group/EditGroup')">Edit Group</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('group/DeleteGroup')">Delete Group</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('group/HideGroup')">Hide Group</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('group/ShowGroup')">Show Group</el-menu-item>
       </el-menu>
     </div>
 
@@ -127,17 +137,30 @@
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('condition/EditCondition')">Edit Condition</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('condition/DeleteCondition')">Delete Condition</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('condition/Simulate')">Simulate</el-menu-item>
+
       </el-menu>
     </div>
 
     <div 
-      v-show="boundaryContextMenuVisible"
+      v-show="nodeNetworkContextMenuVisible"
       class="context-menu"
       :style="contextMenuStyle"
     >
       <el-menu>
-        <el-menu-item @click="handleTreeContextMenu('boundary/EditBoundary')">Edit Boundary</el-menu-item>
-        <el-menu-item @click="handleTreeContextMenu('boundary/DeleteBoundary')">Delete Boundary</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('nodeNetwork/HideNetwork')">Hide</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('nodeNetwork/ShowNetwork')">Show</el-menu-item>
+      </el-menu>
+    </div>
+
+    <div 
+      v-show="nodeResultContextMenuVisible"
+      class="context-menu"
+      :style="contextMenuStyle"
+    >
+      <el-menu>
+        <el-menu-item @click="handleTreeContextMenu('nodeResult/HideResult')">Hide</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('nodeResult/ShowResult')">Show</el-menu-item>
       </el-menu>
     </div>
 
@@ -171,6 +194,7 @@
       :show-close="false"
       width="30%"
     >
+      <label>{{ progressMsg }}</label>
       <el-progress
         :percentage="progressPercentage"
         :status="progressStatus"
@@ -189,11 +213,10 @@ import { ElMessage } from 'element-plus'
 import type { Scene, Object3D } from 'three'
 import * as THREE from 'three'
 import { pass } from 'three/tsl'
-import { SimulateRootObj, SimulateEntity, CadEntity } from '../classes/simulateOpt_classes/simulate_entity.ts'
-import type { SimulateTreeNode } from '@/types/data_type.ts'
+import { SimulateRootObj, SimulateEntity, CadEntity, SimulateNetwork } from '../classes/simulateOpt_classes/simulate_entity.ts'
+import type { SimulateTreeNode, SimulateCondition } from '@/types/data_type.ts'
 import DefineSimulateGroup from '../components/simulateOpt_component/DefineSimulateGroup.vue'
 import DefineSimulateCondition from '@/components/simulateOpt_component/DefineSimulateCondition.vue'
-import DefineSimulateBoundary from '@/components/simulateOpt_component/DefineSimulateBoundary.vue'
 import GenerateSimulateMesh from '@/components/simulateOpt_component/GenerateSimulateMesh.vue'
 import { da } from 'element-plus/es/locales.mjs'
 
@@ -257,20 +280,23 @@ function setVisableDict(active_key: string, visable_dict: any, single_mode: bool
   visable_dict[active_key as keyof typeof visable_dict].value = set_value
 }
 
+const nodeEntityContextMenuVisible = ref(false)
 const nodeGroupsContextMenuVisible = ref(false)
 const groupContextMenuVisible = ref(false)
 const nodeConditionsContextMenuVisible = ref(false)
 const conditionContextMenuVisible = ref(false)
-const boundaryContextMenuVisible = ref(false)
+const nodeNetworkContextMenuVisible = ref(false)
+const nodeResultContextMenuVisible = ref(false)
 const meshContextMenuVisible = ref(false)
-
 const tree_visable_dict = {
+  'nodeEntityContextMenuVisible': nodeEntityContextMenuVisible,
   'nodeGroupsContextMenuVisible': nodeGroupsContextMenuVisible,
   'groupContextMenuVisible': groupContextMenuVisible,
   'nodeConditionsContextMenuVisible': nodeConditionsContextMenuVisible,
   'conditionContextMenuVisible': conditionContextMenuVisible,
-  'boundaryContextMenuVisible': boundaryContextMenuVisible,
-  'meshContextMenuVisible': meshContextMenuVisible
+  'nodeNetworkContextMenuVisible': nodeNetworkContextMenuVisible,
+  'nodeResultContextMenuVisible': nodeResultContextMenuVisible,
+  'meshContextMenuVisible': meshContextMenuVisible,
 }
 
 const handleLeftTreeClick = (data: any) => {
@@ -278,43 +304,143 @@ const handleLeftTreeClick = (data: any) => {
   console.log('Left tree click:', data)
 }
 
+const currentTagDict = ref(new Map<string, string| string[]>())
 const handleRightTreeClick = (event: MouseEvent, data: any) => {
   event.preventDefault()
   contextMenuPosition.x = event.clientX
   contextMenuPosition.y = event.clientY
 
-  if (data.type === 'Node_Groups') {
-    setVisableDict('nodeGroupsContextMenuVisible', tree_visable_dict, true, true)
-  } else if (data.type === 'Group') {
-    setVisableDict('groupContextMenuVisible', tree_visable_dict, true, true)
-  } else if (data.type === 'Node_Conditions') {
-    setVisableDict('nodeConditionsContextMenuVisible', tree_visable_dict, true, true)
-  } else if (['Condition', 'PhysicalCfg', 'MaterialCfg', 'RunCfg', 'InitializationCfg'].includes(data.type)) {
-    setVisableDict('conditionContextMenuVisible', tree_visable_dict, true, true)
-  } else if (['InletCfg', 'OutletCfg', 'WallCfg'].includes(data.type)) {
-    setVisableDict('boundaryContextMenuVisible', tree_visable_dict, true, true)
+  currentTagDict.value = data.tagDict
+  currentTagDict.value.set('label', data.label)
+
+  if (data.type === 'Node_Entities') {
+    setVisableDict('nodeEntityContextMenuVisible', tree_visable_dict, true, true)
   }
-  console.log('Right tree click:', data.type)
+  else if (data.type === 'Node_Groups') {
+    setVisableDict('nodeGroupsContextMenuVisible', tree_visable_dict, true, true)
+  } 
+  else if (data.type === 'Group') {
+    setVisableDict('groupContextMenuVisible', tree_visable_dict, true, true)
+  } 
+  else if (data.type === 'Node_Conditions') {
+    setVisableDict('nodeConditionsContextMenuVisible', tree_visable_dict, true, true)
+  } 
+  else if ([
+    'Condition', 'PhysicalCfg', 'MaterialCfg', 'RunCfg', 'InitializationCfg',
+    'InletCfg', 'OutletCfg', 'WallCfg'
+  ].includes(data.type)) {
+    setVisableDict('conditionContextMenuVisible', tree_visable_dict, true, true)
+  }
+  else if (data.type === 'Node_Network') {
+    setVisableDict('nodeNetworkContextMenuVisible', tree_visable_dict, true, true)
+  }
+  else if (data.type === 'SimulateResult') {
+    setVisableDict('nodeResultContextMenuVisible', tree_visable_dict, true, true)
+  }
+
+  console.log('Right tree click:', data)
 }
 
 const handleTreeContextMenu = (mode: string) => {
   setVisableDict('nodeGroupsContextMenuVisible', tree_visable_dict, true, false)
+  
   if (mode == 'nodeGroups/AddGroup') {
     setVisableDict('defineSimulateGroupVisible', rightSideBar_visableDict, true)
-  } else if (mode == 'nodeConditions/AddCondition'){
+  }
+  else if (mode == 'nodeEntity/HideEntity') {
+    const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+    if (simulate_entity) {
+      simulate_entity.hide()
+    }
+  }
+  else if (mode == 'nodeEntity/ShowEntity') {
+    const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+    if (simulate_entity) {
+      simulate_entity.show()
+    }
+  }
+
+  else if (mode == 'group/HideGroup') {
+    const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+    if (simulate_entity) {
+      simulate_entity.hide_group(currentTagDict.value.get('label') as string)
+    }
+  }
+  else if (mode == 'group/ShowGroup') {
+    const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+    if (simulate_entity) {
+      simulate_entity.show_group(currentTagDict.value.get('label') as string)
+    }
+  }
+  else if (mode == 'nodeConditions/AddCondition'){
     setVisableDict('defineSimulateConditionVisible', rightSideBar_visableDict, true)
-  } else if (mode == 'boundary/AddBoundary'){
-    setVisableDict('defineSimulateBoundaryVisible', rightSideBar_visableDict, true)
-  } else if (mode == 'nodeGroups/AddMesh'){
+  }
+  else if (mode == 'nodeGroups/AddMesh'){
     setVisableDict('generateSimulateMeshVisible', rightSideBar_visableDict, true)
+  }
+  else if (mode == 'condition/DeleteCondition'){
+    const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+    if (simulate_entity) {
+      simulate_entity.remove_simulate_condition(currentTagDict.value.get('label') as string)
+      updateTreeData()
+    }
+  }
+  else if (mode == 'condition/Simulate') {
+    const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+    if (simulate_entity) {
+      if (simulate_entity.has_simulate_condition(currentTagDict.value.get('label') as string)) {
+        handleSimulate(simulate_entity, currentTagDict.value.get('label') as string)
+      }
+      else {
+        ElMessage.error('No condition found')
+      }
+    }
+  }
+  else if (mode == 'condition/Simulate'){
+    setVisableDict('defineSimulateBoundaryVisible', rightSideBar_visableDict, true)
+  }
+  else if (mode == 'nodeNetwork/HideNetwork') {
+    const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+    if (simulate_entity) {
+      simulate_entity.hide_network()
+    }
+  }
+  else if (mode == 'nodeNetwork/ShowNetwork') {
+    const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+    if (simulate_entity) {
+      simulate_entity.show_network()
+    }
+  }
+  else if (mode == 'nodeResult/HideResult') {
+    const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+    if (simulate_entity) {
+      const condition_name = currentTagDict.value.get('SimulateCondition') as string
+      if (simulate_entity.has_simulate_result(condition_name)) {
+        simulate_entity.hide_result(condition_name)
+      }
+    }
+  }
+  else if (mode == 'nodeResult/ShowResult') {
+    const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+    if (simulate_entity) {
+      const condition_name = currentTagDict.value.get('SimulateCondition') as string
+      if (simulate_entity.has_simulate_result(condition_name)) {
+        simulate_entity.show_result(condition_name)
+      }
+    }
   }
 }
 
 // ---------------- Mesh Click Event Handling ----------------
 const defineSimulateGroupRef = ref()
-const handleLeftClickMeshSelect = (name: string | undefined) => {
+const handleLeftClickMeshSelect = (name: string) => {
   if (defineSimulateGroupVisible.value) {
-    defineSimulateGroupRef.value?.addItem({name: name})
+    const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+    if (simulate_entity) {
+      if (simulate_entity.has_entity(name)) {
+        defineSimulateGroupRef.value?.addItem({name: name})
+      }
+    }
   }
 }
 
@@ -339,7 +465,7 @@ const triggerFileInput = () => {
 const progressVisible = ref(false)
 const progressPercentage = ref(0)
 const progressStatus = ref<'success' | 'exception' | ''>('')
-
+const progressMsg = ref('Progressing...')
 const progressFormat = (percentage: number) => {
   return percentage === 100 ? 'Processing Complete' : `${percentage}%`
 }
@@ -392,7 +518,7 @@ const handleFileSelected = async (event: Event) => {
     }
 
   } catch (error: unknown) {
-    console.error('Error processing file:', error)
+    // console.error('Error processing file:', error)
     progressStatus.value = 'exception'
     progressPercentage.value = 0
   } finally {
@@ -436,20 +562,250 @@ const rightSideBar_visableDict = {
 }
 
 // ---------------- Define Simulate Group ----------------
-const handleGenerateGroup = () => {
-  pass
+const handleGenerateGroup = (data: any) => {
+  const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+  if (simulate_entity) {
+    simulate_entity.define_entity_group(data.name, data.items.map((item: any) => item.name))
+    updateTreeData()
+  }
 }
 
-const handleGenerateCondition = () => {
-  pass
+const handleGenerateCondition = (data: any) => {
+  const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+  if (simulate_entity) {
+    // Convert Proxy to SimulateCondition object
+    const condition: SimulateCondition = {
+      name: data.name,
+      physical_cfg: { ...data.physical_cfg },
+      material_cfg: { ...data.material_cfg },
+      run_cfg: { ...data.run_cfg },
+      initialization_cfg: {
+        body_force: [...data.initialization_cfg.body_force],
+        init_velocity: [...data.initialization_cfg.init_velocity]
+      },
+      inlet_cfg: new Map(
+        Array.from(data.inlet_cfg.entries() as Iterable<[string, any]>).map(([key, value]) => [
+          key,
+          {
+            type: value.type,
+            temperature: value.temperature,
+            vel_scale: value.vel_scale,
+            direction: [...value.direction]
+          }
+        ])
+      ),
+      outlet_cfg: new Map(
+        Array.from(data.outlet_cfg.entries() as Iterable<[string, any]>).map(([key, value]) => [
+          key,
+          {
+            type: value.type,
+            pressure: value.pressure
+          }
+        ])
+      ),
+      wall_cfg: new Map(
+        Array.from(data.wall_cfg.entries() as Iterable<[string, any]>).map(([key, value]) => [
+          key,
+          {
+            type: value.type,
+            temperature: value.temperature
+          }
+        ])
+      )
+    }
+    simulate_entity.add_simulate_condition(condition)
+    updateTreeData()
+  }
 }
 
-const handleGenerateBoundary = () => {
-  pass
+const handleGenerateMesh = async (data: any) => {
+  const simulate_entity = simulateRootObj.get_simulate_entity(currentTagDict.value.get('SimulateEntity') as string)
+  if (simulate_entity) {
+    const fileContent = simulate_entity.get_storage_content()
+    if (!fileContent) {
+      ElMessage.error('No file content found')
+      return
+    }
+
+    // Create FormData and append the file
+    const formData = new FormData()
+    const blob = new Blob([fileContent], { type: 'application/step' })
+    formData.append('file', blob, `${simulate_entity.name}.step`)
+
+    // Add mesh size parameters as numbers
+    formData.append('max_size', data.maxMeshSize.toString())
+    formData.append('min_size', data.minMeshSize.toString())
+
+    // Convert Map to object for JSON serialization
+    const groupCfgs: {[key: string]: string[]} = {}
+    simulate_entity.entity_groups.forEach((value, key) => {
+      groupCfgs[key] = value
+    })
+    formData.append('group_cfgs', JSON.stringify(groupCfgs))
+
+    try {
+      const response = await fetch('http://192.168.110.54:9998/cad/make_su2_mesh', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to generate mesh')
+      }
+
+      const meshInfo = await response.json()
+      if (meshInfo.error) {
+        throw new Error(meshInfo.error)
+      }
+
+      // Add new mesh
+      const marker_dict = new Map<string, Map<string, number|number[][]>>()
+      Object.entries(meshInfo.marker_dict as Record<string, Record<string, number|number[][]>>).forEach(([k, v]) => {
+        marker_dict.set(k, new Map(Object.entries(v)))
+      })
+
+      simulate_entity.add_simulate_network(
+        meshInfo.points, meshInfo.cells, marker_dict, simulateRootObj
+      )
+
+      // Handle successful mesh generation
+      ElMessage.success('Mesh generated successfully')
+      console.log('Mesh Info:', meshInfo)
+
+    } catch (error: any) {
+      ElMessage.error(error.message || 'Failed to generate mesh')
+    } finally {
+    }
+  }
 }
 
-const handleGenerateMesh = () => {
-  pass
+// ---------------- Simulate ----------------
+const handleSimulate = async (simulate_entity: SimulateEntity, condition_name: string) => {
+  const network = simulate_entity.simulate_network
+  if (!network) {
+    ElMessage.error('No mesh network found')
+    return
+  }
+
+  // Convert nested Maps in marker_dict to objects
+  const markerDictObj: any = {}
+  network.marker_dict.forEach((value, key) => {
+    markerDictObj[key] = Object.fromEntries(value)
+  })
+
+  // Get condition and convert its Maps to objects
+  const condition = simulate_entity.simulate_conditions.get(condition_name)
+  if (!condition) {
+    ElMessage.error('Condition not found')
+    return
+  }
+
+  const conditionObj = {
+    ...condition,
+    inlet_cfg: Object.fromEntries(condition.inlet_cfg),
+    outlet_cfg: Object.fromEntries(condition.outlet_cfg),
+    wall_cfg: Object.fromEntries(condition.wall_cfg)
+  }
+
+  const data = {
+    name: simulate_entity.name,
+    condition_name: condition_name,
+    n_dim: network.n_dim,
+    n_elem: network.n_elem,
+    n_point: network.n_point,
+    n_mark: network.n_mark,
+    cells: network.cells,
+    points: network.points,
+    marker_dict: markerDictObj,
+    condition: conditionObj
+  }
+
+  // Reset progress state
+  progressVisible.value = true
+  let progressPercentage_value = 0
+  progressPercentage.value = progressPercentage_value
+  progressStatus.value = ''
+
+  try{
+    const response = await fetch('http://192.168.110.54:9998/simulate/simulate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    })
+
+    if (!response.ok) throw new Error('Simulation failed')
+
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('Failed to get response reader')
+
+    let velocity_data: number[][] = []
+    let pressure_data: number[] = []
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const text = new TextDecoder().decode(value)
+      // console.log('handleSimulate_text:', text)
+      const data = JSON.parse(text)
+      // console.log('handleSimulate_data:', data)
+      
+      if (!data.is_finished && data.simulate_status == 'running') {
+        progressPercentage_value += 1
+        progressPercentage.value = progressPercentage_value
+        progressMsg.value = data.msg
+      }
+      else if (!data.is_finished && data.simulate_status == 'completed'){
+        progressPercentage.value = 0
+        progressPercentage_value = 0
+      }
+      else if (!data.is_finished && data.simulate_status == 'velocity') {
+        progressPercentage_value += 1
+        progressPercentage.value = progressPercentage_value
+        progressMsg.value = data.msg
+        data.chunk.forEach((item: number[]) => {
+          velocity_data.push(item)
+        })
+      }
+      else if (!data.is_finished && data.simulate_status == 'pressure') {
+        progressPercentage_value += 1
+        progressPercentage.value = progressPercentage_value
+        progressMsg.value = data.msg
+        data.chunk.forEach((item: number) => {
+          pressure_data.push(item)
+        })
+      }
+      else if (data.is_finished && data.simulate_status == 'completed'){
+        progressVisible.value = false
+        progressPercentage.value = 0
+        progressStatus.value = 'success'
+        progressMsg.value = 'Processing ...'
+
+        simulate_entity.add_simulate_result(condition_name, velocity_data, pressure_data, simulateRootObj)
+        updateTreeData()
+        break
+      }
+      else {        
+        throw new Error(`Simulation failed: ${data.msg}`)
+      }
+    }
+
+  } catch (error: unknown) {
+    console.error('Error processing file:', error)
+    progressStatus.value = 'exception'
+    progressMsg.value = 'Processing ...'
+    progressPercentage.value = 0
+
+  } finally {
+    // Close progress dialog after a short delay
+    setTimeout(() => {
+      progressVisible.value = false
+      progressPercentage.value = 0
+      progressStatus.value = ''
+      progressMsg.value = 'Processing ...'
+    }, 2000)
+  }
 }
 
 // ---------------- Click Event handling ----------------

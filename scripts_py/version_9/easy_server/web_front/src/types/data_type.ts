@@ -30,7 +30,7 @@ export interface SimulateTreeNode {
   label: string;
   type: string;
   children?: SimulateTreeNode[];
-  tag_map?: Map<string, string>;
+  tagDict?: Map<string, string>;
 }
 
 export interface SimulateInletCfg {

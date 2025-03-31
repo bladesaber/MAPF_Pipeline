@@ -23,6 +23,8 @@
           <template #prefix>Group Name:</template>
         </el-input>
       </div>
+      
+      <el-button type="primary" @click="handleAddRestItems">Add Rest Items</el-button>
 
       <div class="table-container">
         <el-table 
@@ -60,10 +62,13 @@ import { ref, inject } from 'vue'
 import { Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
-import { SimulateRootObj, SimulateEntity } from '@/classes/simulateOpt_classes/simulate_entity'
+import { SimulateRootObj } from '@/classes/simulateOpt_classes/simulate_entity'
+
+const rootObj = inject<SimulateRootObj>('simulateRootObj')
 
 const props = defineProps<{
-  modelValue: boolean
+  modelValue: boolean,
+  currentTagDict: Map<string, string|string[]>
 }>()
 
 const emit = defineEmits(['update:modelValue', 'generate'])
@@ -81,6 +86,19 @@ const addItem = ({name}: {name: string}) => {
   if (!selectedItems.value.some(item => item.name === name)){
     selectedItems.value.push({ name })
   }
+}
+
+const handleAddRestItems = () => {
+  const rest_items = rootObj?.get_simulate_entity(props.currentTagDict.get('SimulateEntity') as string)?.get_rest_items()
+  if (!rest_items) {
+    ElMessage.warning('Please select a simulate entity')
+    return
+  }
+  rest_items.forEach(item => {
+    if (!selectedItems.value.some(selectedItem => selectedItem.name === item)) {
+      selectedItems.value.push({ name: item })
+    }
+  })
 }
 
 const handleDelete = (index: number) => {
@@ -107,6 +125,10 @@ const handleGenerate = () => {
   groupName.value = ''
   selectedItems.value = []
 }
+
+defineExpose({
+  addItem
+})
 
 </script>
 

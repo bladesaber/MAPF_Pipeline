@@ -8,7 +8,7 @@ import shutil
 
 
 class Su2Simulator(object):
-    def __init__(self, mesh_path: str):
+    def __init__(self, mesh_path: str = ''):
         self.n_dim = None
         self.n_elem = None
         self.n_point = None
@@ -16,7 +16,31 @@ class Su2Simulator(object):
         self.cells = None
         self.points = None
         self.marker_dict = {}
-        self.decode_su2(mesh_path)
+        if mesh_path != '':
+            self.decode_su2(mesh_path)
+
+    def set_mesh_data(
+        self, 
+        n_dim: int = None, 
+        n_mark: int = None, 
+        cells: np.ndarray = None, 
+        points: np.ndarray = None, 
+        marker_dict: Dict = None
+    ):
+        if n_dim is not None:
+            self.n_dim = n_dim
+        
+        if points is not None:
+            self.points = points
+            self.n_point = points.shape[0]
+
+        if cells is not None:
+            self.cells = cells
+            self.n_elem = cells.shape[0]
+
+        if marker_dict is not None:
+            self.marker_dict = marker_dict
+            self.n_mark = len(self.marker_dict)
 
     def decode_su2(self, mesh_path):
         with open(mesh_path, 'r') as f:

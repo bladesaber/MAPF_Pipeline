@@ -12,18 +12,32 @@
       </el-button>
     </div>
     <div class="right-sidebar-content">
-      <!-- Name Section -->
+      <!-- Mesh Size Section -->
       <div class="section">
         <div class="section-header">
-          <span>Name</span>
+          <span>Mesh Size Settings</span>
         </div>
         <div class="section-content">
-          <el-input
-            v-model="meshName"
-            placeholder="Enter mesh name"
-            :maxlength="50"
-            show-word-limit
-          />
+          <el-form label-position="top">
+            <el-form-item label="Max Mesh Size">
+              <el-input-number
+                v-model="formData.maxMeshSize"
+                :min="0.001"
+                :precision="3"
+                :step="0.1"
+                placeholder="Enter max mesh size"
+              />
+            </el-form-item>
+            <el-form-item label="Min Mesh Size">
+              <el-input-number
+                v-model="formData.minMeshSize"
+                :min="0.001"
+                :precision="3"
+                :step="0.1"
+                placeholder="Enter min mesh size"
+              />
+            </el-form-item>
+          </el-form>
         </div>
       </div>
 
@@ -44,25 +58,32 @@ import { Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
-  modelValue: boolean
+  modelValue: boolean,
+  currentTagDict: Map<string, string|string[]>
 }>()
 
 const emit = defineEmits(['update:modelValue', 'generate'])
 
-const meshName = ref('')
+const formData = ref({
+  maxMeshSize: 1.0,
+  minMeshSize: 0.1
+})
 
 const handleClose = () => {
-  meshName.value = ''
+  formData.value.maxMeshSize = 1.0
+  formData.value.minMeshSize = 0.1
   emit('update:modelValue', false)
 }
 
 const handleGenerate = () => {
-  if (!meshName.value.trim()) {
-    ElMessage.warning('Please enter a mesh name')
+  if (formData.value.minMeshSize >= formData.value.maxMeshSize) {
+    ElMessage.warning('Minimum mesh size must be smaller than maximum mesh size')
     return
   }
+
   emit('generate', {
-    name: meshName.value
+    maxMeshSize: formData.value.maxMeshSize,
+    minMeshSize: formData.value.minMeshSize
   })
   handleClose()
 }
@@ -140,5 +161,13 @@ const handleGenerate = () => {
 
 .button-group .el-button {
   min-width: 90px;
+}
+
+.section-content .el-form-item {
+  margin-bottom: 16px;
+}
+
+.el-input-number {
+  width: 100%;
 }
 </style> 

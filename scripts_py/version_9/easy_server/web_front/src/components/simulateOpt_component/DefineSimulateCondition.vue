@@ -158,6 +158,189 @@
         </div>
       </div>
 
+      <!-- Inlet Section -->
+      <div class="section">
+        <div class="section-header">
+          <div class="header-with-button">
+            <span>Inlet</span>
+            <el-button type="primary" size="small" @click="handleAddInlet">Add Inlet</el-button>
+          </div>
+        </div>
+        <div class="section-content">
+          <el-table :data="inletData" style="width: 100%">
+            <el-table-column prop="name" label="Name" width="120">
+              <template #default="scope">
+                <el-select v-model="scope.row.name" placeholder="Select group" size="small">
+                  <el-option
+                    v-for="group in availableGroups"
+                    :key="group"
+                    :label="group"
+                    :value="group"
+                  />
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column label="Direction" width="180">
+              <template #default="scope">
+                <div class="vector-input-compact">
+                  <el-input-number 
+                    v-model="scope.row.direction_x" 
+                    :precision="2"
+                    :step="0.1"
+                    size="small"
+                    placeholder="X"
+                    controls-position="right"
+                  />
+                  <el-input-number 
+                    v-model="scope.row.direction_y" 
+                    :precision="2"
+                    :step="0.1"
+                    size="small"
+                    placeholder="Y"
+                    controls-position="right"
+                  />
+                  <el-input-number 
+                    v-model="scope.row.direction_z" 
+                    :precision="2"
+                    :step="0.1"
+                    size="small"
+                    placeholder="Z"
+                    controls-position="right"
+                  />
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="scale" label="Scale" width="80">
+              <template #default="scope">
+                <el-input-number 
+                  v-model="scope.row.scale" 
+                  :precision="2"
+                  :step="0.1"
+                  size="small"
+                  controls-position="right"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column prop="temperature" label="Temp" width="80">
+              <template #default="scope">
+                <el-input-number 
+                  v-model="scope.row.temperature" 
+                  :precision="0"
+                  :step="1"
+                  size="small"
+                  controls-position="right"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column label="Action" width="70" fixed="right">
+              <template #default="scope">
+                <el-button
+                  type="danger"
+                  size="small"
+                  @click="handleDeleteInlet(scope.$index)"
+                >
+                  Del
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+
+      <!-- Outlet Section -->
+      <div class="section">
+        <div class="section-header">
+          <div class="header-with-button">
+            <span>Outlet</span>
+            <el-button type="primary" size="small" @click="handleAddOutlet">Add Outlet</el-button>
+          </div>
+        </div>
+        <div class="section-content">
+          <el-table :data="outletData" style="width: 100%">
+            <el-table-column prop="name" label="Name" width="120">
+              <template #default="scope">
+                <el-select v-model="scope.row.name" placeholder="Select group" size="small">
+                  <el-option
+                    v-for="group in availableGroups"
+                    :key="group"
+                    :label="group"
+                    :value="group"
+                  />
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column prop="pressure" label="Pressure" width="120">
+              <template #default="scope">
+                <el-input-number 
+                  v-model="scope.row.pressure" 
+                  :precision="2"
+                  :step="1"
+                  size="small"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column label="Action" width="100" fixed="right">
+              <template #default="scope">
+                <el-button
+                  type="danger"
+                  size="small"
+                  @click="handleDeleteOutlet(scope.$index)"
+                >
+                  Delete
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+
+      <!-- Wall Section -->
+      <div class="section">
+        <div class="section-header">
+          <div class="header-with-button">
+            <span>Wall</span>
+            <el-button type="primary" size="small" @click="handleAddWall">Add Wall</el-button>
+          </div>
+        </div>
+        <div class="section-content">
+          <el-table :data="wallData" style="width: 100%">
+            <el-table-column prop="name" label="Name" width="120">
+              <template #default="scope">
+                <el-select v-model="scope.row.name" placeholder="Select group" size="small">
+                  <el-option
+                    v-for="group in availableGroups"
+                    :key="group"
+                    :label="group"
+                    :value="group"
+                  />
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column prop="temperature" label="Temperature" width="120">
+              <template #default="scope">
+                <el-input-number 
+                  v-model="scope.row.temperature" 
+                  :precision="2"
+                  :step="1"
+                  size="small"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column label="Action" width="100" fixed="right">
+              <template #default="scope">
+                <el-button
+                  type="danger"
+                  size="small"
+                  @click="handleDeleteWall(scope.$index)"
+                >
+                  Delete
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+
       <!-- Button Container -->
       <div class="button-container">
         <div class="button-group">
@@ -170,13 +353,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, inject, computed } from 'vue'
 import { Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { SimulateCondition } from '@/types/data_type'
+import { SimulateRootObj } from '@/classes/simulateOpt_classes/simulate_entity'
 
+const rootObj = inject<SimulateRootObj>('simulateRootObj')
 const props = defineProps<{
-  modelValue: boolean
+  modelValue: boolean,
+  currentTagDict: Map<string, string|string[]>
 }>()
 
 const emit = defineEmits(['update:modelValue', 'generate'])
@@ -202,15 +388,80 @@ const formData = ref<SimulateCondition>({
   },
   initialization_cfg: {
     body_force: [0, 0, 0],
-    init_velocity: [0, 0, 0]
+    init_velocity: [1, 0, 0]
   },
   inlet_cfg: new Map(),
   outlet_cfg: new Map(),
   wall_cfg: new Map()
 })
 
+interface InletItem {
+  name: string
+  direction_x: number
+  direction_y: number
+  direction_z: number
+  scale: number
+  temperature: number
+}
+
+interface OutletItem {
+  name: string
+  pressure: number
+}
+
+interface WallItem {
+  name: string
+  temperature: number
+}
+
+const inletData = ref<InletItem[]>([])
+const outletData = ref<OutletItem[]>([])
+const wallData = ref<WallItem[]>([])
+
+const availableGroups = computed(() => {
+  const simulate_entity = rootObj?.get_simulate_entity(props.currentTagDict.get('SimulateEntity') as string)
+  return simulate_entity?.get_entity_group_names() || []
+})
+
 const handleClose = () => {
   emit('update:modelValue', false)
+}
+
+const handleAddInlet = () => {
+  inletData.value.push({
+    name: '',
+    direction_x: 0,
+    direction_y: 0,
+    direction_z: 0,
+    scale: 1,
+    temperature: 300
+  })
+}
+
+const handleAddOutlet = () => {
+  outletData.value.push({
+    name: '',
+    pressure: 0
+  })
+}
+
+const handleAddWall = () => {
+  wallData.value.push({
+    name: '',
+    temperature: 300
+  })
+}
+
+const handleDeleteInlet = (index: number) => {
+  inletData.value.splice(index, 1)
+}
+
+const handleDeleteOutlet = (index: number) => {
+  outletData.value.splice(index, 1)
+}
+
+const handleDeleteWall = (index: number) => {
+  wallData.value.splice(index, 1)
 }
 
 const handleGenerate = () => {
@@ -218,8 +469,50 @@ const handleGenerate = () => {
     ElMessage.warning('Please enter a condition name')
     return
   }
+
+  if (inletData.value.some(inlet => !inlet.name)) {
+    ElMessage.warning('Please select names for all inlets')
+    return
+  }
+  if (outletData.value.some(outlet => !outlet.name)) {
+    ElMessage.warning('Please select names for all outlets')
+    return
+  }
+  if (wallData.value.some(wall => !wall.name)) {
+    ElMessage.warning('Please select names for all walls')
+    return
+  }
+
+  // Convert table data to Maps with correct types
+  formData.value.inlet_cfg = new Map(inletData.value.map(inlet => [
+    inlet.name, 
+    {
+      type: "VELOCITY_INLET" as const,
+      temperature: inlet.temperature,
+      vel_scale: inlet.scale,
+      direction: [inlet.direction_x, inlet.direction_y, inlet.direction_z]
+    }
+  ]))
+
+  formData.value.outlet_cfg = new Map(outletData.value.map(outlet => [
+    outlet.name,
+    {
+      type: "PRESSURE_OUTLET" as const,
+      pressure: outlet.pressure
+    }
+  ]))
+
+  formData.value.wall_cfg = new Map(wallData.value.map(wall => [
+    wall.name,
+    {
+      type: "WALL" as const,
+      temperature: wall.temperature
+    }
+  ]))
+
   emit('generate', formData.value)
-  // Reset form
+  
+  // Reset form and tables
   formData.value = {
     name: '',
     physical_cfg: { viscosity: 0.04 },
@@ -243,6 +536,9 @@ const handleGenerate = () => {
     outlet_cfg: new Map(),
     wall_cfg: new Map()
   }
+  inletData.value = []
+  outletData.value = []
+  wallData.value = []
 }
 </script>
 
@@ -332,5 +628,42 @@ const handleGenerate = () => {
 
 .button-group .el-button {
   min-width: 90px;
+}
+
+.header-with-button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-with-button span {
+  font-weight: 500;
+  font-size: 16px;
+}
+
+:deep(.el-table .cell) {
+  padding: 8px;
+}
+
+:deep(.el-input-number.el-input-number--small) {
+  width: 100%;
+}
+
+.vector-input-compact {
+  display: flex;
+  gap: 4px;
+}
+
+.vector-input-compact :deep(.el-input-number) {
+  width: 56px;
+}
+
+.vector-input-compact :deep(.el-input-number .el-input__wrapper) {
+  padding: 0 8px;
+}
+
+:deep(.el-input-number.el-input-number--small .el-input-number__decrease),
+:deep(.el-input-number.el-input-number--small .el-input-number__increase) {
+  width: 20px;
 }
 </style> 

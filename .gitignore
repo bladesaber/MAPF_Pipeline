@@ -11,3 +11,4 @@ __pycache__
 *.STL
 /Thirdparty
 /cmake-build-debug
+/temp_files

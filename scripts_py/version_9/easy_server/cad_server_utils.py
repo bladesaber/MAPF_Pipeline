@@ -323,6 +323,7 @@ class GmshStepReader:
                 # If initialization fails, assume Gmsh is already initialized
                 GmshStepReader._initialized = True
 
+        self.name = os.path.basename(step_file).split('.')[0]
         self.step_file = step_file
         self.read_step_file()
 
@@ -344,7 +345,9 @@ class GmshStepReader:
             entity_type = gmsh.model.getType(entity_dim, entity_id)
             entity_name = gmsh.model.getEntityName(entity_dim, entity_id)
             if entity_name == '':
-                gmsh.model.setEntityName(entity_dim, entity_id, f'dim{entity_dim}_id{entity_id}')
+                gmsh.model.setEntityName(
+                    entity_dim, entity_id, f'{self.model_name}_dim{entity_dim}_id{entity_id}'
+                )
             entity_name = gmsh.model.getEntityName(entity_dim, entity_id)
 
             entity_cfgs[entity_name] = {
@@ -353,6 +356,22 @@ class GmshStepReader:
                 'id': entity_id
             }
         return entity_cfgs
+
+    def define_group(self, dim: int, tags: list[int], group_name: str) -> int:
+        """return the tag of the physical group"""
+        return gmsh.model.addPhysicalGroup(dim, tags, name=group_name)
+
+    def define_volume_group(self):
+        return self.define_group(dim=3, tags=[list(self.volume_cfgs.values())[0]['id']], group_name='volume')
+
+    def generate_mesh(self, dim: int, max_size: float, min_size: float):
+        gmsh.option.setNumber("Mesh.MeshSizeMax", max_size)
+        gmsh.option.setNumber("Mesh.MeshSizeMin", min_size)
+        gmsh.model.mesh.generate(dim)
+
+    def export_su2(self, output_file: str):
+        assert output_file.endswith('.su2'), "Output file must have a .su2 extension"
+        gmsh.write(output_file)
 
     def set_current_model(self, entity_name: str):
         gmsh.model.setCurrent(entity_name)
@@ -380,11 +399,6 @@ class GmshStepReader:
 
         return {'success': True, 'file_path': output_file}
 
-    def save_to_step(self, output_file: str):
-        assert output_file.endswith('.step'), "Output file must have a .step extension"
-        self.set_current_model(self.model_name)
-        gmsh.write(output_file)
-
     def close(self):
         if GmshStepReader._initialized:
             try:
@@ -404,7 +418,7 @@ def debug_occ():
 
 
 def debug_gmsh():
-    step_file = '/home/admin123456/Desktop/work/flask_server/obstacle01.STEP'
+    step_file = '/home/admin123456/Desktop/work/flask_server/test.step'
     save_dir = '/home/admin123456/Desktop/work/flask_server/test'
 
     step_obj = GmshStepReader(step_file)
@@ -413,7 +427,18 @@ def debug_gmsh():
     #     step_obj.extract_face_to_step(face_name, os.path.join(save_dir, f"{face_name}.step"))
     #     break
 
-    step_obj.save_to_step('/home/admin123456/Desktop/work/flask_server/obstacle_remake.step')
+    face_ids = []
+    for face_name, face_cfg in step_obj.face_cfgs.items():
+        face_ids.append(face_cfg['id'])
+    tag1_idxs = np.random.choice(face_ids, size=2, replace=False)
+    tag2_idxs = list(set(face_ids) - set(tag1_idxs))
+
+    step_obj.define_group(dim=2, tags=tag1_idxs, group_name='tag1')
+    step_obj.define_group(dim=2, tags=tag2_idxs, group_name='tag2')
+    step_obj.define_volume_group()
+
+    step_obj.generate_mesh(dim=3, max_size=0.1, min_size=0.01)
+    step_obj.export_su2(os.path.join(save_dir, 'test.su2'))
 
     step_obj.close()
 

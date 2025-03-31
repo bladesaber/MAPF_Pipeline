@@ -27,7 +27,7 @@ export function setMeshColor(mesh: THREE.Mesh, color: number) {
   }
 }
 
-export function add_mesh(scene: THREE.Scene, mesh: THREE.Mesh, force_update = false): void {
+export function add_mesh(scene: THREE.Scene, mesh: THREE.Mesh|THREE.LineSegments, force_update = false): void {
   const existingMesh = scene.getObjectByName(mesh.name)
   if (force_update) {
     if (existingMesh) {
@@ -359,4 +359,57 @@ export function create_line_set(
   
   // Return LineSegments (not Mesh, since we're rendering lines)
   return new THREE.LineSegments(geometry, material);
+}
+
+export function create_arrow_set(
+  points: number[][], arrow_vectors: number[][], arrow_length: number, arrow_stress: number[], options: VisualizationOptions = {}
+): THREE.LineSegments {
+  // Re-range arrow_stress to [0,1]
+  const min_stress = Math.min(...arrow_stress)
+  const max_stress = Math.max(...arrow_stress)
+  const normalized_stress = arrow_stress.map(stress => 
+    (stress - min_stress) / (max_stress - min_stress)
+  )
+
+  const points_end = points.map((point, i) => {
+    const vector = arrow_vectors[i]
+    const point_end = [
+      point[0] + vector[0] * arrow_length,
+      point[1] + vector[1] * arrow_length,
+      point[2] + vector[2] * arrow_length
+    ]
+    return point_end
+  })
+
+  // Create line set by pairing each point with its end point
+  const line_vertices: number[] = []
+  const line_colors: number[] = []
+  const line_indices: number[] = []
+  
+  points.forEach((point, i) => {
+    // Add point and end point vertices
+    line_vertices.push(...point, ...points_end[i])
+    
+    // Add indices to connect them
+    const baseIndex = i * 2
+    line_indices.push(baseIndex, baseIndex + 1)
+
+    // Add colors based on normalized stress value
+    const stress = normalized_stress[i]
+    // Use a color gradient from blue (low stress) to red (high stress) 
+    const r = Math.min(1, Math.max(0, stress))
+    const b = Math.min(1, Math.max(0, 1 - stress))
+    line_colors.push(r, 0, b, r, 0, b) // Same color for both vertices of the line
+  })
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(line_vertices, 3))
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(line_colors, 3))
+  geometry.setIndex(line_indices)
+
+  const material = new THREE.LineBasicMaterial({
+    vertexColors: true
+  })
+
+  return new THREE.LineSegments(geometry, material)
 }
