@@ -77,3 +77,30 @@ export interface SimulateCondition {
   outlet_cfg: Map<string, SimulateOutletCfg>;
   wall_cfg: Map<string, SimulateWallCfg>;
 }
+
+export interface PathSearchTreeNode {
+  id?: string;
+  label: string;
+  type: string;
+  tagDict?: Map<string, string>;
+  children?: (PathSearchTreeNode|PathSearchMainTask)[];
+}
+
+export interface PathSearchSubTask {
+  label: string;
+  type: string;
+  start_points: number[][];
+  end_points: number[][];
+  run_method: string;
+  run_cfg: Map<string, string|number|boolean>;
+  result_points: number[][];
+}
+
+export interface PathSearchMainTask {
+  label: string;
+  type: string;
+  priority: number;
+  group_name: string;
+  sub_tasks: PathSearchSubTask[];
+}
+

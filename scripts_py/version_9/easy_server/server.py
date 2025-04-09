@@ -152,7 +152,7 @@ def make_bspline_surface():
     if not guide_infos:
         return jsonify({'error': 'No valid guide configurations found'}), 400
 
-    shell = CadServerUtils.make_occ_shell(boundary_infos, guide_infos)
+    shell = CadServerUtils.make_OCC_shell(boundary_infos, guide_infos)
     result = CadServerUtils.convert_shape_to_json(
         name=data.get('name', 'bspline_surface'),
         shape=shell,
