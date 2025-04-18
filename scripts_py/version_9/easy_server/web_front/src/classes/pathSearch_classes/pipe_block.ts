@@ -14,13 +14,13 @@ export class PipeBlock extends BaseBlock {
   radius: number;
   is_inlet: boolean;
   color: string;
-
+  group_name: string;
   properties: string[] = ["x", "y", "z", "vector_x", "vector_y", "vector_z", "radius"];
 
   constructor(
     name: string, 
     x: number, y: number, z: number, vector_x: number, vector_y: number, vector_z: number, 
-    radius: number, is_inlet: boolean, color: string, root: BlockRoot
+    radius: number, is_inlet: boolean, color: string, group_name: string, root: BlockRoot
 ) {
     super(name);
     this.x = x;
@@ -33,6 +33,7 @@ export class PipeBlock extends BaseBlock {
     this.radius = radius;
     this.is_inlet = is_inlet;
     this.color = color;
+    this.group_name = group_name;
     this.add_mesh(root);
   }
 
@@ -54,14 +55,14 @@ export class PipeBlock extends BaseBlock {
     );
 
     pipe_mesh.position.set(this.x, this.y, this.z);
-    pipe_mesh.setRotationFromQuaternion(quaternion);
+    // pipe_mesh.setRotationFromQuaternion(quaternion);
     pipe_mesh.name = `${this.name}_pipe`;
     this.mesh_objs.set(pipe_mesh.name, pipe_mesh);
     
     const cone_height = this.radius * 0.5;
     const cone_mesh = new THREE.Mesh(
       new THREE.ConeGeometry(this.radius * 0.8, cone_height, 32),
-      new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+      new THREE.MeshBasicMaterial({ color: this.color })
     );
     cone_mesh.position.set(
       pipe_mesh.position.x + this.vector_x * (cylinder_length * 0.5 + cone_height * 0.5),
@@ -143,6 +144,8 @@ export class PipeBlock extends BaseBlock {
       vector_z: this.vector_z,
       radius: this.radius,
       is_inlet: this.is_inlet,
+      group_name: this.group_name,
+      color: this.color,
     };
   }
   

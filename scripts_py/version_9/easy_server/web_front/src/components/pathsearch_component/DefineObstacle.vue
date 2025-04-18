@@ -250,7 +250,7 @@ import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
   modelValue: boolean,
-  currentTagDict: Map<string, string | string[]>
+  currentTagDict: Map<string, string | string[] | Map<string, string|number>>
 }>()
 
 const emit = defineEmits(['update:modelValue', 'generate'])

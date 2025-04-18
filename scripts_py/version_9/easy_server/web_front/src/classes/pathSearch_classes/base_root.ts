@@ -1,13 +1,15 @@
 import * as THREE from "three";
 
 import { BinaryConstraint } from "./constraint_utils.ts";
-import type { TaskManager } from "./base_task.ts";
+import { TaskManager } from "./base_task.ts";
+import { IntermediatePointBlock } from "./intermediatePoint_block.ts";
 
 export class BlockRoot {
     private scene: THREE.Scene;
     private task_manager_map: Map<string, TaskManager> = new Map();
     private constraint_tree: Map<string, BinaryConstraint> = new Map();
-  
+    private intermediate_point_map: Map<string, IntermediatePointBlock> = new Map();
+
     constructor(scene: THREE.Scene) {
       this.scene = scene;
     }
@@ -83,5 +85,61 @@ export class BlockRoot {
       }
     }
     
+    add_intermediate_point(name: string, x: number, y: number, z: number): [boolean, string] {
+      if (this.intermediate_point_map.get(name)) {
+        return [false, 'Intermediate point already exists'];
+      }
+      const intermediate_point = new IntermediatePointBlock(name, x, y, z, this);
+      this.intermediate_point_map.set(name, intermediate_point);
+      return [true, ''];
+    }
+
+    remove_intermediate_point(name: string) {
+      if (!this.intermediate_point_map.get(name)) {
+        return;
+      }
+      this.intermediate_point_map.delete(name);
+    }
+
+    get_intermediate_point_names() {
+      return Array.from(this.intermediate_point_map.keys());
+    }
+
+    export_json() {
+      const save_data: {
+        task_managers: any[];
+        intermediate_points: any[];
+      } = {
+        task_managers: [],
+        intermediate_points: [],
+      }
+      this.task_manager_map.forEach((task_manager) => {
+        save_data.task_managers.push(task_manager.export_json())
+      })
+      this.intermediate_point_map.forEach((point) => {
+        save_data.intermediate_points.push(point.toJson())
+      })
+      return save_data;
+    }
+
+    load_json(data: any) {
+      data.task_managers.forEach((task_cfg: any) => {
+        if (!this.task_manager_map.has(task_cfg.name)) {
+          const task_manager = new TaskManager(
+            task_cfg.name, 
+            task_cfg.env_block.xmin, task_cfg.env_block.xmax, 
+            task_cfg.env_block.ymin, task_cfg.env_block.ymax, 
+            task_cfg.env_block.zmin, task_cfg.env_block.zmax, this
+          );
+          task_manager.load_json(task_cfg, this);
+          this.add_task_manager(task_manager);
+        }
+      })
+      data.intermediate_points.forEach((point_cfg: any) => {
+        if (!this.intermediate_point_map.has(point_cfg.name)) {
+          this.add_intermediate_point(point_cfg.name, point_cfg.x, point_cfg.y, point_cfg.z);
+        }
+      })
+    }
 }
   

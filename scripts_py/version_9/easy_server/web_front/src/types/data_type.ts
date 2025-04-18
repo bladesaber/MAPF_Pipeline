@@ -86,21 +86,33 @@ export interface PathSearchTreeNode {
   children?: (PathSearchTreeNode|PathSearchMainTask)[];
 }
 
-export interface PathSearchSubTask {
+export interface PathSearchCellTask {
   label: string;
   type: string;
-  start_points: number[][];
-  end_points: number[][];
-  run_method: string;
+  start_points: string[];
+  end_points: string[];
+  radius: number;
   run_cfg: Map<string, string|number|boolean>;
-  result_points: number[][];
+  result_name: string;
+}
+
+export interface PathSearchGroupTask {
+  label: string;
+  type: string;
+  group_name: string;
+  cell_tasks: PathSearchCellTask[];
+}
+
+export interface PathSearchPriorityTask {
+  label: string;
+  type: string;
+  priority: number;
+  group_tasks: PathSearchGroupTask[];
 }
 
 export interface PathSearchMainTask {
   label: string;
   type: string;
-  priority: number;
-  group_name: string;
-  sub_tasks: PathSearchSubTask[];
+  priority_tasks: PathSearchPriorityTask[];
 }
 

@@ -134,6 +134,8 @@ export class CylinderObstacleBlock extends ObstacleBlock {
       vector_x: this.vector_x,
       vector_y: this.vector_y,
       vector_z: this.vector_z,
+      relax_groups: this.relax_groups,
+      type: "CylinderObstacle",
     };
   }
 }
@@ -242,6 +244,8 @@ export class BoxObstacleBlock extends ObstacleBlock {
       ymax: this.ymax,
       zmin: this.zmin,
       zmax: this.zmax,
+      relax_groups: this.relax_groups,
+      type: "BoxObstacle",
     };
   }
 }
@@ -318,6 +322,8 @@ export class SphereObstacleBlock extends ObstacleBlock {
       y: this.y,
       z: this.z,
       radius: this.radius,
+      relax_groups: this.relax_groups,
+      type: "SphereObstacle",
     };
   }
 }
@@ -339,7 +345,9 @@ export class HttpObstacleBlock extends ObstacleBlock {
 
   toJson(): any {
       return {
-          name: this.name
+          name: this.name,
+          relax_groups: this.relax_groups,
+          type: "HttpObstacle",
       };
   }
 }
