@@ -12,3 +12,8 @@ __pycache__
 /Thirdparty
 /cmake-build-debug
 /temp_files
+/pathSearch_pkg/third_party
+/pathSearch_pkg/.idea
+/pathSearch_pkg/.vscode
+/easy_server/.vscode
+/easy_server/.idea

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .control-panel {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .message-panel {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        #messageInput {
+            flex-grow: 1;
+            padding: 5px;
+        }
+        button {
+            padding: 8px 15px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #log {
+            background-color: #f8f8f8;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            height: 300px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .sent {
+            color: #2196F3;
+        }
+        .received {
+            color: #4CAF50;
+        }
+        .error {
+            color: #f44336;
+        }
+        .connection-info {
+            background-color: #e3f2fd;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Test Client</h1>
+    
+    <div class="connection-info" id="connectionInfo">
+        <h3>Connection Information</h3>
+        <div>Socket Name: <span id="socketName">Not connected</span></div>
+        <div>Port: <span id="portNumber">Not connected</span></div>
+    </div>
+
+    <div class="control-panel">
+        <button id="startBtn" onclick="startWebSocket()">Start Connection</button>
+        <button id="endBtn" onclick="endWebSocket()" disabled>End Connection</button>
+        
+        <div class="message-panel">
+            <input type="text" id="messageInput" placeholder="Enter message to send">
+            <button id="sendBtn" onclick="sendMessage()" disabled>Send Message</button>
+        </div>
+    </div>
+
+    <h2>Log</h2>
+    <div id="log"></div>
+
+    <script>
+        let ws = null;
+        const startBtn = document.getElementById('startBtn');
+        const endBtn = document.getElementById('endBtn');
+        const sendBtn = document.getElementById('sendBtn');
+        const messageInput = document.getElementById('messageInput');
+        const log = document.getElementById('log');
+        const socketName = document.getElementById('socketName');
+        const portNumber = document.getElementById('portNumber');
+
+        function addToLog(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function updateConnectionInfo(data) {
+            if (data.socket_name) {
+                socketName.textContent = data.socket_name;
+            }
+            if (data.port) {
+                portNumber.textContent = data.port;
+            }
+        }
+
+        function startWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//192.168.110.54:9998/path_search/run`;
+            console.log('wsUrl: ', wsUrl)
+
+            try {
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    addToLog('WebSocket connection established', 'info');
+                    startBtn.disabled = true;
+                    endBtn.disabled = false;
+                    sendBtn.disabled = false;
+                };
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    addToLog(`Received: ${event.data}`, 'received');
+                    updateConnectionInfo(data);
+                };
+
+                ws.onclose = () => {
+                    addToLog('WebSocket connection closed', 'info');
+                    resetButtons();
+                    socketName.textContent = 'Not connected';
+                    portNumber.textContent = 'Not connected';
+                };
+
+                ws.onerror = (error) => {
+                    addToLog(`WebSocket error: ${error}`, 'error');
+                    resetButtons();
+                };
+
+            } catch (error) {
+                addToLog(`Error creating WebSocket: ${error}`, 'error');
+                resetButtons();
+            }
+        }
+
+        function endWebSocket() {
+            if (ws) {
+                ws.close();
+                resetButtons();
+                addToLog('Connection closed by user', 'info');
+            }
+        }
+
+        function sendMessage() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const message = messageInput.value;
+                if (message) {
+                    try {
+                        const jsonMessage = JSON.stringify({
+                            name: 'TestLayout',
+                            message: message
+                        });
+                        ws.send(jsonMessage);
+                        addToLog(`Sent: ${jsonMessage}`, 'sent');
+                        messageInput.value = '';
+                    } catch (error) {
+                        addToLog(`Error sending message: ${error}`, 'error');
+                    }
+                }
+            } else {
+                addToLog('WebSocket is not connected', 'error');
+            }
+        }
+
+        function resetButtons() {
+            startBtn.disabled = false;
+            endBtn.disabled = true;
+            sendBtn.disabled = true;
+            ws = null;
+        }
+
+        messageInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html> 
