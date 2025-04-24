@@ -112,11 +112,10 @@
           <el-form-item label="Name" prop="name">
             <el-input v-model="cellTaskForm.name" />
           </el-form-item>
-          <el-form-item label="Start Points" prop="start_points">
+          <el-form-item label="Start Point" prop="start_point">
             <el-select
-              v-model="cellTaskForm.start_points"
-              multiple
-              placeholder="Select start points"
+              v-model="cellTaskForm.start_point"
+              placeholder="Select start point"
               style="width: 100%"
             >
               <el-option
@@ -127,11 +126,10 @@
               />
             </el-select>
           </el-form-item>
-          <el-form-item label="End Points" prop="end_points">
+          <el-form-item label="End Point" prop="end_point">
             <el-select
-              v-model="cellTaskForm.end_points"
-              multiple
-              placeholder="Select end points"
+              v-model="cellTaskForm.end_point"
+              placeholder="Select end point"
               style="width: 100%"
             >
               <el-option
@@ -150,11 +148,10 @@
               style="width: 100%"
             />
           </el-form-item>
-          <el-form-item label="Intermediate Points">
+          <el-form-item label="Intermediate Point" prop="intermediate_point">
             <el-select
-              v-model="cellTaskForm.intermediate_points"
-              multiple
-              placeholder="Select intermediate points"
+              v-model="cellTaskForm.intermediate_point"
+              placeholder="Select intermediate point"
               style="width: 100%"
             >
               <el-option
@@ -187,7 +184,7 @@ import type { BlockRoot } from '../../classes/pathSearch_classes/base_root'
 const props = defineProps<{
   modelValue: boolean
   pathSearchCfgMode: string
-  currentTagDict: Map<string, string | string[] | Map<string, number>>
+  currentTagDict: Map<string, string | number | string[] | Map<string, string|number>>
 }>()
 
 const emit = defineEmits<{
@@ -247,15 +244,15 @@ const groupTaskRules = {
 const cellTaskFormRef = ref<FormInstance>()
 const cellTaskForm = ref({
   name: '',
-  start_points: [] as string[],
-  end_points: [] as string[],
+  start_point: '',
+  end_point: '',
   radius: 1.0,
-  intermediate_points: [] as string[],
+  intermediate_point: '',
 })
 const cellTaskRules = {
   name: [{ required: true, message: 'Please input name', trigger: 'blur' }],
-  start_points: [{ required: true, message: 'Please select start points', trigger: 'change' }],
-  end_points: [{ required: true, message: 'Please select end points', trigger: 'change' }],
+  start_point: [{ required: true, message: 'Please select start point', trigger: 'change' }],
+  end_point: [{ required: true, message: 'Please select end point', trigger: 'change' }],
   radius: [{ required: true, message: 'Please input radius', trigger: 'blur' }]
 }
 
@@ -323,10 +320,10 @@ const handleConfirm = async () => {
           case 'CellTask':
             cellTaskForm.value = {
               name: '',
-              start_points: [],
-              end_points: [],
+              start_point: '',
+              end_point: '',
               radius: 1.0,
-              intermediate_points: [],
+              intermediate_point: '',
             }
             break
         }

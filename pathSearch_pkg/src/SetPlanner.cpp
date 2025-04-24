@@ -13,13 +13,13 @@ namespace SearchSpace
             if (m_set_map.find(task.start_name) == m_set_map.end())
             {
                 m_set_map[task.start_name] = m_set_data.size();
-                m_set_data.push_back(std::vector<LocXyz>{task.start_loc});
+                m_set_data.push_back(task.start_locs);
             }
 
             if (m_set_map.find(task.end_name) == m_set_map.end())
             {
                 m_set_map[task.end_name] = m_set_data.size();
-                m_set_data.push_back(std::vector<LocXyz>{task.end_loc});
+                m_set_data.push_back(task.end_locs);
             }
         }
     }
@@ -40,7 +40,7 @@ namespace SearchSpace
         std::vector<LocXyz> prefix_set = m_set_data[m_set_map[pair_task->start_name]];
         std::vector<LocXyz> suffix_set = m_set_data[m_set_map[pair_task->end_name]];
 
-        if (result.size() == 0)
+        if (result.size() <= 1)
         {
             new_set.insert(new_set.end(), prefix_set.begin(), prefix_set.end());
         }

@@ -272,3 +272,39 @@ struct ObstacleData
 };
 
 typedef std::vector<ObstacleData> ObstacleList;
+
+struct CbsResult
+{
+    std::map<std::string, PathSetData> paths;
+
+    CbsResult() = default;
+    ~CbsResult() = default;
+    
+    void add_result(const std::string &group_name, const PathSetData path_set)
+    {
+        paths[group_name] = path_set;
+    }   
+};
+
+struct DynamicObstacleMap
+{
+    std::map<std::string, std::vector<ObstacleData>> dynamic_obstacle_map;
+
+    DynamicObstacleMap() = default;
+    ~DynamicObstacleMap() = default;
+
+    void add_obstacle(const std::string &group_name, const ObstacleData &obstacle)
+    {
+        dynamic_obstacle_map[group_name].push_back(obstacle);
+    }
+
+    const std::vector<ObstacleData>& get_obstacles(const std::string &group_name) const
+    {
+        return dynamic_obstacle_map.at(group_name);
+    }
+
+    bool has_obstacle(const std::string &group_name) const
+    {
+        return dynamic_obstacle_map.count(group_name) > 0;
+    }
+};

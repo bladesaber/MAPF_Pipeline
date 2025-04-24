@@ -515,6 +515,7 @@ const handleFileSelected = async (event: Event) => {
         handleSTEPData(file.name, data.shape_jsons, new Uint8Array(fileContent))
         break
       }
+
     }
 
   } catch (error: unknown) {

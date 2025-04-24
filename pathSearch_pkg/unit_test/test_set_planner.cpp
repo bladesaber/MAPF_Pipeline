@@ -213,24 +213,24 @@ TEST_F(SetPairNodePlannerTest, SimplePathfinding) {
         "task1",
         "start1",
         "end1",
-        LocXyz{1, 1, 0},
-        LocXyz{2, 6, 0},
+        std::vector<LocXyz>{LocXyz{1, 1, 0}},
+        std::vector<LocXyz>{LocXyz{2, 6, 0}},
         0.5
     );
     task_set.add_task(
         "task2",
         "start2",
         "end2",
-        LocXyz{8, 8, 0},
-        LocXyz{7, 4, 0},
+        std::vector<LocXyz>{LocXyz{8, 8, 0}},
+        std::vector<LocXyz>{LocXyz{7, 4, 0}},
         0.5
     );
     task_set.add_task(
         "task3",
         "start1",
         "start2",
-        LocXyz{1, 1, 0},
-        LocXyz{8, 8, 0},
+        std::vector<LocXyz>{LocXyz{1, 1, 0}},
+        std::vector<LocXyz>{LocXyz{8, 8, 0}},
         0.5
     );
 
@@ -274,24 +274,24 @@ TEST_F(SetPairNodePlannerTest, PathfindingWithObstacles) {
         "task1",
         "start1",
         "end1",
-        LocXyz{1, 1, 0},
-        LocXyz{8, 8, 0},
+        std::vector<LocXyz>{LocXyz{1, 1, 0}},
+        std::vector<LocXyz>{LocXyz{8, 8, 0}},
         0.5
     );
     task_set.add_task(
         "task2",
         "start2",
         "end1",
-        LocXyz{1, 8, 0},
-        LocXyz{8, 8, 0},
+        std::vector<LocXyz>{LocXyz{1, 8, 0}},
+        std::vector<LocXyz>{LocXyz{8, 8, 0}},
         0.5
     );
     task_set.add_task(
         "task3",
         "start3",
         "end1",
-        LocXyz{8, 1, 0},
-        LocXyz{8, 8, 0},
+        std::vector<LocXyz>{LocXyz{8, 1, 0}},
+        std::vector<LocXyz>{LocXyz{8, 8, 0}},
         0.5
     );
 

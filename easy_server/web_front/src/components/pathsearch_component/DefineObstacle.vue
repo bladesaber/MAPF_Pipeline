@@ -40,7 +40,6 @@
           >
             <el-option label="Cylinder" value="CylinderObstacle" />
             <el-option label="Box" value="BoxObstacle" />
-            <el-option label="Sphere" value="SphereObstacle" />
           </el-select>
         </div>
       </div>
@@ -64,6 +63,23 @@
               :value="group"
             />
           </el-select>
+        </div>
+      </div>
+
+      <!-- Resolution Parameter Section -->
+      <div class="section">
+        <div class="section-header">
+          <span>Resolution</span>
+        </div>
+        <div class="section-content">
+          <el-input-number 
+            v-model="formData.resolution"
+            :precision="2"
+            :step="0.1"
+            :min="0.1"
+            style="width: 120px"
+            placeholder="Resolution"
+          />
         </div>
       </div>
 
@@ -195,40 +211,6 @@
               </el-form-item>
             </template>
 
-            <!-- Sphere Parameters -->
-            <template v-if="formData.type === 'SphereObstacle'">
-              <el-form-item label="Center Position">
-                <div class="vector-input">
-                  <el-input-number 
-                    v-model="formData.x"
-                    :precision="2"
-                    :step="0.1"
-                    placeholder="X"
-                  />
-                  <el-input-number 
-                    v-model="formData.y"
-                    :precision="2"
-                    :step="0.1"
-                    placeholder="Y"
-                  />
-                  <el-input-number 
-                    v-model="formData.z"
-                    :precision="2"
-                    :step="0.1"
-                    placeholder="Z"
-                  />
-                </div>
-              </el-form-item>
-              <el-form-item label="Radius">
-                <el-input-number 
-                  v-model="formData.radius"
-                  :precision="2"
-                  :step="0.1"
-                  :min="0.1"
-                  style="width: 120px"
-                />
-              </el-form-item>
-            </template>
           </el-form>
         </div>
       </div>
@@ -250,7 +232,7 @@ import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
   modelValue: boolean,
-  currentTagDict: Map<string, string | string[] | Map<string, string|number>>
+  currentTagDict: Map<string, string | string[] | Map<string, string|number> | number>
 }>()
 
 const emit = defineEmits(['update:modelValue', 'generate'])
@@ -264,6 +246,7 @@ const formData = ref({
   name: '',
   type: '',
   relax_groups: [] as string[],
+  resolution: 0.5,
   // Cylinder parameters
   x: 0,
   y: 0,
@@ -315,11 +298,6 @@ const validateForm = () => {
       ElMessage.warning('Z maximum must be greater than minimum')
       return false
     }
-  } else if (formData.value.type === 'SphereObstacle') {
-    if (formData.value.radius <= 0) {
-      ElMessage.warning('Radius must be greater than 0')
-      return false
-    }
   }
 
   return true
@@ -331,6 +309,7 @@ const handleGenerate = () => {
   const outputData = {
     name: formData.value.name,
     type: formData.value.type,
+    resolution: formData.value.resolution,
     relax_groups: [...new Set(formData.value.relax_groups)],
     ...(formData.value.type === 'CylinderObstacle' ? {
       x: formData.value.x,
@@ -348,11 +327,6 @@ const handleGenerate = () => {
       ymax: formData.value.ymax,
       zmin: formData.value.zmin,
       zmax: formData.value.zmax
-    } : formData.value.type === 'SphereObstacle' ? {
-      x: formData.value.x,
-      y: formData.value.y,
-      z: formData.value.z,
-      radius: formData.value.radius
     } : {})
   }
 
@@ -363,6 +337,7 @@ const handleGenerate = () => {
     name: '',
     type: '',
     relax_groups: [],
+    resolution: 1,
     x: 0,
     y: 0,
     z: 0,

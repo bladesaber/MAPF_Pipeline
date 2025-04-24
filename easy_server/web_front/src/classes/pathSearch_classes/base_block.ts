@@ -6,7 +6,7 @@ import type { BlockRoot } from "./base_root.ts";
 export class BaseBlock {
   name: string;
   properties: string[] = [];
-  mesh_objs: Map<string, THREE.Mesh> = new Map();
+  mesh_objs: Map<string, THREE.Mesh|THREE.Points> = new Map();
 
   constructor(name: string) {
     this.name = name;

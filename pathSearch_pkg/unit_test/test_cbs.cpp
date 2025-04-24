@@ -207,7 +207,6 @@ namespace {
     }
 }
 
-/*
 class ConflictBaseSearchNodeTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -306,8 +305,8 @@ TEST_F(ConflictBaseSearchNodeSearchTest, Search) {
         "task1",
         "start1",
         "end1",
-        LocXyz{1, 1, 0},
-        LocXyz{8, 8, 0},
+        std::vector<LocXyz>{LocXyz{1, 1, 0}},
+        std::vector<LocXyz>{LocXyz{8, 8, 0}},
         0.5
     );
 
@@ -370,8 +369,8 @@ TEST_F(ConflictBaseSearchNodeSearchTest, Search) {
         "task2",
         "start1",
         "end2",
-        LocXyz{1, 1, 0},
-        LocXyz{1, 8, 0},
+        std::vector<LocXyz>{LocXyz{1, 1, 0}},
+        std::vector<LocXyz>{LocXyz{1, 8, 0}},
         0.5
     );
 
@@ -400,7 +399,6 @@ TEST_F(ConflictBaseSearchNodeSearchTest, Search) {
     std::cout << "Summary dynamic obstacle, group1->cost: " << node->result_map["group1"]->m_cost << std::endl;
     std::cout << "Summary dynamic obstacle, group1->cost: " << node->result_map["group2"]->m_cost << std::endl;
 }
-*/
 
 class ConflictBaseSearchParallelTest : public ::testing::Test {
 protected:
@@ -421,8 +419,8 @@ protected:
             "task1",
             "start1",
             "end1",
-            LocXyz{5, 0, 5},
-            LocXyz{5, 9, 5},
+            std::vector<LocXyz>{LocXyz{5, 0, 5}},
+            std::vector<LocXyz>{LocXyz{5, 9, 5}},
             0.5
         );
         cbs->add_task_set(task_set1, pair_planner1);
@@ -439,8 +437,8 @@ protected:
             "task2",
             "start2",
             "end2",
-            LocXyz{0, 5, 5},
-            LocXyz{9, 5, 5},
+            std::vector<LocXyz>{LocXyz{0, 5, 5}},
+            std::vector<LocXyz>{LocXyz{9, 5, 5}},
             0.5
         );
         cbs->add_task_set(task_set2, pair_planner2);
@@ -457,8 +455,8 @@ protected:
             "task3",
             "start3",
             "end3",
-            LocXyz{5, 5, 0},
-            LocXyz{5, 5, 9},
+            std::vector<LocXyz>{LocXyz{5, 5, 0}},
+            std::vector<LocXyz>{LocXyz{5, 5, 9}},
             0.5
         );
         cbs->add_task_set(task_set3, pair_planner3);
@@ -503,7 +501,7 @@ protected:
 TEST_F(ConflictBaseSearchParallelTest, Search) {
     ASSERT_TRUE(cbs->preprocess_root_node());
 
-    PyWrapCbsResult result;
+    CbsResult result;
     ASSERT_TRUE(cbs->search(&result));
 
     // // Print results

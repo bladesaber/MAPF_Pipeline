@@ -14,36 +14,24 @@ namespace TaskSpace
         virtual ~TaskData() = default;
     };
 
-    struct TaskNodeData : public TaskData
-    {
-        LocXyz loc;
-        double radius;
-        TaskNodeData(
-            const std::string name,
-            const LocXyz loc,
-            const double radius,
-            const uint32_t priority)
-            : TaskData(name, priority), loc(loc), radius(radius) {}
-    };
-
     struct TaskPairNodeData : public TaskData
     {
         std::string start_name;
-        LocXyz start_loc;
+        std::vector<LocXyz> start_locs;
         std::string end_name;
-        LocXyz end_loc;
+        std::vector<LocXyz> end_locs;
         double radius;
 
         TaskPairNodeData(
             const std::string name,
             const std::string start_name,
             const std::string end_name,
-            const LocXyz start_loc,
-            const LocXyz end_loc,
+            const std::vector<LocXyz> start_locs,
+            const std::vector<LocXyz> end_locs,
             const double radius,
             const uint32_t priority)
             : TaskData(name, priority), start_name(start_name), end_name(end_name), 
-            start_loc(start_loc), end_loc(end_loc), radius(radius) {}
+            start_locs(start_locs), end_locs(end_locs), radius(radius) {}
     };
 
     class TaskSet
@@ -71,11 +59,11 @@ namespace TaskSpace
             const std::string name,
             const std::string start_name,
             const std::string end_name,
-            const LocXyz start_loc,
-            const LocXyz end_loc,
+            const std::vector<LocXyz> start_locs,
+            const std::vector<LocXyz> end_locs,
             const double radius)
         {
-            auto task = TaskPairNodeData(name, start_name, end_name, start_loc, end_loc, radius, m_tasks.size());
+            auto task = TaskPairNodeData(name, start_name, end_name, start_locs, end_locs, radius, m_tasks.size());
             m_tasks.push_back(task);
             m_max_radius = std::max(m_max_radius, radius);
         }
@@ -89,8 +77,8 @@ namespace TaskSpace
                 original_task.name + "_" + landmark_name,
                 original_task.start_name,
                 landmark_name,
-                original_task.start_loc,
-                landmark_loc,
+                original_task.start_locs,
+                std::vector<LocXyz>{landmark_loc},
                 original_task.radius,
                 priority);
 
@@ -99,8 +87,8 @@ namespace TaskSpace
                 landmark_name + "_" + original_task.name,
                 landmark_name,
                 original_task.end_name,
-                landmark_loc,
-                original_task.end_loc,
+                std::vector<LocXyz>{landmark_loc},
+                original_task.end_locs,
                 original_task.radius,
                 priority + 1);
 
@@ -134,40 +122,6 @@ namespace TaskSpace
         std::vector<TaskPairNodeData> m_tasks;
     };
 
-    class NodeTaskSet : public TaskSet
-    {
-    public:
-        NodeTaskSet(const std::string name) : TaskSet(name) {}
-
-        void add_task() override {}
-
-        void add_task(
-            const std::string name,
-            const LocXyz loc,
-            const double radius)
-        {
-            auto task = TaskNodeData(name, loc, radius, m_tasks.size());
-            m_tasks.push_back(task);
-            m_max_radius = std::max(m_max_radius, radius);
-        }
-
-        size_t get_task_size() const override {
-            return m_tasks.size();
-        }
-
-        const TaskNodeData& get_task(uint32_t priority) const override 
-        {
-            return m_tasks[priority];
-        }
-
-        const void* get_tasks() const override {
-            return &m_tasks;
-        }
-
-        double m_max_radius = 0.0;
-    private:
-        std::vector<TaskNodeData> m_tasks;
-    };
 }
 
 #endif // TASK_MANAGER_H

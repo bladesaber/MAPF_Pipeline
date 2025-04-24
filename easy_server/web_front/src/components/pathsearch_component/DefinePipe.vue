@@ -52,18 +52,24 @@
               <div class="vector-input">
                 <el-input-number 
                   v-model="formData.x"
+                  :min="0"
+                  :max="maxSizes.x"
                   :precision="2"
                   :step="0.1"
                   placeholder="X"
                 />
                 <el-input-number 
                   v-model="formData.y"
+                  :min="0"
+                  :max="maxSizes.y"
                   :precision="2"
                   :step="0.1"
                   placeholder="Y"
                 />
                 <el-input-number 
                   v-model="formData.z"
+                  :min="0"
+                  :max="maxSizes.z"
                   :precision="2"
                   :step="0.1"
                   placeholder="Z"
@@ -162,7 +168,7 @@ import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
   modelValue: boolean,
-  currentTagDict: Map<string, string | string[] | Map<string, string|number>>
+  currentTagDict: Map<string, string | string[] | Map<string, string|number> | number>
 }>()
 
 const emit = defineEmits(['update:modelValue', 'generate'])
@@ -170,6 +176,17 @@ const emit = defineEmits(['update:modelValue', 'generate'])
 const groupValue = computed(() => {
   const group = props.currentTagDict.get('PipeGroup')
   return typeof group === 'string' ? group : (Array.isArray(group) ? group[0] : '')
+})
+
+const maxSizes = computed(() => {
+  const xSize = props.currentTagDict.get('XSize') as number
+  const ySize = props.currentTagDict.get('YSize') as number
+  const zSize = props.currentTagDict.get('ZSize') as number
+  return {
+    x: xSize,
+    y: ySize,
+    z: zSize,
+  }
 })
 
 const formData = ref({
@@ -182,7 +199,8 @@ const formData = ref({
   vec_y: 0,
   vec_z: 0,
   radius: 0.5,
-  is_inlet: true
+  is_inlet: true,
+  resolution: 0.5
 })
 
 const handleClose = () => {
@@ -200,11 +218,36 @@ const handleGenerate = () => {
     return
   }
 
+  const resolution = props.currentTagDict.get('Resolution') as number
+  const x_discrete = Math.round(formData.value.x / resolution)
+  const y_discrete = Math.round(formData.value.y / resolution)
+  const z_discrete = Math.round(formData.value.z / resolution)
+
+  // Validate position coordinates
+  if (x_discrete < 0) {
+    ElMessage.warning(`X position must be larger than 0`)
+    return
+  }
+  if (y_discrete < 0) {
+    ElMessage.warning(`Y position must be larger than 0`)
+    return
+  }
+  if (z_discrete < 0 ) {
+    ElMessage.warning(`Z position must be larger than 0`)
+    return
+  }
+
   // Check if direction vector is zero
   if (formData.value.vec_x === 0 && formData.value.vec_y === 0 && formData.value.vec_z === 0) {
     ElMessage.warning('Direction vector cannot be zero')
     return
   }
+
+  formData.value.x = Math.min(Math.max(0, x_discrete), maxSizes.value.x - 1) * resolution
+  formData.value.y = Math.min(Math.max(0, y_discrete), maxSizes.value.y - 1) * resolution
+  formData.value.z = Math.min(Math.max(0, z_discrete), maxSizes.value.z - 1) * resolution
+  formData.value.radius = formData.value.radius
+  formData.value.resolution = resolution
 
   emit('generate', {
     ...formData.value,

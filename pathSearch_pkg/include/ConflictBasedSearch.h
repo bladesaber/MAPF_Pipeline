@@ -4,7 +4,6 @@
 // #define DEBUG
 
 #include "BaseHead.h"
-#include "PyWrap.h"
 #include "TaskManager.h"
 #include "SearchGrid.h"
 #include "SetPlanner.h"
@@ -186,7 +185,7 @@ namespace SearchSpace
         ConflictSet m_conflict_set;
         Constraint m_constraint;
 
-    // protected:
+    protected:
         int16_t m_id;
         static double m_g_weight;
         static double m_h_weight;
@@ -213,7 +212,7 @@ namespace SearchSpace
             m_planner_map[task_set->name] = planner;
         }
 
-        bool preprocess_root_node()
+        bool preprocess_root_node(const DynamicObstacleMap &dynamic_obstacle_map)
         {
             m_node_count = 0;
             ConflictBaseSearchNode *root_node = create_node();
@@ -222,6 +221,12 @@ namespace SearchSpace
             for (auto &iter : m_task_set_map)
             {
                 root_node->dynamic_obstacle_map[iter.first] = std::make_shared<ObstacleList>(ObstacleList());
+                if (dynamic_obstacle_map.has_obstacle(iter.first)) {
+                    for (const auto &obstacle : dynamic_obstacle_map.get_obstacles(iter.first))
+                    {
+                        root_node->dynamic_obstacle_map[iter.first]->push_back(obstacle);
+                    }
+                }
             }
 
             // ------ search all task sets ------
@@ -268,7 +273,7 @@ namespace SearchSpace
             }
         }
 
-        bool search(PyWrapCbsResult *result)
+        bool search(CbsResult *result)
         {
             if (!result) return false;
             bool is_solvable = false;

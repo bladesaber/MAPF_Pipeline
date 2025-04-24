@@ -44,7 +44,7 @@ import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
   modelValue: boolean,
-  currentTagDict: Map<string, string | string[] | Map<string, string|number>>
+  currentTagDict: Map<string, string | string[] | Map<string, string|number> | number>
 }>()
 
 const emit = defineEmits(['update:modelValue', 'generate'])

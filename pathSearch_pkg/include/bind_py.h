@@ -77,7 +77,7 @@ namespace pybind_modules
             .def(py::init<const LocXyz &, const double>())
             .def_readonly("loc", &ObstacleData::loc)
             .def_readonly("radius", &ObstacleData::radius);
-
+        
         // ------ SearchGrid (base class)
         py::class_<GridSpace::SearchGrid>(m, "SearchGrid")
             .def("is_in_grid", &GridSpace::SearchGrid::is_in_grid, py::arg("loc"))
@@ -276,8 +276,8 @@ namespace pybind_modules
         py::class_<TaskSpace::TaskPairNodeData, TaskSpace::TaskData>(m, "TaskPairNodeData")
             .def_readonly("start_name", &TaskSpace::TaskPairNodeData::start_name)
             .def_readonly("end_name", &TaskSpace::TaskPairNodeData::end_name)
-            .def_readonly("start_loc", &TaskSpace::TaskPairNodeData::start_loc)
-            .def_readonly("end_loc", &TaskSpace::TaskPairNodeData::end_loc)
+            .def_readonly("start_locs", &TaskSpace::TaskPairNodeData::start_locs)
+            .def_readonly("end_locs", &TaskSpace::TaskPairNodeData::end_locs)
             .def_readonly("radius", &TaskSpace::TaskPairNodeData::radius);
 
         // ------ TaskSet (base class)
@@ -291,14 +291,14 @@ namespace pybind_modules
             .def("add_task", py::overload_cast<const std::string,
                                               const std::string,
                                               const std::string,
-                                              const LocXyz,
-                                              const LocXyz,
+                                              const std::vector<LocXyz>,
+                                              const std::vector<LocXyz>,
                                               const double>(&TaskSpace::PairNodeTaskSet::add_task),
                 py::arg("name"),
                 py::arg("start_name"),
                 py::arg("end_name"),
-                py::arg("start_loc"),
-                py::arg("end_loc"),
+                py::arg("start_locs"),
+                py::arg("end_locs"),
                 py::arg("radius"))
             .def("add_landmark_to_task", &TaskSpace::PairNodeTaskSet::add_landmark_to_task,
                 py::arg("priority"),
@@ -369,11 +369,26 @@ namespace pybind_modules
         py::class_<PyWrapAstarStruct>(m, "PyWrapAstarStruct")
             .def(py::init<GridSpace::SearchGrid*, SearchSpace::BaseSearch*>())
             .def_readonly("path", &PyWrapAstarStruct::path)
-            .def("run", &PyWrapAstarStruct::run);
+            .def("run", &PyWrapAstarStruct::run,
+                py::arg("starts"),
+                py::arg("goals"));
         
-        // ------ PyWrapCbsResult
-        py::class_<PyWrapCbsResult>(m, "PyWrapCbsResult")
+        // ------ CbsResult
+        py::class_<CbsResult>(m, "CbsResult")
             .def(py::init<>())
-            .def_readwrite("results", &PyWrapCbsResult::results);
+            .def_readonly("paths", &CbsResult::paths);
+
+        // ------ DynamicObstacleMap
+        py::class_<DynamicObstacleMap>(m, "DynamicObstacleMap")
+            .def(py::init<>())
+            .def("add_obstacle", &DynamicObstacleMap::add_obstacle,
+                py::arg("group_name"),
+                py::arg("obstacle"));
+
+        // ------ PyWrapCbsStruct
+        py::class_<PyWrapCbsStruct>(m, "PyWrapCbsStruct")
+            .def(py::init<SearchSpace::ConflictBaseSearch*, DynamicObstacleMap*>())
+            .def_readonly("result", &PyWrapCbsStruct::result)
+            .def("run", &PyWrapCbsStruct::run);
     };
 }

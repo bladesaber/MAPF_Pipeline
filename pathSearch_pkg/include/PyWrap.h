@@ -4,23 +4,7 @@
 #include "BaseHead.h"
 #include "SearchGrid.h"
 #include "AstarSearch.h"
-
-struct PyWrapCbsResult
-{
-    std::map<std::string, PathSetData> results;
-
-    PyWrapCbsResult() = default;
-
-    // no use & and * for copy PathSetData
-    void add_result(const std::string group_name, const PathSetData path_set)
-    {
-        results[group_name] = path_set;
-    }
-
-    ~PyWrapCbsResult()
-    {
-    }
-};
+#include "ConflictBasedSearch.h"
 
 struct PyWrapAstarStruct
 {
@@ -38,6 +22,25 @@ struct PyWrapAstarStruct
     {
         return search->search(grid, starts, goals, path);
     };
+};
+
+struct PyWrapCbsStruct
+{
+    SearchSpace::ConflictBaseSearch* planner;
+    CbsResult result;
+    DynamicObstacleMap* dynamic_obstacle_map;
+
+    PyWrapCbsStruct(SearchSpace::ConflictBaseSearch* planner, DynamicObstacleMap* dynamic_obstacle_map)
+    {
+        this->planner = planner;
+        this->dynamic_obstacle_map = dynamic_obstacle_map;
+    }
+
+    bool run()
+    {   
+        planner->preprocess_root_node(*dynamic_obstacle_map);
+        return planner->search(&result);
+    }
 };
 
 #endif // PY_WRAP_H

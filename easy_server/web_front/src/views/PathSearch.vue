@@ -51,6 +51,8 @@
           @node-click="handleLeftTreeClick"
           @node-contextmenu="handleRightTreeClick"
           node-key="id"
+          :disabled="isTreeLoading"
+          :class="{ 'tree-loading': isTreeLoading }"
         />
         <div
           class="resize-handle"
@@ -111,7 +113,13 @@
 
       <SearchDialogSocket
         ref="searchDialogSocketRef"
+        :currentTagDict="currentTagDict"
         v-model="searchDialogSocketVisible"
+        @unlockLeftSideBarTree="unlockLeftSideBarTree"
+        @lockLeftSideBarTree="lockLeftSideBarTree"
+        @parseDiscretizeGrid="parseDiscretizeGrid"
+        @parseSearchPreprocess="parseSearchPreprocess"
+        @parseRunPrioritySearch="parseRunPrioritySearch"
       />
 
     </div>
@@ -123,8 +131,7 @@
       :style="contextMenuStyle"
     >
       <el-menu>
-        <el-menu-item @click="handleTreeContextMenu('TaskManager/RemoveTaskManager')">Remove Task</el-menu-item>
-        <el-menu-item @click="handleTreeContextMenu('TaskManager/OpenSearchDialog')">Open Search Dialog</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('TaskManager/RemoveTaskManager')">Remove Task Manager</el-menu-item>
       </el-menu>
     </div>
 
@@ -137,6 +144,9 @@
         <el-menu-item @click="handleTreeContextMenu('TaskEnvironment/EditEnvironment')">Edit Environment</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('TaskEnvironment/HideEnvironment')">Hide Environment</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('TaskEnvironment/ShowEnvironment')">Show Environment</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('TaskEnvironment/RequestGrid')">Request Grid</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('TaskEnvironment/HideGrid')">Hide Discretized Grid</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('TaskEnvironment/ShowGrid')">Show Discretized Grid</el-menu-item>
       </el-menu>
     </div>
 
@@ -160,6 +170,9 @@
         <el-menu-item @click="handleTreeContextMenu('Obstacle/HideObstacle')">Hide Obstacle</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('Obstacle/ShowObstacle')">Show Obstacle</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('Obstacle/RemoveObstacle')">Remove Obstacle</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('Obstacle/DiscretizeObstacle')">Discretize Obstacle</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('Obstacle/HideDiscretizedObstacle')">Hide Discretized Obstacle</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('Obstacle/ShowDiscretizedObstacle')">Show Discretized Obstacle</el-menu-item>
       </el-menu>
     </div>
 
@@ -169,7 +182,7 @@
       :style="contextMenuStyle"
     >
       <el-menu>
-        <el-menu-item @click="handleTreeContextMenu('TaskPipeGroup/AddPipeGroup')">Add Pipe Group</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PipeGroups/AddPipeGroup')">Add Pipe Group</el-menu-item>
       </el-menu>
     </div>
 
@@ -205,7 +218,7 @@
       :style="contextMenuStyle"
     >
       <el-menu>
-        <el-menu-item @click="handleTreeContextMenu('TasksRoot/AddMainTask')">Add Main Task</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('TaskTreeRoot/AddMainTask')">Add Main Task</el-menu-item>
       </el-menu>
     </div>
 
@@ -217,6 +230,8 @@
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('MainTask/AddPriorityTask')">Add Priority Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('MainTask/RemoveMainTask')">Remove Main Task</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('MainTask/ConnectToServer')">Connect to Server</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('MainTask/Preprocess')">Preprocess</el-menu-item>
       </el-menu>
     </div>
 
@@ -228,6 +243,9 @@
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('PriorityTask/AddGroupTask')">Add Group Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('PriorityTask/RemovePriorityTask')">Remove Priority Task</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PriorityTask/RunSearch')">Run Search</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PriorityTask/ShowResult')">Show Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PriorityTask/HideResult')">Hide Result</el-menu-item>
       </el-menu>
     </div>
     
@@ -239,6 +257,8 @@
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('GroupTask/AddCellTask')">Add Cell Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('GroupTask/RemoveGroupTask')">Remove Group Task</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('GroupTask/ShowResult')">Show Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('GroupTask/HideResult')">Hide Result</el-menu-item>
       </el-menu>
     </div>
 
@@ -250,6 +270,8 @@
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('CellTask/RemoveCellTask')">Remove Cell Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('CellTask/EditCellTask')">Edit Cell Task</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('CellTask/ShowResult')">Show Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('CellTask/HideResult')">Hide Result</el-menu-item>
       </el-menu>
     </div>
 
@@ -282,7 +304,6 @@
       ref="fileInput"
       style="display: none"
       accept=".h5,.hdf5"
-      @change="handleFileSelected"
     />
 
     <!-- Add ElDialog for export -->
@@ -335,6 +356,7 @@ import SearchDialogSocket from '@/components/pathsearch_component/SearchDialogSo
 import { BlockRoot } from '../classes/pathSearch_classes/base_root.ts'
 import { TaskManager } from '../classes/pathSearch_classes/base_task.ts'
 import type { PathSearchTreeNode } from '../types/data_type.ts'
+import { ObstacleBlock } from '../classes/pathSearch_classes/obstacle_block.ts'
 
 // ----------------
 const scene = new THREE.Scene()
@@ -439,13 +461,13 @@ const handleLeftTreeClick = (data: any) => {
   console.log('Left tree click:', data)
 }
 
-const currentTagDict = ref(new Map<string, string| string[]| (Map<string, string|number>)>())
+const currentTagDict = ref(new Map<string, string | number | string[] | Map<string, string|number>>())
 const handleRightTreeClick = (event: MouseEvent, data: any) => {
   event.preventDefault()
   contextMenuPosition.x = event.clientX
   contextMenuPosition.y = event.clientY
   setVisableDict('meshContextMenuVisible', contextMenuVisibleDict, true, false)
-
+  
   currentTagDict.value = data.tagDict
   currentTagDict.value.set('label', data.label)
 
@@ -461,7 +483,7 @@ const handleRightTreeClick = (event: MouseEvent, data: any) => {
   else if (data.type === 'Obstacle') {
     setVisableDict('obstacleContextMenuVisible', contextMenuVisibleDict, true, true)
   }
-  else if (data.type === 'TaskPipeGroup') {
+  else if (data.type === 'PipeGroups') {
     setVisableDict('taskPipeContextMenuVisible', contextMenuVisibleDict, true, true)
   }
   else if (data.type === 'PipeGroup') {
@@ -470,7 +492,7 @@ const handleRightTreeClick = (event: MouseEvent, data: any) => {
   else if (data.type === 'Pipe') {
     setVisableDict('pipeContextMenuVisible', contextMenuVisibleDict, true, true)
   }
-  else if (data.type === 'TasksRoot') {
+  else if (data.type === 'TaskTreeRoot') {
     setVisableDict('taskRootContextMenuVisible', contextMenuVisibleDict, true, true)
   }
   else if (data.type === 'MainTask') {
@@ -513,6 +535,14 @@ const stopResize = () => {
   isResizing.value = false
   document.removeEventListener('mousemove', startResize)
   document.removeEventListener('mouseup', stopResize)
+}
+
+const lockLeftSideBarTree = () => {
+  isTreeLoading.value = true
+}
+
+const unlockLeftSideBarTree = () => {
+  isTreeLoading.value = false
 }
 
 // ---------------- Mesh Selection Handling ----------------
@@ -592,10 +622,6 @@ const handleExportConfirm = () => {
   ElMessage.success(`Successfully exported to ${filename}`)
 }
 
-const handleLoad = () => {
-  console.log('Load')
-}
-
 const loadFileInput = ref<HTMLInputElement | null>(null)
 const triggerFileLoad = () => {
   if (loadFileInput.value) {
@@ -615,38 +641,6 @@ const handleLoadFileSelected = async (event: Event) => {
   updateTreeData()
 }
 
-const handleFileSelected = async (event: Event) => {
-//   const input = event.target as HTMLInputElement
-//   const file = input.files?.[0]
-//   if (!file) {
-//     return
-//   }
-
-//   const formData = new FormData()
-//   formData.append('file', file)
-
-//   try {
-//     const response = await fetch('http://192.168.110.54:9998/cad/read_h5', {
-//       method: 'POST',
-//       body: formData
-//     })
-//     if (!response.ok) throw new Error('Failed to read file')
-//     const data = await response.json()
-//     // Process the data
-//     ElMessage.success(`Successfully loaded file: ${file.name}`)
-
-//   } catch (error: unknown) {
-//     console.error('Error processing file:', error)
-//     if (error instanceof Error) {
-//       ElMessage.error('Failed to read file: ' + error.message)
-//     } else {
-//       ElMessage.error('Failed to read file: Unknown error')
-//     }
-//   } finally {
-//     input.value = ''
-//   }
-}
-
 // ---------------- Context Menu Handling ----------------
 const handleTreeContextMenu = (mode: string) => {
   if (mode === 'TaskManager/RemoveTaskManager') {
@@ -655,6 +649,14 @@ const handleTreeContextMenu = (mode: string) => {
   }
   else if (mode === 'TaskEnvironment/EditEnvironment') {
     setVisableDict('taskEnvironmentContextMenuVisible', contextMenuVisibleDict, true, false)
+  }
+  else if (mode === 'TaskEnvironment/HideEnvironment') {
+    setVisableDict('taskEnvironmentContextMenuVisible', contextMenuVisibleDict, true, false)
+    blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.get_environment()?.hide_mesh()
+  }
+  else if (mode === 'TaskEnvironment/ShowEnvironment') {
+    setVisableDict('taskEnvironmentContextMenuVisible', contextMenuVisibleDict, true, false)
+    blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.get_environment()?.show_mesh()
   }
   else if (mode === 'TaskObstacle/AddObstacle') {
     setVisableDict('taskObstacleContextMenuVisible', contextMenuVisibleDict, true, false)
@@ -685,11 +687,35 @@ const handleTreeContextMenu = (mode: string) => {
     )
     updateTreeData()
   }
-  else if (mode === 'TaskPipeGroup/AddPipeGroup') {
+  else if (mode === 'Obstacle/DiscretizeObstacle') {
+    setVisableDict('obstacleContextMenuVisible', contextMenuVisibleDict, true, false);
+    (blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.get_obstacle(
+        currentTagDict.value.get('Obstacle') as string
+    ) as ObstacleBlock)!.discrete(blockRoot)
+    updateTreeData()
+  }
+  else if (mode === 'Obstacle/HideDiscretizedObstacle') {
+    setVisableDict('obstacleContextMenuVisible', contextMenuVisibleDict, true, false);
+    (blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.get_obstacle(
+        currentTagDict.value.get('Obstacle') as string
+    ) as ObstacleBlock)!.hide_discretize_mesh()
+  }
+  else if (mode === 'Obstacle/ShowDiscretizedObstacle') {
+    setVisableDict('obstacleContextMenuVisible', contextMenuVisibleDict, true, false);
+    (blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.get_obstacle(
+        currentTagDict.value.get('Obstacle') as string
+    ) as ObstacleBlock)!.show_discretize_mesh()
+  }
+  else if (mode === 'PipeGroups/AddPipeGroup') {
     setVisableDict('taskPipeContextMenuVisible', contextMenuVisibleDict, true, false)
     setVisableDict('definePipeGroupVisible', rightSidebarVisibleDict, true, true)
   }
   else if (mode === 'PipeGroup/AddPipe') {
+    const task_manager = blockRoot.get_task_manager(currentTagDict.value.get('Task') as string) as TaskManager;
+    currentTagDict.value.set('XSize', task_manager.get_xsize())
+    currentTagDict.value.set('YSize', task_manager.get_ysize())
+    currentTagDict.value.set('ZSize', task_manager.get_zsize())
+    currentTagDict.value.set('Resolution', task_manager.get_resolution())
     setVisableDict('pipeGroupContextMenuVisible', contextMenuVisibleDict, true, false)
     setVisableDict('defineTaskPipeVisible', rightSidebarVisibleDict, true, true)
   }
@@ -738,7 +764,7 @@ const handleTreeContextMenu = (mode: string) => {
     )
     updateTreeData()
   }
-  else if (mode === 'TasksRoot/AddMainTask') {
+  else if (mode === 'TaskTreeRoot/AddMainTask') {
     setVisableDict('taskRootContextMenuVisible', contextMenuVisibleDict, true, false)
     pathSearchCfgMode.value = 'MainTask'
     setVisableDict('definePathSearchCfgVisible', rightSidebarVisibleDict, true, true)
@@ -760,16 +786,13 @@ const handleTreeContextMenu = (mode: string) => {
   else if (mode === 'GroupTask/AddCellTask') {
     setVisableDict('groupTaskContextMenuVisible', contextMenuVisibleDict, true, false)
     pathSearchCfgMode.value = 'CellTask'
-
     const task_manager = blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)
     const group_pipes = task_manager!.get_pipe_group(currentTagDict.value.get('GroupTask') as string) as string[]
-
     const group_pipes_radius_dict = new Map<string, number>()
     group_pipes.forEach(pipe_name => {
       const pipe = blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.get_pipe(pipe_name)
       group_pipes_radius_dict.set(pipe_name, pipe!.radius)
     })
-
     currentTagDict.value.set('GroupPipesRadiusDict', group_pipes_radius_dict)
     currentTagDict.value.set('IntermediatePointNames', blockRoot.get_intermediate_point_names() as string[])
     setVisableDict('definePathSearchCfgVisible', rightSidebarVisibleDict, true, true)
@@ -784,6 +807,24 @@ const handleTreeContextMenu = (mode: string) => {
     )
     updateTreeData()
   }
+  else if (mode === 'CellTask/ShowResult') {
+    setVisableDict('cellTaskContextMenuVisible', contextMenuVisibleDict, true, false)
+    blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.show_cell_result(
+        currentTagDict.value.get('MainTask') as string,
+        currentTagDict.value.get('PriorityTask') as string,
+        currentTagDict.value.get('GroupTask') as string,
+        currentTagDict.value.get('CellTask') as string
+    )
+  }
+  else if (mode === 'CellTask/HideResult') {
+    setVisableDict('cellTaskContextMenuVisible', contextMenuVisibleDict, true, false)
+    blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.hide_cell_result(
+        currentTagDict.value.get('MainTask') as string,
+        currentTagDict.value.get('PriorityTask') as string,
+        currentTagDict.value.get('GroupTask') as string,
+        currentTagDict.value.get('CellTask') as string
+    )
+  }
   else if (mode === 'GroupTask/RemoveGroupTask') {
     setVisableDict('groupTaskContextMenuVisible', contextMenuVisibleDict, true, false)
     blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.remove_group_task(
@@ -793,6 +834,22 @@ const handleTreeContextMenu = (mode: string) => {
     )
     updateTreeData()
   }
+  else if (mode === 'GroupTask/ShowResult') {
+    setVisableDict('groupTaskContextMenuVisible', contextMenuVisibleDict, true, false)
+    blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.show_group_result(
+        currentTagDict.value.get('MainTask') as string,
+        currentTagDict.value.get('PriorityTask') as string,
+        currentTagDict.value.get('GroupTask') as string
+    )
+  }
+  else if (mode === 'GroupTask/HideResult') {
+    setVisableDict('groupTaskContextMenuVisible', contextMenuVisibleDict, true, false)
+    blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.hide_group_result(
+        currentTagDict.value.get('MainTask') as string,
+        currentTagDict.value.get('PriorityTask') as string,
+        currentTagDict.value.get('GroupTask') as string
+    )
+  }
   else if (mode === 'PriorityTask/RemovePriorityTask') {
     setVisableDict('priorityTaskContextMenuVisible', contextMenuVisibleDict, true, false)
     blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.remove_priority_task(
@@ -800,6 +857,20 @@ const handleTreeContextMenu = (mode: string) => {
         currentTagDict.value.get('MainTask') as string
     )
     updateTreeData()
+  }
+  else if (mode === 'PriorityTask/ShowResult') {
+    setVisableDict('priorityTaskContextMenuVisible', contextMenuVisibleDict, true, false)
+    blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.show_priority_result(
+        currentTagDict.value.get('MainTask') as string,
+        currentTagDict.value.get('PriorityTask') as string
+    )
+  }
+  else if (mode === 'PriorityTask/HideResult') {
+    setVisableDict('priorityTaskContextMenuVisible', contextMenuVisibleDict, true, false)
+    blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.hide_priority_result(
+        currentTagDict.value.get('MainTask') as string,
+        currentTagDict.value.get('PriorityTask') as string
+    )
   }
   else if (mode === 'MainTask/RemoveMainTask') {
     setVisableDict('mainTaskContextMenuVisible', contextMenuVisibleDict, true, false)
@@ -813,8 +884,55 @@ const handleTreeContextMenu = (mode: string) => {
     blockRoot.remove_intermediate_point(currentTagDict.value.get('IntermediatePoint') as string)
     updateTreeData()
   }
-  else if (mode === 'TaskManager/OpenSearchDialog') {
+  else if (mode === 'MainTask/ConnectToServer') {
+    setVisableDict('mainTaskContextMenuVisible', contextMenuVisibleDict, true, false)
+    if (searchDialogSocketVisible.value) {
+      ElMessage.error('You have already connected to the server.')
+      return
+    }
     searchDialogSocketVisible.value = true
+  }
+  else if (mode === 'TaskEnvironment/RequestGrid') {
+    setVisableDict('taskEnvironmentContextMenuVisible', contextMenuVisibleDict, true, false)
+    if (!searchDialogSocketVisible.value) {
+      ElMessage.error('Please connect to the server first.')
+      return
+    }
+    lockLeftSideBarTree()
+    requestDiscretizeGrid(currentTagDict.value.get('Task') as string)
+  }
+  else if (mode === 'TaskEnvironment/HideGrid') {
+    setVisableDict('taskEnvironmentContextMenuVisible', contextMenuVisibleDict, true, false)
+    blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.hide_discretized_grid()
+  }
+  else if (mode === 'TaskEnvironment/ShowGrid') {
+    setVisableDict('taskEnvironmentContextMenuVisible', contextMenuVisibleDict, true, false)
+    blockRoot.get_task_manager(currentTagDict.value.get('Task') as string)?.show_discretized_grid()
+  }
+  else if (mode === 'MainTask/Preprocess') {
+    setVisableDict('mainTaskContextMenuVisible', contextMenuVisibleDict, true, false)
+    if (!searchDialogSocketVisible.value) {
+      ElMessage.error('Please connect to the server first.')
+      return
+    }
+    lockLeftSideBarTree()
+    requestSearchPreprocess(
+      currentTagDict.value.get('Task') as string, 
+      currentTagDict.value.get('MainTask') as string
+    )
+  }
+  else if (mode === 'PriorityTask/RunSearch') {
+    setVisableDict('priorityTaskContextMenuVisible', contextMenuVisibleDict, true, false)
+    if (!searchDialogSocketVisible.value) {
+      ElMessage.error('Please connect to the server first.')
+      return
+    }
+    lockLeftSideBarTree()
+    requestRunPrioritySearch(
+      currentTagDict.value.get('Task') as string, 
+      currentTagDict.value.get('MainTask') as string,
+      currentTagDict.value.get('PriorityTask') as string
+    )
   }
 }
 
@@ -828,7 +946,7 @@ const handleToolMenuClick = (mode: string) => {
 }
 
 const handleGenerateTask = (data: any) => {
-  const task_manager = new TaskManager(data.name, data.xmin, data.xmax, data.ymin, data.ymax, data.zmin, data.zmax, blockRoot)
+  const task_manager = new TaskManager(data.name, data.xsize, data.ysize, data.zsize, data.resolution, blockRoot)
   const [success, message] = blockRoot.add_task_manager(task_manager)
   if (!success) {
     ElMessage.error(message)
@@ -877,7 +995,7 @@ const handleGeneratePipe = (data: any) => {
   const [success, message] = task_manager.add_pipe(
     data.name, data.x, data.y, data.z, 
     data.vec_x, data.vec_y, data.vec_z, data.radius, 
-    data.group, data.is_inlet, 
+    data.group, data.is_inlet,
     blockRoot
   )
   if (!success) {
@@ -893,10 +1011,8 @@ const handleGeneratePathSearchCfg = (data: any) => {
     ElMessage.error('Task not found')
     return
   }
-
   let success: boolean
   let message: string
-
   switch (pathSearchCfgMode.value) {
     case 'MainTask':
       [success, message] = task_manager.add_main_task(data.name)
@@ -913,8 +1029,8 @@ const handleGeneratePathSearchCfg = (data: any) => {
         data.main_task_name,
         data.priority_task_name,
         data.group_task_name,
-        data.start_points,
-        data.end_points,
+        data.start_point,
+        data.end_point,
         data.radius,
         data.run_cfg
       )
@@ -923,11 +1039,9 @@ const handleGeneratePathSearchCfg = (data: any) => {
       ElMessage.error('Invalid mode')
       return
   }
-
   if (!success) {
     ElMessage.error(message)
   }
-
   updateTreeData()
 }
 
@@ -937,6 +1051,47 @@ const handleGenerateIntermediatePoint = (data: any) => {
     ElMessage.error(message)
   }
   updateTreeData()
+}
+
+// ---------------- Search Dialog Socket ----------------
+const searchDialogSocketRef = ref<InstanceType<typeof SearchDialogSocket> | null>(null)
+
+// ---------------- Request Discretize Grid ----------------
+const requestDiscretizeGrid = (task_manager_name: string) => {
+  searchDialogSocketRef.value!.request_discretize_grid(task_manager_name)
+}
+
+const parseDiscretizeGrid = (data: any) => {
+  const task_manager = blockRoot.get_task_manager(data.name as string)
+  if (!task_manager) {
+    ElMessage.error('Task not found')
+    return
+  }
+  task_manager.add_discretized_grid(data.grid_data, data.distance_to_obstacle, blockRoot)
+  updateTreeData()
+  unlockLeftSideBarTree()
+}
+
+// ---------------- Preprocess ----------------
+const requestSearchPreprocess = (name: string, solution_name: string) => {
+  searchDialogSocketRef.value!.request_search_preprocess(name, solution_name);
+}
+
+const parseSearchPreprocess = (data: any) => {
+  updateTreeData()
+  unlockLeftSideBarTree()
+}
+
+// ---------------- Run Priority Search ----------------
+const requestRunPrioritySearch = (name: string, solution_name: string, priority_task_name: string) => {
+  searchDialogSocketRef.value!.request_run_priority_search(name, solution_name, priority_task_name);
+}
+
+const parseRunPrioritySearch = (data: any) => {
+  const task_manager = blockRoot.get_task_manager(data.name as string)
+  task_manager!.add_path_set(data.main_task_name, data.priority_task_name, data.path_set_group, blockRoot)
+  updateTreeData()
+  unlockLeftSideBarTree()
 }
 
 // ---------------- Click Event handling ----------------
@@ -954,6 +1109,9 @@ const handleClickEvent = (event: MouseEvent) => {
     setVisableDict('meshContextMenuVisible', contextMenuVisibleDict, true, false)
   }
 }
+
+// Add loading state
+const isTreeLoading = ref(false)
 
 </script>
 
@@ -1050,5 +1208,11 @@ const handleClickEvent = (event: MouseEvent) => {
 
 :deep(.el-tree-node__content:hover) {
   background-color: #f5f7fa;
+}
+
+.tree-loading {
+  pointer-events: none;
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style> 

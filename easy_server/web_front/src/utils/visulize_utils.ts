@@ -10,6 +10,8 @@ interface VisualizationOptions {
   segments?: number
   resolution?: number
   output_mesh?: boolean
+  opacity?: number
+  transparent?: boolean
 }
 
 export function setMeshColor(mesh: THREE.Mesh, color: number) {
@@ -27,7 +29,7 @@ export function setMeshColor(mesh: THREE.Mesh, color: number) {
   }
 }
 
-export function add_mesh(scene: THREE.Scene, mesh: THREE.Mesh|THREE.LineSegments, force_update = false): void {
+export function add_mesh(scene: THREE.Scene, mesh: THREE.Mesh|THREE.LineSegments|THREE.Points, force_update = false): void {
   const existingMesh = scene.getObjectByName(mesh.name)
   if (force_update) {
     if (existingMesh) {
@@ -104,7 +106,11 @@ export function create_tube(xyz_list: number[][], radius: number, options: Visua
     xyz_list.map(xyz => new THREE.Vector3(xyz[0], xyz[1], xyz[2]))
   )
   const geometry = new THREE.TubeGeometry(curve, options.segments, radius, options.segments, false)
-  const material = new MeshBasicMaterial({color: options.color || 0xff0000})
+  const material = new THREE.MeshPhysicalMaterial({
+    color: options.color || 0xff0000, 
+    opacity: options.opacity || 1.0, 
+    transparent: options.transparent || false
+  })
   const mesh = new Mesh(geometry, material)
   return mesh
 }
@@ -143,6 +149,46 @@ export function create_points(points: number[][], options: VisualizationOptions 
     sizeAttenuation: true
   })
   return new Points(geometry, material)
+}
+
+export function create_colored_points(
+  points: number[][], 
+  values: number[], 
+  options: VisualizationOptions = {}
+): Points {
+  const positions = new Float32Array(points.length * 3);
+  const colors_array = new Float32Array(points.length * 3);
+
+  // Calculate min/max for normalization
+  const max_value = Math.max(...values);
+  const min_value = Math.min(...values);
+
+  points.forEach((point, i) => {
+    // Positions
+    positions[i * 3] = point[0];
+    positions[i * 3 + 1] = point[1];
+    positions[i * 3 + 2] = point[2];
+
+    // Normalize value to [0, 1] range
+    const normalizedValue = (values[i] - min_value) / (max_value - min_value || 1); // Avoid division by zero
+
+    // Assign colors (gradient from blue to red)
+    colors_array[i * 3] = normalizedValue;      // Red increases with value
+    colors_array[i * 3 + 1] = 0;               // No green
+    colors_array[i * 3 + 2] = 1 - normalizedValue; // Blue decreases with value
+  });
+
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new Float32BufferAttribute(colors_array, 3));
+
+  const material = new PointsMaterial({
+    size: options.size || 0.1,
+    sizeAttenuation: true,
+    vertexColors: true, // Overrides 'color' property
+  });
+
+  return new Points(geometry, material);
 }
 
 export function create_circle(

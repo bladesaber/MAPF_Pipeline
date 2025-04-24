@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pyvista as pv
 
+
 def visualize_2d_path(grid, path, starts, goals, radius=0.5, padding=2, save_path=None):
     """Visualize a 2D path with obstacles, starts, and goals using matplotlib"""
     # Get grid dimensions
@@ -11,10 +12,10 @@ def visualize_2d_path(grid, path, starts, goals, radius=0.5, padding=2, save_pat
     height = grid.get_y_size()
     
     # Find bounds including path, starts, and goals
-    min_x = max(0, min([p.x for p in path + starts + goals]) - padding)
-    max_x = min(width - 1, max([p.x for p in path + starts + goals]) + padding)
-    min_y = max(0, min([p.y for p in path + starts + goals]) - padding)
-    max_y = min(height - 1, max([p.y for p in path + starts + goals]) + padding)
+    min_x = max(0, min([p.x for p in path] + [p.x for p in starts] + [p.x for p in goals]) - padding)
+    max_x = min(width - 1, max([p.x for p in path] + [p.x for p in starts] + [p.x for p in goals]) + padding)
+    min_y = max(0, min([p.y for p in path] + [p.y for p in starts] + [p.y for p in goals]) - padding)
+    max_y = min(height - 1, max([p.y for p in path] + [p.y for p in starts] + [p.y for p in goals]) + padding)
     
     # Create figure and axis
     fig, ax = plt.subplots(figsize=(10, 10))
@@ -53,6 +54,7 @@ def visualize_2d_path(grid, path, starts, goals, radius=0.5, padding=2, save_pat
     else:
         plt.show()
     plt.close()
+
 
 def visualize_3d_path(grid, paths_dict, radius=0.5):
     """Visualize 3D paths with obstacles using PyVista"""
@@ -105,6 +107,7 @@ def visualize_3d_path(grid, paths_dict, radius=0.5):
     plotter.add_legend()
     plotter.show()
 
+
 class AstarTest(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
@@ -127,24 +130,16 @@ class AstarTest(unittest.TestCase):
         self.assertEqual(path_store.path[0].y, starts[0].y)
         self.assertEqual(path_store.path[-1].x, goals[0].x)
         self.assertEqual(path_store.path[-1].y, goals[0].y)
-        
-        visualize_2d_path(self.grid_2d, path_store.path, starts, goals)
+        # visualize_2d_path(self.grid_2d, path_store.path, starts, goals)
 
-    '''
     def test_simple_pathfinding_3d(self):
         """Test basic 3D pathfinding"""
         starts = [MapfPkg.LocXyz(1, 1, 1)]
         goals = [MapfPkg.LocXyz(8, 8, 8)]
-        path = []
+        path_store = MapfPkg.PyWrapAstarStruct(self.grid_3d, self.astar)
         
-        self.assertTrue(self.astar.search(self.grid_3d, starts, goals, path))
-        self.assertGreater(len(path), 0)
-        
-        # Create paths dict for 3D visualization
-        path_data = MapfPkg.PathSetData()
-        path_data.add_path("test_path", path, 0.5)
-        paths_dict = {"test_path": path_data}
-        visualize_3d_path(self.grid_3d, paths_dict)
+        self.assertTrue(path_store.run(starts, goals))
+        self.assertGreater(len(path_store.path), 0)
 
     def test_blocked_path(self):
         """Test pathfinding with obstacles"""
@@ -155,34 +150,30 @@ class AstarTest(unittest.TestCase):
         
         starts = [MapfPkg.LocXyz(1, 5, 5)]
         goals = [MapfPkg.LocXyz(8, 5, 5)]
-        path = []
-        
-        self.assertFalse(self.astar.search(self.grid_3d, starts, goals, path))
+        path_store = MapfPkg.PyWrapAstarStruct(self.grid_3d, self.astar)
+        self.assertFalse(path_store.run(starts, goals))
 
     def test_theta_star_pathfinding(self):
         """Test Theta* pathfinding"""
         starts = [MapfPkg.LocXyz(1, 1, 0)]
         goals = [MapfPkg.LocXyz(8, 8, 0)]
-        path = []
+        path_store = MapfPkg.PyWrapAstarStruct(self.grid_2d, self.theta_star)
         
-        self.assertTrue(self.theta_star.search(self.grid_2d, starts, goals, path))
-        self.assertGreater(len(path), 0)
-        
-        visualize_2d_path(self.grid_2d, path, starts, goals)
+        self.assertTrue(path_store.run(starts, goals))
+        self.assertGreater(len(path_store.path), 0)
+        # visualize_2d_path(self.grid_2d, path_store.path, starts, goals)
 
     def test_bidirectional_astar(self):
         """Test Bidirectional A* pathfinding"""
         starts = [MapfPkg.LocXyz(1, 1, 0)]
         goals = [MapfPkg.LocXyz(8, 8, 0)]
-        path = []
+        path_store = MapfPkg.PyWrapAstarStruct(self.grid_2d, self.bidirectional_astar)
         
-        self.assertTrue(self.bidirectional_astar.search(self.grid_2d, starts, goals, path))
-        self.assertGreater(len(path), 0)
-        
-        visualize_2d_path(self.grid_2d, path, starts, goals)
-    '''
+        self.assertTrue(path_store.run(starts, goals))
+        self.assertGreater(len(path_store.path), 0)
+        # visualize_2d_path(self.grid_2d, path_store.path, starts, goals)
 
-'''
+
 class CbsTest(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
@@ -199,8 +190,8 @@ class CbsTest(unittest.TestCase):
         self.task_set1 = MapfPkg.PairNodeTaskSet("group1")
         self.task_set1.add_task(
             "task1", "start1", "end1",
-            MapfPkg.LocXyz(5, 0, 5),
-            MapfPkg.LocXyz(5, 9, 5),
+            [MapfPkg.LocXyz(5, 0, 5)],
+            [MapfPkg.LocXyz(5, 9, 5)],
             0.5
         )
         self.cbs.add_task_set(self.task_set1, self.planner1)
@@ -211,8 +202,8 @@ class CbsTest(unittest.TestCase):
         self.task_set2 = MapfPkg.PairNodeTaskSet("group2")
         self.task_set2.add_task(
             "task2", "start2", "end2",
-            MapfPkg.LocXyz(0, 5, 5),
-            MapfPkg.LocXyz(9, 5, 5),
+            [MapfPkg.LocXyz(0, 5, 5)],
+            [MapfPkg.LocXyz(9, 5, 5)],
             0.5
         )
         self.cbs.add_task_set(self.task_set2, self.planner2)
@@ -223,8 +214,8 @@ class CbsTest(unittest.TestCase):
         self.task_set3 = MapfPkg.PairNodeTaskSet("group3")
         self.task_set3.add_task(
             "task3", "start3", "end3",
-            MapfPkg.LocXyz(5, 5, 0),
-            MapfPkg.LocXyz(5, 5, 9),
+            [MapfPkg.LocXyz(5, 5, 0)],
+            [MapfPkg.LocXyz(5, 5, 9)],
             0.5
         )
         self.cbs.add_task_set(self.task_set3, self.planner3)
@@ -238,48 +229,19 @@ class CbsTest(unittest.TestCase):
         self.assertTrue(self.grid.is_in_grid(MapfPkg.LocXyz(0, 0, 0)))
         self.assertFalse(self.grid.is_in_grid(MapfPkg.LocXyz(10, 10, 10)))
 
-    def test_simple_pathfinding(self):
-        """Test basic pathfinding for a single group"""
-        # Create a simple test case
-        astar = MapfPkg.AstarSearchBoost(0.5, 100000, False)
-        planner = MapfPkg.SetPairNodePlanner(astar)
-        task_set = MapfPkg.PairNodeTaskSet("test_group")
-        task_set.add_task(
-            "test_task", "start", "end",
-            MapfPkg.LocXyz(1, 1, 0),
-            MapfPkg.LocXyz(8, 8, 0),
-            0.5
-        )
-        
-        # Create result set
-        result_set = MapfPkg.PathSetData()
-        
-        # Test pathfinding
-        self.assertTrue(planner.search(self.grid, result_set))
-        self.assertGreater(result_set.get_size(), 0)
-        
-        # Get the path and visualize
-        path = result_set.paths[0].path
-        starts = [MapfPkg.LocXyz(1, 1, 0)]
-        goals = [MapfPkg.LocXyz(8, 8, 0)]
-        visualize_2d_path(self.grid, path, starts, goals)
-
     def test_cbs_search(self):
         """Test CBS search with multiple groups"""
-        # Initialize root node
-        self.assertTrue(self.cbs.preprocess_root_node())
-        
-        # Create result container
-        result = MapfPkg.PyWrapCbsResult()
+        # Create CBS wrapper
+        cbs_store = MapfPkg.PyWrapCbsStruct(self.cbs)
         
         # Run CBS search
-        self.assertTrue(self.cbs.search(result))
+        self.assertTrue(cbs_store.run())
         
         # Verify results
-        self.assertGreater(len(result.results), 0)
+        self.assertGreater(len(cbs_store.result.paths), 0)
         
         # Check each group's path
-        for group_name, path_set in result.results.items():
+        for group_name, path_set in cbs_store.result.paths.items():
             self.assertGreater(path_set.get_size(), 0)
             for path in path_set.paths:
                 # Verify path connects start to goal
@@ -295,43 +257,11 @@ class CbsTest(unittest.TestCase):
                     self.assertEqual(path.path[-1].x, 9)
                     self.assertEqual(path.path[-1].y, 5)
                 
-                # Visualize 2D paths
-                if path.path[0].z == path.path[-1].z:  # Only visualize paths in same z-plane
-                    starts = [path.path[0]]
-                    goals = [path.path[-1]]
-                    visualize_2d_path(self.grid, path.path, starts, goals)
-
-    def test_cbs_with_obstacles(self):
-        """Test CBS search with obstacles"""
-        # Add some obstacles
-        obstacle_positions = [
-            MapfPkg.LocXyz(4, 4, 5),
-            MapfPkg.LocXyz(4, 5, 5),
-            MapfPkg.LocXyz(5, 4, 5),
-            MapfPkg.LocXyz(5, 5, 5),
-        ]
-        
-        for pos in obstacle_positions:
-            self.grid.set_obstacle(pos, 1.0)
-        
-        # Run CBS search
-        self.assertTrue(self.cbs.preprocess_root_node())
-        result = MapfPkg.PyWrapCbsResult()
-        self.assertTrue(self.cbs.search(result))
-        
-        # Verify paths avoid obstacles
-        for group_name, path_set in result.results.items():
-            for path in path_set.paths:
-                for pos in path.path:
-                    # Check that path points don't collide with obstacles
-                    self.assertFalse(self.grid.is_obstacle(pos, path.radius))
-                
-                # Visualize paths
-                if path.path[0].z == path.path[-1].z:
-                    starts = [path.path[0]]
-                    goals = [path.path[-1]]
-                    visualize_2d_path(self.grid, path.path, starts, goals)
-'''
+                # # Visualize 2D paths
+                # if path.path[0].z == path.path[-1].z:  # Only visualize paths in same z-plane
+                #     starts = [path.path[0]]
+                #     goals = [path.path[-1]]
+                #     visualize_2d_path(self.grid, path.path, starts, goals)
 
 if __name__ == '__main__':
     unittest.main()

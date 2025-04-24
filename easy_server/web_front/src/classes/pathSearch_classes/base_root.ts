@@ -125,14 +125,7 @@ export class BlockRoot {
     load_json(data: any) {
       data.task_managers.forEach((task_cfg: any) => {
         if (!this.task_manager_map.has(task_cfg.name)) {
-          const task_manager = new TaskManager(
-            task_cfg.name, 
-            task_cfg.env_block.xmin, task_cfg.env_block.xmax, 
-            task_cfg.env_block.ymin, task_cfg.env_block.ymax, 
-            task_cfg.env_block.zmin, task_cfg.env_block.zmax, this
-          );
-          task_manager.load_json(task_cfg, this);
-          this.add_task_manager(task_manager);
+          this.add_task_manager(TaskManager.load_json(task_cfg, this));
         }
       })
       data.intermediate_points.forEach((point_cfg: any) => {

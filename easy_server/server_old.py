@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 import os
 import shutil
 import numpy as np
@@ -9,15 +12,17 @@ import json
 import time
 import subprocess
 import pyvista
+from flask_sock import Sock
 
 from cad_server_utils import CadServerUtils
 from cad_server_utils import GmshStepReader
 from scripts_py.version_9.simulator.su2_simulator import Su2Simulator
-# from ..simulator.su2_simulator import Su2Simulator
+# from server_utils import PathSearchSocketResponse
 
-
+# Create Flask app
 app = Flask(__name__)
 CORS(app)
+sock = Sock(app)
 
 # Directory containing web frontend files (index.html, main.js)
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_front")
@@ -114,7 +119,7 @@ def make_circle_pipe_shell():
     if len(path_info) == 0:
         return jsonify({'error': 'No valid skeleton configurations found'}), 400
 
-    shell = CadServerUtils.make_occ_thru_sections(path_info, ruled=data.get('ruled', True))
+    shell = CadServerUtils.make_OCC_thruSections(path_info, ruled=data.get('ruled', True))
     result = CadServerUtils.convert_shape_to_json(
         name=data.get('name', 'circle_pipe_shell'),
         shape=shell,
@@ -194,7 +199,7 @@ def extract_step_face():
                         'is_finished': False,
                         'message': f'Processing face {i}/{total_faces}: {face_name}'
                     }
-                    time.sleep(0.05)
+                    time.sleep(0.5)
                     yield json.dumps(progress_data)
 
                 temp_face_path = os.path.join(temp_dir, f"{face_name}.step")
@@ -447,6 +452,71 @@ def simulate():
 
     return Response(generate(), mimetype='text/event-stream')
 
+'''
+socket_library = {}
+@sock.route('/path_search/run')
+def path_search_run(ws):    
+    connection_id = id(ws)
+    if connection_id in socket_library.keys():
+        return
+
+    print(f'[Debug]: New WebSocket connection {connection_id} established')
+    path_socket_response = PathSearchSocketResponse(id=connection_id)
+    socket_library[connection_id] = {
+        'server_socket': ws,
+        'path_search_runner': path_socket_response,
+    }
+    
+    try:
+        while True:
+            msg_str = ws.receive()
+            if msg_str is None:
+                break
+                
+            try:
+                msg: dict = json.loads(msg_str)
+                print(f"Received data: {msg}")
+
+                # if msg['run_type'] == 'process':
+                #     return_msg = path_socket_response.socket_process(msg['run_data'])
+                # elif msg['run_type'] == 'generate_grid':
+                #     return_msg = path_socket_response.socket_generate_grid(msg['run_data'])
+                # elif msg['run_type'] == 'run_cell_task':
+                #     return_msg = path_socket_response.socket_run_cell_task(msg['run_data'])
+                # elif msg['run_type'] == 'run_priority_task':
+                #     return_msg = path_socket_response.socket_run_priority_task(msg['run_data'])
+                # elif msg['run_type'] == 'run_solution_task':
+                #     return_msg = path_socket_response.socket_run_solution_task(msg['run_data'])
+                # else:
+                #     return_msg = {
+                #         'is_success': False, 'msg': 'Invalid run type'
+                #     }
+
+                return_msg = {
+                    'is_success': True,
+                    'msg': 'Success'
+                }
+                
+                # Send response
+                ws.send(json.dumps(return_msg))
+
+            except json.JSONDecodeError:
+                ws.send(json.dumps({'error': 'Invalid JSON format'}))
+
+            except Exception as e:
+                print(f"[Error]: Error processing message: {e}")
+                ws.send(json.dumps({'error': str(e)}))
+                
+    finally:
+        # Clean up when connection closes
+        if connection_id in socket_library.keys():
+            del socket_library[connection_id]['server_socket']
+        del socket_library[connection_id]
+        print(f"[Debug]: Connection {connection_id} closed")
+'''
+
 
 if __name__ == '__main__':
-    app.run(host='192.168.110.54', port=9998, debug=True)
+    print('Server is running on ws://192.168.110.54:9998')
+    # Use threaded=True for better WebSocket support
+    app.run(host='192.168.110.54', port=9998, debug=True, threaded=True)

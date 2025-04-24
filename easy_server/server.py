@@ -13,11 +13,14 @@ import time
 import subprocess
 import pyvista
 from flask_sock import Sock
+from functools import partial
 
 from cad_server_utils import CadServerUtils
 from cad_server_utils import GmshStepReader
 from scripts_py.version_9.simulator.su2_simulator import Su2Simulator
-
+from server_utils import StreamDataResponse, StreamTaskResponse
+from server_utils import PathSearchRunner
+from server_utils import SocketManager, SocketDataResponse, SocketTaskResponse
 
 # Create Flask app
 app = Flask(__name__)
@@ -119,7 +122,7 @@ def make_circle_pipe_shell():
     if len(path_info) == 0:
         return jsonify({'error': 'No valid skeleton configurations found'}), 400
 
-    shell = CadServerUtils.make_OCC_thru_sections(path_info, ruled=data.get('ruled', True))
+    shell = CadServerUtils.make_OCC_thruSections(path_info, ruled=data.get('ruled', True))
     result = CadServerUtils.convert_shape_to_json(
         name=data.get('name', 'circle_pipe_shell'),
         shape=shell,
@@ -175,9 +178,6 @@ def extract_step_face():
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
 
-    data = request.form.to_dict()
-    shape_jsons = {}
-
     # Create temp directory
     temp_dir = os.path.join(os.getcwd(), 'temp_files')
     os.makedirs(temp_dir, exist_ok=True)
@@ -186,57 +186,79 @@ def extract_step_face():
     temp_path = os.path.join(temp_dir, f"{file.filename.split('.')[0]}.step")
     file.save(temp_path)
 
-    gmsh_reader = GmshStepReader(temp_path)
-    total_faces = len(gmsh_reader.face_cfgs)
-
     def generate():
         try:
-            for i, (face_name, face_cfg) in enumerate(gmsh_reader.face_cfgs.items(), 1):
-                if i < total_faces:
-                    progress = int((i / total_faces) * 100)
-                    progress_data = {
-                        'progress': progress,
-                        'is_finished': False,
-                        'message': f'Processing face {i}/{total_faces}: {face_name}'
-                    }
-                    time.sleep(0.05)
-                    yield json.dumps(progress_data)
+            def task_callback(data_queue):
+                try:
+                    gmsh_reader = GmshStepReader(temp_path)
+                    total_faces = len(gmsh_reader.face_cfgs)
+                    shape_jsons = {}
 
-                temp_face_path = os.path.join(temp_dir, f"{face_name}.step")
-                res = gmsh_reader.extract_face_to_step(face_name, temp_face_path)
-                if not res['success']:
-                    continue
+                    for i, (face_name, face_cfg) in enumerate(gmsh_reader.face_cfgs.items(), 1):
+                        temp_face_path = os.path.join(temp_dir, f"{face_name}.step")
+                        res = gmsh_reader.extract_face_to_step(face_name, temp_face_path)
+                        if not res['success']:
+                            continue
 
-                shape = CadServerUtils.read_step(temp_face_path)
-                shape_json = CadServerUtils.convert_shape_to_json(
-                    name=face_name,
-                    shape=shape,
-                    export_edges=False,
-                    mesh_quality=1.0
-                )
-                shape_jsons[face_name] = shape_json
+                        shape = CadServerUtils.read_step(temp_face_path)
+                        shape_json = CadServerUtils.convert_shape_to_json(
+                            name=face_name,
+                            shape=shape,
+                            export_edges=False,
+                            mesh_quality=1.0
+                        )
+                        shape_jsons[face_name] = shape_json
 
-                # Delete temp face file
-                os.remove(temp_face_path)
+                        # when complete the sub task, send msg to data_queue
+                        data_queue.put({
+                            'is_finished': False,
+                            'msg': f'Processing face {i}/{total_faces}: {face_name}'
+                        })
 
-            gmsh_reader.close()
-            # Delete original temp file
-            os.remove(temp_path)
-            # Remove temp directory if empty
-            if not os.listdir(temp_dir):
-                os.rmdir(temp_dir)
+                        # Delete temp face file
+                        os.remove(temp_face_path)
 
-            time.sleep(1)
-            final_data = {'progress': 100, 'is_finished': True, 'shape_jsons': shape_jsons}
-            yield json.dumps(final_data)
+                    # when complete all the sub tasks, save the last result
+                    data_queue.put({
+                        'is_finished': True,
+                        'data': shape_jsons
+                    })
+                except Exception as e:
+                    print(f'[Error]: {e}')
+                finally:
+                    data_queue.put({
+                        'is_finished': True,
+                        'data': []
+                    })
+                    gmsh_reader.close()
+
+            task = StreamTaskResponse(name='extract_step_face', callback_func=task_callback, interval_time=0.5)
+            yield from task.start()
+            
+            last_result = task.last_result
+
+            def get_data_size_callback():
+                return len(last_result)
+
+            res_keys = list(last_result.keys())
+            def get_chunk_data_callback(data_index, chunk_size):
+                return last_result[res_keys[data_index]]
+
+            stream_data_response = StreamDataResponse(
+                name='extract_step_face', 
+                get_data_size_callback=get_data_size_callback, 
+                get_chunk_data_callback=get_chunk_data_callback, 
+                chunk_size=1, time_interval=0.5)
+            yield from stream_data_response.generate()
+
+            yield json.dumps({'total_finished': True})
 
         except Exception as e:
-            # Clean up on error
+            return jsonify({'error': str(e)}), 500
+
+        finally:
             if os.path.exists(temp_path):
-                os.remove(temp_path)
-            if os.path.exists(temp_dir) and not os.listdir(temp_dir):
-                os.rmdir(temp_dir)
-            raise e
+                shutil.rmtree(temp_dir)
 
     return Response(generate(), mimetype='text/event-stream')
 
@@ -262,59 +284,106 @@ def make_su2_mesh():
     except json.JSONDecodeError:
         return jsonify({'error': 'Invalid group configurations format'}), 400
 
-    try:
-        # Create temp directory
-        temp_dir = os.path.join(os.getcwd(), 'temp_files')
-        os.makedirs(temp_dir, exist_ok=True)
+    # Create temp directory
+    temp_dir = os.path.join(os.getcwd(), 'temp_files')
+    os.makedirs(temp_dir, exist_ok=True)
     
-        # Save uploaded file
-        temp_path = os.path.join(temp_dir, f"{file.filename.split('.')[0]}.step")
-        file.save(temp_path)
-    
-        gmsh_reader = GmshStepReader(temp_path)
-    
-        defined_idxs = set()
-        for name, tag_names in group_cfgs.items():
-            tags = [gmsh_reader.face_cfgs[tag_name]['id'] for tag_name in tag_names]
-            gmsh_reader.define_group(dim=2, tags=tags, group_name=name)
-            defined_idxs.update(tags)
+    # Save uploaded file
+    temp_path = os.path.join(temp_dir, f"{file.filename.split('.')[0]}.step")
+    file.save(temp_path)
 
-        if len(defined_idxs) != len(gmsh_reader.face_cfgs):
-            print('Defined face indices do not match the number of faces')
-            return jsonify({'error': 'Defined face indices do not match the number of faces'}), 400
-    
-        gmsh_reader.define_volume_group()
-        gmsh_reader.generate_mesh(dim=3, max_size=max_size, min_size=min_size)
-        gmsh_reader.export_su2(os.path.join(temp_dir, 'temp.su2'))
-        gmsh_reader.close()
-    
-        su2_simulator = Su2Simulator(mesh_path=os.path.join(temp_dir, 'temp.su2'))
+    su2_file_path = os.path.join(temp_dir, 'temp.su2')
 
-        # Return mesh information to frontend
-        mesh_info = {
-            'n_dim': su2_simulator.n_dim,
-            'n_elem': su2_simulator.n_elem,
-            'n_point': su2_simulator.n_point,
-            'n_mark': su2_simulator.n_mark,
-            'cells': su2_simulator.cells.tolist(),
-            'points': su2_simulator.points.tolist(),
-            'marker_dict': su2_simulator.marker_dict
-        }
-        return jsonify(mesh_info)
-    
-    except Exception as e:
-        print('error:', e)
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        if os.path.exists(temp_dir) and not os.listdir(temp_dir):
-            os.rmdir(temp_dir)
-        return jsonify({'error': str(e)}), 500
-    
-    finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        if os.path.exists(temp_dir) and not os.listdir(temp_dir):
-            os.rmdir(temp_dir)
+    def generate():
+        try:
+            def task_callback(data_queue):
+                try:
+                    gmsh_reader = GmshStepReader(temp_path)
+
+                    defined_idxs = set()
+                    for name, tag_names in group_cfgs.items():
+                        tags = [gmsh_reader.face_cfgs[tag_name]['id'] for tag_name in tag_names]
+                        gmsh_reader.define_group(dim=2, tags=tags, group_name=name)
+                        defined_idxs.update(tags)
+                
+                    if len(defined_idxs) != len(gmsh_reader.face_cfgs):
+                        print('Defined face indices do not match the number of faces')
+                        return jsonify({'error': 'Defined face indices do not match the number of faces'}), 400
+                
+                    gmsh_reader.define_volume_group()
+                    gmsh_reader.generate_mesh(dim=3, max_size=max_size, min_size=min_size)
+                    gmsh_reader.export_su2(su2_file_path)
+                    gmsh_reader.close()
+
+                except Exception as e:
+                    print(f'[Error]: {e}')
+                finally:
+                    data_queue.put({
+                        'is_finished': True,
+                        'data': []
+                    })
+                    gmsh_reader.close()
+
+            task = StreamTaskResponse(name='generate_mesh', callback_func=task_callback, interval_time=0.5)
+            yield from task.start()
+
+            su2_simulator = Su2Simulator(mesh_path=su2_file_path)
+
+            yield json.dumps({
+                'name': 'return_mesh_info',
+                'is_finished': True,
+                'data': {
+                    'n_dim': su2_simulator.n_dim,
+                    'n_elem': su2_simulator.n_elem,
+                    'n_point': su2_simulator.n_point,
+                    'n_mark': su2_simulator.n_mark,
+                    'marker_dict': su2_simulator.marker_dict
+                }
+            })
+
+            # ------ return cells ------
+            cells = su2_simulator.cells.tolist()
+
+            def get_cells_size_callback():
+                return len(cells)
+
+            def get_cells_chunk_data_callback(data_index, chunk_size):
+                return cells[data_index:data_index + chunk_size]
+            
+            stream_data_response = StreamDataResponse(
+                name='return_cells', 
+                get_data_size_callback=get_cells_size_callback, 
+                get_chunk_data_callback=get_cells_chunk_data_callback, 
+                chunk_size=1000, time_interval=0.5)
+            yield from stream_data_response.generate()
+
+            # ------ return points ------
+            points = su2_simulator.points.tolist()
+
+            def get_points_size_callback():
+                return len(points)
+
+            def get_points_chunk_data_callback(data_index, chunk_size):
+                return points[data_index:data_index + chunk_size]
+
+            stream_data_response = StreamDataResponse(
+                name='return_points', 
+                get_data_size_callback=get_points_size_callback, 
+                get_chunk_data_callback=get_points_chunk_data_callback, 
+                chunk_size=1000, time_interval=0.5)
+            yield from stream_data_response.generate()
+
+            # ------ return total_finished ------
+            yield json.dumps({'total_finished': True})
+
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+        finally:
+            if os.path.exists(temp_path):
+                shutil.rmtree(temp_dir)
+
+    return Response(generate(), mimetype='text/event-stream')
 
 
 @app.route('/simulate/simulate', methods=['POST'])
@@ -342,165 +411,232 @@ def simulate():
 
     def generate():
         try:
-            cfg_file = 'simulate.cfg'
-            run_bash = f"cd {os.path.join(temp_dir, 'temp')}; SU2_CFD {cfg_file}"
+            is_simulation_success = False
+            def task_callback(data_queue):
+                try:
+                    cfg_file = 'simulate.cfg'
+                    run_bash = f"cd {os.path.join(temp_dir, 'temp')}; SU2_CFD {cfg_file}"
+                    process = subprocess.Popen(
+                        run_bash,
+                        shell=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        universal_newlines=True,
+                        bufsize=1
+                    )
 
-            process = subprocess.Popen(
-                run_bash,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
-                bufsize=1
-            )
+                    output_buffer = []
+                    last_update_time = time.time()
+                    while True:
+                        output = process.stdout.readline()
 
-            output_buffer = []
-            last_yield_time = time.time()
+                        if output == '' and process.poll() is not None:
+                            break
 
-            while True:
-                output = process.stdout.readline()
+                        if output:
+                            output_buffer.append(output.strip())
+                            current_time = time.time()
 
-                if output == '' and process.poll() is not None:
-                    break
+                            # Send buffered output every second
+                            if current_time - last_update_time >= 1.0:
+                                progress_data = {
+                                    'is_finished': False,
+                                    'msg': output_buffer[-1]
+                                }
+                                data_queue.put(progress_data)
+                                output_buffer = []
+                                last_update_time = current_time
 
-                if output:
-                    output_buffer.append(output.strip())
-                    current_time = time.time()
-
-                    # Send buffered output every second
-                    if current_time - last_yield_time >= 1.0:
+                    is_simulation_success = process.returncode == 0
+                    if not is_simulation_success:
                         progress_data = {
-                            'name': data['name'],
-                            'condition_name': data['condition_name'],
-                            'is_finished': False, 'simulate_status': 'running',
-                            'msg': output_buffer[-1]
-                            }
-                        yield json.dumps(progress_data)
-                        output_buffer = []
-                        last_yield_time = current_time
+                            'is_finished': True,
+                            'msg': f'Process failed with return code {process.returncode}',
+                            'data': []
+                        }
+                        data_queue.put(progress_data)
 
-            if process.returncode != 0:
-                progress_data = {
-                    'name': data['name'],
-                    'condition_name': data['condition_name'],
-                    'is_finished': True, 'simulate_status': 'failed',
-                    'msg': f'Process failed with return code {process.returncode}'
-                }
-                yield json.dumps(progress_data)
-
-            else:
-                # First send completion message
-                progress_data = {
-                    'name': data['name'],
-                    'condition_name': data['condition_name'],
-                    'is_finished': False, 'simulate_status': 'completed',
-                    'msg': 'Process completed'
-                }
-                # print(progress_data)
-                yield json.dumps(progress_data)
-
-                # Then stream the VTK data in chunks
-                res_vtk: pyvista.UnstructuredGrid = pyvista.read(os.path.join(temp_dir, 'temp/flow.vtu'))
-                
-                # Stream velocity data
-                velocity_data = res_vtk.point_data['Velocity']
-                chunk_size = 100  # Adjust chunk size as needed
-                for i in range(0, len(velocity_data), chunk_size):
-                    chunk = velocity_data[i:i + chunk_size]
-                    time.sleep(0.1)
-                    yield json.dumps({
-                        'name': data['name'],
-                        'condition_name': data['condition_name'],
-                        'is_finished': False, 
-                        'simulate_status': 'velocity',
-                        'chunk_index': i // chunk_size,
-                        'chunk': chunk.tolist(),
-                        'msg': f'Velocity data transfer {i // chunk_size}/{len(velocity_data) // chunk_size}'
+                except Exception as e:
+                    print(f'[Error]: {e}')
+                finally:
+                    data_queue.put({
+                        'is_finished': True,
+                        'data': []
                     })
 
-                # Stream pressure data 
-                pressure_data = res_vtk.point_data['Pressure']
-                for i in range(0, len(pressure_data), chunk_size):
-                    chunk = pressure_data[i:i + chunk_size]
-                    time.sleep(0.1)
-                    yield json.dumps({
-                        'name': data['name'],
-                        'condition_name': data['condition_name'],
-                        'is_finished': False, 
-                        'simulate_status': 'pressure',
-                        'chunk_index': i // chunk_size,
-                        'chunk': chunk.tolist(),
-                        'msg': f'Pressure data transfer {i // chunk_size}/{len(pressure_data) // chunk_size}'
-                    })
+            task = StreamTaskResponse(name='simulate', callback_func=task_callback, interval_time=0.5)
+            yield from task.start()
 
-                time.sleep(1)
-                # Send end marker
-                yield json.dumps({
-                    'name': data['name'],
-                    'condition_name': data['condition_name'],
-                    'is_finished': True, 'simulate_status': 'completed',
-                    'msg': 'Data transfer complete'
-                })
+            if not is_simulation_success:
+                return jsonify({'error': 'Simulation failed'}), 500
+            
+            res_vtk: pyvista.UnstructuredGrid = pyvista.read(os.path.join(temp_dir, 'temp/flow.vtu'))
+
+            # ------ return velocity data ------
+            velocity_data = res_vtk.point_data['Velocity']
+            def get_velocity_data_size_callback():
+                return len(velocity_data)
+            
+            def get_velocity_data_chunk_data_callback(data_index, chunk_size):
+                return velocity_data[data_index:data_index + chunk_size]
+            
+            stream_data_response = StreamDataResponse(
+                name='return_velocity_data', 
+                get_data_size_callback=get_velocity_data_size_callback, 
+                get_chunk_data_callback=get_velocity_data_chunk_data_callback, 
+                chunk_size=1000, time_interval=0.5)
+            yield from stream_data_response.generate()
+
+            # ------ return pressure data ------
+            pressure_data = res_vtk.point_data['Pressure']
+            def get_pressure_data_size_callback():
+                return len(pressure_data)
+            
+            def get_pressure_data_chunk_data_callback(data_index, chunk_size):
+                return pressure_data[data_index:data_index + chunk_size]
+            
+            stream_data_response = StreamDataResponse(
+                name='return_pressure_data', 
+                get_data_size_callback=get_pressure_data_size_callback, 
+                get_chunk_data_callback=get_pressure_data_chunk_data_callback, 
+                chunk_size=1000, time_interval=0.5)
+            yield from stream_data_response.generate()
+
+            # ------ return total_finished ------
+            yield json.dumps({'total_finished': True})
 
         except Exception as e:
-            if os.path.exists(temp_dir) and not os.listdir(temp_dir):
-                shutil.rmtree(temp_dir)
-            raise e
+            return jsonify({'error': str(e)}), 500
+
         finally:
-            if os.path.exists(temp_dir) and not os.listdir(temp_dir):
+            if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
 
     return Response(generate(), mimetype='text/event-stream')
 
-socket_library = {}
 
 @sock.route('/path_search/run')
-def path_search_run(ws):    
-    connection_id = id(ws)
-    if connection_id in socket_library.keys():
-        return
-
-    print(f'[Debug]: New WebSocket connection {connection_id} established')
-    socket_library[connection_id] = {
-        'server_socket': ws,
-    }
+def path_search_run(ws):
+    socket_manager = SocketManager(ws)
+    print(f'[Debug]: New WebSocket connection {socket_manager.id} established')
+    runner = PathSearchRunner()
+    is_loading = False
     
     try:
         while True:
-            message = ws.receive()
-            if message is None:
+            msg_str = ws.receive()
+            if msg_str is None:
                 break
+            msg: dict = json.loads(msg_str)
+
+            if msg['run_type'] == 'HandShake':
+                return_msg = {
+                    'is_finished': True,
+                    'msg': 'HandShake success.'
+                }
+            
+            elif msg['run_type'] == 'prepareGrid':
+                obstacle_points = np.array(msg['obstacle_points_data'])
+
+                callback_func = partial(
+                    runner.init_grid, 
+                    x_size=msg['x_size'], y_size=msg['y_size'], z_size=msg['z_size'], 
+                    resolution=msg['resolution'], obstacle_points=obstacle_points
+                )
+                task0 = SocketTaskResponse(
+                    manager=socket_manager, 
+                    run_type=msg['run_type'], 
+                    name='init_grid',
+                    callback_func=callback_func, 
+                    interval_time=0.5
+                )
+                task0.start()
+                runner.grid = task0.last_result['grid']
+                validate_data = task0.last_result['validate_data']
                 
-            try:
-                data = json.loads(message)
-                print(f"Received data: {data}")
+                def get_data_size_callback():
+                    return len(validate_data)
                 
-                # Process the received data
-                response = {
-                    'name': data.get('name', 'Unknown'),
-                    'status': 'processing',
-                    'progress': 50  # Example progress
+                def get_chunk_data_callback(data_index, chunk_size):
+                    return validate_data[data_index:data_index + chunk_size]
+                
+                data0 = SocketDataResponse(
+                    manager=socket_manager, 
+                    run_type=msg['run_type'], 
+                    name='return_validate_data', 
+                    get_data_size_callback=get_data_size_callback, 
+                    get_chunk_data_callback=get_chunk_data_callback, 
+                    chunk_size=5000, time_interval=0.5)
+                data0.generate()
+                
+                return_msg = data0.get_progress(
+                    data=[], chunk_index=0, is_finished=True, progress=100, msg='Grid prepared successfully.'
+                )
+                return_msg.update({
+                    'total_finished': True
+                })
+
+            elif msg['run_type'] == 'searchPreprocess':
+                data = msg['data']
+                runner.preprocess(data)
+                return_msg = {
+                    'run_type': msg['run_type'],
+                    'is_finished': True,
+                    'msg': 'Preprocess success.'
+                }
+            
+            elif msg['run_type'] == 'runPrioritySearch':
+                task_set = msg['data']['task_set']
+                group_pipes = msg['data']['group_pipes']
+                
+                callback_func = partial(
+                    runner.run_priority_task,
+                    grid=runner.grid,
+                    task_set=task_set,
+                    group_pipes=group_pipes,
+                    running_cache=runner.running_cache,
+                    running_graph=runner.running_graph
+                )
+                task1 = SocketTaskResponse(
+                    manager=socket_manager, 
+                    run_type=msg['run_type'], name='run_priority_search', callback_func=callback_func, interval_time=0.5)
+                task1.start()
+
+                last_result = task1.last_result
+
+                return_msg = {
+                    'run_type': msg['run_type'],
+                    'is_finished': True,
+                    'data': {
+                        'is_success': last_result['is_success'],
+                        'path_set_group': last_result['path_set_group'],
+                    },
+                    'msg': 'Run priority search success.' if last_result['is_success']
+                        else 'Run priority search failed.'
+                }
+
+            else:
+                return_msg = {
+                    'is_finished': True,
+                    'msg': 'Non known run type.'
                 }
                 
-                # Send response
-                ws.send(json.dumps(response))
+            # Send response
+            ws.send(json.dumps(return_msg))
 
-            except json.JSONDecodeError:
-                ws.send(json.dumps({'error': 'Invalid JSON format'}))
+    except json.JSONDecodeError:
+        ws.send(json.dumps({'error': 'Invalid JSON format'}))
 
-            except Exception as e:
-                print(f"[Error]: Error processing message: {e}")
-                ws.send(json.dumps({'error': str(e)}))
+    except Exception as e:
+        print(f"[Error]: Error processing message: {e}")
+        ws.send(json.dumps({'error': str(e)}))
                 
     finally:
-        # Clean up when connection closes
-        if connection_id in socket_library.keys():
-            del socket_library[connection_id]['server_socket']
-        del socket_library[connection_id]
-        print(f"[Debug]: Connection {connection_id} closed")
+        SocketManager.remove_socket(socket_manager)
+        print(f"[Debug]: Connection {socket_manager.id} closed")
             
 
 if __name__ == '__main__':
-    print('Server is running on ws://192.168.110.54:9998')
+    print('Server is running on ws://192.168.110.54:9997')
     # Use threaded=True for better WebSocket support
-    app.run(host='192.168.110.54', port=9998, debug=True, threaded=True)
+    app.run(host='192.168.110.54', port=9997, debug=True, threaded=True)
