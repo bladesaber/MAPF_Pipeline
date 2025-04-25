@@ -133,6 +133,8 @@
     >
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('TaskManager/RemoveTaskManager')">Remove Task Manager</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('TaskManager/ShowTaskManager')">Show Task Manager</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('TaskManager/HideTaskManager')">Hide Task Manager</el-menu-item>
       </el-menu>
     </div>
 
@@ -158,6 +160,8 @@
     >
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('TaskObstacle/AddObstacle')">Add Obstacle</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('TaskObstacle/ShowObstacle')">Show Obstacle</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('TaskObstacle/HideObstacle')">Hide Obstacle</el-menu-item>
       </el-menu>
     </div>
 
@@ -233,6 +237,8 @@
         <el-menu-item @click="handleTreeContextMenu('MainTask/RemoveMainTask')">Remove Main Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('MainTask/ConnectToServer')">Connect to Server</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('MainTask/Preprocess')">Preprocess</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('MainTask/ShowResult')">Show Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('MainTask/HideResult')">Hide Result</el-menu-item>
       </el-menu>
     </div>
 
@@ -459,7 +465,7 @@ const contextMenuStyle = computed(() => ({
 }))
 
 const handleLeftTreeClick = (data: any) => {
-  console.log('Left tree click:', data)
+  // console.log('Left tree click:', data)
 }
 
 const currentTagDict = ref(new Map<string, string | number | string[] | Map<string, string|number>>())
@@ -549,7 +555,7 @@ const unlockLeftSideBarTree = () => {
 // ---------------- Mesh Selection Handling ----------------
 const handleLeftClickMeshSelect = (objectName: string) => {
   setVisableDict('meshContextMenuVisible', contextMenuVisibleDict, true, false)
-  console.log('Left click mesh select:', objectName)
+  // console.log('Left click mesh select:', objectName)
 }
 
 const handleRightClickMeshSelect = (objectName: string, clickEventX: number, clickEventY: number) => {
@@ -594,8 +600,6 @@ const handleExportConfirm = () => {
     : `${exportFilename.value}.json`
 
   const export_data = blockRoot.export_json()
-
-  console.log('Export data:', export_data)
   
   // Create a Blob with the JSON data
   const blob = new Blob([JSON.stringify(export_data, null, 2)], { type: 'application/json' })
@@ -1097,6 +1101,7 @@ const updateRunPrioritySearch = (data: any) => {
 
 const parseRunPrioritySearch = (data: any) => {
   if (data.is_success) {
+    console.log("parseRunPrioritySearch.data")
     const task_manager = blockRoot.get_task_manager(data.name as string)
     task_manager!.add_path_set(data.main_task_name, data.priority_task_name, data.path_set_group, blockRoot)
     updateTreeData()

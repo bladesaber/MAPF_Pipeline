@@ -125,7 +125,7 @@ namespace GridSpace
     std::tuple<bool, double> DistanceGrid::is_obstacle(LocXyz loc, double threshold) const
     {
         double distance = m_distances[loc.z * m_slice_size + loc.y * m_x_size + loc.x] / m_scale_factor;
-        return std::make_tuple(distance <= threshold, distance);
+        return std::make_tuple(distance <= threshold + 1e-1, distance);
     }
     
     void DistanceGrid::add_auto_obstacle(LocXyz loc, double radius, double thickness)

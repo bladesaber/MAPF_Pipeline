@@ -38,13 +38,22 @@ struct PyWrapCbsStruct
 
     bool run()
     {   
-        planner->preprocess_root_node(*dynamic_obstacle_map);
+        bool is_success = planner->preprocess_root_node(*dynamic_obstacle_map);
+        if (!is_success)
+        {
+            std::cout << "Preprocess root node failed" << std::endl;
+            return false;
+        }
         return planner->search(&result);
     }
 
     std::tuple<bool, CbsResult> single_step_run()
     {
-        planner->preprocess_root_node(*dynamic_obstacle_map);
+        bool is_success = planner->preprocess_root_node(*dynamic_obstacle_map);
+        if (!is_success)
+        {
+            return std::make_tuple(false, CbsResult());
+        }
         return planner->single_step_search();
     }
 };

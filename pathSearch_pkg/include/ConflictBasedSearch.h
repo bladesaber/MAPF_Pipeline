@@ -133,7 +133,7 @@ namespace SearchSpace
                     }
                 }
             }
-            
+
             // ------ preprocess grid set ------
             grid_set.preprocess();
 

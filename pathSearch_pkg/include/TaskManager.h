@@ -35,7 +35,7 @@ namespace TaskSpace
     };
 
     class TaskSet
-    {
+    { 
     public:
         TaskSet(const std::string name) : name(name) {}
         virtual ~TaskSet() = default;

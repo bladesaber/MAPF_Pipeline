@@ -264,6 +264,8 @@ struct ObstacleData
 
     ObstacleData(const LocXyz &loc, const double radius) : loc(loc), radius(radius) {}
 
+    ObstacleData(const ObstacleData &other) : loc(other.loc), radius(other.radius) {}
+
     friend std::ostream &operator<<(std::ostream &os, const ObstacleData &obstacle)
     {
         os << "loc: " << obstacle.loc << ", radius: " << obstacle.radius;
@@ -296,6 +298,9 @@ struct DynamicObstacleMap
     std::map<std::string, std::vector<ObstacleData>> dynamic_obstacle_map;
 
     DynamicObstacleMap() = default;
+
+    DynamicObstacleMap(const DynamicObstacleMap &other) : dynamic_obstacle_map(other.dynamic_obstacle_map) {}
+    
     ~DynamicObstacleMap() = default;
 
     void add_obstacle(const std::string &group_name, const ObstacleData &obstacle)

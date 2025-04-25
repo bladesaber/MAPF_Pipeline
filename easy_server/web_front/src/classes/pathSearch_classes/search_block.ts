@@ -15,7 +15,7 @@ export class DiscreteGridBlock extends BaseBlock {
     this.add_mesh(root);
   }
 
-  add_mesh(root: BlockRoot): void {
+  add_mesh(root: BlockRoot): void {    
     const points_mesh: THREE.Points = create_colored_points(
       this.points, this.distance_to_obstacle, { color: 0x0000ff, size: 0.25 }
     );

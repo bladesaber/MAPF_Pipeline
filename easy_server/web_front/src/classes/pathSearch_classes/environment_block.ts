@@ -28,7 +28,12 @@ export class EnvironmentBlock extends BaseBlock {
   add_mesh(root: BlockRoot): void {
     const environment_mesh = new THREE.Mesh(
       new THREE.BoxGeometry(this.xsize, this.ysize, this.zsize),
-      new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.3, transparent: true })
+      new THREE.MeshBasicMaterial({ 
+        color: 0x00ff00, opacity: 0.3, 
+        transparent: true,
+        depthWrite: false,
+        depthTest: true,
+      })
     );
     environment_mesh.position.set(
         this.xsize / 2, 

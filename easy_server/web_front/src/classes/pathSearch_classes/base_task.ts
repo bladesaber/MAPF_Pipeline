@@ -34,10 +34,13 @@ export class CellTask {
   }
 
   set_result(result: number[][], color: string, root: BlockRoot) {
-    if (this.result) {
-      this.result.destory(root);
+    if (!this.result) {
+      this.result = new PathBlock(this.name, result, this.discretize_radius, color, root);
     }
-    this.result = new PathBlock(this.name, result, this.radius, color, root);
+    else {
+      this.result.points = result;
+      this.result.update_mesh(root);
+    }
     this.has_result = true;
   }
 
@@ -653,9 +656,16 @@ export class TaskManager {
     
     // ------ Search Parameters -------
     add_discretized_grid(grid_data: number[][], distance_to_obstacle: number[], root: BlockRoot) {
-      this.discretized_grid = new DiscreteGridBlock(
-        this.name + '_DiscretizedGrid', grid_data, distance_to_obstacle, root
-      );
+      if (!this.discretized_grid) {
+        this.discretized_grid = new DiscreteGridBlock(
+          this.name + '_DiscretizedGrid', grid_data, distance_to_obstacle, root
+        );
+      }
+      else {
+        this.discretized_grid.points = grid_data;
+        this.discretized_grid.distance_to_obstacle = distance_to_obstacle;
+        this.discretized_grid.update_mesh(root);
+      }
     }
 
     has_discretized_grid(): boolean {
@@ -687,7 +697,6 @@ export class TaskManager {
       Object.entries(path_set).forEach(([group_name, group_path_set]) => {
         const group_task = priority_task!.group_tasks.get(group_name);
         const group_cfg = this.group_cfg.get(group_name) as GroupCfg;
-
         Object.entries(group_path_set).forEach(([cell_task_name, path_data]) => {
           const cell_task = group_task!.cell_tasks.find(task => task.name === cell_task_name);
           cell_task!.set_result(path_data.path, group_cfg!.color, root);

@@ -620,11 +620,13 @@ def path_search_run(ws):
                     running_cache=runner.running_cache,
                     running_graph=runner.running_graph
                 )
+
                 task1 = SocketTaskResponse(
                     manager=socket_manager, 
                     run_type=msg['run_type'], name='run_priority_search', callback_func=callback_func, interval_time=0.5)
                 task1.start()
 
+                time.sleep(0.5)
                 last_result = task1.last_result
                 return_msg = task1.get_progress(
                     is_finished=True,
@@ -633,6 +635,7 @@ def path_search_run(ws):
                         else 'Run priority search failed.',
                 )
                 return_msg.update({
+                    'total_finished': True,
                     'data': {
                         'is_success': last_result['is_success'],
                         'path_set_group': last_result['path_set_group'],

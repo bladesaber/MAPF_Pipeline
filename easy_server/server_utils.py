@@ -316,6 +316,7 @@ class PathSearchRunner(object):
         data_queue: queue.Queue, 
         x_size: int, y_size: int, z_size: int, resolution: float, obstacle_points: np.ndarray
     ):
+        # print('[Debug]: Grid initialized:', x_size, y_size, z_size, resolution)
         xs, ys, zs = np.meshgrid(
             np.arange(0, x_size, 1),
             np.arange(0, y_size, 1),
@@ -328,13 +329,17 @@ class PathSearchRunner(object):
         ], axis=-1).reshape(-1, 3)
         
         validate_data = []
-        tree = KDTree(obstacle_points)
-        dists, inds = tree.query(positions, k=1, return_distance=True)
-        
         grid = MapfPkg.DistanceGrid(x_size, y_size, z_size, resolution)
-        for pos, dist in zip(positions, dists):
-            grid.set_obstacle(MapfPkg.LocXyz(pos[0], pos[1], pos[2]), dist[0])
-            validate_data.append([pos[0], pos[1], pos[2], dist[0]])
+
+        if len(obstacle_points) > 0:
+            tree = KDTree(obstacle_points)
+            dists, inds = tree.query(positions, k=1, return_distance=True)
+            for pos, dist in zip(positions, dists):
+                grid.set_obstacle(MapfPkg.LocXyz(pos[0], pos[1], pos[2]), dist[0])
+                validate_data.append([pos[0], pos[1], pos[2], dist[0]])
+        else:
+            for pos in positions:
+                validate_data.append([pos[0], pos[1], pos[2], 100.0])
         
         data_queue.put({
             'is_finished': True,
@@ -392,13 +397,23 @@ class PathSearchRunner(object):
         running_graph: dict[str, nx.Graph],
     ):
         cbs = MapfPkg.CbsSearchNearEnd(grid, 1.0, 1.0, 1000)
-        task_manager_map = {}
+
+        task_manager_map = {} # Store task managers to prevent garbage collection
+        astar_planners = {}   # Store planners to prevent garbage collection
+        planners = {}      # Store planners to prevent garbage collection
+
         dynamic_obstacle_map = MapfPkg.DynamicObstacleMap()
 
         for group_name, cell_tasks in task_set.items():
             astar = MapfPkg.AstarSearchBoost(0.5, 100000, False)
+            astar_planners[group_name] = astar
+
             planner = MapfPkg.SetPairNodePlanner(astar)
+            planners[group_name] = planner
+
             task_manager = MapfPkg.PairNodeTaskSet(group_name)
+            task_manager_map[group_name] = task_manager
+
             for cell_task in cell_tasks:
                 start_name: str = cell_task['start_name']
                 end_name: str = cell_task['end_name']
@@ -436,11 +451,11 @@ class PathSearchRunner(object):
                     )
 
             cbs.add_task_set(task_manager, planner)
-            task_manager_map[group_name] = task_manager
 
         cbs_store = MapfPkg.PyWrapCbsStruct(cbs, dynamic_obstacle_map)
 
         # # ------ auto mode
+        # print('[Debug]: Running CBS...')
         # is_success = cbs_store.run()
         # cbs_result: dict[str, MapfPkg.PathSet] = cbs_store.result.paths
 
@@ -449,10 +464,9 @@ class PathSearchRunner(object):
         for iteration in range(1000):
             is_success, result = cbs_store.single_step_run()
             if is_success:
-                cbs_result: dict[str, MapfPkg.PathSet] = result.paths
                 break
             else:
-                # ------ when failed also return the result ------
+                cbs_result: dict[str, MapfPkg.PathSet] = result.paths
                 path_set_tmp = {}
                 for group_name, path_set in cbs_result.items():
                     path_set_tmp[group_name] = {}
@@ -472,6 +486,9 @@ class PathSearchRunner(object):
 
         path_set_group = {}
         if is_success:
+            cbs_result: dict[str, MapfPkg.PathSet] = result.paths
+            group_names = list(cbs_result.keys())
+
             # ------ assemble result ------
             for group_name, path_set in cbs_result.items():
                 path_set_group[group_name] = {}
@@ -481,7 +498,9 @@ class PathSearchRunner(object):
                         'radius': path.radius
                     }
             
-            for group_name, group_graph in running_graph.items():
+            for group_name in group_names:
+                group_graph = running_graph[group_name]
+
                 # ------ flat result ------
                 flat_locs = []
                 for path in cbs_result[group_name].paths:

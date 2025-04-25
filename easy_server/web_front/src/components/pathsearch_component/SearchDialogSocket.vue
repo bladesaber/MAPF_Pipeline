@@ -359,43 +359,25 @@ const request_search_preprocess = (manager_name: string, solution_name: string) 
   current_manager_name = manager_name;
   current_main_task_name = solution_name;
 
-  // ------ assemble task set ------
-  const task_set: any = {}
-  main_task.priority_tasks.forEach(priority_task => {
-    priority_task.group_tasks.forEach(group_task => {
-      if (!task_set[group_task.name]) {
-        task_set[group_task.name] = {}
+  // ------ assemble data ------
+  const data: any = {}
+  task_manager.group_cfg.forEach((group_cfg: any) => {
+    data[group_cfg.name] = {}
+    group_cfg.pipes.forEach((pipe: string) => {
+      const pipe_obj = task_manager.get_pipe(pipe)
+      data[group_cfg.name][pipe] = {
+        x: pipe_obj!.discrete_x,
+        y: pipe_obj!.discrete_y,
+        z: pipe_obj!.discrete_z,
+        vector_x: pipe_obj!.vector_x,
+        vector_y: pipe_obj!.vector_y,
+        vector_z: pipe_obj!.vector_z,
+        radius: pipe_obj!.discrete_radius,
       }
-      group_task.cell_tasks.forEach(cell_task => {
-        if (!task_set[group_task.name][cell_task.start_point]) {
-          const pipe = task_manager.get_pipe(cell_task.start_point)
-          task_set[group_task.name][cell_task.start_point] = {
-            x: pipe!.discrete_x,
-            y: pipe!.discrete_y,
-            z: pipe!.discrete_z,
-            vector_x: pipe!.vector_x,
-            vector_y: pipe!.vector_y,
-            vector_z: pipe!.vector_z,
-            radius: pipe!.discrete_radius,
-          }
-        }
-        if (!task_set[group_task.name][cell_task.end_point]) {
-          const pipe = task_manager.get_pipe(cell_task.end_point)
-          task_set[group_task.name][cell_task.end_point] = {
-            x: pipe!.discrete_x,
-            y: pipe!.discrete_y,
-            z: pipe!.discrete_z,
-            vector_x: pipe!.vector_x,
-            vector_y: pipe!.vector_y,
-            vector_z: pipe!.vector_z,
-            radius: pipe!.discrete_radius,
-          }
-        }
-      })
     })
   })
 
-  send_msg({ run_type: "searchPreprocess", data: task_set })
+  send_msg({ run_type: "searchPreprocess", data: data })
 }
 
 const response_search_preprocess = (data: any) => {
@@ -454,7 +436,6 @@ const request_run_priority_search = (manager_name: string, solution_name: string
     data.group_pipes[group_cfg.name] = group_cfg.pipes
   })
 
-  console.log(data)
   send_msg({ run_type: "runPrioritySearch", data: data })
 }
 
@@ -465,8 +446,7 @@ const response_run_priority_search = (data: any) => {
     message: data.msg,
     time: new Date().toLocaleTimeString()
   })
-  if (data.is_finished) {
-    ElMessage.success(data.msg)
+  if (data.total_finished) {
     if (!data.data.is_success) {
       ElMessage.error(data.msg)
     }
@@ -478,13 +458,15 @@ const response_run_priority_search = (data: any) => {
       path_set_group: data.data.path_set_group
     })
   } else {
-    emit('updateRunPrioritySearch', {
-      name: current_manager_name,
-      main_task_name: current_main_task_name,
-      priority_task_name: current_priority_task_name,
-      is_success: data.progress_data.is_success,
-      path_set_group: data.progress_data.path_set_group
-    })
+    if (data.progress_data){
+      emit('updateRunPrioritySearch', {
+        name: current_manager_name,
+        main_task_name: current_main_task_name,
+        priority_task_name: current_priority_task_name,
+        is_success: data.progress_data.is_success,
+        path_set_group: data.progress_data.path_set_group
+      })
+    }
   }
 }
 
