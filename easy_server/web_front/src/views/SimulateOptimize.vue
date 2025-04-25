@@ -464,7 +464,7 @@ const triggerFileInput = () => {
 // Progress bar state
 const progressVisible = ref(false)
 const progressPercentage = ref(0)
-const progressStatus = ref<'success' | 'exception' | ''>('')
+const progressStatus = ref<''| 'success'| 'exception'| 'warning'>('')
 const progressMsg = ref('Progressing...')
 const progressFormat = (percentage: number) => {
   return percentage === 100 ? 'Processing Complete' : `${percentage}%`
@@ -484,6 +484,7 @@ const handleFileSelected = async (event: Event) => {
   progressVisible.value = true
   progressPercentage.value = 0
   progressStatus.value = ''
+  progressMsg.value = 'Extracting faces...'
 
   const formData = new FormData()
   formData.append('file', file)
@@ -499,29 +500,49 @@ const handleFileSelected = async (event: Event) => {
     const reader = response.body?.getReader()
     if (!reader) throw new Error('Failed to get response reader')
 
+    let shapeData: any = {}
+
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
 
       const text = new TextDecoder().decode(value)
-      console.log('handleFileSelected:', text)
       const data = JSON.parse(text)
       
-      if (!data.is_finished) {
-        progressPercentage.value = data.progress
-      } else {
-        progressPercentage.value = data.progress
-        progressStatus.value = 'success'
-        handleSTEPData(file.name, data.shape_jsons, new Uint8Array(fileContent))
+      if (data.total_finished) {
         break
       }
 
+      if (data.name === 'extract_step_face') {
+        // Update progress during face extraction
+        progressMsg.value = data.msg
+        if (!data.is_finished) {
+          progressPercentage.value = data.progress
+        }
+      } else if (data.name === 'return_extract_step_face') {
+        // Collect shape data during return phase
+        progressMsg.value = 'Processing face data...'
+        progressPercentage.value = data.progress
+        if (data.data) {
+          const key = Object.keys(data.data)[0]
+          shapeData[key] = data.data[key]
+        }
+      }
+    }
+
+    if (Object.keys(shapeData).length > 0) {
+      progressStatus.value = 'success'
+      progressMsg.value = 'Processing complete'
+      handleSTEPData(file.name, shapeData, new Uint8Array(fileContent))
+    } else {
+      throw new Error('No shape data received')
     }
 
   } catch (error: unknown) {
-    // console.error('Error processing file:', error)
+    console.error('Error processing file:', error)
     progressStatus.value = 'exception'
     progressPercentage.value = 0
+    progressMsg.value = 'Error processing file'
   } finally {
     input.value = ''
     // Close progress dialog after a short delay
@@ -529,6 +550,7 @@ const handleFileSelected = async (event: Event) => {
       progressVisible.value = false
       progressPercentage.value = 0
       progressStatus.value = ''
+      progressMsg.value = 'Processing...'
     }, 2000)
   }
 }
@@ -628,6 +650,12 @@ const handleGenerateMesh = async (data: any) => {
       return
     }
 
+    // Reset progress state
+    progressVisible.value = true
+    progressPercentage.value = 0
+    progressStatus.value = ''
+    progressMsg.value = 'Generating mesh...'
+
     // Create FormData and append the file
     const formData = new FormData()
     const blob = new Blob([fileContent], { type: 'application/step' })
@@ -650,32 +678,87 @@ const handleGenerateMesh = async (data: any) => {
         body: formData
       })
 
-      if (!response.ok) {
-        throw new Error('Failed to generate mesh')
+      if (!response.ok) throw new Error('Failed to generate mesh')
+
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('Failed to get response reader')
+
+      let meshInfo: any = null
+      let cells: number[][] = []
+      let points: number[][] = []
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const text = new TextDecoder().decode(value)
+        const data = JSON.parse(text)
+
+        if (data.total_finished) {
+          break
+        }
+
+        if (data.name === 'generate_mesh') {
+          // Update progress during mesh generation
+          progressMsg.value = data.msg
+          if (!data.is_finished) {
+            progressPercentage.value = data.progress
+          }
+          else {
+            progressPercentage.value = 100
+            progressStatus.value = 'success'
+          }
+        } else if (data.name === 'return_mesh_info') {
+          progressMsg.value = 'Processing mesh info...'
+          meshInfo = data.data
+          progressPercentage.value = 100
+        } else if (data.name === 'return_cells') {
+          progressMsg.value = 'Processing cells data...'
+          progressPercentage.value = data.progress
+          if (data.data) {
+            cells.push(...data.data)
+          }
+        } else if (data.name === 'return_points') {
+          progressMsg.value = 'Processing points data...'
+          progressPercentage.value = data.progress
+          if (data.data) {
+            points.push(...data.data)
+          }
+        }
       }
 
-      const meshInfo = await response.json()
-      if (meshInfo.error) {
-        throw new Error(meshInfo.error)
+      if (meshInfo && cells.length > 0 && points.length > 0) {
+        // Add new mesh
+        const marker_dict = new Map<string, Map<string, number|number[][]>>()
+        Object.entries(meshInfo.marker_dict as Record<string, Record<string, number|number[][]>>).forEach(([k, v]) => {
+          marker_dict.set(k, new Map(Object.entries(v)))
+        })
+
+        simulate_entity.add_simulate_network(
+          points, cells, marker_dict, simulateRootObj
+        )
+
+        progressStatus.value = 'success'
+        progressMsg.value = 'Mesh generated successfully'
+        ElMessage.success('Mesh generated successfully')
+        updateTreeData()
+      } else {
+        throw new Error('Incomplete mesh data received')
       }
-
-      // Add new mesh
-      const marker_dict = new Map<string, Map<string, number|number[][]>>()
-      Object.entries(meshInfo.marker_dict as Record<string, Record<string, number|number[][]>>).forEach(([k, v]) => {
-        marker_dict.set(k, new Map(Object.entries(v)))
-      })
-
-      simulate_entity.add_simulate_network(
-        meshInfo.points, meshInfo.cells, marker_dict, simulateRootObj
-      )
-
-      // Handle successful mesh generation
-      ElMessage.success('Mesh generated successfully')
-      console.log('Mesh Info:', meshInfo)
 
     } catch (error: any) {
+      console.error('Error generating mesh:', error)
+      progressStatus.value = 'exception'
+      progressMsg.value = 'Error generating mesh'
       ElMessage.error(error.message || 'Failed to generate mesh')
     } finally {
+      // Close progress dialog after a short delay
+      setTimeout(() => {
+        progressVisible.value = false
+        progressPercentage.value = 0
+        progressStatus.value = ''
+        progressMsg.value = 'Processing...'
+      }, 2000)
     }
   }
 }
@@ -723,11 +806,11 @@ const handleSimulate = async (simulate_entity: SimulateEntity, condition_name: s
 
   // Reset progress state
   progressVisible.value = true
-  let progressPercentage_value = 0
-  progressPercentage.value = progressPercentage_value
+  progressPercentage.value = 0
   progressStatus.value = ''
+  progressMsg.value = 'Starting simulation...'
 
-  try{
+  try {
     const response = await fetch('http://192.168.110.54:9998/simulate/simulate', {
       method: 'POST',
       headers: {
@@ -743,68 +826,66 @@ const handleSimulate = async (simulate_entity: SimulateEntity, condition_name: s
 
     let velocity_data: number[][] = []
     let pressure_data: number[] = []
+
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
 
       const text = new TextDecoder().decode(value)
-      // console.log('handleSimulate_text:', text)
       const data = JSON.parse(text)
-      // console.log('handleSimulate_data:', data)
-      
-      if (!data.is_finished && data.simulate_status == 'running') {
-        progressPercentage_value += 1
-        progressPercentage.value = progressPercentage_value
-        progressMsg.value = data.msg
-      }
-      else if (!data.is_finished && data.simulate_status == 'completed'){
-        progressPercentage.value = 0
-        progressPercentage_value = 0
-      }
-      else if (!data.is_finished && data.simulate_status == 'velocity') {
-        progressPercentage_value += 1
-        progressPercentage.value = progressPercentage_value
-        progressMsg.value = data.msg
-        data.chunk.forEach((item: number[]) => {
-          velocity_data.push(item)
-        })
-      }
-      else if (!data.is_finished && data.simulate_status == 'pressure') {
-        progressPercentage_value += 1
-        progressPercentage.value = progressPercentage_value
-        progressMsg.value = data.msg
-        data.chunk.forEach((item: number) => {
-          pressure_data.push(item)
-        })
-      }
-      else if (data.is_finished && data.simulate_status == 'completed'){
-        progressVisible.value = false
-        progressPercentage.value = 0
-        progressStatus.value = 'success'
-        progressMsg.value = 'Processing ...'
 
-        simulate_entity.add_simulate_result(condition_name, velocity_data, pressure_data, simulateRootObj)
-        updateTreeData()
+      if (data.total_finished) {
         break
       }
-      else {        
-        throw new Error(`Simulation failed: ${data.msg}`)
+
+      if (data.name === 'simulate') {
+        // Update progress during simulation
+        progressMsg.value = data.msg
+        if (!data.is_finished) {
+          progressPercentage.value = data.progress
+        }
+        else {
+          progressPercentage.value = 100
+          progressStatus.value = 'success'
+        }
+      } else if (data.name === 'return_velocity_data') {
+        // Collect velocity data during return phase
+        progressMsg.value = 'Processing velocity data...'
+        progressPercentage.value = data.progress
+        if (data.data) {
+          velocity_data.push(...data.data)
+        }
+      } else if (data.name === 'return_pressure_data') {
+        // Collect pressure data during return phase
+        progressMsg.value = 'Processing pressure data...'
+        progressPercentage.value = data.progress
+        if (data.data) {
+          pressure_data.push(...data.data)
+        }
       }
     }
 
-  } catch (error: unknown) {
-    console.error('Error processing file:', error)
-    progressStatus.value = 'exception'
-    progressMsg.value = 'Processing ...'
-    progressPercentage.value = 0
+    if (velocity_data.length > 0 && pressure_data.length > 0) {
+      progressStatus.value = 'success'
+      progressMsg.value = 'Simulation complete'
+      simulate_entity.add_simulate_result(condition_name, velocity_data, pressure_data, simulateRootObj)
+      updateTreeData()
+    } else {
+      throw new Error('Incomplete simulation data received')
+    }
 
+  } catch (error: unknown) {
+    console.error('Error in simulation:', error)
+    progressStatus.value = 'exception'
+    progressMsg.value = 'Simulation failed'
+    ElMessage.error(error instanceof Error ? error.message : 'Simulation failed')
   } finally {
     // Close progress dialog after a short delay
     setTimeout(() => {
       progressVisible.value = false
       progressPercentage.value = 0
       progressStatus.value = ''
-      progressMsg.value = 'Processing ...'
+      progressMsg.value = 'Processing...'
     }, 2000)
   }
 }

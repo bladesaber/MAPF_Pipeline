@@ -312,6 +312,33 @@ namespace SearchSpace
             return is_solvable;
         }
 
+        std::tuple<bool, CbsResult> single_step_search()
+        {
+            CbsResult result;
+            if (!m_open_heap.empty())
+            {
+                ConflictBaseSearchNode *node = pop_node();
+
+                for (auto &iter : node->result_map){
+                    result.add_result(iter.first, *iter.second);
+                }
+
+                if (node->is_free_conflict){
+                    return std::make_tuple(true, result);
+                }
+                else
+                {
+                    // extend node 1
+                    extend_node(node, node->m_constraint.run_group0, node->m_constraint.obs0_loc, node->m_constraint.obs0_radius);
+                    
+                    // extend node 2
+                    extend_node(node, node->m_constraint.run_group1, node->m_constraint.obs1_loc, node->m_constraint.obs1_radius);
+                }
+                delete node;
+            }
+            return std::make_tuple(false, result);
+        }
+
         void push_node(ConflictBaseSearchNode *node)
         {
             node->m_openHandle = m_open_heap.push(node);

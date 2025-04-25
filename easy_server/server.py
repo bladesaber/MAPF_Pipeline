@@ -237,20 +237,23 @@ def extract_step_face():
             
             last_result = task.last_result
 
+            # ------ return data ------
+            time.sleep(0.5)
             def get_data_size_callback():
                 return len(last_result)
 
             res_keys = list(last_result.keys())
             def get_chunk_data_callback(data_index, chunk_size):
-                return last_result[res_keys[data_index]]
+                return {res_keys[data_index]: last_result[res_keys[data_index]]}
 
             stream_data_response = StreamDataResponse(
-                name='extract_step_face', 
+                name='return_extract_step_face', 
                 get_data_size_callback=get_data_size_callback, 
                 get_chunk_data_callback=get_chunk_data_callback, 
                 chunk_size=1, time_interval=0.5)
             yield from stream_data_response.generate()
 
+            time.sleep(0.5)
             yield json.dumps({'total_finished': True})
 
         except Exception as e:
@@ -327,6 +330,8 @@ def make_su2_mesh():
             task = StreamTaskResponse(name='generate_mesh', callback_func=task_callback, interval_time=0.5)
             yield from task.start()
 
+            # ------ return mesh info ------
+            time.sleep(0.5)
             su2_simulator = Su2Simulator(mesh_path=su2_file_path)
 
             yield json.dumps({
@@ -342,6 +347,7 @@ def make_su2_mesh():
             })
 
             # ------ return cells ------
+            time.sleep(0.5)
             cells = su2_simulator.cells.tolist()
 
             def get_cells_size_callback():
@@ -358,6 +364,7 @@ def make_su2_mesh():
             yield from stream_data_response.generate()
 
             # ------ return points ------
+            time.sleep(0.5)
             points = su2_simulator.points.tolist()
 
             def get_points_size_callback():
@@ -374,6 +381,7 @@ def make_su2_mesh():
             yield from stream_data_response.generate()
 
             # ------ return total_finished ------
+            time.sleep(0.5)
             yield json.dumps({'total_finished': True})
 
         except Exception as e:
@@ -411,7 +419,6 @@ def simulate():
 
     def generate():
         try:
-            is_simulation_success = False
             def task_callback(data_queue):
                 try:
                     cfg_file = 'simulate.cfg'
@@ -447,15 +454,26 @@ def simulate():
                                 output_buffer = []
                                 last_update_time = current_time
 
-                    is_simulation_success = process.returncode == 0
-                    if not is_simulation_success:
+                    if not (process.returncode == 0):
                         progress_data = {
                             'is_finished': True,
                             'msg': f'Process failed with return code {process.returncode}',
-                            'data': []
+                            'data': {
+                                'is_success': False,
+                                'msg': f'Process failed with return code {process.returncode}'
+                            }
                         }
                         data_queue.put(progress_data)
-
+                    else:
+                        progress_data = {
+                            'is_finished': True,
+                            'msg': 'Simulation completed successfully.',
+                            'data': {
+                                'is_success': True,
+                                'msg': 'Simulation completed successfully.'
+                            }
+                        }
+                        data_queue.put(progress_data)
                 except Exception as e:
                     print(f'[Error]: {e}')
                 finally:
@@ -466,14 +484,16 @@ def simulate():
 
             task = StreamTaskResponse(name='simulate', callback_func=task_callback, interval_time=0.5)
             yield from task.start()
-
-            if not is_simulation_success:
+            
+            if not task.last_result['is_success']:
                 return jsonify({'error': 'Simulation failed'}), 500
             
             res_vtk: pyvista.UnstructuredGrid = pyvista.read(os.path.join(temp_dir, 'temp/flow.vtu'))
 
             # ------ return velocity data ------
-            velocity_data = res_vtk.point_data['Velocity']
+            time.sleep(0.5)
+            velocity_data = res_vtk.point_data['Velocity'].tolist()
+
             def get_velocity_data_size_callback():
                 return len(velocity_data)
             
@@ -488,7 +508,9 @@ def simulate():
             yield from stream_data_response.generate()
 
             # ------ return pressure data ------
-            pressure_data = res_vtk.point_data['Pressure']
+            time.sleep(0.5)
+            pressure_data = res_vtk.point_data['Pressure'].tolist()
+
             def get_pressure_data_size_callback():
                 return len(pressure_data)
             
@@ -503,6 +525,7 @@ def simulate():
             yield from stream_data_response.generate()
 
             # ------ return total_finished ------
+            time.sleep(0.5)
             yield json.dumps({'total_finished': True})
 
         except Exception as e:
@@ -603,17 +626,18 @@ def path_search_run(ws):
                 task1.start()
 
                 last_result = task1.last_result
-
-                return_msg = {
-                    'run_type': msg['run_type'],
-                    'is_finished': True,
+                return_msg = task1.get_progress(
+                    is_finished=True,
+                    progress=100,
+                    msg='Run priority search success.' if last_result['is_success']
+                        else 'Run priority search failed.',
+                )
+                return_msg.update({
                     'data': {
                         'is_success': last_result['is_success'],
                         'path_set_group': last_result['path_set_group'],
-                    },
-                    'msg': 'Run priority search success.' if last_result['is_success']
-                        else 'Run priority search failed.'
-                }
+                    }
+                })
 
             else:
                 return_msg = {
@@ -637,6 +661,6 @@ def path_search_run(ws):
             
 
 if __name__ == '__main__':
-    print('Server is running on ws://192.168.110.54:9997')
+    print('Server is running on ws://192.168.110.54:9998')
     # Use threaded=True for better WebSocket support
-    app.run(host='192.168.110.54', port=9997, debug=True, threaded=True)
+    app.run(host='192.168.110.54', port=9998, debug=True, threaded=True)

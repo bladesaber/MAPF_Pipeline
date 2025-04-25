@@ -34,6 +34,9 @@ export class CellTask {
   }
 
   set_result(result: number[][], color: string, root: BlockRoot) {
+    if (this.result) {
+      this.result.destory(root);
+    }
     this.result = new PathBlock(this.name, result, this.radius, color, root);
     this.has_result = true;
   }

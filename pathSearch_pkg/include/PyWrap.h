@@ -41,6 +41,12 @@ struct PyWrapCbsStruct
         planner->preprocess_root_node(*dynamic_obstacle_map);
         return planner->search(&result);
     }
+
+    std::tuple<bool, CbsResult> single_step_run()
+    {
+        planner->preprocess_root_node(*dynamic_obstacle_map);
+        return planner->single_step_search();
+    }
 };
 
 #endif // PY_WRAP_H

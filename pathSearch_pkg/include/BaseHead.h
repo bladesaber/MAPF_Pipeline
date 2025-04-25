@@ -283,7 +283,12 @@ struct CbsResult
     void add_result(const std::string &group_name, const PathSetData path_set)
     {
         paths[group_name] = path_set;
-    }   
+    }
+
+    void reset()
+    {
+        paths.clear();
+    }
 };
 
 struct DynamicObstacleMap

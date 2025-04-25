@@ -80,6 +80,7 @@ const emit = defineEmits<{
   (e: 'parseDiscretizeGrid', data: any): void
   (e: 'parseSearchPreprocess', data: any): void
   (e: 'parseRunPrioritySearch', data: any): void
+  (e: 'updateRunPrioritySearch', data: any): void
 }>()
 
 // State
@@ -116,7 +117,7 @@ const connectWebSocket = () => {
   if (socket.value) return
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsUrl = `${protocol}//192.168.110.54:9997/path_search/run`
+  const wsUrl = `${protocol}//192.168.110.54:9998/path_search/run`
   
   socket.value = new WebSocket(wsUrl)
   
@@ -464,16 +465,27 @@ const response_run_priority_search = (data: any) => {
     message: data.msg,
     time: new Date().toLocaleTimeString()
   })
-  if (!data.data.is_success) {
-    ElMessage.error(data.msg)
+  if (data.is_finished) {
+    ElMessage.success(data.msg)
+    if (!data.data.is_success) {
+      ElMessage.error(data.msg)
+    }
+    emit('parseRunPrioritySearch', {
+      name: current_manager_name,
+      main_task_name: current_main_task_name,
+      priority_task_name: current_priority_task_name,
+      is_success: data.data.is_success,
+      path_set_group: data.data.path_set_group
+    })
+  } else {
+    emit('updateRunPrioritySearch', {
+      name: current_manager_name,
+      main_task_name: current_main_task_name,
+      priority_task_name: current_priority_task_name,
+      is_success: data.progress_data.is_success,
+      path_set_group: data.progress_data.path_set_group
+    })
   }
-  emit('parseRunPrioritySearch', {
-    name: current_manager_name,
-    main_task_name: current_main_task_name,
-    priority_task_name: current_priority_task_name,
-    is_success: data.data.is_success,
-    path_set_group: data.data.path_set_group
-  })
 }
 
 // ------ Task Request -------

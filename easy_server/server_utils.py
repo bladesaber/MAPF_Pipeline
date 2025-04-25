@@ -276,6 +276,7 @@ class SocketTaskResponse:
                     is_finished=False,
                     progress=self.run_count,
                     msg=run_data['msg'],
+                    progress_data=run_data.get('progress_data', {}),
                 )
         else:
             return self.get_progress(
@@ -284,12 +285,13 @@ class SocketTaskResponse:
                 msg=f'[Debug]: Waiting for task {self.run_type}/{self.name}...',
             )
     
-    def get_progress(self, is_finished: bool, progress: int, msg: str) -> dict:
+    def get_progress(self, is_finished: bool, progress: int, msg: str, progress_data: dict = None) -> dict:
         return {
             'run_type': self.run_type,
             'name': self.name,
             'is_finished': is_finished,
             'progress': progress,
+            'progress_data': progress_data,
             'msg': msg,
             'total_finished': False,
         }
@@ -437,12 +439,40 @@ class PathSearchRunner(object):
             task_manager_map[group_name] = task_manager
 
         cbs_store = MapfPkg.PyWrapCbsStruct(cbs, dynamic_obstacle_map)
-        is_success = cbs_store.run()
+
+        # # ------ auto mode
+        # is_success = cbs_store.run()
+        # cbs_result: dict[str, MapfPkg.PathSet] = cbs_store.result.paths
+
+        # ------ single step mode
+        is_success = False
+        for iteration in range(1000):
+            is_success, result = cbs_store.single_step_run()
+            if is_success:
+                cbs_result: dict[str, MapfPkg.PathSet] = result.paths
+                break
+            else:
+                # ------ when failed also return the result ------
+                path_set_tmp = {}
+                for group_name, path_set in cbs_result.items():
+                    path_set_tmp[group_name] = {}
+                    for path in path_set.paths:
+                        path_set_tmp[group_name][path.name] = {
+                            'path': np.array([[loc.x, loc.y, loc.z] for loc in path.path]).tolist(),
+                            'radius': path.radius
+                        }
+                data_queue.put({
+                    'is_finished': False,
+                    'progress_data': {
+                        'is_success': is_success,
+                        'path_set_group': path_set_tmp,
+                    },
+                    'msg': f'Priority search failed. Iteration {iteration + 1}.'
+                })
 
         path_set_group = {}
         if is_success:
             # ------ assemble result ------
-            cbs_result: dict[str, MapfPkg.PathSet] = cbs_store.result.paths
             for group_name, path_set in cbs_result.items():
                 path_set_group[group_name] = {}
                 for path in path_set.paths:

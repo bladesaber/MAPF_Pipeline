@@ -389,6 +389,7 @@ namespace pybind_modules
         py::class_<PyWrapCbsStruct>(m, "PyWrapCbsStruct")
             .def(py::init<SearchSpace::ConflictBaseSearch*, DynamicObstacleMap*>())
             .def_readonly("result", &PyWrapCbsStruct::result)
-            .def("run", &PyWrapCbsStruct::run);
+            .def("run", &PyWrapCbsStruct::run)
+            .def("single_step_run", &PyWrapCbsStruct::single_step_run);
     };
 }

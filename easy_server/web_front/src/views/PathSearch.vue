@@ -120,6 +120,7 @@
         @parseDiscretizeGrid="parseDiscretizeGrid"
         @parseSearchPreprocess="parseSearchPreprocess"
         @parseRunPrioritySearch="parseRunPrioritySearch"
+        @updateRunPrioritySearch="updateRunPrioritySearch"
       />
 
     </div>
@@ -1087,10 +1088,19 @@ const requestRunPrioritySearch = (name: string, solution_name: string, priority_
   searchDialogSocketRef.value!.request_run_priority_search(name, solution_name, priority_task_name);
 }
 
+const updateRunPrioritySearch = (data: any) => {
+  if (Object.keys(data.path_set_group).length > 0) {
+    const task_manager = blockRoot.get_task_manager(data.name as string)
+    task_manager!.add_path_set(data.main_task_name, data.priority_task_name, data.path_set_group, blockRoot)
+  }
+}
+
 const parseRunPrioritySearch = (data: any) => {
-  const task_manager = blockRoot.get_task_manager(data.name as string)
-  task_manager!.add_path_set(data.main_task_name, data.priority_task_name, data.path_set_group, blockRoot)
-  updateTreeData()
+  if (data.is_success) {
+    const task_manager = blockRoot.get_task_manager(data.name as string)
+    task_manager!.add_path_set(data.main_task_name, data.priority_task_name, data.path_set_group, blockRoot)
+    updateTreeData()
+  }
   unlockLeftSideBarTree()
 }
 
