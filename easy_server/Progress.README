@@ -1,0 +1,16 @@
+0.grid.ts添加线框
+1.obstacle_utils.ts的ObstacleMesh的大小与sphere是否相同
+1.5 测试删除pipe与pipe group
+2.右边栏溢出
+3.颜色选择的UI有问题
+4.环境和障碍物加边线
+5.card用分页标签
+6.各个组件加边缘线
+7.有时间为card和左边栏加图标
+8.Add priority task可以添加多个group
+9.排他选择后恢复原颜色
+10.场景内物体点不到
+11.左右键点击tree，该节点高亮
+12.对tree的task部分添加编辑功能
+13.测试显示隐藏功能
+14.pipe的圆锥改得更明显

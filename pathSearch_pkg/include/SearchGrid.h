@@ -81,8 +81,6 @@ namespace GridSpace
         void clear_obstacle(LocXyz loc) override;
         std::tuple<bool, double> is_obstacle(LocXyz loc, double threshold) const override;
 
-        void add_auto_obstacle(LocXyz loc, double radius, double thickness);
-
     protected:
         const double m_scale_factor = 100.0;
         uint32_t m_slice_size;  // Size of each XY slice

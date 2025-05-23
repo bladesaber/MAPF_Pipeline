@@ -77,13 +77,13 @@ namespace SearchSpace
         {
             std::vector<LocXyz> start_set, end_set;
             before_task(&task, start_set, end_set);
-            std::vector<LocXyz> result;
-            if (!m_planner.search(grid, start_set, end_set, result))
+            PathData path_data(task.name);
+            if (!m_planner.search(grid, start_set, end_set, path_data))
             {
                 return false;
             }
-            after_task(&task, result);
-            result_sets.add_path(task.name, result, task.radius);
+            after_task(&task, path_data.m_path);
+            result_sets.add_path(path_data);
         }
         return true;
     }

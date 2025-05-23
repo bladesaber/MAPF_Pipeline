@@ -212,7 +212,7 @@ namespace SearchSpace
             m_planner_map[task_set->name] = planner;
         }
 
-        bool preprocess_root_node(const DynamicObstacleMap &dynamic_obstacle_map)
+        bool init_root_node(const std::map<std::string, std::vector<ObstacleData>> &dynamic_obstacle_map)
         {
             m_node_count = 0;
             ConflictBaseSearchNode *root_node = create_node();
@@ -221,8 +221,8 @@ namespace SearchSpace
             for (auto &iter : m_task_set_map)
             {
                 root_node->dynamic_obstacle_map[iter.first] = std::make_shared<ObstacleList>(ObstacleList());
-                if (dynamic_obstacle_map.has_obstacle(iter.first)) {
-                    for (const auto &obstacle : dynamic_obstacle_map.get_obstacles(iter.first))
+                if (dynamic_obstacle_map.find(iter.first) != dynamic_obstacle_map.end()) {
+                    for (const auto &obstacle : dynamic_obstacle_map.at(iter.first))
                     {
                         root_node->dynamic_obstacle_map[iter.first]->push_back(obstacle);
                     }
@@ -311,20 +311,21 @@ namespace SearchSpace
 
             return is_solvable;
         }
-
-        std::tuple<bool, CbsResult> single_step_search()
+        
+        // ------ Just for python binding ------
+        bool single_step_search(CbsResult *result)
         {
-            CbsResult result;
+            result->reset();
             if (!m_open_heap.empty())
             {
                 ConflictBaseSearchNode *node = pop_node();
 
                 for (auto &iter : node->result_map){
-                    result.add_result(iter.first, *iter.second);
+                    result->add_result(iter.first, *iter.second);
                 }
 
                 if (node->is_free_conflict){
-                    return std::make_tuple(true, result);
+                    return true;
                 }
                 else
                 {
@@ -336,20 +337,15 @@ namespace SearchSpace
                 }
                 delete node;
             }
-            return std::make_tuple(false, result);
+            return false;
         }
 
-        void push_node(ConflictBaseSearchNode *node)
+        bool is_empty()
         {
-            node->m_openHandle = m_open_heap.push(node);
+            return m_open_heap.empty();
         }
 
-        ConflictBaseSearchNode *pop_node()
-        {
-            ConflictBaseSearchNode *node = m_open_heap.top();
-            m_open_heap.pop();
-            return node;
-        }
+        // ------ End of Just for python binding ------
 
     protected:
         GridSpace::SearchGrid *m_grid;
@@ -373,6 +369,18 @@ namespace SearchSpace
                 m_open_heap.pop();
                 delete node;
             }
+        }
+
+        void push_node(ConflictBaseSearchNode *node)
+        {
+            node->m_openHandle = m_open_heap.push(node);
+        }
+
+        ConflictBaseSearchNode *pop_node()
+        {
+            ConflictBaseSearchNode *node = m_open_heap.top();
+            m_open_heap.pop();
+            return node;
         }
 
         virtual ConflictBaseSearchNode *create_node() = 0;

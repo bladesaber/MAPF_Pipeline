@@ -29,11 +29,12 @@ namespace SearchSpace
             GridSpace::SearchGrid *grid,
             const std::vector<LocXyz> &starts,
             const std::vector<LocXyz> &goals,
-            std::vector<LocXyz> &path) = 0;
+            PathData &path) = 0;
         virtual double compute_final_cost(double g_cost, double h_cost) = 0;
 
-        void get_path(SearchSpace::SearchNode *node, std::vector<LocXyz> &path)
+        void get_path(SearchSpace::SearchNode *node, PathData &path_data, double time_cost)
         {
+            std::vector<LocXyz> path;
             SearchSpace::SearchNode *current = node;
             while (current != nullptr)
             {
@@ -41,6 +42,7 @@ namespace SearchSpace
                 current = current->m_parent;
             }
             std::reverse(path.begin(), path.end());
+            path_data.set_path(path, this->m_radius, time_cost);
         }
 
         bool is_goal(SearchSpace::SearchNode *node, const std::vector<LocXyz> &goals)
@@ -129,12 +131,14 @@ namespace SearchSpace
 
         ~AstarSearch() override {}
 
-        void reset() override { m_open_list.reset(); }
+        void reset() override { 
+            m_open_list.reset(); 
+        }
         bool search(
             GridSpace::SearchGrid *grid,
             const std::vector<LocXyz> &starts,
             const std::vector<LocXyz> &goals,
-            std::vector<LocXyz> &path) override;
+            PathData &path) override;
         inline double compute_final_cost(double g_cost, double h_cost) override { return g_cost + h_cost; }
 
     protected:
@@ -195,6 +199,33 @@ namespace SearchSpace
             double threshold1, uint32_t scale_factor1, bool with_constraint_table = false)
             : WeightedAstarSearch<HeapType>(radius, max_iterations, g_weight, h_weight, with_constraint_table),
               m_threshold1(threshold1), m_scale_factor1(scale_factor1) {}
+
+        void get_path(SearchSpace::SearchNode *node, PathData &path_data, double time_cost)
+        {
+            std::vector<LocXyz> path;
+            SearchSpace::SearchNode *current = node;
+            LocXyz last_loc = current->m_loc;
+            int dx = 0, dy = 0, dz = 0;
+            while (current != nullptr)
+            {
+                dx = current->m_loc.x - last_loc.x;
+                dy = current->m_loc.y - last_loc.y;
+                dz = current->m_loc.z - last_loc.z;
+                int max_step = std::max(std::max(std::abs(dx), std::abs(dy)), std::abs(dz));
+                if (max_step > 1) {
+                    for (int t = 1; t <= max_step; t += 1) {
+                        path.push_back(LocXyz{last_loc.x + dx * t, last_loc.y + dy * t, last_loc.z + dz * t});
+                    }
+                }
+                else {
+                    path.push_back(LocXyz{current->m_loc});
+                }
+                last_loc = current->m_loc;
+                current = current->m_parent;
+            }
+            std::reverse(path.begin(), path.end());
+            path_data.set_path(path, this->m_radius, time_cost);
+        }
 
     protected:
         double m_threshold1;
@@ -294,13 +325,13 @@ namespace SearchSpace
             m_backward_list.reset();
         }
 
-        void get_path(SearchSpace::SearchNode *meeting_node, std::vector<LocXyz> &path);
+        void get_path(SearchSpace::SearchNode *meeting_node, PathData &path_data, double time_cost);
 
         bool search(
             GridSpace::SearchGrid *grid,
             const std::vector<LocXyz> &starts,
             const std::vector<LocXyz> &goals,
-            std::vector<LocXyz> &path) override;
+            PathData &path) override;
 
         inline bool is_forward_found(SearchSpace::SearchNode *node)
         {

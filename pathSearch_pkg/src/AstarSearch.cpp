@@ -42,8 +42,10 @@ namespace SearchSpace
         GridSpace::SearchGrid *grid,
         const std::vector<LocXyz> &starts,
         const std::vector<LocXyz> &goals,
-        std::vector<LocXyz> &path)
+        PathData &path)
     {
+        double time_start = omp_get_wtime();
+
         bool is_found = false;
         size_t iteration = 0;
         // Initialize the start node
@@ -62,7 +64,8 @@ namespace SearchSpace
 
             if (is_goal(current, goals))
             {
-                get_path(current, path);
+                double time_end = omp_get_wtime();
+                this->get_path(current, path, time_end - time_start);
                 is_found = true;
                 break;
             }
@@ -175,8 +178,10 @@ namespace SearchSpace
         GridSpace::SearchGrid *grid,
         const std::vector<LocXyz> &starts,
         const std::vector<LocXyz> &goals,
-        std::vector<LocXyz> &path)
+        PathData &path)
     {
+        double time_start = omp_get_wtime();
+
         bool is_found = false;
         size_t iteration = 0;
 
@@ -207,7 +212,8 @@ namespace SearchSpace
             SearchSpace::SearchNode *current_forward = this->m_open_list.pop();
             if (is_backward_found(current_forward))
             {
-                get_path(current_forward, path);
+                double time_end = omp_get_wtime();
+                this->get_path(current_forward, path, time_end - time_start);
                 is_found = true;
                 break;
             }
@@ -216,7 +222,8 @@ namespace SearchSpace
             SearchSpace::SearchNode *current_backward = m_backward_list.pop();
             if (is_forward_found(current_backward))
             {
-                get_path(current_backward, path);
+                double time_end = omp_get_wtime();
+                this->get_path(current_backward, path, time_end - time_start);
                 is_found = true;
                 break;
             }
@@ -326,9 +333,9 @@ namespace SearchSpace
     }
 
     template <typename HeapType>
-    void BiDirectionalAstarSearch<HeapType>::get_path(SearchSpace::SearchNode *meeting_node, std::vector<LocXyz> &path)
+    void BiDirectionalAstarSearch<HeapType>::get_path(SearchSpace::SearchNode *meeting_node, PathData &path_data, double time_cost)
     {
-        std::cout << "meeting node: " << meeting_node->m_loc << std::endl;
+        std::vector<LocXyz> path;
 
         // Get forward path from start to meeting point
         std::vector<LocXyz> forward_path;
@@ -362,6 +369,8 @@ namespace SearchSpace
         if (!backward_path.empty()) {
             path.insert(path.end(), backward_path.begin() + 1, backward_path.end());
         }
+
+        path_data.set_path(path, this->m_radius, time_cost);
     }
 
     // Explicit template instantiations
@@ -373,4 +382,8 @@ namespace SearchSpace
     template class ThetaStarSearch<QueueSpace::BucketPriorityQueue>;
     template class BiDirectionalAstarSearch<QueueSpace::BoostHeap>;
     template class BiDirectionalAstarSearch<QueueSpace::BucketPriorityQueue>;
+    template class ScaledWeightedAstarSearch<QueueSpace::BoostHeap>;
+    template class ScaledWeightedAstarSearch<QueueSpace::BucketPriorityQueue>;
+    template class DoubleScaledWeightedAstarSearch<QueueSpace::BoostHeap>;
+    template class DoubleScaledWeightedAstarSearch<QueueSpace::BucketPriorityQueue>;
 }

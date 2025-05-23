@@ -34,6 +34,7 @@ namespace pybind_modules
             .def_readonly("path", &PathData::m_path)
             .def_readonly("radius", &PathData::m_radius)
             .def_readonly("cost", &PathData::m_cost)
+            .def_readonly("time_cost", &PathData::time_cost)
             .def("get_size", &PathData::get_size);
 
         // ------ PathSetData
@@ -42,6 +43,11 @@ namespace pybind_modules
             .def_readonly("paths", &PathSetData::m_paths)
             .def("get_size", &PathSetData::get_size)
             .def("get_max_radius", &PathSetData::get_max_radius);
+        
+        // ------ CbsResult
+        py::class_<CbsResult>(m, "CbsResult")
+            .def(py::init<>())
+            .def_readonly("paths", &CbsResult::paths);
 
         // ------ Conflict
         py::class_<Conflict>(m, "Conflict")
@@ -222,10 +228,36 @@ namespace pybind_modules
                 py::arg("threshold1"),
                 py::arg("scale_factor1"),
                 py::arg("with_constraint_table") = false);
+        
+        // ------ ScaledWeightedAstarSearch<QueueSpace::BucketPriorityQueue>
+        py::class_<SearchSpace::ScaledWeightedAstarSearch<QueueSpace::BucketPriorityQueue>,
+                  SearchSpace::WeightedAstarSearch<QueueSpace::BucketPriorityQueue>>(m, "ScaledWeightedAstarSearchBucket")
+            .def(py::init<double, size_t, double, double, double, uint32_t, bool>(),
+                py::arg("radius"),
+                py::arg("max_iterations"),
+                py::arg("g_weight"),
+                py::arg("h_weight"),
+                py::arg("threshold1"),
+                py::arg("scale_factor1"),
+                py::arg("with_constraint_table") = false);
 
         // ------ DoubleScaledWeightedAstarSearch<QueueSpace::BoostHeap>
         py::class_<SearchSpace::DoubleScaledWeightedAstarSearch<QueueSpace::BoostHeap>,
                   SearchSpace::ScaledWeightedAstarSearch<QueueSpace::BoostHeap>>(m, "DoubleScaledWeightedAstarSearchBoost")
+            .def(py::init<double, size_t, double, double, double, uint32_t, double, uint32_t, bool>(),
+                py::arg("radius"),
+                py::arg("max_iterations"),
+                py::arg("g_weight"),
+                py::arg("h_weight"),
+                py::arg("threshold1"),
+                py::arg("scale_factor1"),
+                py::arg("threshold2"),
+                py::arg("scale_factor2"),
+                py::arg("with_constraint_table") = false);
+        
+        // ------ DoubleScaledWeightedAstarSearch<QueueSpace::BucketPriorityQueue>
+        py::class_<SearchSpace::DoubleScaledWeightedAstarSearch<QueueSpace::BucketPriorityQueue>,
+                  SearchSpace::ScaledWeightedAstarSearch<QueueSpace::BucketPriorityQueue>>(m, "DoubleScaledWeightedAstarSearchBucket")
             .def(py::init<double, size_t, double, double, double, uint32_t, double, uint32_t, bool>(),
                 py::arg("radius"),
                 py::arg("max_iterations"),
@@ -352,7 +384,7 @@ namespace pybind_modules
             .def("add_task_set", &SearchSpace::ConflictBaseSearch::add_task_set,
                 py::arg("task_set"),
                 py::arg("planner"))
-            .def("preprocess_root_node", &SearchSpace::ConflictBaseSearch::preprocess_root_node)
+            .def("init_root_node", &SearchSpace::ConflictBaseSearch::init_root_node)
             .def("search", &SearchSpace::ConflictBaseSearch::search,
                 py::arg("result"));
 
@@ -365,31 +397,57 @@ namespace pybind_modules
                 py::arg("h_weight") = 1.0,
                 py::arg("max_iteration") = 10000);
 
-        // ------ PyPathResult
-        py::class_<PyWrapAstarStruct>(m, "PyWrapAstarStruct")
-            .def(py::init<GridSpace::SearchGrid*, SearchSpace::BaseSearch*>())
-            .def_readonly("path", &PyWrapAstarStruct::path)
-            .def("run", &PyWrapAstarStruct::run,
+        // ------ PyWrapAstarRunner
+        py::class_<PyWrapAstarRunner>(m, "PyWrapAstarRunner")
+            .def(py::init<std::string, GridSpace::SearchGrid*, SearchSpace::BaseSearch*>())
+            .def_readonly("result", &PyWrapAstarRunner::result)
+            .def_readonly("name", &PyWrapAstarRunner::name)
+            .def("add_dynamic_obstacle", &PyWrapAstarRunner::add_dynamic_obstacle,
+                py::arg("obstacle_data"))
+            .def("run", &PyWrapAstarRunner::run,
                 py::arg("starts"),
                 py::arg("goals"));
         
-        // ------ CbsResult
-        py::class_<CbsResult>(m, "CbsResult")
-            .def(py::init<>())
-            .def_readonly("paths", &CbsResult::paths);
+        // ------ PyWrapGroupAstarRunner
+        py::class_<PyWrapGroupAstarRunner>(m, "PyWrapGroupAstarRunner")
+            .def(py::init<std::string, GridSpace::SearchGrid*, SearchSpace::BaseSearch*>())
+            .def_readonly("result", &PyWrapGroupAstarRunner::result)
+            .def_readonly("name", &PyWrapGroupAstarRunner::name)
+            .def("add_dynamic_obstacle", &PyWrapGroupAstarRunner::add_dynamic_obstacle,
+                py::arg("obstacle_data"))
+            .def("add_task", &PyWrapGroupAstarRunner::add_task,
+                py::arg("name"),
+                py::arg("start_name"),
+                py::arg("end_name"),
+                py::arg("start_locs"),
+                py::arg("end_locs"),
+                py::arg("radius"))
+            .def("run", &PyWrapGroupAstarRunner::run);
+        
+        // ------ PyWrapCbsRunner
+        py::class_<PyWrapCbsRunner>(m, "PyWrapCbsRunner")
+            .def(py::init<std::string, GridSpace::SearchGrid*>())
+            .def_readonly("result", &PyWrapCbsRunner::result)
+            .def_readonly("name", &PyWrapCbsRunner::name)
+            .def("add_set", &PyWrapCbsRunner::add_set,
+                py::arg("name"),
+                py::arg("planner"))
+            .def("add_dynamic_obstacle", &PyWrapCbsRunner::add_dynamic_obstacle,
+                py::arg("task_name"),
+                py::arg("obstacle_data"))
+            .def("add_task", &PyWrapCbsRunner::add_task,
+                py::arg("task_set_name"),
+                py::arg("task_name"),
+                py::arg("start_name"),
+                py::arg("end_name"),
+                py::arg("start_locs"),
+                py::arg("end_locs"),
+                py::arg("radius"))
+            .def("set_cbs_planner", &PyWrapCbsRunner::set_cbs_planner,
+                py::arg("cbs_planner"))
+            .def("init_root_node", &PyWrapCbsRunner::init_root_node)
+            .def("run", &PyWrapCbsRunner::run)
+            .def("single_step_search", &PyWrapCbsRunner::single_step_search);
 
-        // ------ DynamicObstacleMap
-        py::class_<DynamicObstacleMap>(m, "DynamicObstacleMap")
-            .def(py::init<>())
-            .def("add_obstacle", &DynamicObstacleMap::add_obstacle,
-                py::arg("group_name"),
-                py::arg("obstacle"));
-
-        // ------ PyWrapCbsStruct
-        py::class_<PyWrapCbsStruct>(m, "PyWrapCbsStruct")
-            .def(py::init<SearchSpace::ConflictBaseSearch*, DynamicObstacleMap*>())
-            .def_readonly("result", &PyWrapCbsStruct::result)
-            .def("run", &PyWrapCbsStruct::run)
-            .def("single_step_run", &PyWrapCbsStruct::single_step_run);
     };
 }

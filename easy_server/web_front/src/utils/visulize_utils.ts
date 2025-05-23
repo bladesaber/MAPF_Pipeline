@@ -109,7 +109,8 @@ export function create_tube(xyz_list: number[][], radius: number, options: Visua
   const material = new THREE.MeshPhysicalMaterial({
     color: options.color || 0xff0000, 
     opacity: options.opacity || 1.0, 
-    transparent: options.transparent || false
+    side: THREE.DoubleSide,
+    // transparent: options.transparent || false
   })
   const mesh = new Mesh(geometry, material)
   return mesh
@@ -375,7 +376,8 @@ export function read_mesh_json(mesh_json: any, options: VisualizationOptions = {
   const geometry = loader.parse(mesh_json)
   // const material = new THREE.MeshBasicMaterial({color: options.color || 0x00ff00, side: THREE.DoubleSide})
   const material = new THREE.MeshPhysicalMaterial({
-    color: options.color || 0x00ff00, side: THREE.DoubleSide
+    color: options.color || 0x00ff00, 
+    side: THREE.DoubleSide
   })
   const mesh = new THREE.Mesh(geometry, material)
   return mesh
@@ -458,4 +460,63 @@ export function create_arrow_set(
   })
 
   return new THREE.LineSegments(geometry, material)
+}
+
+export function color_to_hex(color: number[]) {
+
+  // 确保颜色值在0-255范围内
+  const r = Math.min(255, Math.max(0, color[0]))
+  const g = Math.min(255, Math.max(0, color[1]))
+  const b = Math.min(255, Math.max(0, color[2]))
+  
+  // 转换为16进制
+  const r_hex = Math.floor(r).toString(16).padStart(2, '0')
+  const g_hex = Math.floor(g).toString(16).padStart(2, '0')
+  const b_hex = Math.floor(b).toString(16).padStart(2, '0')
+  
+  // 组合成完整的16进制颜色值
+  return parseInt(`0x${r_hex}${g_hex}${b_hex}`, 16)
+}
+
+export function create_cone(
+  x: number, y: number, z: number, radius: number, height: number, vec_x: number = 0, vec_y: number = 0, vec_z: number = 1,
+  options: VisualizationOptions = {}
+): Mesh {
+  
+  const geometry = new THREE.ConeGeometry(radius, height, options.segments || 32)
+  const material = new THREE.MeshBasicMaterial({
+    color: options.color !== undefined ? options.color : 0x000000,
+    transparent: options.transparent || false,
+    opacity: options.opacity || 1.0
+  })
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.position.set(x, y, z)
+
+  // 设置颜色
+  if (options.color !== undefined) {
+    material.color.setHex(options.color)
+  }
+
+  // 重置旋转
+  mesh.rotation.set(0, 0, 0)
+  mesh.quaternion.set(0, 0, 0, 1)
+
+  // 计算旋转
+  const direction = new THREE.Vector3(vec_x, vec_y, vec_z).normalize()
+  
+  // 创建一个从Y轴到目标方向的旋转
+  const up = new THREE.Vector3(0, 1, 0)
+  const quaternion = new THREE.Quaternion()
+  
+  // 如果方向向量是零向量，使用默认方向
+  if (direction.length() === 0) {
+    direction.set(0, 1, 0)
+  }
+  
+  quaternion.setFromUnitVectors(up, direction)
+  
+  // 应用方向旋转
+  mesh.quaternion.multiply(quaternion)
+
+  return mesh
 }

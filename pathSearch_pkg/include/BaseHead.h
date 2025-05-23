@@ -24,6 +24,8 @@ struct LocXyz
 
     LocXyz(int32_t x, int32_t y, int32_t z) : x(x), y(y), z(z) {}
 
+    LocXyz(const LocXyz &other) : x(other.x), y(other.y), z(other.z) {}
+
     bool operator==(const LocXyz &other) const
     {
         return x == other.x && y == other.y && z == other.z;
@@ -81,17 +83,19 @@ struct PathData
     std::vector<LocXyz> m_path;
     double m_radius;
     double m_cost;
+    double time_cost;
 
     PathData() = default;
-    
-    PathData(
-        const std::string &name,
-        const std::vector<LocXyz> &path,
-        const double radius)
+    PathData(const std::string &name)
     {
         m_name = name;
+    }
+
+    void set_path(const std::vector<LocXyz> &path, const double radius, const double time_cost)
+    {
         m_path = path;
         m_radius = radius;
+        this->time_cost = time_cost;
     }
 
     ~PathData() = default;
@@ -125,12 +129,9 @@ struct PathSetData
     PathSetData() = default;
     ~PathSetData() = default;
 
-    void add_path(
-        const std::string &name,
-        const std::vector<LocXyz> &nodes,
-        const double radius)
+    void add_path(PathData& path_data)
     {
-        m_paths.push_back(PathData(name, nodes, radius));
+        m_paths.push_back(path_data);
     }
 
     void estimate_cost()
@@ -290,31 +291,5 @@ struct CbsResult
     void reset()
     {
         paths.clear();
-    }
-};
-
-struct DynamicObstacleMap
-{
-    std::map<std::string, std::vector<ObstacleData>> dynamic_obstacle_map;
-
-    DynamicObstacleMap() = default;
-
-    DynamicObstacleMap(const DynamicObstacleMap &other) : dynamic_obstacle_map(other.dynamic_obstacle_map) {}
-    
-    ~DynamicObstacleMap() = default;
-
-    void add_obstacle(const std::string &group_name, const ObstacleData &obstacle)
-    {
-        dynamic_obstacle_map[group_name].push_back(obstacle);
-    }
-
-    const std::vector<ObstacleData>& get_obstacles(const std::string &group_name) const
-    {
-        return dynamic_obstacle_map.at(group_name);
-    }
-
-    bool has_obstacle(const std::string &group_name) const
-    {
-        return dynamic_obstacle_map.count(group_name) > 0;
     }
 };

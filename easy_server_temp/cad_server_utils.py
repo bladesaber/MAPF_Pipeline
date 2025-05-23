@@ -1,0 +1,448 @@
+import numpy as np
+from typing import Dict, List, Union, Tuple
+import json
+import h5py
+import gmsh
+import os
+
+import OCC.Core.TopoDS as TopoDS
+from OCC.Core.Tesselator import ShapeTesselator
+from OCC.Extend.TopologyUtils import is_edge, is_wire, discretize_edge, discretize_wire
+from OCC.Core.STEPControl import STEPControl_Reader, STEPControl_Writer, STEPControl_AsIs
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_Transform
+from OCC.Core.BRepOffsetAPI import BRepOffsetAPI_ThruSections, BRepOffsetAPI_MakeFilling
+from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Dir, gp_Ax2, gp_Circ, gp_Trsf, gp_Ax1, gp_OX, gp_OY, gp_OZ
+from OCC.Core.Geom import Geom_BSplineCurve
+from OCC.Core.GeomAPI import GeomAPI_PointsToBSpline
+from OCC.Core.TColgp import TColgp_Array1OfPnt
+from OCC.Core.TColStd import TColStd_Array1OfReal, TColStd_Array1OfInteger
+from OCC.Core.BRep import BRep_Builder
+from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
+from OCC.Core.GCPnts import GCPnts_UniformAbscissa
+from OCC.Core.GeomAbs import GeomAbs_C0
+
+
+class CadServerUtils:
+    @staticmethod
+    def export_edgedata_to_json(edge_hash: str, point_set: List) -> str:
+        """Export a set of points to a LineSegment buffergeometry"""
+        points_coordinates = []
+        for point in point_set:
+            points_coordinates.extend(iter(point))
+
+        edges_data = {
+            "metadata": {
+                "version": 4.4,
+                "type": "BufferGeometry",
+                "generator": "pythonocc",
+            },
+            "uuid": edge_hash,
+            "type": "BufferGeometry",
+            "data": {
+                "attributes": {
+                    "position": {
+                        "itemSize": 3,
+                        "type": "Float32Array",
+                        "array": points_coordinates,
+                    }
+                }
+            },
+        }
+        return edges_data
+
+    @staticmethod
+    def convert_shape_to_json(
+            name: str,
+            shape: Union[
+                TopoDS.TopoDS_Shape, TopoDS.TopoDS_Compound, TopoDS.TopoDS_Edge,
+                TopoDS.TopoDS_Wire, TopoDS.TopoDS_Face, TopoDS.TopoDS_Shell,
+                TopoDS.TopoDS_Solid, TopoDS.TopoDS_CompSolid
+            ],
+            export_edges: bool = False,
+            mesh_quality: float = 1.0
+    ) -> Dict:
+        """
+        Convert an OpenCASCADE shape to Three.js compatible JSON format.
+        
+        Args:
+            shape: The OpenCASCADE shape to convert
+            export_edges: Whether to export edges
+            mesh_quality: Quality of the mesh (default=1.0)
+            
+        Returns:
+            Dict containing the shape data and edges data in Three.js compatible format
+        """
+        # Handle edges and wires specially
+        if is_edge(shape):
+            pnts = discretize_edge(shape)
+            return {"edges": [CadServerUtils.export_edgedata_to_json(name, pnts)]}
+
+        elif is_wire(shape):
+            pnts = discretize_wire(shape)
+            wire_data = CadServerUtils.export_edgedata_to_json(name, pnts)
+            return {"edges": [wire_data]}
+        else:
+            # For other shapes, use tesselation
+            tess = ShapeTesselator(shape)
+            tess.Compute(compute_edges=export_edges, mesh_quality=mesh_quality, parallel=True)
+
+            # Get the main shape data
+            shape_data = {"shapes": [json.loads(tess.ExportShapeToThreejsJSONString(name))]}
+
+            # Handle edges if requested
+            if export_edges:
+                edges_data = []
+                nbr_edges = tess.ObjGetEdgeCount()
+
+                for i_edge in range(nbr_edges):
+                    nbr_vertices = tess.ObjEdgeGetVertexCount(i_edge)
+                    edge_point_set = [
+                        tess.GetEdgeVertex(i_edge, i_vert)
+                        for i_vert in range(nbr_vertices)
+                    ]
+                    edges_data.append(CadServerUtils.export_edgedata_to_json(f"{name}_edge_{i_edge}", edge_point_set))
+
+                shape_data["edges"] = edges_data
+
+            return shape_data
+
+    @staticmethod
+    def read_step(step_file: str):
+        reader = STEPControl_Reader()
+        reader.ReadFile(step_file)
+        reader.TransferRoot()
+        shape = reader.Shape()
+        return shape
+
+    @staticmethod
+    def write_step(shape: TopoDS.TopoDS_Shape, step_file: str):
+        writer = STEPControl_Writer()
+        writer.Transfer(shape, STEPControl_AsIs)
+        writer.Write(step_file)
+
+    @staticmethod
+    def create_bspline(
+            control_pcd: np.ndarray, degree: int, left_clamp: bool, right_clamp: bool,
+    ) -> Geom_BSplineCurve:
+        n_control = control_pcd.shape[0]
+        pnt_array = TColgp_Array1OfPnt(1, n_control)
+        for i, point in enumerate(control_pcd):
+            pnt_array.SetValue(i + 1, gp_Pnt(float(point[0]), float(point[1]), float(point[2])))
+
+        if left_clamp and right_clamp:
+            n_knot = (n_control + degree + 1) - 2 * (degree + 1) + 2
+        elif left_clamp and (not right_clamp):
+            n_knot = (n_control + degree + 1) - 1 * (degree + 1) + 1
+        elif (not left_clamp) and right_clamp:
+            n_knot = (n_control + degree + 1) - 1 * (degree + 1) + 1
+        else:
+            n_knot = n_control + degree + 1
+        knot = np.linspace(0.0, 1.0, n_knot)
+        knot_array = TColStd_Array1OfReal(1, n_knot)
+        for i, k_value in enumerate(knot):
+            # print(f"[INFO]: Setting knot index:{i + 1} k_value:{k_value}")
+            knot_array.SetValue(i + 1, k_value)
+
+        if left_clamp and right_clamp:
+            mul_value = np.ones(shape=(n_knot,), dtype=int)
+            mul_value[0] = degree + 1
+            mul_value[-1] = degree + 1
+        elif left_clamp and (not right_clamp):
+            mul_value = np.ones(shape=(n_knot,), dtype=int)
+            mul_value[0] = degree + 1
+        elif (not left_clamp) and right_clamp:
+            mul_value = np.ones(shape=(n_knot,), dtype=int)
+            mul_value[-1] = degree + 1
+        else:
+            mul_value = np.ones(shape=(n_knot,), dtype=int)
+
+        multiplicities_array = TColStd_Array1OfInteger(1, n_knot)
+        for i, v in enumerate(mul_value):
+            multiplicities_array.SetValue(i + 1, int(v))
+
+        profile = Geom_BSplineCurve(pnt_array, knot_array, multiplicities_array, degree, False)
+
+        return profile
+
+    @staticmethod
+    def make_OCC_edge(info: Dict) -> TopoDS.TopoDS_Edge:
+        if info['style'] == 'bspline':
+            points_array = np.array(info['control_points'])
+            curve = CadServerUtils.create_bspline(
+                control_pcd=points_array,
+                degree=info['degree'],
+                left_clamp=info['left_clamp'],
+                right_clamp=info['right_clamp']
+            )
+            return BRepBuilderAPI_MakeEdge(curve).Edge()
+
+        elif info['style'] == 'circle':
+            center = gp_Pnt(info['center'][0], info['center'][1], info['center'][2])
+            normal = gp_Dir(info['normal'][0], info['normal'][1], info['normal'][2])
+            axis = gp_Ax2(center, normal)
+            circle = gp_Circ(axis, info['radius'])
+            return BRepBuilderAPI_MakeEdge(circle).Edge()
+
+        elif info['style'] == 'arc_circle':
+            center = gp_Pnt(info['center'][0], info['center'][1], info['center'][2])
+            normal = gp_Dir(info['normal'][0], info['normal'][1], info['normal'][2])
+            axis = gp_Ax2(center, normal)
+            circle = gp_Circ(axis, info['radius'])
+            start_point = gp_Pnt(info['start_point'][0], info['start_point'][1], info['start_point'][2])
+            end_point = gp_Pnt(info['end_point'][0], info['end_point'][1], info['end_point'][2])
+            return BRepBuilderAPI_MakeEdge(circle, start_point, end_point).Edge()
+
+        elif info['style'] == 'multi_lines':
+            wire_builder = BRepBuilderAPI_MakeWire()
+            points = info['points']
+            for i in range(len(points) - 1):
+                p1 = gp_Pnt(points[i][0], points[i][1], points[i][2])
+                p2 = gp_Pnt(points[i + 1][0], points[i + 1][1], points[i + 1][2])
+                edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
+                wire_builder.Add(edge)
+
+            if len(points) == 2:
+                return wire_builder.Edge()
+            else:
+                return wire_builder.Wire()  # Note: This actually returns a wire
+
+        elif info['style'] == 'poly_line':
+            points = info['points']
+            pnt_array = TColgp_Array1OfPnt(1, len(points))
+            for i, pt in enumerate(points):
+                x, y, z = float(pt[0]), float(pt[1]), float(pt[2])
+                pnt_array.SetValue(i + 1, gp_Pnt(x, y, z))
+            curve = GeomAPI_PointsToBSpline(pnt_array).Curve()
+            edge = BRepBuilderAPI_MakeEdge(curve).Edge()
+            return edge
+
+        else:
+            raise ValueError(f"Unknown edge style: {info['style']}")
+
+    @staticmethod
+    def make_OCC_wire(info: Dict) -> TopoDS.TopoDS_Wire:
+        edge = CadServerUtils.make_OCC_edge(info)
+        if is_edge(edge):
+            return BRepBuilderAPI_MakeWire(edge).Wire()
+        else:
+            return edge
+
+    @staticmethod
+    def make_OCC_thruSections(path_info: List[Dict], ruled=True, isSolid=False) -> TopoDS.TopoDS_Shell:
+        wire_list: List[TopoDS.TopoDS_Wire] = []
+        for info in path_info:
+            wire = CadServerUtils.make_OCC_wire(info)
+            wire_list.append(wire)
+        generator = BRepOffsetAPI_ThruSections(isSolid, ruled)
+        for wire in wire_list:
+            generator.AddWire(wire)
+        generator.Build()
+        entity: TopoDS.TopoDS_Shell = generator.Shape()
+        return entity
+
+    @staticmethod
+    def divide_edge_by_nr_of_points(edge: TopoDS.TopoDS_Edge, n_pts):
+        """returns a nested list of parameters and points on the edge at the requested interval [(param, gp_Pnt),...]"""
+        curve_adapt = BRepAdaptor_Curve(edge)
+        _lbound, _ubound = curve_adapt.FirstParameter(), curve_adapt.LastParameter()
+        if n_pts <= 1:
+            # minimally two points or a Standard_ConstructionError is raised
+            raise AssertionError("minimally 2 points required")
+        npts = GCPnts_UniformAbscissa(curve_adapt, n_pts, _lbound, _ubound)
+        if npts.IsDone():
+            tmp = []
+            for i in range(1, npts.NbPoints() + 1):
+                param = npts.Parameter(i)
+                pnt = curve_adapt.Value(param)
+                tmp.append((param, pnt))
+            return tmp
+        raise ValueError("[ERROR]: divide_edge_by_nr_of_points Fail")
+
+    @staticmethod
+    def make_OCC_shell(boundary_infos: List[Dict], guide_infos: List[Dict]) -> TopoDS.TopoDS_Shell:
+        edge_list: List[TopoDS.TopoDS_Edge] = []
+        for info in boundary_infos:
+            edge = CadServerUtils.make_OCC_edge(info)
+            edge_list.append((edge, None))
+
+        brep_plate_builder = BRepOffsetAPI_MakeFilling()
+        brep_plate_builder.SetConstrParam(
+            0.0001, 0.001, 0.01, 0.01
+        )  # Tol2d=1.0, Tol3d=1.0, TolAng=1.0, TolCurv=1.0
+        brep_plate_builder.SetApproxParam(8, 240)  # MaxDeg=8, MaxSegments=9
+
+        for boundary_edge, constraint_face in edge_list:
+            if constraint_face is None:
+                brep_plate_builder.Add(boundary_edge, GeomAbs_C0)
+            else:
+                brep_plate_builder.Add(boundary_edge, constraint_face, GeomAbs_C0)
+
+        for info in guide_infos:
+            if info['type'] == 'edge':
+                edge = CadServerUtils.make_OCC_edge(info)
+                for pt in CadServerUtils.divide_edge_by_nr_of_points(edge, info['sample_num'])[2:-2]:  # 不可以包含起点与终点
+                    brep_plate_builder.Add(pt[1])
+
+            elif info['type'] == 'points':
+                for pt in info['points']:
+                    x, y, z = float(pt[0]), float(pt[1]), float(pt[2])
+                    brep_plate_builder.Add(gp_Pnt(x, y, z))
+
+        brep_plate_builder.Build()
+        face: TopoDS.TopoDS_Face = brep_plate_builder.Shape()
+
+        builder = BRep_Builder()
+        shell = TopoDS.TopoDS_Shell()
+        builder.MakeShell(shell)
+        builder.Add(shell, face)
+        return shell
+
+    @staticmethod
+    def convert_h5_to_json(h5_data: h5py.File) -> Dict:
+        def extract_group(group) -> Dict:
+            result = {}
+            for key in group.keys():
+                if isinstance(group[key], h5py.Group):
+                    result[key] = extract_group(group[key])
+                elif isinstance(group[key], h5py.Dataset):
+                    result[key] = group[key][:].tolist()
+            return result
+
+        return extract_group(h5_data)
+
+
+class GmshStepReader:
+    _initialized = False
+
+    def __init__(self, step_file: str) -> None:
+        if not GmshStepReader._initialized:
+            try:
+                gmsh.initialize()
+                GmshStepReader._initialized = True
+            except ValueError:
+                # If initialization fails, assume Gmsh is already initialized
+                GmshStepReader._initialized = True
+
+        self.name = os.path.basename(step_file).split('.')[0]
+        self.step_file = step_file
+        self.read_step_file()
+
+        self.model_name = gmsh.model.getCurrent()
+        self.point_cfgs = self.get_entities(0)
+        self.edge_cfgs = self.get_entities(1)
+        self.face_cfgs = self.get_entities(2)
+        self.volume_cfgs = self.get_entities(3)
+
+    def read_step_file(self) -> Dict:
+        gmsh.merge(self.step_file)
+        gmsh.model.occ.removeAllDuplicates()
+        gmsh.model.occ.synchronize()
+
+    def get_entities(self, dim: int):
+        entity_cfgs = {}
+        entities = gmsh.model.getEntities(dim)
+        for entity_dim, entity_id in entities:
+            entity_type = gmsh.model.getType(entity_dim, entity_id)
+            entity_name = gmsh.model.getEntityName(entity_dim, entity_id)
+            if entity_name == '':
+                gmsh.model.setEntityName(
+                    entity_dim, entity_id, f'{self.model_name}_dim{entity_dim}_id{entity_id}'
+                )
+            entity_name = gmsh.model.getEntityName(entity_dim, entity_id)
+
+            entity_cfgs[entity_name] = {
+                'dim': entity_dim,
+                'type': entity_type,
+                'id': entity_id
+            }
+        return entity_cfgs
+
+    def define_group(self, dim: int, tags: list[int], group_name: str) -> int:
+        """return the tag of the physical group"""
+        return gmsh.model.addPhysicalGroup(dim, tags, name=group_name)
+
+    def define_volume_group(self):
+        return self.define_group(dim=3, tags=[list(self.volume_cfgs.values())[0]['id']], group_name='volume')
+
+    def generate_mesh(self, dim: int, max_size: float, min_size: float):
+        gmsh.option.setNumber("Mesh.MeshSizeMax", max_size)
+        gmsh.option.setNumber("Mesh.MeshSizeMin", min_size)
+        gmsh.model.mesh.generate(dim)
+
+    def export_su2(self, output_file: str):
+        assert output_file.endswith('.su2'), "Output file must have a .su2 extension"
+        gmsh.write(output_file)
+
+    def set_current_model(self, entity_name: str):
+        gmsh.model.setCurrent(entity_name)
+
+    def extract_face_to_step(self, entity_name: str, output_file: str):
+        if entity_name not in self.face_cfgs:
+            return {'success': False, 'message': f"Entity {entity_name} is not a face"}
+
+        gmsh.model.add(entity_name)
+        gmsh.model.occ.importShapes(self.step_file)
+        gmsh.model.occ.synchronize()
+
+        # Remove all volumes at first and recursive must be False
+        for vol_name, vol_cfg in self.volume_cfgs.items():
+            gmsh.model.occ.remove([(vol_cfg['dim'], vol_cfg['id'])], recursive=False)
+
+        # Get all faces except the current one
+        for face_name, face_cfg in self.face_cfgs.items():
+            if face_name != entity_name:
+                gmsh.model.occ.remove([(face_cfg['dim'], face_cfg['id'])], recursive=True)
+        gmsh.model.occ.synchronize()
+
+        gmsh.write(output_file)
+        gmsh.model.remove()
+
+        return {'success': True, 'file_path': output_file}
+
+    def close(self):
+        if GmshStepReader._initialized:
+            try:
+                gmsh.finalize()
+                GmshStepReader._initialized = False
+            except:
+                pass
+
+
+def debug_occ():
+    from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+    cad_server_utils = CadServerUtils()
+    box = BRepPrimAPI_MakeBox(10, 10, 10).Shape()
+    res_json = cad_server_utils.convert_shape_to_json('test_box', box, export_edges=True)
+    with open('/home/admin123456/Desktop/work/flask_server/test_box.json', 'w') as f:
+        json.dump(res_json, f)
+
+
+def debug_gmsh():
+    step_file = '/home/admin123456/Desktop/work/flask_server/test.step'
+    save_dir = '/home/admin123456/Desktop/work/flask_server/test'
+
+    step_obj = GmshStepReader(step_file)
+
+    # for face_name, face_cfg in step_obj.face_cfgs.items():
+    #     step_obj.extract_face_to_step(face_name, os.path.join(save_dir, f"{face_name}.step"))
+    #     break
+
+    face_ids = []
+    for face_name, face_cfg in step_obj.face_cfgs.items():
+        face_ids.append(face_cfg['id'])
+    tag1_idxs = np.random.choice(face_ids, size=2, replace=False)
+    tag2_idxs = list(set(face_ids) - set(tag1_idxs))
+
+    step_obj.define_group(dim=2, tags=tag1_idxs, group_name='tag1')
+    step_obj.define_group(dim=2, tags=tag2_idxs, group_name='tag2')
+    step_obj.define_volume_group()
+
+    step_obj.generate_mesh(dim=3, max_size=0.1, min_size=0.01)
+    step_obj.export_su2(os.path.join(save_dir, 'test.su2'))
+
+    step_obj.close()
+
+
+if __name__ == "__main__":
+    # debug_occ()
+    debug_gmsh()

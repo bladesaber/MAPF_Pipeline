@@ -124,67 +124,11 @@ namespace GridSpace
 
     std::tuple<bool, double> DistanceGrid::is_obstacle(LocXyz loc, double threshold) const
     {
+        // TODO: Very important, it should be consist with definition of ConflictBaseSearchNode::detect_conflict_between_groups
         double distance = m_distances[loc.z * m_slice_size + loc.y * m_x_size + loc.x] / m_scale_factor;
-        return std::make_tuple(distance <= threshold + 1e-1, distance);
+        return std::make_tuple(distance < threshold, distance);
     }
     
-    void DistanceGrid::add_auto_obstacle(LocXyz loc, double radius, double thickness)
-    {
-        // TODO wrong implementation
-        int outer_size = std::ceil((radius + thickness) / m_grid_resolution);
-        
-        // Pre-calculate squared values and grid resolution squared for efficiency
-        double inner_radius_sq = radius * radius;
-        double outer_radius_sq = (radius + thickness) * (radius + thickness);
-        double grid_res_sq = m_grid_resolution * m_grid_resolution;
-
-        // Create a vector to store all valid points to avoid critical section
-        std::vector<std::pair<LocXyz, double>> valid_points;
-        valid_points.reserve(outer_size * outer_size * outer_size / 2); // Rough estimate
-
-        // Single loop through a cube that encompasses the sphere
-        #pragma omp parallel
-        {
-            std::vector<std::pair<LocXyz, double>> local_points;
-            local_points.reserve(outer_size * outer_size * outer_size); // Local buffer
-
-            #pragma omp for collapse(3)
-            for (int x = -outer_size; x <= outer_size; ++x)
-            {
-                for (int y = -outer_size; y <= outer_size; ++y)
-                {
-                    for (int z = -outer_size; z <= outer_size; ++z)
-                    {
-                        // Calculate squared distance using pre-computed grid_res_sq
-                        double dist_sq = (x * x + y * y + z * z) * grid_res_sq;
-                        
-                        // Check if point is within the shell
-                        if (dist_sq >= inner_radius_sq && dist_sq <= outer_radius_sq)
-                        {
-                            double distance = std::sqrt(dist_sq);
-                            LocXyz offset{x, y, z};
-                            
-                            // TODO: change "distance" to distance to box of obstacle (center is loc, size is radius)
-                            local_points.emplace_back(loc + offset, distance);
-                        }
-                    }
-                }
-            }
-
-            // Merge local points into global vector
-            #pragma omp critical
-            {
-                valid_points.insert(valid_points.end(), local_points.begin(), local_points.end());
-            }
-        }
-
-        // Set obstacles in a single pass
-        for (const auto& point : valid_points)
-        {
-            set_obstacle(point.first, point.second);
-        }
-    }
-
     void BitGrid::set_obstacle(LocXyz loc, double weight)
     {
         size_t bit_pos = get_bit_position(loc);
@@ -263,7 +207,7 @@ namespace GridSpace
         bool is_obstacle = false;
         for (int i = 0; i < indices.size(); ++i)
         {
-            if (distances[i] <= threshold + std::get<1>(m_data[indices[i]]))
+            if (distances[i] < threshold + std::get<1>(m_data[indices[i]]))
             {
                 min_distance = std::min(min_distance, distances[i]);
                 is_obstacle = true;

@@ -19,8 +19,9 @@ from cad_server_utils import CadServerUtils
 from cad_server_utils import GmshStepReader
 from scripts_py.version_9.simulator.su2_simulator import Su2Simulator
 from server_utils import StreamDataResponse, StreamTaskResponse
-from server_utils import PathSearchRunner
-from server_utils import SocketManager, SocketDataResponse, SocketTaskResponse
+
+from response_utils import StreamThreadTaskResponse, StreamProcessTaskResponse
+from path_server_utils import PathServerUtils, ProjectInfo
 
 # Create Flask app
 app = Flask(__name__)
@@ -538,6 +539,288 @@ def simulate():
     return Response(generate(), mimetype='text/event-stream')
 
 
+@app.route('/path_search/clear_cache', methods=['POST'])
+def clear_cache():
+    data = request.json
+    project_ids = data.get('project_ids')
+    for project_id in project_ids:
+        if project_id in PathServerUtils.project_map:
+            del PathServerUtils.project_map[project_id]
+    return jsonify({'is_success': True})
+
+
+@app.route('/path_search/upload_obstacle_pcd', methods=['POST'])
+def upload_obstacle_pcd():
+    data = request.json
+    
+    # Get session ID from request headers or generate one
+    project_id = data.get('project_id')
+    chunk_index = data.get('chunk_index', 0)
+    total_chunks = data.get('total_chunks', 1)
+    is_last_chunk = data.get('is_last_chunk', True)
+    obstacle_pcd = np.array(data.get('obstacle_pcd', []))
+    x_size = data.get('x_size')
+    y_size = data.get('y_size')
+    z_size = data.get('z_size')
+    resolution = data.get('resolution')
+
+    if project_id not in PathServerUtils.project_map:
+        project_info = ProjectInfo()
+        project_info.obstacle_pcd = []
+        project_info.x_size = x_size + 1  # be careful with the x_size
+        project_info.y_size = y_size + 1  # be careful with the y_size
+        project_info.z_size = z_size + 1  # be careful with the z_size
+        project_info.resolution = resolution
+        PathServerUtils.project_map[project_id] = project_info
+    
+    PathServerUtils.project_map[project_id].obstacle_pcd.extend(obstacle_pcd)
+
+    return jsonify({
+        'message': f'Received chunk {chunk_index + 1} of {total_chunks}',
+        'is_success': True
+    })
+
+
+@app.route('/path_search/request_inner_xyzd', methods=['POST'])
+def request_inner_xyzd():
+    data = request.json
+    project_id = data.get('project_id')
+    pipe_data = data.get('pipe_data')
+
+    if project_id not in PathServerUtils.project_map:
+        return jsonify({'error': 'No project data found'}), 400
+    
+    if len(PathServerUtils.project_map[project_id].obstacle_pcd) == 0:
+        return jsonify({'error': 'No obstacle pcd provided'}), 400
+
+    project_info = PathServerUtils.project_map[project_id]
+    obstacle_pcd = np.array(project_info.obstacle_pcd)
+
+    project_info.inner_xyzd = PathServerUtils.compute_inner_xyzd(
+        x_size=project_info.x_size, 
+        y_size=project_info.y_size, 
+        z_size=project_info.z_size, 
+        resolution=project_info.resolution,
+        obstacle_pcd=obstacle_pcd
+    )
+    project_info.obstacle_pcd.clear()
+    PathServerUtils.init_env(project_id, pipe_data)
+
+    def generate():
+        try:
+            data = project_info.inner_xyzd
+
+            def get_data_size_callback():
+                return len(data)
+                    
+            def get_chunk_data_callback(data_index, chunk_size):
+                return data[data_index:data_index + chunk_size].tolist()
+                        
+            stream_data_response = StreamDataResponse(
+                name='request_inner_xyzd', 
+                get_data_size_callback=get_data_size_callback, 
+                get_chunk_data_callback=get_chunk_data_callback, 
+                chunk_size=5000, time_interval=0.2
+            )
+            yield from stream_data_response.generate()
+
+            time.sleep(0.5)
+            yield json.dumps({'total_finished': True})
+
+        except Exception as e:
+            print(f'[Error]: {str(e)}')
+            yield json.dumps({'error': str(e)})
+            return
+                
+    return Response(generate(), mimetype='text/event-stream')
+
+
+@app.route('/path_search/upload_task_cache', methods=['POST'])
+def upload_task_cache():
+    data = request.json
+    project_id = data.get('project_id')
+    cache_data = data.get('cache_data')
+
+    if project_id not in PathServerUtils.project_map:
+        return jsonify({'error': 'No project data found'}), 400
+    
+    PathServerUtils.update_task_cache(project_id, cache_data)
+    return jsonify({'is_success': True})
+
+
+@app.route('/path_search/run_cell_task', methods=['POST'])
+def run_cell_task():
+    data = request.json
+    project_id = data.get('project_id')
+    task_name = data.get('task_name')
+    priority_name = data.get('priority_name')
+    group_name = data.get('group_name')
+    cell_name = data.get('cell_name')
+    response_type = data.get('response_type')
+    max_running_time = data.get('max_running_time')
+
+    if project_id not in PathServerUtils.project_map:
+        return jsonify({'error': 'No project data found'}), 400
+
+    if response_type == 'single':
+        result = PathServerUtils.run_cell_task(project_id, task_name, priority_name, group_name, cell_name)
+        return jsonify(result)
+    
+    elif response_type == 'stream':
+        def generate():
+            try:
+                def task_callback(data_queue):
+                    time.sleep(5.0)
+                    result = PathServerUtils.run_cell_task(project_id, task_name, priority_name, group_name, cell_name)
+                    data_queue.put({
+                        'is_finished': True,
+                        'result': result
+                    })
+                
+                task = StreamThreadTaskResponse(
+                    name='run_cell_task', 
+                    callback_func=task_callback, 
+                    interval_time=0.2,
+                    min_yield_interval=0.1,
+                    max_running_time=max_running_time
+                )
+                yield from task.start()
+
+                result = {
+                    'name': 'run_cell_task',
+                    'total_finished': True,
+                    'result': task.result['result']
+                }
+                time.sleep(0.25)
+                yield json.dumps(result)
+
+            except Exception as e:
+                yield json.dumps({
+                    'name': 'run_cell_task',
+                    'total_finished': True,
+                    'error': str(e)
+                })
+                return
+            
+        return Response(generate(), mimetype='text/event-stream')
+    else:
+        return jsonify({'error': 'Invalid response type'}), 400
+
+
+@app.route('/path_search/run_group_task', methods=['POST'])
+def run_group_task():
+    data = request.json
+    project_id = data.get('project_id')
+    task_name = data.get('task_name')
+    priority_name = data.get('priority_name')
+    group_name = data.get('group_name')
+    response_type = data.get('response_type')
+    max_running_time = data.get('max_running_time')
+
+    if project_id not in PathServerUtils.project_map:
+        return jsonify({'error': 'No project data found'}), 400
+
+    if response_type == 'single':
+        result = PathServerUtils.run_group_task(project_id, task_name, priority_name, group_name)
+        return jsonify(result)
+    
+    elif response_type == 'stream':
+        def generate():
+            try:
+                def task_callback(data_queue):
+                    result = PathServerUtils.run_group_task(project_id, task_name, priority_name, group_name)
+                    data_queue.put({
+                        'is_finished': True,
+                        'result': result
+                    })
+                
+                task = StreamThreadTaskResponse(
+                    name='run_group_task', 
+                    callback_func=task_callback, 
+                    interval_time=0.2,
+                    min_yield_interval=0.1,
+                    max_running_time=max_running_time
+                )
+                yield from task.start()
+
+                result = {
+                    'name': 'run_group_task',
+                    'total_finished': True,
+                    'result': task.result['result']
+                }
+                time.sleep(0.25)
+                yield json.dumps(result)
+
+            except Exception as e:
+                yield json.dumps({
+                    'name': 'run_group_task',
+                    'total_finished': True,
+                    'error': str(e)
+                })
+                return
+            
+        return Response(generate(), mimetype='text/event-stream')
+    else:
+        return jsonify({'error': 'Invalid response type'}), 400
+
+
+@app.route('/path_search/run_priority_task', methods=['POST'])
+def run_priority_task():
+    data = request.json
+    project_id = data.get('project_id')
+    task_name = data.get('task_name')
+    priority_name = data.get('priority_name')
+    response_type = data.get('response_type')
+
+    if project_id not in PathServerUtils.project_map:
+        return jsonify({'error': 'No project data found'}), 400
+
+    if response_type == 'single':
+        result = PathServerUtils.run_priority_task(project_id, task_name, priority_name)
+        return jsonify(result)
+
+    elif response_type == 'stream':
+        def generate():
+            try:
+                task_callback = partial(
+                    PathServerUtils.run_priority_task,
+                    project_id=project_id,
+                    task_name=task_name,
+                    priority_name=priority_name,
+                    mode='stream'
+                )
+                
+                task = StreamProcessTaskResponse(
+                    name='run_priority_task', 
+                    callback_func=task_callback, 
+                    interval_time=0.2,
+                    min_yield_interval=0.1,
+                    max_running_time=1000000
+                )
+                yield from task.start()
+
+                result = {
+                    'name': 'run_priority_task',
+                    'total_finished': True,
+                    'result': task.result['result']
+                }
+                time.sleep(0.25)
+                print('result:', result)
+                yield json.dumps(result)
+
+            except Exception as e:
+                yield json.dumps({
+                    'name': 'run_priority_task',
+                    'total_finished': True,
+                    'error': str(e)
+                })
+                return
+            
+        return Response(generate(), mimetype='text/event-stream')
+    else:
+        return jsonify({'error': 'Invalid response type'}), 400
+
+'''
 @sock.route('/path_search/run')
 def path_search_run(ws):
     socket_manager = SocketManager(ws)
@@ -661,7 +944,7 @@ def path_search_run(ws):
     finally:
         SocketManager.remove_socket(socket_manager)
         print(f"[Debug]: Connection {socket_manager.id} closed")
-            
+'''
 
 if __name__ == '__main__':
     print('Server is running on ws://192.168.110.54:9998')

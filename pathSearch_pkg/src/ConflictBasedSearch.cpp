@@ -34,7 +34,9 @@ namespace SearchSpace
             double distance = distances[j_index][0];
             double radius0 = group_data_i.tree.get_weight(i_index);
             double radius1 = group_data_j.tree.get_weight(j_index);
-            if (distance <= radius0 + radius1)
+
+            // TODO: Very important, it should be consist with definition of conflict detection in SearchGrid::is_obstacle
+            if (distance < radius0 + radius1)
             {
                 Conflict conflict;
                 conflict.group0 = group_data_i.name;
