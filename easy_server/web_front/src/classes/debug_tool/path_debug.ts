@@ -143,13 +143,13 @@ export function generateRandomPipes(
     rescale_factor: number
 ): {
   x: number, y: number, z: number, radius: number, face: string, 
-  vector_x: number, vector_y: number, vector_z: number
+  vector_x: number, vector_y: number, vector_z: number, pipe_mode: "inlet" | "outlet" | "intermediate"
 }[] {
   const min_spacing = Math.max(x_size, y_size, z_size) * 0.25;
   const faces = ['left', 'right', 'top', 'bottom', 'front', 'back'];
   let pipes: {
     x: number, y: number, z: number, radius: number, face: string, 
-    vector_x: number, vector_y: number, vector_z: number
+    vector_x: number, vector_y: number, vector_z: number, pipe_mode: "inlet" | "outlet" | "intermediate"
   }[] = [];
   
   // Generate inlet pipe
@@ -171,7 +171,8 @@ export function generateRandomPipes(
     face: inlet_face, 
     vector_x: inlet_pipe.vector_x, 
     vector_y: inlet_pipe.vector_y, 
-    vector_z: inlet_pipe.vector_z
+    vector_z: inlet_pipe.vector_z,
+    pipe_mode: 'inlet'
   });
   
   // Generate outlet pipes  
@@ -209,7 +210,8 @@ export function generateRandomPipes(
         face: outlet_pipe!.face, 
         vector_x: outlet_pipe!.vector_x, 
         vector_y: outlet_pipe!.vector_y, 
-        vector_z: outlet_pipe!.vector_z
+        vector_z: outlet_pipe!.vector_z,
+        pipe_mode: 'outlet'
       });
     }
   }

@@ -35,6 +35,7 @@ namespace pybind_modules
             .def_readonly("radius", &PathData::m_radius)
             .def_readonly("cost", &PathData::m_cost)
             .def_readonly("time_cost", &PathData::time_cost)
+            .def("estimate_cost", &PathData::estimate_cost)
             .def("get_size", &PathData::get_size);
 
         // ------ PathSetData
@@ -47,6 +48,7 @@ namespace pybind_modules
         // ------ CbsResult
         py::class_<CbsResult>(m, "CbsResult")
             .def(py::init<>())
+            .def_readonly("m_conflict_size", &CbsResult::m_conflict_size)
             .def_readonly("paths", &CbsResult::paths);
 
         // ------ Conflict
@@ -111,7 +113,8 @@ namespace pybind_modules
             .def("set_obstacle", &GridSpace::DistanceGrid::set_obstacle, py::arg("loc"), py::arg("distance"))
             .def("clear_obstacle", &GridSpace::DistanceGrid::clear_obstacle, py::arg("loc"))
             .def("is_obstacle", &GridSpace::DistanceGrid::is_obstacle, py::arg("loc"), py::arg("threshold") = 0.0)
-            .def("preprocess", &GridSpace::DistanceGrid::preprocess);
+            .def("preprocess", &GridSpace::DistanceGrid::preprocess)
+            .def("set_obstacles", &GridSpace::DistanceGrid::set_obstacles, py::arg("locs"), py::arg("distances"));
 
         // ------ BitGrid
         py::class_<GridSpace::BitGrid, GridSpace::SearchGrid>(m, "BitGrid")

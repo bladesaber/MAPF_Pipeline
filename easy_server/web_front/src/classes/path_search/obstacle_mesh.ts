@@ -3,16 +3,20 @@ import * as THREE from "three";
 import { MeshObj } from "../mesh_type";
 import { remove_mesh, add_mesh, create_points, color_to_hex } from "@/utils/visulize_utils";
 import { create_sphere } from "@/utils/visulize_utils";
+import { pass } from "three/tsl";
 
 export class ObstacleMesh extends MeshObj {
+    relax_groups: string[] = [];
     discretize_points: number[][] = [];
+    discretize_radius: number[] = [];
     discretize_mesh: THREE.Points | null = null;
     discretize_source: string = '';
     color: number[] = [0, 0, 0];
 
-    constructor(name: string, color: number[]) {
+    constructor(name: string, color: number[], relax_groups: string[]) {
         super(name);
         this.color = color;
+        this.relax_groups = relax_groups;
     }
 
     remove_mesh(scene: THREE.Scene): void {
@@ -40,14 +44,30 @@ export class ObstacleMesh extends MeshObj {
         return this.discretize_source === source;
     }
 
-    discrete(scene: THREE.Scene, resolution: number, source: string): void {
+    discrete(
+        scene: THREE.Scene, resolution: number, source: string,
+        pipe_dict: { x: number, y: number, z: number, radius: number }[]
+    ): void {
         if (this.discretize_mesh !== null) {
             remove_mesh(scene, this.discretize_mesh!.name);
             this.discretize_mesh!.geometry.dispose();
         }
         
         resolution = this.compute_resolution(resolution);
-        this.discretize_points = this.sample_surface_points(resolution);
+        [this.discretize_points, this.discretize_radius] = this.sample_surface_points(resolution);
+
+        this.discretize_points = this.discretize_points.filter(point => {
+            const [x, y, z] = point;
+            // Check if point conflicts with any pipe
+            return !pipe_dict.some(pipe => {
+                const dx = x - pipe.x;
+                const dy = y - pipe.y;
+                const dz = z - pipe.z;
+                const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                return distance <= pipe.radius + 0.25;
+            });
+        });
+
         this.discretize_mesh = create_points(this.discretize_points, {
             color: color_to_hex(this.color),
             size: 0.5
@@ -61,7 +81,7 @@ export class ObstacleMesh extends MeshObj {
         return resolution;
     }
 
-    sample_surface_points(resolution: number): number[][] {
+    sample_surface_points(resolution: number): [number[][], number[]] {
         throw new Error("Not implemented");
     }
 }
@@ -80,9 +100,10 @@ export class CylinderObstacle extends ObstacleMesh {
         name: string, color: number[],
         x: number, y: number, z: number, radius: number, height: number,
         vector_x: number, vector_y: number, vector_z: number,
+        relax_groups: string[],
         scene: THREE.Scene
     ) {
-        super(name, color);
+        super(name, color, relax_groups);
         this.x = x;
         this.y = y;
         this.z = z;
@@ -122,7 +143,7 @@ export class CylinderObstacle extends ObstacleMesh {
         super.add_mesh(scene);
     }
 
-    sample_surface_points(resolution: number): number[][] {
+    sample_surface_points(resolution: number): [number[][], number[]] {
         const points: number[][] = [];
 
         // Calculate number of segments for side and caps
@@ -200,7 +221,12 @@ export class CylinderObstacle extends ObstacleMesh {
         points.push(localToWorld(0, 0, -this.height / 2).toArray());
         points.push(localToWorld(0, 0, this.height / 2).toArray());
 
-        return points;
+        const radius = []
+        for (let i = 0; i < points.length; i++) {
+            radius.push(0.0);
+        }
+
+        return [points, radius];
     }
 
     compute_resolution(resolution: number): number {
@@ -222,6 +248,7 @@ export class CylinderObstacle extends ObstacleMesh {
             vector_z: this.vector_z,
             color: this.color,
             type: 'Cylinder',
+            relax_groups: this.relax_groups,
         };
     }
 }
@@ -239,9 +266,10 @@ export class BoxObstacle extends ObstacleMesh {
         xmin: number, xmax: number,
         ymin: number, ymax: number,
         zmin: number, zmax: number,
+        relax_groups: string[],
         scene: THREE.Scene
     ) {
-        super(name, color);
+        super(name, color, relax_groups);
         this.xmin = xmin;
         this.xmax = xmax;
         this.ymin = ymin;
@@ -281,7 +309,7 @@ export class BoxObstacle extends ObstacleMesh {
         super.add_mesh(scene);
     }
 
-    sample_surface_points(resolution: number): number[][] {
+    sample_surface_points(resolution: number): [number[][], number[]] {
         const points: number[][] = [];
         const xSegments = Math.max(2, Math.floor((this.xmax - this.xmin) / resolution));
         const ySegments = Math.max(2, Math.floor((this.ymax - this.ymin) / resolution));
@@ -317,7 +345,13 @@ export class BoxObstacle extends ObstacleMesh {
                 points.push([xPos, this.ymax, zPos]); // Top face
             }
         }
-        return points;
+
+        const radius = []
+        for (let i = 0; i < points.length; i++) {
+            radius.push(0.0);
+        }
+
+        return [points, radius];
     }
 
     compute_resolution(resolution: number): number {
@@ -338,6 +372,7 @@ export class BoxObstacle extends ObstacleMesh {
             zmax: this.zmax,
             color: this.color,
             type: 'Box',
+            relax_groups: this.relax_groups,
         };
     }
 }
@@ -345,8 +380,8 @@ export class BoxObstacle extends ObstacleMesh {
 export class PointsObstacle extends ObstacleMesh {
     points: number[][] = [];
 
-    constructor(name: string, color: number[], points: number[][], scene: THREE.Scene) {
-        super(name, color);
+    constructor(name: string, color: number[], points: number[][], relax_groups: string[], scene: THREE.Scene) {
+        super(name, color, relax_groups);
         this.points = points;
         this.add_mesh(scene);
     }
@@ -362,8 +397,12 @@ export class PointsObstacle extends ObstacleMesh {
         super.add_mesh(scene);
     }
 
-    sample_surface_points(resolution: number): number[][] {
-        return this.points;
+    sample_surface_points(resolution: number): [number[][], number[]] {
+        const radius = []
+        for (let i = 0; i < this.points.length; i++) {
+            radius.push(0.0);
+        }
+        return [this.points, radius];
     }
 
     toJSON() {
@@ -372,6 +411,7 @@ export class PointsObstacle extends ObstacleMesh {
             points: this.points,
             color: this.color,
             type: 'Points',
+            relax_groups: this.relax_groups,
         };
     }
 }
@@ -380,8 +420,8 @@ export class SpheresObstacle extends ObstacleMesh {
     points: number[][] = [];
     radius: number[] = [];
 
-    constructor(name: string, color: number[], points: number[][], radius: number[], scene: THREE.Scene) {
-        super(name, color);
+    constructor(name: string, color: number[], points: number[][], radius: number[], relax_groups: string[], scene: THREE.Scene) {
+        super(name, color, relax_groups);
         this.points = points;
         this.radius = radius;
         this.add_mesh(scene);
@@ -401,7 +441,7 @@ export class SpheresObstacle extends ObstacleMesh {
         super.add_mesh(scene);
     }
 
-    sample_surface_points(resolution: number): number[][] {
+    sample_surface_points(resolution: number): [number[][], number[]] {
         const points: number[][] = [];
         for (let i = 0; i < this.points.length; i++) {
             const x = this.points[i][0];
@@ -428,7 +468,11 @@ export class SpheresObstacle extends ObstacleMesh {
                 }
             }
         }
-        return points;
+        const radius = []
+        for (let i = 0; i < points.length; i++) {
+            radius.push(0.0);
+        }
+        return [points, radius];
     }
 
     compute_sub_resolution(resolution: number, radius: number): number {
@@ -443,6 +487,7 @@ export class SpheresObstacle extends ObstacleMesh {
             radius: this.radius,
             color: this.color,
             type: 'Spheres',
+            relax_groups: this.relax_groups,
         };
     }
 }
@@ -451,8 +496,8 @@ export class SquaresObstacle extends ObstacleMesh {
     points: number[][] = [];
     size: number[] = [];
 
-    constructor(name: string, color: number[], points: number[][], size: number[], scene: THREE.Scene) {
-        super(name, color);
+    constructor(name: string, color: number[], points: number[][], size: number[], relax_groups: string[], scene: THREE.Scene) {
+        super(name, color, relax_groups);
         this.points = points;
         this.size = size;
         this.add_mesh(scene);
@@ -475,7 +520,7 @@ export class SquaresObstacle extends ObstacleMesh {
         super.add_mesh(scene);
     }
 
-    sample_surface_points(resolution: number): number[][] {
+    sample_surface_points(resolution: number): [number[][], number[]] {
         const points: number[][] = [];
         for (let i = 0; i < this.points.length; i++) {
             const size = this.size[i];
@@ -514,7 +559,11 @@ export class SquaresObstacle extends ObstacleMesh {
                 }
             }
         }
-        return points;
+        const radius = []
+        for (let i = 0; i < points.length; i++) {
+            radius.push(0.0);
+        }
+        return [points, radius];
     }
 
     toJSON() {
@@ -524,6 +573,70 @@ export class SquaresObstacle extends ObstacleMesh {
             size: this.size,
             color: this.color,
             type: 'Squares',
+            relax_groups: this.relax_groups,
+        };
+    }
+}
+
+export class SphereLineObstacle extends ObstacleMesh {
+    points: number[][] = [];
+    radius: number[] = [];
+
+    constructor(name: string, color: number[], points: number[][], radius: number[], relax_groups: string[], scene: THREE.Scene) {
+        super(name, color, relax_groups);
+        this.points = points;
+        this.radius = radius;
+        this.add_mesh(scene);
+    }
+
+    add_mesh(scene: THREE.Scene): void {
+        for (let i = 0; i < this.points.length; i++) {
+            const sphere = create_sphere(
+                this.points[i][0], this.points[i][1], this.points[i][2], this.radius[i], 
+                {
+                    color: color_to_hex(this.color),
+                    size: this.radius[i],
+                    output_mesh: false
+                }
+                // {
+                //     color: color_to_hex(this.color),
+                //     size: this.radius[i],
+                //     output_mesh: true,
+                //     transparent: true,
+                //     opacity: 0.5
+                // }
+            );
+            sphere.name = `${this.name}_${i}`;
+            this.mesh_dict[sphere.name] = sphere;
+        }
+        super.add_mesh(scene);
+    }
+
+    sample_surface_points(resolution: number): [number[][], number[]] {
+        return [this.points, this.radius];
+    }
+
+    discrete(
+        scene: THREE.Scene, resolution: number, source: string,
+        pipe_dict: { x: number, y: number, z: number, radius: number }[]
+    ): void {
+        if (this.discretize_mesh !== null) {
+            remove_mesh(scene, this.discretize_mesh!.name);
+            this.discretize_mesh!.geometry.dispose();
+        }
+        resolution = this.compute_resolution(resolution);
+        [this.discretize_points, this.discretize_radius] = this.sample_surface_points(resolution);
+        this.discretize_source = source;
+    }
+
+    toJSON() {
+        return {
+            name: this.name,
+            points: this.points,
+            radius: this.radius,
+            color: this.color,
+            type: 'SphereLine',
+            relax_groups: this.relax_groups,
         };
     }
 }

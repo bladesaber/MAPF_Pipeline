@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 import { MeshObj } from "../mesh_type";
-import { create_points, create_colored_points } from "@/utils/visulize_utils";
+import { create_points, create_colored_points, color_to_hex } from "@/utils/visulize_utils";
 import { add_mesh, remove_mesh } from "@/utils/visulize_utils";
 
 export class GridMesh extends MeshObj {
@@ -143,9 +143,9 @@ export class GridMesh extends MeshObj {
         this.surface_obstacle_points = []
         const usedPositions = new Set<string>() // Track used positions
 
-        const xSegments = Math.max(2, Math.floor((this.xlength - 0) / this.resolution));
-        const ySegments = Math.max(2, Math.floor((this.ylength - 0) / this.resolution));
-        const zSegments = Math.max(2, Math.floor((this.zlength - 0) / this.resolution));
+        const xSegments = Math.max(2, Math.floor((this.xlength - 0) / resolution));
+        const ySegments = Math.max(2, Math.floor((this.ylength - 0) / resolution));
+        const zSegments = Math.max(2, Math.floor((this.zlength - 0) / resolution));
 
         // Sample points on each face of the box
         // Front and back faces (constant z)
@@ -212,7 +212,7 @@ export class GridMesh extends MeshObj {
 
         // Create points visualization
         this.surface_obstacle_mesh = create_points(this.surface_obstacle_points, {
-            color: 0x00ff00,
+            color: color_to_hex([0, 0, 0]),
             size: 0.5
         });
         this.surface_obstacle_mesh.name = `${this.name}_surface_obstacle`;
@@ -240,11 +240,13 @@ export class GridMesh extends MeshObj {
 
         this.inner_framework_mesh = create_colored_points(
             this.inner_framework_points, this.inner_framework_distance,
-            { size: 0.1 }
+            { size: 0.3 }
         );
         this.inner_framework_mesh.name = `${this.name}_inner_framework`;
         add_mesh(scene, this.inner_framework_mesh);
         this.inner_framework_mesh.visible = false;
+
+        console.log(scene)
     }
 
     update_inner_grid_visibility(threshold: number, method: string) {

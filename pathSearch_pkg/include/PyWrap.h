@@ -23,6 +23,7 @@ public:
     bool run(const std::vector<LocXyz> starts, const std::vector<LocXyz> goals)
     {
         result.m_path.clear();
+        grid.preprocess();
         return planner->search(&grid, starts, goals, result);
     };
 
@@ -64,6 +65,7 @@ public:
     bool run()
     {
         set_planner.set_tasks(task_set);
+        grid.preprocess();
         return set_planner.search(&grid, result);
     }
 
@@ -138,7 +140,7 @@ public:
 
     bool init_root_node()
     {
-        return cbs_planner->init_root_node(dynamic_obstacle_map);
+        return cbs_planner->init_root_node(dynamic_obstacle_map, &result);
     }
 
     bool run()

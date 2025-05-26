@@ -211,8 +211,8 @@ const handleDebugToolPanelGenerate = (data: any) => {
     const obstacle_mesh = new SpheresObstacle(
       data.name, [255, 0, 0],
       obstacle_points,
-      obstacle_radii,
-      rootObj.get_scene()
+      obstacle_radii, 
+      [], rootObj.get_scene()
     );
     rootObj.proj_dict.get(current_label_dict.get('Project')!)!.obstacle_dict.set(obstacle_mesh.name, obstacle_mesh)
 
@@ -250,6 +250,7 @@ const handleDebugToolPanelGenerate = (data: any) => {
         pipe.vector_x, pipe.vector_y, pipe.vector_z,
         rootObj.proj_dict.get(current_label_dict.get('Project')!)!.group_color_dict.get(data.group)!,
         data.group,
+        pipe.pipe_mode,
         rootObj.get_scene()
       )
 
@@ -337,7 +338,7 @@ const handleDebugToolPanelGenerate = (data: any) => {
     const obstacle_mesh = new PointsObstacle(
       data.name, [255, 0, 0],
       obstacle_points,
-      rootObj.get_scene()
+      [], rootObj.get_scene()
     );
     rootObj.proj_dict.get(current_label_dict.get('Project')!)!.obstacle_dict.set(obstacle_mesh.name, obstacle_mesh)
   
@@ -365,7 +366,7 @@ const handleDebugToolPanelGenerate = (data: any) => {
       data.name, [255, 0, 0],
       obstacle_points,
       obstacle_sizes,
-      rootObj.get_scene()
+      [], rootObj.get_scene()
     );
     rootObj.proj_dict.get(current_label_dict.get('Project')!)!.obstacle_dict.set(obstacle_mesh.name, obstacle_mesh)
   }

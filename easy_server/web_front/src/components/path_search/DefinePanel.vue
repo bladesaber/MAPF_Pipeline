@@ -101,9 +101,21 @@
             <el-form label-position="top">
               <el-form-item label="Vector">
                 <div class="vector-input">
-                  <el-input-number v-model="pipeForm.vec_x" :precision="2" :step="0.1" placeholder="X" />
-                  <el-input-number v-model="pipeForm.vec_y" :precision="2" :step="0.1" placeholder="Y" />
-                  <el-input-number v-model="pipeForm.vec_z" :precision="2" :step="0.1" placeholder="Z" />
+                  <el-select v-model="pipeForm.vec_x" style="width: 80px">
+                    <el-option :value="1" label="1" />
+                    <el-option :value="0" label="0" />
+                    <el-option :value="-1" label="-1" />
+                  </el-select>
+                  <el-select v-model="pipeForm.vec_y" style="width: 80px">
+                    <el-option :value="1" label="1" />
+                    <el-option :value="0" label="0" />
+                    <el-option :value="-1" label="-1" />
+                  </el-select>
+                  <el-select v-model="pipeForm.vec_z" style="width: 80px">
+                    <el-option :value="1" label="1" />
+                    <el-option :value="0" label="0" />
+                    <el-option :value="-1" label="-1" />
+                  </el-select>
                 </div>
               </el-form-item>
             </el-form>
@@ -129,8 +141,12 @@
           </div>
           <div class="section-content">
             <el-form label-position="top">
-              <el-form-item label="Is Inlet">
-                <el-switch v-model="pipeForm.is_inlet" active-text="Inlet" inactive-text="Outlet" />
+              <el-form-item label="Pipe Mode">
+                <el-radio-group v-model="pipeForm.pipe_mode">
+                  <el-radio label="inlet">Inlet</el-radio>
+                  <el-radio label="outlet">Outlet</el-radio>
+                  <el-radio label="intermediate">Intermediate</el-radio>
+                </el-radio-group>
               </el-form-item>
             </el-form>
           </div>
@@ -368,7 +384,7 @@ const pipeForm = ref({
   vec_y: 0,
   vec_z: 0,
   radius: 0.5,
-  is_inlet: true,
+  pipe_mode: 'inlet',
   resolution: 0.5
 })
 
@@ -570,7 +586,8 @@ const handleApply = async () => {
       formData = {
         mode: 'Pipe',
         ...pipeForm.value,
-        group: groupValue.value
+        group: groupValue.value,
+        pipe_mode: pipeForm.value.pipe_mode
       }
       break
 
@@ -639,6 +656,7 @@ const handleApply = async () => {
   position: fixed;
   right: 0;
   top: 127px; /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
+  /* bottom: 150px; */
   width: 450px;
   background: #fff;
   border-left: 1px solid #dcdfe6;

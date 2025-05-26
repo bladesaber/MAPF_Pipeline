@@ -13,9 +13,11 @@ namespace GridSpace
     {
         if (!is_in_grid(loc + LocXyz{dir_x, dir_y, dir_z})) return false;
         if (std::get<0>(is_obstacle(loc + LocXyz{dir_x, dir_y, dir_z}, threshold))) return false;
-        if (std::get<0>(is_obstacle(loc + LocXyz{dir_x, 0, 0}, threshold))) return false;
-        if (std::get<0>(is_obstacle(loc + LocXyz{0, dir_y, 0}, threshold))) return false;
-        if (std::get<0>(is_obstacle(loc + LocXyz{0, 0, dir_z}, threshold))) return false;
+
+        // In test, it is too strict, so we remove the check
+        // if (std::get<0>(is_obstacle(loc + LocXyz{dir_x, 0, 0}, threshold))) return false;
+        // if (std::get<0>(is_obstacle(loc + LocXyz{0, dir_y, 0}, threshold))) return false;
+        // if (std::get<0>(is_obstacle(loc + LocXyz{0, 0, dir_z}, threshold))) return false;
         return true;
     }
 
@@ -207,6 +209,7 @@ namespace GridSpace
         bool is_obstacle = false;
         for (int i = 0; i < indices.size(); ++i)
         {
+            // TODO: Very important, it should be consist with definition of ConflictBaseSearchNode::detect_conflict_between_groups
             if (distances[i] < threshold + std::get<1>(m_data[indices[i]]))
             {
                 min_distance = std::min(min_distance, distances[i]);

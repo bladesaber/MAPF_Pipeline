@@ -132,8 +132,10 @@
         <el-menu-item @click="handleTreeContextMenu('SearchTask/AddPriorityTask')">Add Priority Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/RemoveSearchTask')">Remove Search Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/ConnectToServer')">Connect to Server</el-menu-item>
-        <el-menu-item @click="handleTreeContextMenu('SearchTask/ShowResult')">Show Result</el-menu-item>
-        <el-menu-item @click="handleTreeContextMenu('SearchTask/HideResult')">Hide Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SearchTask/ShowLineResult')">Show Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SearchTask/ShowTubeResult')">Show Tube Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SearchTask/HideLineResult')">Hide Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SearchTask/HideTubeResult')">Hide Tube Result</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/DiscretizeObstacle')">Discretize Obstacle</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/RunSearch')">Run Search</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/ClearResult')">Clear Result</el-menu-item>
@@ -150,8 +152,10 @@
         <el-menu-item @click="handleTreeContextMenu('PriorityTask/AddGroupTask')">Add Group Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('PriorityTask/RemovePriorityTask')">Remove Priority Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('PriorityTask/RunSearch')">Run Search</el-menu-item>
-        <el-menu-item @click="handleTreeContextMenu('PriorityTask/ShowResult')">Show Result</el-menu-item>
-        <el-menu-item @click="handleTreeContextMenu('PriorityTask/HideResult')">Hide Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PriorityTask/ShowLineResult')">Show Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PriorityTask/ShowTubeResult')">Show Tube Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PriorityTask/HideLineResult')">Hide Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PriorityTask/HideTubeResult')">Hide Tube Result</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('PriorityTask/RunSearch')">Run Search</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('PriorityTask/ClearResult')">Clear Result</el-menu-item>
       </el-menu>
@@ -166,8 +170,10 @@
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('GroupTask/AddCellTask')">Add Cell Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('GroupTask/RemoveGroupTask')">Remove Group Task</el-menu-item>
-        <el-menu-item @click="handleTreeContextMenu('GroupTask/ShowResult')">Show Result</el-menu-item>
-        <el-menu-item @click="handleTreeContextMenu('GroupTask/HideResult')">Hide Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('GroupTask/ShowLineResult')">Show Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('GroupTask/ShowTubeResult')">Show Tube Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('GroupTask/HideLineResult')">Hide Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('GroupTask/HideTubeResult')">Hide Tube Result</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('GroupTask/RunSearch')">Run Search</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('GroupTask/ClearResult')">Clear Result</el-menu-item>
       </el-menu>
@@ -182,8 +188,10 @@
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('CellTask/RemoveCellTask')">Remove Cell Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('CellTask/EditCellTask')">Edit Cell Task</el-menu-item>
-        <el-menu-item @click="handleTreeContextMenu('CellTask/ShowResult')">Show Result</el-menu-item>
-        <el-menu-item @click="handleTreeContextMenu('CellTask/HideResult')">Hide Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('CellTask/ShowLineResult')">Show Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('CellTask/ShowTubeResult')">Show Tube Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('CellTask/HideLineResult')">Hide Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('CellTask/HideTubeResult')">Hide Tube Result</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('CellTask/RunSearch')">Run Search</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('CellTask/ClearResult')">Clear Result</el-menu-item>
       </el-menu>
@@ -205,7 +213,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, defineExpose, inject, defineEmits } from 'vue'
-import { pass } from 'three/tsl'
+import { pass, round } from 'three/tsl'
 import { setVisableDict } from '@/utils/utils'
 import * as THREE from 'three'
 import { ElMessage } from 'element-plus'
@@ -213,7 +221,7 @@ import { ElMessage } from 'element-plus'
 import DefinePanel from './DefinePanel.vue'
 import DefineObstacle from './DefineObstacle.vue'
 
-import { CylinderObstacle, BoxObstacle, PointsObstacle } from '@/classes/path_search/obstacle_mesh.ts'
+import { CylinderObstacle, BoxObstacle, PointsObstacle, SphereLineObstacle } from '@/classes/path_search/obstacle_mesh.ts'
 import { CenterRoot } from '@/classes/center_root.ts'
 import { PipeMesh } from '@/classes/path_search/pipe_mesh'
 import { SearchTask, PriorityTask, GroupTask, CellTask } from '@/classes/path_search/task_runner'
@@ -383,6 +391,7 @@ const handleTreeContextMenu = (mode: string) => {
   hideFragmentMenu()
 
   if (mode === 'Obstacles/AddObstacle') {
+    label_dict.value.set('RelaxGroup', Array.from(rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.pipe_dict.keys()))
     setVisableDict('defineObstacleVisible', fragmentVisibleDict, true, true)
 
   } else if (mode == 'PipeGroups/AddPipeGroup') {
@@ -403,6 +412,7 @@ const handleTreeContextMenu = (mode: string) => {
 
   } else if (mode == 'SearchTask/RemoveSearchTask') {
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.delete(label_dict.value.get('SearchTask') as string)
+    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.reset_discretize_source()
     emit('updateTree')
 
   } else if (mode == 'PriorityTask/AddGroupTask') {
@@ -441,10 +451,12 @@ const handleTreeContextMenu = (mode: string) => {
     pipe_group.forEach(pipe => pipe.show_mesh())
 
   } else if (mode == 'PipeGroup/RemovePipeGroup') {
-    const pipe_group = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.pipe_dict.get(label_dict.value.get('PipeGroup') as string)!
+    const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    const pipe_group = project_manager.pipe_dict.get(label_dict.value.get('PipeGroup') as string)!
     pipe_group.forEach(pipe => pipe.destory(rootObj.get_scene()))
-    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.pipe_dict.delete(label_dict.value.get('PipeGroup') as string)
-    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.group_color_dict.delete(label_dict.value.get('PipeGroup') as string)
+    project_manager.pipe_dict.delete(label_dict.value.get('PipeGroup') as string)
+    project_manager.group_color_dict.delete(label_dict.value.get('PipeGroup') as string)
+    project_manager.reset_discretize_source()
 
     // TODO: remove all task which is related to this pipe group
     emit('updateTree')
@@ -464,6 +476,7 @@ const handleTreeContextMenu = (mode: string) => {
       label_dict.value.get('PipeGroup') as string)!.get(label_dict.value.get('Pipe') as string)!
     pipe.destory(rootObj.get_scene())
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.pipe_dict.get(label_dict.value.get('PipeGroup') as string)!.delete(label_dict.value.get('Pipe') as string)
+    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.reset_discretize_source()
     emit('updateTree')
 
   } else if (mode == 'Obstacles/RemoveObstacle') {
@@ -479,46 +492,85 @@ const handleTreeContextMenu = (mode: string) => {
     const obstacle = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.get(label_dict.value.get('Obstacle') as string)!
     obstacle.show_mesh()
 
-  } else if (mode == 'PriorityTask/HideResult') {
+  } else if (mode == 'PriorityTask/HideLineResult') {
     const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
       label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
         task => task.name === label_dict.value.get('PriorityTask') as string)
-    priority_task!.hide()
+    priority_task!.hide_line_mesh()
 
-  } else if (mode == 'PriorityTask/ShowResult') {
+  } else if (mode == 'PriorityTask/ShowLineResult') {
     const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
       label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
         task => task.name === label_dict.value.get('PriorityTask') as string)
-    priority_task!.show()
-    emit('updateTree')
+    priority_task!.show_line_mesh()
 
-  } else if (mode == 'GroupTask/HideResult') {
+  } else if (mode == 'PriorityTask/HideTubeResult') {
     const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
       label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
         task => task.name === label_dict.value.get('PriorityTask') as string)
-    priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.hide()
+    priority_task!.hide_tube_mesh()
 
-  } else if (mode == 'GroupTask/ShowResult') {
+  } else if (mode == 'PriorityTask/ShowTubeResult') {
     const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
       label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
         task => task.name === label_dict.value.get('PriorityTask') as string)
-    priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.show()
+    priority_task!.show_tube_mesh()
 
-  } else if (mode == 'CellTask/HideResult') {
+  } else if (mode == 'GroupTask/ShowLineResult') {
+    const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
+      label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
+        task => task.name === label_dict.value.get('PriorityTask') as string)
+    priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.show_line_mesh()
+  
+  } else if (mode == 'GroupTask/ShowTubeResult') {
+    const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
+      label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
+        task => task.name === label_dict.value.get('PriorityTask') as string)
+    priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.show_tube_mesh()
+  
+  } else if (mode == 'GroupTask/HideLineResult') {
+    const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
+      label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
+        task => task.name === label_dict.value.get('PriorityTask') as string)
+    priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.hide_line_mesh()
+  
+  } else if (mode == 'GroupTask/HideTubeResult') {
+    const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
+      label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
+        task => task.name === label_dict.value.get('PriorityTask') as string)
+    priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.hide_tube_mesh()
+
+  } else if (mode == 'CellTask/HideLineResult') {
     const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
       label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
         task => task.name === label_dict.value.get('PriorityTask') as string)
     priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.cell_tasks.find(
       cell_task => cell_task.name === label_dict.value.get('CellTask') as string
-    )!.hide()
+    )!.hide_line_mesh()
 
-  } else if (mode == 'CellTask/ShowResult') {
+  } else if (mode == 'CellTask/HideTubeResult') {
     const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
       label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
         task => task.name === label_dict.value.get('PriorityTask') as string)
     priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.cell_tasks.find(
       cell_task => cell_task.name === label_dict.value.get('CellTask') as string
-    )!.show()
+    )!.hide_tube_mesh()
+
+  } else if (mode == 'CellTask/ShowLineResult') {
+    const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
+      label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
+        task => task.name === label_dict.value.get('PriorityTask') as string)
+    priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.cell_tasks.find(
+      cell_task => cell_task.name === label_dict.value.get('CellTask') as string
+    )!.show_line_mesh()
+  
+  } else if (mode == 'CellTask/ShowTubeResult') {
+    const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
+      label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
+        task => task.name === label_dict.value.get('PriorityTask') as string)
+    priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.cell_tasks.find(
+      cell_task => cell_task.name === label_dict.value.get('CellTask') as string
+    )!.show_tube_mesh()
 
   } else if (mode == 'CellTask/RemoveCellTask') {
     const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
@@ -529,6 +581,7 @@ const handleTreeContextMenu = (mode: string) => {
         cell_task => cell_task.name === label_dict.value.get('CellTask') as string
       ), 1
     )
+    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.reset_discretize_source()
     emit('updateTree')
 
   } else if (mode == 'GroupTask/RemoveGroupTask') {
@@ -536,6 +589,7 @@ const handleTreeContextMenu = (mode: string) => {
       label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
         task => task.name === label_dict.value.get('PriorityTask') as string)
     priority_task!.group_tasks.delete(label_dict.value.get('GroupTask') as string)
+    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.reset_discretize_source()
     emit('updateTree')
 
   } else if (mode == 'PriorityTask/RemovePriorityTask') {
@@ -544,6 +598,7 @@ const handleTreeContextMenu = (mode: string) => {
     search_task.priority_tasks.splice(search_task.priority_tasks.findIndex(
       task => task.name === label_dict.value.get('PriorityTask') as string
     ), 1)
+    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.reset_discretize_source()
     emit('updateTree')
 
   } else if (mode == 'Obstacle/HideObstacle') {
@@ -558,13 +613,15 @@ const handleTreeContextMenu = (mode: string) => {
     const obstacle = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.get(label_dict.value.get('Obstacle') as string)!
     obstacle.destory(rootObj.get_scene())
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.delete(label_dict.value.get('Obstacle') as string)
+    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.reset_discretize_source()
     emit('updateTree')
   
   } else if (mode == 'SearchTask/DiscretizeObstacle') {
-    const pipes_info = new Map<string, {radius: number, x: number, y: number, z: number}>()
+    const pipes_info = new Map<string, {radius: number, x: number, y: number, z: number, group_name: string}>()
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.pipe_dict.forEach((pipes, group_name) => {
       pipes.forEach((pipe, pipe_name) => {
         pipes_info.set(pipe_name, {
+          group_name: group_name,
           radius: pipe.radius,
           x: pipe.x,
           y: pipe.y,
@@ -582,6 +639,9 @@ const handleTreeContextMenu = (mode: string) => {
           pipes_info.get(ctask.start_name)!.radius = Math.max(
             pipes_info.get(ctask.start_name)!.radius, ctask.radius
           )
+          pipes_info.get(ctask.end_name)!.radius = Math.max(
+            pipes_info.get(ctask.end_name)!.radius, ctask.radius
+          )
         })
       })
     })
@@ -589,10 +649,6 @@ const handleTreeContextMenu = (mode: string) => {
       ElMessage.warning('No task found')
       return
     }
-
-    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.forEach((obstacle, key) => {
-      obstacle.discrete(rootObj.get_scene(), min_task_radius, label_dict.value.get('SearchTask') as string)
-    })
 
     const pipes_info_list: {radius: number, x: number, y: number, z: number}[] = []
     pipes_info.forEach((info, key) => {
@@ -603,11 +659,27 @@ const handleTreeContextMenu = (mode: string) => {
         z: info.z
       })
     })
+
+    // discrete pipes
+    pipes_info.forEach((info, pipe_name) => {
+      const pipe = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.pipe_dict.get(
+        info.group_name)!.get(pipe_name)!
+      pipe.discrete(info.radius, min_task_radius * 0.5, 
+      pipes_info_list, rootObj.get_scene())
+    })
+
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.grid.discretize(
-      rootObj.get_scene(), min_task_radius, 
+      rootObj.get_scene(), min_task_radius * 0.5, 
       label_dict.value.get('SearchTask') as string,
       pipes_info_list
     )
+
+    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.forEach((obstacle, key) => {
+      obstacle.discrete(
+        rootObj.get_scene(), min_task_radius * 0.5, 
+        label_dict.value.get('SearchTask') as string, pipes_info_list
+      )
+    })
 
     emit('updateTree')
 
@@ -625,7 +697,8 @@ const handleTreeContextMenu = (mode: string) => {
   } else if (mode == 'Grid/ShowDiscretized') {
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.grid.show_discretize_mesh()
   } else if (mode == 'Grid/InitEnv') {
-    const obstacle_points: number[][] = []
+    const static_obstacle_points: number[][] = []
+    const dynamic_obstacle_points: { [key: string]: number[][] } = {}
 
     const grid = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.grid
     if (grid.discretize_source == '') {
@@ -633,10 +706,11 @@ const handleTreeContextMenu = (mode: string) => {
       return
     } else {
       grid.surface_obstacle_points.forEach(point => {
-        obstacle_points.push([
+        static_obstacle_points.push([
           grid.value_to_grid_scaled(point[0]),
           grid.value_to_grid_scaled(point[1]), 
-          grid.value_to_grid_scaled(point[2])
+          grid.value_to_grid_scaled(point[2]),
+          0.0
         ])
       })
     }
@@ -646,18 +720,51 @@ const handleTreeContextMenu = (mode: string) => {
         ElMessage.warning('Grid has not been discretized')
         return
       } else {
-        obstacle.discretize_points.forEach(point => {
-          obstacle_points.push([
-            grid.value_to_grid_scaled(point[0]),
-            grid.value_to_grid_scaled(point[1]), 
-            grid.value_to_grid_scaled(point[2])
-          ])
-        })
+        if (obstacle.relax_groups.length == 0){
+          for (let i = 0; i < obstacle.discretize_points.length; i++) {
+            static_obstacle_points.push([
+              grid.value_to_grid_scaled(obstacle.discretize_points[i][0]),
+              grid.value_to_grid_scaled(obstacle.discretize_points[i][1]), 
+              grid.value_to_grid_scaled(obstacle.discretize_points[i][2]),
+              obstacle.discretize_radius[i]
+            ])
+          }
+        } else {
+          obstacle.relax_groups.forEach(group => {
+            if (!dynamic_obstacle_points[group]) {
+              dynamic_obstacle_points[group] = []
+            }
+          })
+          for (let i = 0; i < obstacle.discretize_points.length; i++) {
+            obstacle.relax_groups.forEach(group => {
+              dynamic_obstacle_points[group].push([
+                grid.value_to_grid_scaled(obstacle.discretize_points[i][0]),
+                grid.value_to_grid_scaled(obstacle.discretize_points[i][1]), 
+                grid.value_to_grid_scaled(obstacle.discretize_points[i][2]),
+                obstacle.discretize_radius[i]
+              ])
+            })
+          }
+        }
       }
     })
 
+    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.pipe_dict.forEach((pipes, group_name) => {
+      pipes.forEach((pipe, pipe_name) => {
+        pipe.discretize_points.forEach(point => {
+          static_obstacle_points.push([
+            grid.value_to_grid_scaled(point[0]),
+            grid.value_to_grid_scaled(point[1]), 
+            grid.value_to_grid_scaled(point[2]),
+            0.0
+          ])
+        })
+      })
+    })
+
     initEnv(
-      label_dict.value.get('Project') as string, obstacle_points, 
+      label_dict.value.get('Project') as string, 
+      static_obstacle_points, dynamic_obstacle_points,
       grid.xsize, grid.ysize, grid.zsize, grid.resolution
     )
   
@@ -759,19 +866,35 @@ const handleDefineObstacleGenerate = (data: any) => {
       data.x, data.y, data.z, 
       data.radius, data.height, 
       data.vector_x, data.vector_y, data.vector_z,
+      data.relax_groups,
       rootObj.get_scene()
     );
     const current_label_dict = data.label_dict
     rootObj.proj_dict.get(current_label_dict.get('Project')!)!.obstacle_dict.set(obstacle_mesh.name, obstacle_mesh)
+    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
 
   } else if (data.type == 'BoxObstacle') {
     const obstacle_block = new BoxObstacle(
       data.name, [1, 0, 0],
       data.xmin, data.xmax, data.ymin, data.ymax, data.zmin, data.zmax,
+      data.relax_groups,
       rootObj.get_scene()
     );
     const current_label_dict = data.label_dict
     rootObj.proj_dict.get(current_label_dict.get('Project')!)!.obstacle_dict.set(obstacle_block.name, obstacle_block)
+    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
+
+  } else if (data.type == 'SphereLineObstacle') {
+    const obstacle_sphere_line = new SphereLineObstacle(
+      data.name, [1, 0, 1],
+      data.points, data.radius,
+      data.relax_groups,
+      rootObj.get_scene()
+    );
+    const current_label_dict = data.label_dict
+    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.obstacle_dict.set(obstacle_sphere_line.name, obstacle_sphere_line)
+    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
+
   }
   hideFragmentMenu()
   emit('updateTree')
@@ -787,6 +910,7 @@ const handleDefinePanelGenerate = (data: any) => {
       rootObj.proj_dict.get(current_label_dict.get('Project')!)!.group_color_dict.set(
         data.name, data.color
       )
+      rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
     } else {
       ElMessage.warning('Pipe group already exists')
     }
@@ -798,12 +922,13 @@ const handleDefinePanelGenerate = (data: any) => {
       const pipe_mesh = new PipeMesh(
         data.name, data.x, data.y, data.z,
         data.radius, data.vec_x, data.vec_y, data.vec_z,
-        group_color, data.group,
+        group_color, data.group, data.pipe_mode,
         rootObj.get_scene()
       )
       rootObj.proj_dict.get(current_label_dict.get('Project')!)!.pipe_dict.get(current_label_dict.get('PipeGroup')!)!.set(
         data.name, pipe_mesh
       )
+      rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
     } else {
       ElMessage.warning('Pipe already exists')
     }
@@ -814,6 +939,7 @@ const handleDefinePanelGenerate = (data: any) => {
     rootObj.proj_dict.get(current_label_dict.get('Project')!)!.search_task_dict.set(
       task.name, task
     )
+    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
 
   } else if (data.mode === 'PriorityTask') {
     const current_label_dict = data.label_dict
@@ -825,7 +951,7 @@ const handleDefinePanelGenerate = (data: any) => {
 
     const task = new PriorityTask(data.name, run_cfg)
     rootObj.proj_dict.get(current_label_dict.get('Project')!)!.search_task_dict.get(current_label_dict.get('SearchTask')!)!.priority_tasks.push(task)
-
+    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
 
   } else if (data.mode === 'GroupTask') {
     const current_label_dict = data.label_dict
@@ -842,6 +968,7 @@ const handleDefinePanelGenerate = (data: any) => {
         priority_task.group_tasks.set(task.name, task)
       }
     }
+    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
 
   } else if (data.mode === 'CellTask') {
     const current_label_dict = data.label_dict
@@ -856,25 +983,50 @@ const handleDefinePanelGenerate = (data: any) => {
         priority_task.group_tasks.get(current_label_dict.get('GroupTask')!)!.cell_tasks.push(task)
       }
     }
+    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
+
   }
   hideFragmentMenu()
   emit('updateTree')
 }
 
 // ------ Backend ------
-const initEnv = async (project_name: string, obstacle_points: number[][], xsize: number, ysize: number, zsize: number, resolution: number) => {
-  const url = 'http://192.168.110.54:9998/path_search/upload_obstacle_pcd'
+const initEnv = async (
+  project_name: string, 
+  static_obstacle_points: number[][], dynamic_obstacle_points: { [key: string]: number[][] },
+  xsize: number, ysize: number, zsize: number, resolution: number
+) => {
+  if (static_obstacle_points.length > 0) {
+    if (!await upload_static_obstacle_pcd(project_name, static_obstacle_points, xsize, ysize, zsize, resolution)) {
+      return
+    }
+  }
+  if (Object.keys(dynamic_obstacle_points).length > 0) {
+    for (const [relax_group_name, points] of Object.entries(dynamic_obstacle_points)) {
+      if (!await upload_relax_group_obstacle_pcd(project_name, relax_group_name, points)) {
+      return
+      }
+    }
+  }
+  await requestInnerGrid(project_name)
+}
+
+const upload_static_obstacle_pcd = async (
+  project_name: string, static_obstacle_points: number[][], 
+  xsize: number, ysize: number, zsize: number, resolution: number
+) => {
+  const url = 'http://192.168.110.54:9998/path_search/upload_static_obstacle_pcd'
   
   progressDialogVisible.value = true
   progressPercentage.value = 0
-  progressLog.value = 'Generating inner grid...'
+  progressLog.value = 'Uploading static obstacle pcd...'
   
   // Define chunk size
   const CHUNK_SIZE = 5000 // Number of points per chunk
-  const total_chunks = Math.ceil(obstacle_points.length / CHUNK_SIZE)
+  const total_chunks = Math.ceil(static_obstacle_points.length / CHUNK_SIZE)
   
-  for (let i = 0; i < obstacle_points.length; i += CHUNK_SIZE) {
-    const chunk_data = obstacle_points.slice(i, i + CHUNK_SIZE)
+  for (let i = 0; i < static_obstacle_points.length; i += CHUNK_SIZE) {
+    const chunk_data = static_obstacle_points.slice(i, i + CHUNK_SIZE)
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -890,44 +1042,102 @@ const initEnv = async (project_name: string, obstacle_points: number[][], xsize:
           resolution: resolution,
           chunk_index: i,
           total_chunks: total_chunks,
-          is_last_chunk: i === obstacle_points.length - CHUNK_SIZE
+          is_last_chunk: i === static_obstacle_points.length - CHUNK_SIZE
         })
       })
       
       if (!response.ok) {
-        throw new Error('Network response was not ok')
+        ElMessage.error('Failed to upload static obstacle pcd')
+        return false
       }
       
       const data = await response.json()
       if (data.error) {
-        throw new Error(data.error)
+        ElMessage.error(data.error)
+        return false
       }
       
-      const progress = Math.round(((i + 1) / obstacle_points.length) * 100)
+      const progress = Math.round(((i + 1) / static_obstacle_points.length) * 100)
       progressPercentage.value = progress
       progressLog.value = `Generating inner grid: ${progress}%`
 
     } catch (error) {
-      console.error('Error:', error)
       ElMessage.error('Failed to generate inner grid')
       progressDialogVisible.value = false
+      return false
     }
-
     await new Promise(resolve => setTimeout(resolve, 200))
   }
-
   progressDialogVisible.value = false
   progressPercentage.value = 100
   progressLog.value = 'Inner grid generated successfully'
-  
-  requestInnerGrid(project_name)
+  return true
+}
+
+const upload_relax_group_obstacle_pcd = async (
+  project_name: string, relax_group_name: string, dynamic_obstacle_points: number[][]
+) => {
+  const url = 'http://192.168.110.54:9998/path_search/upload_relax_group_obstacle_pcd'
+
+  progressDialogVisible.value = true
+  progressPercentage.value = 0
+  progressLog.value = 'Uploading dynamic obstacle pcd...'
+
+  // Define chunk size
+  const CHUNK_SIZE = 5000 // Number of points per chunk
+  const total_chunks = Math.ceil(dynamic_obstacle_points.length / CHUNK_SIZE)
+
+  for (let i = 0; i < dynamic_obstacle_points.length; i += CHUNK_SIZE) {
+    const chunk_data = dynamic_obstacle_points.slice(i, i + CHUNK_SIZE)
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          project_id: project_name,
+          obstacle_pcd: chunk_data,
+          relax_group_name: relax_group_name,
+          chunk_index: i,
+          total_chunks: total_chunks,
+          is_last_chunk: i === dynamic_obstacle_points.length - CHUNK_SIZE
+        })
+      })
+      
+      if (!response.ok) {
+        ElMessage.error('Failed to upload dynamic obstacle pcd')
+        return false
+      }
+      
+      const data = await response.json()
+      if (data.error) {
+        ElMessage.error(data.error)
+        return false
+      }
+      
+      const progress = Math.round(((i + 1) / dynamic_obstacle_points.length) * 100)
+      progressPercentage.value = progress
+      progressLog.value = `Uploading dynamic obstacle pcd: ${progress}%`
+
+    } catch (error) {
+      ElMessage.error('Failed to upload dynamic obstacle pcd')
+      progressDialogVisible.value = false
+      return false
+    }
+    await new Promise(resolve => setTimeout(resolve, 200))
+  }
+  progressDialogVisible.value = false
+  progressPercentage.value = 100
+  progressLog.value = 'Dynamic obstacle pcd uploaded successfully'
+  return true
 }
 
 const requestInnerGrid = async (project_name: string) => {
   const pipe_data = rootObj.proj_dict.get(project_name)!.export_pipe_json(true)
 
   progressDialogVisible.value = true
-      progressPercentage.value = 0
+  progressPercentage.value = 0
   progressLog.value = 'Requesting inner grid...'
 
   const url = 'http://192.168.110.54:9998/path_search/request_inner_xyzd'
@@ -944,9 +1154,11 @@ const requestInnerGrid = async (project_name: string) => {
     })
 
     if (!response.ok) {
-      throw new Error('Network response was not ok')
+      ElMessage.error('Failed to request inner grid')
+      return
     }
 
+    /*
     const reader = response.body?.getReader()
     if (!reader) throw new Error('Failed to get response reader')
 
@@ -984,6 +1196,7 @@ const requestInnerGrid = async (project_name: string) => {
         continue
       }
     }
+    */
 
     } catch (error) {
       console.error('Error:', error)
@@ -991,7 +1204,7 @@ const requestInnerGrid = async (project_name: string) => {
     } finally {
       progressDialogVisible.value = false
     }
-  }
+}
   
 const uploadTaskCache = async (project_name: string, search_task_name: string) => {
   const search_task = rootObj.proj_dict.get(project_name)!.search_task_dict.get(search_task_name)!
@@ -1033,6 +1246,11 @@ const runCellTask = async (
     const group_task = rootObj.proj_dict.get(project_name)!.search_task_dict.get(
       search_task_name)!.priority_tasks.find(priority_task => priority_task.name === priority_name)!.group_tasks.get(group_name)!
     const cell_task = group_task.cell_tasks.find(cell_task => cell_task.name === cell_name)!
+
+    if (cell_task.has_result) {
+      ElMessage.error('Cell task already has result')
+      return
+    }
 
     const response_type = 'stream' as const
     const url = 'http://192.168.110.54:9998/path_search/run_cell_task'
@@ -1089,10 +1307,11 @@ const runCellTask = async (
             }
             else {
               ElMessage.error(result.error)
+              emit('updateLog', result.error)
             }
             break
           } else {
-            const message = `${data.name} Progress: ${data.progress}s, Message: ${data.msg}`
+            const message = `${data.name} Progress: ${data.progress.toFixed(2)}s, Message: ${data.msg}`
             emit('updateLog', message)
           }
         }
@@ -1123,6 +1342,11 @@ const runGroupTask = async (project_name: string, search_task_name: string, prio
     const group_task = rootObj.proj_dict.get(project_name)!.search_task_dict.get(
       search_task_name)!.priority_tasks.find(priority_task => priority_task.name === priority_name)!.group_tasks.get(group_name)!
     
+    if (group_task.has_result) {
+      ElMessage.error('Group task already has result')
+      return
+    }
+
     const response_type = 'stream' as const
     const url = 'http://192.168.110.54:9998/path_search/run_group_task'
     const response = await fetch(url, {
@@ -1186,10 +1410,11 @@ const runGroupTask = async (project_name: string, search_task_name: string, prio
               }
               else {
                 ElMessage.error(result.error)
+                emit('updateLog', result.error)
               }
               break
             } else {
-              const message = `${data.name} Progress: ${data.progress}s, Message: ${data.msg}`
+              const message = `${data.name} Progress: ${data.progress.toFixed(2)}s, Message: ${data.msg}`
               emit('updateLog', message)
             }
           }
@@ -1216,6 +1441,11 @@ const runPriorityTask = async (project_name: string, search_task_name: string, p
 
     const priority_task = rootObj.proj_dict.get(project_name)!.search_task_dict.get(
       search_task_name)!.priority_tasks.find(priority_task => priority_task.name === priority_name)!
+    
+    if (priority_task.has_result) {
+      ElMessage.error('Priority task already has result')
+      return
+    }
 
     const response_type = 'stream' as const
     const url = 'http://192.168.110.54:9998/path_search/run_priority_task'
@@ -1287,6 +1517,7 @@ const runPriorityTask = async (project_name: string, search_task_name: string, p
               }
               else {
                 ElMessage.error(result.error)
+                emit('updateLog', result.error)
               }
               break
             } else {
@@ -1303,7 +1534,7 @@ const runPriorityTask = async (project_name: string, search_task_name: string, p
                 priority_task.clear_result(rootObj.get_scene())
                 priority_task.set_result(path_res, rootObj.get_scene(), true, rootObj.proj_dict.get(project_name)!.grid)
               }
-              const message = `${data.name} Progress: ${data.progress}s, Message: ${data.msg}`
+              const message = `${data.name} Progress: ${data.progress.toFixed(2)}s, Message: ${data.msg}`
               emit('updateLog', message)
             }
           }

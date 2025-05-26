@@ -62,14 +62,26 @@ export function get_mesh_list(scene: THREE.Scene): THREE.Mesh[] {
   return scene.children.map(child => child as THREE.Mesh)
 }
 
-export function create_sphere(x: number, y: number, z: number, radius: number, options: VisualizationOptions = {}): Mesh {
-  const geometry = new THREE.SphereGeometry(radius, 32, 32)
-  const material = new MeshBasicMaterial({
-    color: options.color || 0xff0000
-  })
-  const mesh = new Mesh(geometry, material)
-  mesh.position.set(x, y, z)
-  return mesh
+export function create_sphere(
+  x: number, y: number, z: number, radius: number, options: VisualizationOptions = {output_mesh: true}
+): Mesh | THREE.LineSegments {
+  if (options.output_mesh) {
+    const geometry = new THREE.SphereGeometry(radius, 32, 32)
+    const material = new MeshBasicMaterial({
+      color: options.color || 0xff0000,
+      transparent: options.transparent || false,
+      opacity: options.opacity || 1.0
+    })
+    const mesh = new Mesh(geometry, material)
+    mesh.position.set(x, y, z)
+    return mesh
+  } else {
+    const geometry = new THREE.SphereGeometry(radius, 32, 32)
+    const material = new LineBasicMaterial({color: options.color || 0x0000ff})
+    const mesh = new THREE.LineSegments(geometry, material)
+    mesh.position.set(x, y, z)
+    return mesh
+  }
 }
 
 export function create_torus_mesh(
@@ -116,7 +128,7 @@ export function create_tube(xyz_list: number[][], radius: number, options: Visua
   return mesh
 }
 
-export function create_point(x: number, y: number, z: number, options: VisualizationOptions = {}): Points | Mesh {
+export function create_point(x: number, y: number, z: number, options: VisualizationOptions = {}): Points | Mesh | THREE.LineSegments {
   if (options.output_mesh) {
     const mesh = create_sphere(x, y, z, options.size || 0.1, options)
     return mesh

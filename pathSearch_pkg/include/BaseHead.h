@@ -81,9 +81,9 @@ struct PathData
 {
     std::string m_name;
     std::vector<LocXyz> m_path;
-    double m_radius;
-    double m_cost;
-    double time_cost;
+    double m_radius = 0.0;
+    double m_cost = 0.0;
+    double time_cost = 0.0;
 
     PathData() = default;
     PathData(const std::string &name)
@@ -102,6 +102,7 @@ struct PathData
 
     double estimate_cost()
     {
+        m_cost = 0.0;
         LocXyz last_node = m_path[0];
         for (int i = 1; i < m_path.size(); i++)
         {
@@ -279,6 +280,7 @@ typedef std::vector<ObstacleData> ObstacleList;
 struct CbsResult
 {
     std::map<std::string, PathSetData> paths;
+    size_t m_conflict_size = 0;
 
     CbsResult() = default;
     ~CbsResult() = default;

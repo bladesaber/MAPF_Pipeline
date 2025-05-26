@@ -232,7 +232,12 @@ namespace SearchSpace
         uint32_t m_scale_factor1;
 
         void before_expand(
-            GridSpace::SearchGrid *grid, SearchSpace::SearchNode *current, const std::vector<LocXyz> &goals) override {
+            GridSpace::SearchGrid *grid, SearchSpace::SearchNode *current, const std::vector<LocXyz> &goals) override 
+        {
+            this->x_step_scale = m_scale_factor1;
+            this->y_step_scale = m_scale_factor1;
+            this->z_step_scale = m_scale_factor1;
+
             double distance_to_goal = 0;
             for (const auto &goal : goals) {
                 distance_to_goal = MathSpace::get_distance(current->m_loc, goal);
@@ -245,11 +250,7 @@ namespace SearchSpace
             }
 
             double distance_to_obstacle = std::get<1>(grid->is_obstacle(current->m_loc, this->m_radius));
-            if (distance_to_obstacle > m_threshold1) {
-                this->x_step_scale = m_scale_factor1;
-                this->y_step_scale = m_scale_factor1;
-                this->z_step_scale = m_scale_factor1;
-            } else {
+            if (distance_to_obstacle <= m_threshold1) {
                 this->x_step_scale = 1;
                 this->y_step_scale = 1;
                 this->z_step_scale = 1;
@@ -276,7 +277,12 @@ namespace SearchSpace
         uint32_t m_scale_factor2;
 
         void before_expand(
-            GridSpace::SearchGrid *grid, SearchSpace::SearchNode *current, const std::vector<LocXyz> &goals) override {
+            GridSpace::SearchGrid *grid, SearchSpace::SearchNode *current, const std::vector<LocXyz> &goals) override 
+        {
+            this->x_step_scale = this->m_scale_factor1;
+            this->y_step_scale = this->m_scale_factor1;
+            this->z_step_scale = this->m_scale_factor1;
+
             double distance_to_goal = 0;
             for (const auto &goal : goals) {
                 distance_to_goal = MathSpace::get_distance(current->m_loc, goal);
@@ -289,23 +295,17 @@ namespace SearchSpace
             }
 
             double distance_to_obstacle = std::get<1>(grid->is_obstacle(current->m_loc, this->m_radius));
-            if (distance_to_obstacle > this->m_threshold1)
-            {
-                this->x_step_scale = this->m_scale_factor1;
-                this->y_step_scale = this->m_scale_factor1;
-                this->z_step_scale = this->m_scale_factor1;
-            }
-            else if (distance_to_obstacle > m_threshold2)
-            {
-                this->x_step_scale = m_scale_factor2;
-                this->y_step_scale = m_scale_factor2;
-                this->z_step_scale = m_scale_factor2;
-            }
-            else
+            if (distance_to_obstacle <= this->m_threshold2)
             {
                 this->x_step_scale = 1;
                 this->y_step_scale = 1;
-                this->z_step_scale = 1;
+                this->z_step_scale = 1;   
+            }
+            else if (distance_to_obstacle <= this->m_threshold1)
+            {
+                this->x_step_scale = this->m_scale_factor2;
+                this->y_step_scale = this->m_scale_factor2;
+                this->z_step_scale = this->m_scale_factor2;
             }
         }
     };

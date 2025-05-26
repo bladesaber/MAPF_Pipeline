@@ -28,7 +28,7 @@ const init = () => {
   if (!container.value || !rootObj) return
 
   // Scene setup
-  rootObj.get_scene().background = new THREE.Color(0xdddddd)
+  rootObj.get_scene().background = new THREE.Color(0x333333)
 
   // Camera setup
   camera = new THREE.PerspectiveCamera(
@@ -114,7 +114,7 @@ const highlightMesh = (mesh: THREE.Mesh) => {
   if (mesh.material instanceof THREE.Material) {
     // Store original color before changing it
     getOriginalColor(mesh)
-    setMeshColor(mesh, 0xffff00)  // Highlight color yellow
+    setMeshColor(mesh, 0xffffff)  // Highlight color white
   }
 }
 
@@ -167,8 +167,9 @@ const onMouseLeftClick = (event: MouseEvent) => {
       obj.object instanceof THREE.Mesh && 
       !(obj.object.parent instanceof THREE.GridHelper) &&
       !(obj.object.parent instanceof THREE.AxesHelper) &&
-      !obj.object.name.includes('_edges') &&
-      !obj.object.name.includes('_discretize')  // Skip discretize meshes
+      !obj.object.name.includes('_discretize') &&  // Skip discretize meshes
+      // Allow selection of grid edges but not the main grid mesh
+      (obj.object.name.includes('_edges') || !obj.object.name.includes('grid'))
     )
 
     if (mesh) {
@@ -199,8 +200,9 @@ const onMouseRightClick = (event: MouseEvent) => {
       obj.object instanceof THREE.Mesh && 
       !(obj.object.parent instanceof THREE.GridHelper) &&
       !(obj.object.parent instanceof THREE.AxesHelper) &&
-      !obj.object.name.includes('_edges') &&
-      !obj.object.name.includes('_discretize')  // Skip discretize meshes
+      !obj.object.name.includes('_discretize') &&  // Skip discretize meshes
+      // Allow selection of grid edges but not the main grid mesh
+      (obj.object.name.includes('_edges') || !obj.object.name.includes('grid'))
     )
     if (mesh) {
       clickEventX = event.clientX

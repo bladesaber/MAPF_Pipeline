@@ -20,7 +20,7 @@ from cad_server_utils import GmshStepReader
 from scripts_py.version_9.simulator.su2_simulator import Su2Simulator
 from server_utils import StreamDataResponse, StreamTaskResponse
 
-from response_utils import StreamThreadTaskResponse, StreamProcessTaskResponse
+from response_utils import StreamThreadTaskResponse, StreamProcessTaskResponse, StreamProcessDataResponse
 from path_server_utils import PathServerUtils, ProjectInfo
 
 # Create Flask app
@@ -545,12 +545,14 @@ def clear_cache():
     project_ids = data.get('project_ids')
     for project_id in project_ids:
         if project_id in PathServerUtils.project_map:
+            print(f'[Debug]: Clearing cache for project {project_id}')
+            PathServerUtils.project_map[project_id].grid = None
             del PathServerUtils.project_map[project_id]
     return jsonify({'is_success': True})
 
 
-@app.route('/path_search/upload_obstacle_pcd', methods=['POST'])
-def upload_obstacle_pcd():
+@app.route('/path_search/upload_static_obstacle_pcd', methods=['POST'])
+def upload_static_obstacle_pcd():
     data = request.json
     
     # Get session ID from request headers or generate one
@@ -566,14 +568,43 @@ def upload_obstacle_pcd():
 
     if project_id not in PathServerUtils.project_map:
         project_info = ProjectInfo()
-        project_info.obstacle_pcd = []
+        project_info.static_obstacle_pcd = []
+        project_info.dynamic_obstacle_pcd = {}
         project_info.x_size = x_size + 1  # be careful with the x_size
         project_info.y_size = y_size + 1  # be careful with the y_size
         project_info.z_size = z_size + 1  # be careful with the z_size
         project_info.resolution = resolution
         PathServerUtils.project_map[project_id] = project_info
     
-    PathServerUtils.project_map[project_id].obstacle_pcd.extend(obstacle_pcd)
+    PathServerUtils.project_map[project_id].static_obstacle_pcd.extend(obstacle_pcd)
+
+    print(f'static_obstacle_pcd: {len(PathServerUtils.project_map[project_id].static_obstacle_pcd)}')
+
+    return jsonify({
+        'message': f'Received chunk {chunk_index + 1} of {total_chunks}',
+        'is_success': True
+    })
+
+
+@app.route('/path_search/upload_relax_group_obstacle_pcd', methods=['POST'])
+def upload_relax_group_obstacle_pcd():
+    data = request.json
+    project_id = data.get('project_id')
+    chunk_index = data.get('chunk_index', 0)
+    total_chunks = data.get('total_chunks', 1)
+    is_last_chunk = data.get('is_last_chunk', True)
+    obstacle_pcd = np.array(data.get('obstacle_pcd', []))
+    relax_group_name = data.get('relax_group_name')
+
+    if project_id not in PathServerUtils.project_map:
+        return jsonify({'error': 'No project data found'}), 400
+    
+    project_info = PathServerUtils.project_map[project_id]
+
+    if relax_group_name not in project_info.relax_group_obstacle_pcd:
+        project_info.relax_group_obstacle_pcd[relax_group_name] = []
+
+    project_info.relax_group_obstacle_pcd[relax_group_name].extend(obstacle_pcd)
 
     return jsonify({
         'message': f'Received chunk {chunk_index + 1} of {total_chunks}',
@@ -590,11 +621,11 @@ def request_inner_xyzd():
     if project_id not in PathServerUtils.project_map:
         return jsonify({'error': 'No project data found'}), 400
     
-    if len(PathServerUtils.project_map[project_id].obstacle_pcd) == 0:
+    if len(PathServerUtils.project_map[project_id].static_obstacle_pcd) == 0:
         return jsonify({'error': 'No obstacle pcd provided'}), 400
 
     project_info = PathServerUtils.project_map[project_id]
-    obstacle_pcd = np.array(project_info.obstacle_pcd)
+    obstacle_pcd = np.array(project_info.static_obstacle_pcd)
 
     project_info.inner_xyzd = PathServerUtils.compute_inner_xyzd(
         x_size=project_info.x_size, 
@@ -603,24 +634,28 @@ def request_inner_xyzd():
         resolution=project_info.resolution,
         obstacle_pcd=obstacle_pcd
     )
-    project_info.obstacle_pcd.clear()
+    project_info.static_obstacle_pcd.clear()
     PathServerUtils.init_env(project_id, pipe_data)
 
+    '''
+    # Web Frontend is too slow
     def generate():
         try:
-            data = project_info.inner_xyzd
+            pos_data, dist_data = project_info.inner_xyzd
+            concat_data = np.concatenate([pos_data, dist_data[:, np.newaxis]], axis=1)
 
             def get_data_size_callback():
-                return len(data)
+                return len(concat_data)
                     
             def get_chunk_data_callback(data_index, chunk_size):
-                return data[data_index:data_index + chunk_size].tolist()
+                print('data_index:', data_index, 'chunk_size:', chunk_size)
+                return concat_data[data_index:data_index + chunk_size].tolist()
                         
-            stream_data_response = StreamDataResponse(
+            stream_data_response = StreamProcessDataResponse(
                 name='request_inner_xyzd', 
                 get_data_size_callback=get_data_size_callback, 
                 get_chunk_data_callback=get_chunk_data_callback, 
-                chunk_size=5000, time_interval=0.2
+                chunk_size=50000, time_interval=0.2
             )
             yield from stream_data_response.generate()
 
@@ -633,6 +668,8 @@ def request_inner_xyzd():
             return
                 
     return Response(generate(), mimetype='text/event-stream')
+    '''
+    return jsonify({'is_success': True})
 
 
 @app.route('/path_search/upload_task_cache', methods=['POST'])
@@ -670,17 +707,16 @@ def run_cell_task():
         def generate():
             try:
                 def task_callback(data_queue):
-                    time.sleep(5.0)
                     result = PathServerUtils.run_cell_task(project_id, task_name, priority_name, group_name, cell_name)
                     data_queue.put({
                         'is_finished': True,
                         'result': result
                     })
                 
-                task = StreamThreadTaskResponse(
+                task = StreamProcessTaskResponse(
                     name='run_cell_task', 
                     callback_func=task_callback, 
-                    interval_time=0.2,
+                    interval_time=0.3,
                     min_yield_interval=0.1,
                     max_running_time=max_running_time
                 )
@@ -734,10 +770,10 @@ def run_group_task():
                         'result': result
                     })
                 
-                task = StreamThreadTaskResponse(
+                task = StreamProcessTaskResponse(
                     name='run_group_task', 
                     callback_func=task_callback, 
-                    interval_time=0.2,
+                    interval_time=0.3,
                     min_yield_interval=0.1,
                     max_running_time=max_running_time
                 )
@@ -793,7 +829,7 @@ def run_priority_task():
                 task = StreamProcessTaskResponse(
                     name='run_priority_task', 
                     callback_func=task_callback, 
-                    interval_time=0.2,
+                    interval_time=0.3,
                     min_yield_interval=0.1,
                     max_running_time=1000000
                 )
@@ -805,7 +841,7 @@ def run_priority_task():
                     'result': task.result['result']
                 }
                 time.sleep(0.25)
-                print('result:', result)
+                # print('priority_task result:', result)
                 yield json.dumps(result)
 
             except Exception as e:
@@ -820,131 +856,6 @@ def run_priority_task():
     else:
         return jsonify({'error': 'Invalid response type'}), 400
 
-'''
-@sock.route('/path_search/run')
-def path_search_run(ws):
-    socket_manager = SocketManager(ws)
-    print(f'[Debug]: New WebSocket connection {socket_manager.id} established')
-    runner = PathSearchRunner()
-    is_loading = False
-    
-    try:
-        while True:
-            msg_str = ws.receive()
-            if msg_str is None:
-                break
-            msg: dict = json.loads(msg_str)
-
-            if msg['run_type'] == 'HandShake':
-                return_msg = {
-                    'is_finished': True,
-                    'msg': 'HandShake success.'
-                }
-            
-            elif msg['run_type'] == 'prepareGrid':
-                obstacle_points = np.array(msg['obstacle_points_data'])
-
-                callback_func = partial(
-                    runner.init_grid, 
-                    x_size=msg['x_size'], y_size=msg['y_size'], z_size=msg['z_size'], 
-                    resolution=msg['resolution'], obstacle_points=obstacle_points
-                )
-                task0 = SocketTaskResponse(
-                    manager=socket_manager, 
-                    run_type=msg['run_type'], 
-                    name='init_grid',
-                    callback_func=callback_func, 
-                    interval_time=0.5
-                )
-                task0.start()
-                runner.grid = task0.last_result['grid']
-                validate_data = task0.last_result['validate_data']
-                
-                def get_data_size_callback():
-                    return len(validate_data)
-                
-                def get_chunk_data_callback(data_index, chunk_size):
-                    return validate_data[data_index:data_index + chunk_size]
-                
-                data0 = SocketDataResponse(
-                    manager=socket_manager, 
-                    run_type=msg['run_type'], 
-                    name='return_validate_data', 
-                    get_data_size_callback=get_data_size_callback, 
-                    get_chunk_data_callback=get_chunk_data_callback, 
-                    chunk_size=5000, time_interval=0.5)
-                data0.generate()
-                
-                return_msg = data0.get_progress(
-                    data=[], chunk_index=0, is_finished=True, progress=100, msg='Grid prepared successfully.'
-                )
-                return_msg.update({
-                    'total_finished': True
-                })
-
-            elif msg['run_type'] == 'searchPreprocess':
-                data = msg['data']
-                runner.preprocess(data)
-                return_msg = {
-                    'run_type': msg['run_type'],
-                    'is_finished': True,
-                    'msg': 'Preprocess success.'
-                }
-            
-            elif msg['run_type'] == 'runPrioritySearch':
-                task_set = msg['data']['task_set']
-                group_pipes = msg['data']['group_pipes']
-                
-                callback_func = partial(
-                    runner.run_priority_task,
-                    grid=runner.grid,
-                    task_set=task_set,
-                    group_pipes=group_pipes,
-                    running_cache=runner.running_cache,
-                    running_graph=runner.running_graph
-                )
-
-                task1 = SocketTaskResponse(
-                    manager=socket_manager, 
-                    run_type=msg['run_type'], name='run_priority_search', callback_func=callback_func, interval_time=0.5)
-                task1.start()
-
-                time.sleep(0.5)
-                last_result = task1.last_result
-                return_msg = task1.get_progress(
-                    is_finished=True,
-                    progress=100,
-                    msg='Run priority search success.' if last_result['is_success']
-                        else 'Run priority search failed.',
-                )
-                return_msg.update({
-                    'total_finished': True,
-                    'data': {
-                        'is_success': last_result['is_success'],
-                        'path_set_group': last_result['path_set_group'],
-                    }
-                })
-
-            else:
-                return_msg = {
-                    'is_finished': True,
-                    'msg': 'Non known run type.'
-                }
-                
-            # Send response
-            ws.send(json.dumps(return_msg))
-
-    except json.JSONDecodeError:
-        ws.send(json.dumps({'error': 'Invalid JSON format'}))
-
-    except Exception as e:
-        print(f"[Error]: Error processing message: {e}")
-        ws.send(json.dumps({'error': str(e)}))
-                
-    finally:
-        SocketManager.remove_socket(socket_manager)
-        print(f"[Debug]: Connection {socket_manager.id} closed")
-'''
 
 if __name__ == '__main__':
     print('Server is running on ws://192.168.110.54:9998')

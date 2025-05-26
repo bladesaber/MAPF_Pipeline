@@ -40,6 +40,7 @@
           >
             <el-option label="Cylinder" value="CylinderObstacle" />
             <el-option label="Box" value="BoxObstacle" />
+            <el-option label="SphereLine" value="SphereLineObstacle" />
           </el-select>
         </div>
       </div>
@@ -121,7 +122,7 @@
               </el-form-item>
               <el-form-item label="Radius">
                 <el-input-number 
-                  v-model="formData.radius"
+                  v-model="formData.cylinder_radius"
                   :precision="2"
                   :step="0.1"
                   :min="0.1"
@@ -194,6 +195,106 @@
               </el-form-item>
             </template>
 
+            <!-- SphereLine Parameters -->
+            <template v-if="formData.type === 'SphereLineObstacle'">
+              <el-form-item label="Start Point">
+                <div class="vector-input">
+                  <el-input-number 
+                    v-model="formData.start_x"
+                    :precision="2"
+                    :step="0.1"
+                    placeholder="X"
+                  />
+                  <el-input-number 
+                    v-model="formData.start_y"
+                    :precision="2"
+                    :step="0.1"
+                    placeholder="Y"
+                  />
+                  <el-input-number 
+                    v-model="formData.start_z"
+                    :precision="2"
+                    :step="0.1"
+                    placeholder="Z"
+                  />
+                </div>
+              </el-form-item>
+              <el-form-item label="End Point">
+                <div class="vector-input">
+                  <el-input-number 
+                    v-model="formData.end_x"
+                    :precision="2"
+                    :step="0.1"
+                    placeholder="X"
+                  />
+                  <el-input-number 
+                    v-model="formData.end_y"
+                    :precision="2"
+                    :step="0.1"
+                    placeholder="Y"
+                  />
+                  <el-input-number 
+                    v-model="formData.end_z"
+                    :precision="2"
+                    :step="0.1"
+                    placeholder="Z"
+                  />
+                </div>
+              </el-form-item>
+              <el-form-item label="Radius">
+                <el-input-number 
+                  v-model="formData.sphere_radius"
+                  :precision="2"
+                  :step="0.1"
+                  :min="0.1"
+                  style="width: 120px"
+                />
+              </el-form-item>
+              <el-form-item label="Resolution">
+                <el-input-number 
+                  v-model="formData.resolution"
+                  :precision="2"
+                  :step="0.1"
+                  :min="0.1"
+                  style="width: 120px"
+                />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="handleSample">Sample Points</el-button>
+              </el-form-item>
+              <el-form-item v-if="sampledPoints.length > 0">
+                <el-table :data="sampledPoints" style="width: 100%">
+                  <el-table-column label="Position">
+                    <template #default="{ row }">
+                      ({{ row.x.toFixed(2) }}, {{ row.y.toFixed(2) }}, {{ row.z.toFixed(2) }})
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="Radius">
+                    <template #default="{ row, $index }">
+                      <el-input-number 
+                        v-model="row.radius"
+                        :precision="2"
+                        :step="0.1"
+                        :min="0.1"
+                        size="small"
+                      />
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="Action" width="80">
+                    <template #default="{ $index }">
+                      <el-button 
+                        type="danger" 
+                        size="small"
+                        @click="handleDeletePoint($index)"
+                      >
+                        Delete
+                      </el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </el-form-item>
+            </template>
+
           </el-form>
         </div>
       </div>
@@ -236,7 +337,7 @@ const formData = ref({
   vector_x: 0,
   vector_y: 0,
   vector_z: 1,
-  radius: 1,
+  cylinder_radius: 1,
   height: 1,
   // Box parameters
   xmin: -1,
@@ -244,8 +345,59 @@ const formData = ref({
   ymin: -1,
   ymax: 1,
   zmin: -1,
-  zmax: 1
+  zmax: 1,
+
+  // SphereLine parameters
+  start_x: 0,
+  start_y: 0,
+  start_z: 0,
+  end_x: 1,
+  end_y: 1,
+  end_z: 1,
+  sphere_radius: 0.5,
+  resolution: 0.5
 })
+
+const sampledPoints = ref<Array<{x: number, y: number, z: number, radius: number}>>([])
+
+const handleSample = () => {
+  const start = {
+    x: formData.value.start_x,
+    y: formData.value.start_y,
+    z: formData.value.start_z
+  }
+  const end = {
+    x: formData.value.end_x,
+    y: formData.value.end_y,
+    z: formData.value.end_z
+  }
+  const resolution = formData.value.resolution
+
+  // Calculate distance between points
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const dz = end.z - start.z
+  const distance = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+  // Calculate number of points based on resolution
+  const numPoints = Math.max(2, Math.ceil(distance / resolution))
+
+  // Generate points
+  sampledPoints.value = []
+  for (let i = 0; i < numPoints; i++) {
+    const t = i / (numPoints - 1)
+    sampledPoints.value.push({
+      x: start.x + t * dx,
+      y: start.y + t * dy,
+      z: start.z + t * dz,
+      radius: formData.value.sphere_radius
+    })
+  }
+}
+
+const handleDeletePoint = (index: number) => {
+  sampledPoints.value.splice(index, 1)
+}
 
 const handleClose = () => {
   emit('update:modelValue', false)
@@ -280,6 +432,11 @@ const validateForm = () => {
       ElMessage.warning('Z maximum must be greater than minimum')
       return false
     }
+  } else if (formData.value.type === 'SphereLineObstacle') {
+    if (sampledPoints.value.length === 0) {
+      ElMessage.warning('Please sample points first')
+      return false
+    }
   }
 
   return true
@@ -299,7 +456,7 @@ const handleGenerate = () => {
       vector_x: formData.value.vector_x,
       vector_y: formData.value.vector_y,
       vector_z: formData.value.vector_z,
-      radius: formData.value.radius,
+      radius: formData.value.cylinder_radius,
       height: formData.value.height
     } : formData.value.type === 'BoxObstacle' ? {
       xmin: formData.value.xmin,
@@ -308,6 +465,9 @@ const handleGenerate = () => {
       ymax: formData.value.ymax,
       zmin: formData.value.zmin,
       zmax: formData.value.zmax
+    } : formData.value.type === 'SphereLineObstacle' ? {
+      points: sampledPoints.value.map(p => [p.x, p.y, p.z]),
+      radius: sampledPoints.value.map(p => p.radius)
     } : {}),
     label_dict: props.label_dict
   }
@@ -325,15 +485,24 @@ const handleGenerate = () => {
     vector_x: 0,
     vector_y: 0,
     vector_z: 1,
-    radius: 1,
+    cylinder_radius: 1,
     height: 1,
     xmin: -1,
     xmax: 1,
     ymin: -1,
     ymax: 1,
     zmin: -1,
-    zmax: 1
+    zmax: 1,
+    start_x: 0,
+    start_y: 0,
+    start_z: 0,
+    end_x: 1,
+    end_y: 1,
+    end_z: 1,
+    sphere_radius: 0.5,
+    resolution: 0.5
   }
+  sampledPoints.value = []
 }
 </script>
 
@@ -342,6 +511,7 @@ const handleGenerate = () => {
   position: fixed;
   right: 0;
   top: 127px; /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
+  /* bottom: 150px; */
   width: 450px;
   background: #fff;
   border-left: 1px solid #dcdfe6;

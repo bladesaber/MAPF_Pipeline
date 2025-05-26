@@ -219,6 +219,7 @@ const emit = defineEmits(['update:modelValue', 'generate'])
 
 const plannerMethods = [
   'AstarSearchBoost',
+  'AstarSearchBucket',
   'WeightedAstarSearchBoost',
   'WeightedAstarSearchBucket',
   'ScaledWeightedAstarSearchBoost',

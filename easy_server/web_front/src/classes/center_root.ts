@@ -6,7 +6,7 @@ import { GridMesh } from "./path_search/grid";
 import { PipeMesh } from './path_search/pipe_mesh';
 import type { TreeNode } from '@/types/data_type';
 
-import { BoxObstacle, CylinderObstacle, PointsObstacle, SpheresObstacle } from './path_search/obstacle_mesh';
+import { BoxObstacle, CylinderObstacle, PointsObstacle, SphereLineObstacle, SpheresObstacle } from './path_search/obstacle_mesh';
 
 export class ProjectManager {
   name: string;
@@ -187,19 +187,30 @@ export class ProjectManager {
       if (obstacle.type === 'Box') {
         const box_obstacle = new BoxObstacle(
           obstacle.name, obstacle.color, 
-          obstacle.xmin, obstacle.xmax, obstacle.ymin, obstacle.ymax, obstacle.zmin, obstacle.zmax, scene);
+          obstacle.xmin, obstacle.xmax, obstacle.ymin, obstacle.ymax, obstacle.zmin, obstacle.zmax, 
+          obstacle.relax_groups, scene
+        );
         proj_manager.obstacle_dict.set(obstacle.name, box_obstacle);
       } else if (obstacle.type === 'Cylinder') {
         const cylinder_obstacle = new CylinderObstacle(
-          obstacle.name, obstacle.color, obstacle.x, obstacle.y, obstacle.z, obstacle.radius, obstacle.height, obstacle.vector_x, obstacle.vector_y, obstacle.vector_z, scene);
+          obstacle.name, obstacle.color, obstacle.x, obstacle.y, obstacle.z, obstacle.radius, obstacle.height, 
+          obstacle.vector_x, obstacle.vector_y, obstacle.vector_z, 
+          obstacle.relax_groups, scene
+        );
         proj_manager.obstacle_dict.set(obstacle.name, cylinder_obstacle);
       } else if (obstacle.type === 'Points') {
-        const points_obstacle = new PointsObstacle(obstacle.name, obstacle.color, obstacle.points, scene);
+        const points_obstacle = new PointsObstacle(obstacle.name, obstacle.color, obstacle.points, obstacle.relax_groups, scene
+        );
         proj_manager.obstacle_dict.set(obstacle.name, points_obstacle);
       } else if (obstacle.type === 'Spheres') {
         const spheres_obstacle = new SpheresObstacle(
-          obstacle.name, obstacle.color, obstacle.points, obstacle.radius, scene);
+          obstacle.name, obstacle.color, obstacle.points, obstacle.radius, obstacle.relax_groups, scene);
         proj_manager.obstacle_dict.set(obstacle.name, spheres_obstacle);
+      } else if (obstacle.type === 'SphereLine') {
+        const sphere_line_obstacle = new SphereLineObstacle(
+          obstacle.name, obstacle.color, obstacle.points, obstacle.radius, obstacle.relax_groups, scene
+        );
+        proj_manager.obstacle_dict.set(obstacle.name, sphere_line_obstacle);
       }
     }
 
@@ -213,7 +224,7 @@ export class ProjectManager {
         const pipe_mesh = new PipeMesh(
           pipe.name, pipe.x, pipe.y, pipe.z, pipe.radius,
           pipe.vector_x, pipe.vector_y, pipe.vector_z, 
-          proj_manager.group_color_dict.get(pipe.group_name)!, pipe.group_name, 
+          proj_manager.group_color_dict.get(pipe.group_name)!, pipe.group_name, pipe.pipe_mode,
           scene
         );
         pipe_dict.set(pipe.name, pipe_mesh);
@@ -254,6 +265,13 @@ export class ProjectManager {
     });
 
     return proj_manager;
+  }
+
+  reset_discretize_source() {
+    this.grid.discretize_source = '';
+    this.obstacle_dict.forEach((obstacle) => {
+      obstacle.discretize_source = '';
+    });
   }
 }
 

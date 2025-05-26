@@ -71,7 +71,7 @@ namespace GridSpace
             : SearchGrid(x_size, y_size, z_size, grid_resolution)
         {
             m_slice_size = x_size * y_size;
-            m_distances.resize(x_size * y_size * z_size, 1e4);
+            m_distances.resize(x_size * y_size * z_size, 500);
         }
 
         ~DistanceGrid() = default;
@@ -80,6 +80,14 @@ namespace GridSpace
         void set_obstacle(LocXyz loc, double distance) override;
         void clear_obstacle(LocXyz loc) override;
         std::tuple<bool, double> is_obstacle(LocXyz loc, double threshold) const override;
+
+        void set_obstacles(std::vector<std::vector<int>> locs, std::vector<double> distances)
+        {
+            for (int i = 0; i < locs.size(); ++i)
+            {
+                this->set_obstacle(LocXyz(locs[i][0], locs[i][1], locs[i][2]), distances[i]);
+            }
+        }
 
     protected:
         const double m_scale_factor = 100.0;

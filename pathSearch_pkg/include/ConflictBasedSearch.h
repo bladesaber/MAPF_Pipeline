@@ -73,7 +73,7 @@ namespace SearchSpace
             #ifdef DEBUG
             for (auto &obstacle : *dynamic_obstacle_map[run_group])
             {
-                if (obstacle.loc == new_obstacle.loc)
+                if (obstacle.loc == new_obstacle.loc && obstacle.radius == new_obstacle.radius)
                 {
                     throw std::runtime_error("Cannot add same obstacle to the same group");
                 }
@@ -212,7 +212,7 @@ namespace SearchSpace
             m_planner_map[task_set->name] = planner;
         }
 
-        bool init_root_node(const std::map<std::string, std::vector<ObstacleData>> &dynamic_obstacle_map)
+        bool init_root_node(const std::map<std::string, std::vector<ObstacleData>> &dynamic_obstacle_map, CbsResult *result)
         {
             m_node_count = 0;
             ConflictBaseSearchNode *root_node = create_node();
@@ -240,6 +240,12 @@ namespace SearchSpace
 
             // ------ if all task sets are solvable, push root node to open heap ------
             push_node(root_node);
+
+            // ------ add result to result ------
+            for (auto &iter : root_node->result_map){
+                result->add_result(iter.first, *iter.second);
+            }
+
             return true;
         }
 
@@ -322,6 +328,7 @@ namespace SearchSpace
 
                 for (auto &iter : node->result_map){
                     result->add_result(iter.first, *iter.second);
+                    result->m_conflict_size = node->m_conflict_set.m_conflict_size;
                 }
 
                 if (node->is_free_conflict){

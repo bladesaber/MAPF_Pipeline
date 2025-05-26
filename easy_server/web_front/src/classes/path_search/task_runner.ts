@@ -46,15 +46,27 @@ export class CellTask {
     this.has_result = false;
   }
 
-  hide() {
+  hide_line_mesh() {
     if (this.result) {
-      this.result.hide_mesh();
+      this.result.hide_line_mesh();
     }
   }
 
-  show() {
+  hide_tube_mesh() {
     if (this.result) {
-      this.result.show_mesh();
+      this.result.hide_tube_mesh();
+    }
+  }
+
+  show_line_mesh() {
+    if (this.result) {
+      this.result.show_line_mesh();
+    }
+  }
+
+  show_tube_mesh() {
+    if (this.result) {
+      this.result.show_tube_mesh();
     }
   }
 
@@ -92,15 +104,27 @@ export class GroupTask {
     this.run_config = run_config;
   }
 
-  hide() {
+  hide_line_mesh() {
     this.cell_tasks.forEach((cell_task) => {
-      cell_task.hide();
+      cell_task.hide_line_mesh();
     });
   }
 
-  show() {
+  hide_tube_mesh() {
     this.cell_tasks.forEach((cell_task) => {
-      cell_task.show();
+      cell_task.hide_tube_mesh();
+    });
+  }
+
+  show_line_mesh() {
+    this.cell_tasks.forEach((cell_task) => {
+      cell_task.show_line_mesh();
+    });
+  }
+
+  show_tube_mesh() {
+    this.cell_tasks.forEach((cell_task) => {
+      cell_task.show_tube_mesh();
     });
   }
 
@@ -124,15 +148,30 @@ export class GroupTask {
   }
 
   check_finish() {
+    if (this.cell_tasks.length === 0) {
+      this.has_result = false;
+      return;
+    }
     if (Array.from(this.cell_tasks.values()).every((cell_task) => cell_task.has_result)) {
       this.has_result = true;
     }
   }
 
   toJSON(is_discrete: boolean = false, grid: GridMesh|null = null): any {
+    const run_config = Object.fromEntries(this.run_config);
+
+    if (is_discrete) {
+      if (['ScaledWeightedAstarSearchBoost', 'ScaledWeightedAstarSearchBucket'].includes(run_config.planner_method as string)) {
+        run_config.threshold1 = grid!.value_to_grid_scaled(this.run_config.get('threshold1') as number);
+      } else if (['DoubleScaledWeightedAstarSearchBoost', 'DoubleScaledWeightedAstarSearchBucket'].includes(run_config.planner_method as string)) {
+        run_config.threshold1 = grid!.value_to_grid_scaled(this.run_config.get('threshold1') as number);
+        run_config.threshold2 = grid!.value_to_grid_scaled(this.run_config.get('threshold2') as number);
+      }
+    }
+
     return {
       name: this.name,
-      run_config: Object.fromEntries(this.run_config),
+      run_config: run_config,
       cell_tasks: this.cell_tasks.map((cell_task) => cell_task.toJSON(is_discrete, grid)),
     };
   }
@@ -150,15 +189,27 @@ export class PriorityTask {
     this.run_config = run_config;
   }
 
-  hide() {
+  hide_line_mesh() {
     this.group_tasks.forEach((group_task) => {
-      group_task.hide();
+      group_task.hide_line_mesh();
     });
   }
 
-  show() {
+  hide_tube_mesh() {
     this.group_tasks.forEach((group_task) => {
-      group_task.show();
+      group_task.hide_tube_mesh();
+    });
+  }
+
+  show_line_mesh() {
+    this.group_tasks.forEach((group_task) => {
+      group_task.show_line_mesh();
+    });
+  }
+
+  show_tube_mesh() {
+    this.group_tasks.forEach((group_task) => {
+      group_task.show_tube_mesh();
     });
   }
 
@@ -185,6 +236,10 @@ export class PriorityTask {
   }
 
   check_finish() {
+    if (this.group_tasks.size === 0) {
+      this.has_result = false;
+      return;
+    }
     this.group_tasks.forEach((group_task) => {
       group_task.check_finish();
     });
@@ -212,15 +267,27 @@ export class SearchTask {
     this.name = name;
   }
 
-  hide() {
+  hide_line_mesh() {
     this.priority_tasks.forEach((priority_task) => {
-      priority_task.hide();
+      priority_task.hide_line_mesh();
     });
   }
 
-  show() {
+  hide_tube_mesh() {
     this.priority_tasks.forEach((priority_task) => {
-      priority_task.show();
+      priority_task.hide_tube_mesh();
+    });
+  }
+
+  show_line_mesh() {
+    this.priority_tasks.forEach((priority_task) => {
+      priority_task.show_line_mesh();
+    });
+  }
+
+  show_tube_mesh() {
+    this.priority_tasks.forEach((priority_task) => {
+      priority_task.show_tube_mesh();
     });
   }
 
@@ -242,6 +309,10 @@ export class SearchTask {
   }
 
   check_finish() {
+    if (this.priority_tasks.length === 0) {
+      this.has_result = false;
+      return;
+    }
     this.priority_tasks.forEach((priority_task) => {
       priority_task.check_finish();
     });

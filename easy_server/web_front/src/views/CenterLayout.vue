@@ -102,7 +102,7 @@
       <div class="main-content">
         <div 
           class="sidebar"
-          :style="{ width: sidebarWidth + 'px', height: `calc(100vh - 36px - ${bottomSidebarHeight}px)` }"
+          :style="{ width: sidebarWidth + 'px', height: `calc(100vh - 36px)` }"
         >
           <el-tree
             v-if="treeData.length"
@@ -129,13 +129,33 @@
             />
           </el-main>
           <div class="bottom-sidebar" :style="{ height: bottomSidebarHeight + 'px' }">
-            <div class="log-header">
-              <span>Log Information</span>
-              <div class="resize-handle-horizontal" @mousedown="handleBottomResize"></div>
-            </div>
-            <div class="log-content" ref="logContent">
-              <div v-for="(log, index) in logs" :key="index" class="log-item">
-                {{ log }}
+            <div class="bottom-sidebar-content">
+              <div class="info-section">
+                <div class="info-header">
+                  <span>Mesh Information</span>
+                </div>
+                <div class="info-content">
+                  <div v-if="selectedMeshInfo" class="info-item">
+                    <div v-for="(value, key) in selectedMeshInfo" :key="key" class="info-row">
+                      <span class="info-label">{{ key }}:</span>
+                      <span class="info-value">{{ value }}</span>
+                    </div>
+                  </div>
+                  <div v-else class="no-info">
+                    No mesh selected
+                  </div>
+                </div>
+              </div>
+              <div class="log-section">
+                <div class="log-header">
+                  <span>Log Information</span>
+                  <div class="resize-handle-horizontal" @mousedown="handleBottomResize"></div>
+                </div>
+                <div class="log-content" ref="logContent">
+                  <div v-for="(log, index) in logs" :key="index" class="log-item">
+                    {{ log }}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -183,6 +203,7 @@ import { pass } from 'three/tsl'
 import { ArrowDown } from '@element-plus/icons-vue'
 
 import { setVisableDict } from '@/utils/utils'
+import { CylinderObstacle, BoxObstacle, PointsObstacle, SpheresObstacle, SquaresObstacle, SphereLineObstacle } from '@/classes/path_search/obstacle_mesh'
 
 import CenterViewer from '../components/CenterViewer.vue'
 import type { TreeNode } from '../types/data_type'
@@ -218,7 +239,7 @@ const handleCardClick = (cardName: string) => {
 }
 
 // ---------------- Left Sidebar ----------------
-const sidebarWidth = ref(250)
+const sidebarWidth = ref(280)
 const isResizing = ref(false)
 const startX = ref(0)
 const startWidth = ref(0)
@@ -292,12 +313,79 @@ const update_log = (message: string) => {
 }
 
 // ---------------- Mesh Click Event handling ----------------
-const handleLeftClickMeshSelect = () => {
-    console.log('left click')
+const handleLeftClickMeshSelect = (name: string) => {
+    // Reset mesh info first
+    updateMeshInfo(null)
+    
+    // find the object in rootObj.proj_dict with the same name
+    rootObj.proj_dict.forEach((project_manager) => {
+      // find whether the name is in the pipe_dict
+      project_manager.pipe_dict.forEach((pipe_dict) => {
+        pipe_dict.forEach((pipe) => {
+          if (pipe.name === name) {
+            updateMeshInfo({
+              'Name': pipe.name,
+              'Type': 'Pipe',
+              'Position': `(${pipe.x.toFixed(2)}, ${pipe.y.toFixed(2)}, ${pipe.z.toFixed(2)})`,
+              'Radius': pipe.radius.toFixed(2),
+              'Direction': `(${pipe.vector_x}, ${pipe.vector_y}, ${pipe.vector_z})`,
+              'Pipe Mode': pipe.pipe_mode,
+              'Group': pipe.group_name
+            })
+          }
+        })
+      })
+
+      // find whether the name is in the obstacle_dict
+      project_manager.obstacle_dict.forEach((obstacle) => {
+        if (obstacle.name === name) {
+          const info: Record<string, any> = {
+            'Name': obstacle.name,
+            'Type': obstacle.constructor.name
+          }
+
+          // Add properties based on obstacle type
+          if (obstacle instanceof CylinderObstacle) {
+            info['Position'] = `(${obstacle.x.toFixed(2)}, ${obstacle.y.toFixed(2)}, ${obstacle.z.toFixed(2)})`
+            info['Radius'] = obstacle.radius.toFixed(2)
+            info['Height'] = obstacle.height.toFixed(2)
+            info['Direction'] = `(${obstacle.vector_x}, ${obstacle.vector_y}, ${obstacle.vector_z})`
+            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+          } else if (obstacle instanceof BoxObstacle) {
+            info['Bounds'] = `X: [${obstacle.xmin.toFixed(2)}, ${obstacle.xmax.toFixed(2)}], Y: [${obstacle.ymin.toFixed(2)}, ${obstacle.ymax.toFixed(2)}], Z: [${obstacle.zmin.toFixed(2)}, ${obstacle.zmax.toFixed(2)}]`
+            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+          } else if (obstacle instanceof PointsObstacle) {
+            info['Points Count'] = obstacle.points.length
+            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+          } else if (obstacle instanceof SpheresObstacle) {
+            info['Spheres Count'] = obstacle.points.length
+            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+          } else if (obstacle instanceof SquaresObstacle) {
+            info['Squares Count'] = obstacle.points.length
+            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+          } else if (obstacle instanceof SphereLineObstacle) {
+            info['Points Count'] = obstacle.points.length
+            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+          }
+          updateMeshInfo(info)
+        }
+      })
+
+      // find whether the name is grid
+      if (project_manager.grid.name === name) {
+        updateMeshInfo({
+          'Name': project_manager.grid.name,
+          'Type': 'Grid',
+          'Size': `(${project_manager.grid.xlength.toFixed(2)}, ${project_manager.grid.ylength.toFixed(2)}, ${project_manager.grid.zlength.toFixed(2)})`,
+          'Resolution': project_manager.grid.resolution.toFixed(2),
+          'Grid Size': `(${project_manager.grid.xsize}, ${project_manager.grid.ysize}, ${project_manager.grid.zsize})`
+        })
+      }
+    })
 }
 
-const handleRightClickMeshSelect = () => {
-    console.log('right click')
+const handleRightClickMeshSelect = (name: string) => {
+    console.log('right click', name)
 }
 
 // ---------------- Fragment Visible ----------------
@@ -397,7 +485,6 @@ const handleDefineProjectGenerate = (data: any) => {
 // ---------------- Click Event handling ----------------
 // Add API call function
 const clearCache = async () => {
-  console.log('clear cache')
   try {
     const response = await fetch('http://192.168.110.54:9998/path_search/clear_cache', {
       method: 'POST',
@@ -509,9 +596,18 @@ const addLog = (message: string) => {
   })
 }
 
+// Add new ref for selected mesh info
+const selectedMeshInfo = ref<Record<string, any> | null>(null)
+
+// Add method to update mesh info
+const updateMeshInfo = (info: Record<string, any> | null) => {
+  selectedMeshInfo.value = info
+}
+
 // Expose addLog method
 defineExpose({
-  addLog
+  addLog,
+  updateMeshInfo
 })
 
 </script>
@@ -623,25 +719,108 @@ defineExpose({
   min-height: 100px;
   max-height: 400px;
   overflow: hidden;
+}
+
+.bottom-sidebar-content {
+  display: flex;
+  height: 100%;
+}
+
+.info-section {
+  flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid #dcdfe6;
 }
 
-/* Update tree node selection styles */
-:deep(.el-tree-node.is-current > .el-tree-node__content) {
-  background-color: #ecf5ff !important;
-  color: #409eff !important;
-  font-weight: bold !important;
+.log-section {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 8px 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-y: auto;
 }
 
-:deep(.el-tree-node.is-current > .el-tree-node__content:hover) {
-  background-color: #ecf5ff !important;
-  color: #409eff !important;
-  font-weight: bold !important;
+.info-header, .log-header {
+  padding: 8px 16px;
+  background: #f5f7fa;
+  border-bottom: 1px solid #dcdfe6;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: bold;
+  color: #303133;
+  position: relative;
 }
 
-:deep(.el-tree-node__content:hover) {
-  background-color: #f5f7fa !important;
+.info-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 16px;
+  font-size: 12px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-row {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.info-label {
+  font-weight: bold;
+  color: #606266;
+  min-width: 100px;
+}
+
+.info-value {
+  color: #303133;
+  word-break: break-all;
+}
+
+.no-info {
+  color: #909399;
+  text-align: center;
+  padding: 16px;
+  font-style: italic;
+}
+
+.resize-handle-horizontal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  cursor: row-resize;
+  background: transparent;
+}
+
+.resize-handle-horizontal:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.log-item {
+  margin-bottom: 4px;
+  color: #606266;
+  border-bottom: 1px solid #ebeef5;
+  padding-bottom: 4px;
+}
+
+.log-item:last-child {
+  margin-bottom: 0;
+  border-bottom: none;
 }
 
 .card-layout {
@@ -777,55 +956,6 @@ defineExpose({
   height: 1px;
   background-color: #dcdfe6;
   z-index: 1;
-}
-
-.log-header {
-  padding: 8px 16px;
-  background: #f5f7fa;
-  border-bottom: 1px solid #dcdfe6;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: bold;
-  color: #303133;
-  position: relative;
-}
-
-.resize-handle-horizontal {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 5px;
-  cursor: row-resize;
-  background: transparent;
-}
-
-.resize-handle-horizontal:hover {
-  background: rgba(0, 0, 0, 0.1);
-}
-
-.log-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 16px;
-  font-family: monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.log-item {
-  margin-bottom: 4px;
-  color: #606266;
-  border-bottom: 1px solid #ebeef5;
-  padding-bottom: 4px;
-}
-
-.log-item:last-child {
-  margin-bottom: 0;
-  border-bottom: none;
 }
 
 </style>
