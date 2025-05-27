@@ -90,6 +90,10 @@ export class CellTask {
       result: this.result ? points : [],
     };
   }
+
+  destroy(scene: THREE.Scene) {
+    this.clear_result(scene);
+  }
 }
 
 export class GroupTask {
@@ -175,6 +179,12 @@ export class GroupTask {
       cell_tasks: this.cell_tasks.map((cell_task) => cell_task.toJSON(is_discrete, grid)),
     };
   }
+
+  destroy(scene: THREE.Scene) {
+    this.cell_tasks.forEach((cell_task) => {
+      cell_task.destroy(scene);
+    });
+  }
 }
 
 export class PriorityTask {
@@ -255,6 +265,12 @@ export class PriorityTask {
       group_tasks: Array.from(this.group_tasks.values()).map((group_task) => group_task.toJSON(is_discrete, grid)),
     };
   }
+
+  destroy(scene: THREE.Scene) {
+    this.group_tasks.forEach((group_task) => {
+      group_task.destroy(scene);
+    });
+  }
 }
 
 export class SearchTask {
@@ -326,6 +342,12 @@ export class SearchTask {
       name: this.name,
       priority_tasks: this.priority_tasks.map((priority_task) => priority_task.toJSON(is_discrete, grid)),
     };
+  }
+
+  destroy(scene: THREE.Scene) {
+    this.priority_tasks.forEach((priority_task) => {
+      priority_task.destroy(scene);
+    });
   }
 }
 

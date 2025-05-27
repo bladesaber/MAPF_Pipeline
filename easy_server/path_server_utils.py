@@ -362,20 +362,19 @@ class PathServerUtils:
         # print(f'[Debug]: Is obstacle: {project_info.grid.is_obstacle(MapfPkg.LocXyz(50, 38, 23))}')
         # ------------------------------------------
         
-        try:
-            is_success = runner.run(start_locs, end_locs)
-            if is_success:
-                result: MapfPkg.PathResult = runner.result
-                return {
-                    'is_success': True, 
-                    'path': np.array([[loc.x, loc.y, loc.z] for loc in result.path]).tolist(), 
-                    'radius': result.radius, 
-                    'time_cost': result.time_cost
+        is_success = runner.run(start_locs, end_locs)
+        if is_success:
+            result: MapfPkg.PathResult = runner.result
+            del runner
+            return {
+                'is_success': True, 
+                'path': np.array([[loc.x, loc.y, loc.z] for loc in result.path]).tolist(), 
+                'radius': result.radius, 
+                'time_cost': result.time_cost
                 }
-            else:
-                return {'is_success': False, 'error': 'Failed to find path'}
-        except Exception as e:
-            return {'is_success': False, 'error': str(e)}
+        else:
+            del runner
+            return {'is_success': False, 'error': 'Failed to find path'}
 
     @staticmethod
     def run_group_task(project_id: str, task_name: str, priority_name: str, group_name: str):
@@ -465,11 +464,12 @@ class PathServerUtils:
                     'radius': path_data.radius,
                     'time_cost': path_data.time_cost
                 }
-
+            del runner
             return {
                 'is_success': True, 'path_set': path_set
             }
         else:
+            del runner
             return {'is_success': False, 'error': 'Failed to find path'}
 
     @staticmethod
@@ -658,6 +658,7 @@ class PathServerUtils:
                 'is_finished': True,
                 'result': {'is_success': False, 'error': 'Failed to find path'}
             })
+            del runner
             return
 
     @staticmethod

@@ -102,7 +102,7 @@
       <div class="main-content">
         <div 
           class="sidebar"
-          :style="{ width: sidebarWidth + 'px', height: `calc(100vh - 36px)` }"
+          :style="{ width: sidebarWidth + 'px', height: `calc(100vh - 36px - 100px)` }"
         >
           <el-tree
             v-if="treeData.length"

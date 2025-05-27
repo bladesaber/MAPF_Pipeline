@@ -131,7 +131,6 @@
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/AddPriorityTask')">Add Priority Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/RemoveSearchTask')">Remove Search Task</el-menu-item>
-        <el-menu-item @click="handleTreeContextMenu('SearchTask/ConnectToServer')">Connect to Server</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/ShowLineResult')">Show Line Result</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/ShowTubeResult')">Show Tube Result</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/HideLineResult')">Hide Line Result</el-menu-item>
@@ -411,6 +410,7 @@ const handleTreeContextMenu = (mode: string) => {
     setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
 
   } else if (mode == 'SearchTask/RemoveSearchTask') {
+    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(label_dict.value.get('SearchTask') as string)!.destroy(rootObj.get_scene())
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.delete(label_dict.value.get('SearchTask') as string)
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.reset_discretize_source()
     emit('updateTree')
@@ -576,6 +576,10 @@ const handleTreeContextMenu = (mode: string) => {
     const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
       label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
         task => task.name === label_dict.value.get('PriorityTask') as string)
+    const cell_task = priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.cell_tasks.find(
+      cell_task => cell_task.name === label_dict.value.get('CellTask') as string
+    )!
+    cell_task.destroy(rootObj.get_scene())
     priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.cell_tasks.splice(
       priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!.cell_tasks.findIndex(
         cell_task => cell_task.name === label_dict.value.get('CellTask') as string
@@ -588,6 +592,8 @@ const handleTreeContextMenu = (mode: string) => {
     const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
       label_dict.value.get('SearchTask') as string)!.priority_tasks.find(
         task => task.name === label_dict.value.get('PriorityTask') as string)
+    const group_task = priority_task!.group_tasks.get(label_dict.value.get('GroupTask') as string)!
+    group_task.destroy(rootObj.get_scene())
     priority_task!.group_tasks.delete(label_dict.value.get('GroupTask') as string)
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.reset_discretize_source()
     emit('updateTree')
@@ -595,6 +601,10 @@ const handleTreeContextMenu = (mode: string) => {
   } else if (mode == 'PriorityTask/RemovePriorityTask') {
     const search_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
       label_dict.value.get('SearchTask') as string)!
+    const priority_task = search_task.priority_tasks.find(
+      task => task.name === label_dict.value.get('PriorityTask') as string
+    )
+    priority_task!.destroy(rootObj.get_scene())
     search_task.priority_tasks.splice(search_task.priority_tasks.findIndex(
       task => task.name === label_dict.value.get('PriorityTask') as string
     ), 1)
