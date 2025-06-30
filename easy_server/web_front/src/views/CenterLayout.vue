@@ -94,6 +94,9 @@
         @highlightTreeNode="handleHighlightTreeNode"
       />
 
+      <CADTool v-if="activeCard === 'CAD'" />
+      <SimulateTool v-if="activeCard === 'Simulate'" />
+
       <DebugTool
         v-if="activeCard === 'Debug'"
         ref="debugToolRef"
@@ -206,7 +209,7 @@
   </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount, provide, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, provide, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Scene, Object3D } from 'three'
 import * as THREE from 'three'
@@ -224,6 +227,8 @@ import PathSearch from '../components/path_search/PathSearch.vue'
 import PathSmooth from '../components/path_smooth/PathSmooth.vue'
 import DebugTool from '../components/debug_tool/DebugTool.vue'
 import DefineProject from '../components/main_fragment/DefineProject.vue'
+import CADTool from '../components/path_cad/CADTool.vue'
+import SimulateTool from '../components/path_simulation/SimulateTool.vue'
 
 // ---------------- Root Object ----------------
 const scene = new THREE.Scene();
