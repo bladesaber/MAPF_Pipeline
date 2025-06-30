@@ -1,8 +1,14 @@
-import * as THREE from "three";
+import * as THREE from 'three';
 
-import { MeshObj } from "../mesh_type";
-import { create_points, create_colored_points, color_to_hex } from "@/utils/visulize_utils";
-import { add_mesh, remove_mesh } from "@/utils/visulize_utils";
+import {
+  add_mesh,
+  color_to_hex,
+  create_colored_points,
+  create_points,
+  remove_mesh,
+} from '@/utils/visulize_utils';
+
+import { MeshObj } from '../mesh_type';
 
 export class GridMesh extends MeshObj {
     xlength: number;

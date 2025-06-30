@@ -171,10 +171,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { Close } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import type { FormInstance } from 'element-plus'
+import {
+  computed,
+  ref,
+  watch,
+} from 'vue';
+
+import type { FormInstance } from 'element-plus';
+import { ElMessage } from 'element-plus';
+
+import { Close } from '@element-plus/icons-vue';
 
 interface GroupRunConfig {
   max_iterations: number
@@ -379,11 +385,11 @@ const handleGenerate = () => {
 .right-sidebar {
   position: fixed;
   right: 0;
-  top: 127px; /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
+  top: 116px; /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
   width: 450px;
   background: #fff;
   border-left: 1px solid #dcdfe6;
-  height: calc(100vh - 127px);
+  height: calc(100vh - 116px);
   display: flex;
   flex-direction: column;
   z-index: 1000;

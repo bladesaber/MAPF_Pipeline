@@ -37,15 +37,18 @@ export class ProjectManager {
   export_tree() {
     // ---------------- Design ----------------
     const grid_node: TreeNode = {
+      id: `${this.name}-grid`,
       label: 'Grid' + `(${this.grid.discretize_source})`,
       style: 'Grid',
       data: { 'Project': this.name },
     };
 
     const obstacle_nodes: TreeNode = {
+      id: `${this.name}-obstacles`,
       label: 'Obstacles',
       children: Array.from(this.obstacle_dict.values()).map((obstacle) => {
         return {
+          id: `${this.name}-obstacle-${obstacle.name}`,
           label: obstacle.name + `(${obstacle.discretize_source})`,
           style: 'Obstacle',
           data: { 'Project': this.name, 'Obstacle': obstacle.name },
@@ -56,14 +59,17 @@ export class ProjectManager {
     };
 
     const pipe_nodes: TreeNode = {
+      id: `${this.name}-pipes`,
       label: 'Pipes',
       children: Array.from(this.pipe_dict.entries()).map(([group_name, pipe_dict]) => {
         return {
+          id: `${this.name}-pipegroup-${group_name}`,
           label: group_name,
           style: 'PipeGroup',
           data: { 'Project': this.name, 'PipeGroup': group_name },
           children: Array.from(pipe_dict.values()).map((pipe) => {
             return {
+              id: `${this.name}-pipe-${group_name}-${pipe.name}`,
               label: pipe.name,
               style: 'Pipe',
               data: { 'Project': this.name, 'PipeGroup': group_name, 'Pipe': pipe.name },
@@ -81,14 +87,17 @@ export class ProjectManager {
     });
 
     const task_nodes: TreeNode = {
+      id: `${this.name}-tasks`,
       label: 'Tasks',
       children: Array.from(this.search_task_dict.values()).map((task) => {
         return {
+          id: `${this.name}-task-${task.name}`,
           label: task.name + (task.has_result ? ' (finished)' : ''),
           style: 'SearchTask',
           data: { 'Project': this.name, 'SearchTask': task.name },
           children: task.priority_tasks.map((priority_task) => {
             return {
+              id: `${this.name}-task-${task.name}-priority-${priority_task.name}`,
               label: priority_task.name + (priority_task.has_result ? ' (finished)' : ''),
               style: 'PriorityTask',
               data: { 
@@ -98,6 +107,7 @@ export class ProjectManager {
               },
               children: Array.from(priority_task.group_tasks.entries()).map(([group_name, group_task]) => {
                 return {
+                  id: `${this.name}-task-${task.name}-priority-${priority_task.name}-group-${group_name}`,
                   label: group_name + (group_task.has_result ? ' (finished)' : ''),
                   style: 'GroupTask',
                   data: { 
@@ -108,6 +118,7 @@ export class ProjectManager {
                   },
                   children: group_task.cell_tasks.map((cell_task) => {
                     return {
+                      id: `${this.name}-task-${task.name}-priority-${priority_task.name}-group-${group_name}-cell-${cell_task.name}`,
                       label: cell_task.has_result ? cell_task.name + ' (finished)' : cell_task.name,
                       style: 'CellTask',
                       data: { 
@@ -130,6 +141,7 @@ export class ProjectManager {
     };
 
     const search_node: TreeNode = {
+      id: `${this.name}-design`,
       label: 'Design',
       children: [grid_node, obstacle_nodes, pipe_nodes, task_nodes],
       style: 'Design',
@@ -149,6 +161,7 @@ export class ProjectManager {
     // ---------------- Simulate ----------------
 
     const parent_node: TreeNode = {
+      id: this.name,
       label: this.name,
       style: 'ProjectRoot',
       data: { 'Project': this.name },

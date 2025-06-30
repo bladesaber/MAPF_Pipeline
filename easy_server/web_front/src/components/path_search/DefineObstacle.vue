@@ -310,13 +310,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
-import { Close } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import {
+  computed,
+  nextTick,
+  ref,
+  watch,
+} from 'vue';
+
+import { ElMessage } from 'element-plus';
+
+import { Close } from '@element-plus/icons-vue';
 
 const props = defineProps<{
   modelValue: boolean,
-  label_dict: Map<string, string | string[] | Map<string, string|number> | number>
+  label_dict: Map<string, string | number | string[] | Map<string, string|number>>
 }>()
 
 const emit = defineEmits(['update:modelValue', 'generate'])
@@ -504,18 +511,76 @@ const handleGenerate = () => {
   }
   sampledPoints.value = []
 }
+
+watch(() => props.label_dict, (newDict) => {
+  if (typeof newDict.get === 'function') {
+    formData.value.name = newDict.get('name') as string ?? ''
+    formData.value.type = newDict.get('type') as string ?? ''
+    formData.value.relax_groups = Array.isArray(newDict.get('relax_groups')) ? 
+      newDict.get('relax_groups') as string[] : 
+      (newDict.get('relax_groups') ? [newDict.get('relax_groups') as string] : [])
+    
+    // CylinderObstacle
+    if (formData.value.type === 'CylinderObstacle') {
+      formData.value.x = Number(newDict.get('x') ?? 0)
+      formData.value.y = Number(newDict.get('y') ?? 0)
+      formData.value.z = Number(newDict.get('z') ?? 0)
+      formData.value.vector_x = Number(newDict.get('vector_x') ?? 0)
+      formData.value.vector_y = Number(newDict.get('vector_y') ?? 0)
+      formData.value.vector_z = Number(newDict.get('vector_z') ?? 1)
+      formData.value.cylinder_radius = Number(newDict.get('radius') ?? 1)
+      formData.value.height = Number(newDict.get('height') ?? 1)
+    }
+    // BoxObstacle
+    else if (formData.value.type === 'BoxObstacle') {
+      formData.value.xmin = Number(newDict.get('xmin') ?? -1)
+      formData.value.xmax = Number(newDict.get('xmax') ?? 1)
+      formData.value.ymin = Number(newDict.get('ymin') ?? -1)
+      formData.value.ymax = Number(newDict.get('ymax') ?? 1)
+      formData.value.zmin = Number(newDict.get('zmin') ?? -1)
+      formData.value.zmax = Number(newDict.get('zmax') ?? 1)
+    }
+    // SphereLineObstacle
+    else if (formData.value.type === 'SphereLineObstacle') {
+      let points = newDict.get('points')
+      let radius = newDict.get('radius')
+      if (typeof points === 'string') points = JSON.parse(points)
+      if (typeof radius === 'string') radius = JSON.parse(radius)
+      if (Array.isArray(points) && Array.isArray(radius) && points.length === radius.length) {
+        sampledPoints.value = points.map((p, i) => ({
+          x: Number(p[0]),
+          y: Number(p[1]),
+          z: Number(p[2]),
+          radius: Number(radius[i])
+        }))
+        if (points.length > 0) {
+          formData.value.start_x = Number(points[0][0])
+          formData.value.start_y = Number(points[0][1])
+          formData.value.start_z = Number(points[0][2])
+          formData.value.end_x = Number(points[points.length - 1][0])
+          formData.value.end_y = Number(points[points.length - 1][1])
+          formData.value.end_z = Number(points[points.length - 1][2])
+          formData.value.sphere_radius = Number(radius[0])
+        }
+      } else {
+        sampledPoints.value = []
+      }
+      formData.value.resolution = Number(newDict.get('resolution') ?? 0.5)
+    }
+  }
+})
 </script>
 
 <style scoped>
 .right-sidebar {
   position: fixed;
   right: 0;
-  top: 127px; /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
+  top: 116px; /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
   /* bottom: 150px; */
   width: 450px;
   background: #fff;
   border-left: 1px solid #dcdfe6;
-  height: calc(100vh - 127px);
+  height: calc(100vh - 116px);
   display: flex;
   flex-direction: column;
   z-index: 1000;

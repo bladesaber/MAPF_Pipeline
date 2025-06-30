@@ -27,9 +27,11 @@
           </div>
           <div class="section-content">
             <el-color-picker 
-              v-model="groupForm.color" 
+              v-model="colorHex"
               :predefine="predefineColors"
-              @change="handleColorChange"
+              @active-change="handleActiveColorChange"
+              @visible-change="handleVisibleChange"
+              :show-confirm-button="false"
             />
           </div>
         </div>
@@ -327,17 +329,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, inject } from 'vue'
-import { Close } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import type { FormInstance } from 'element-plus'
-import { CenterRoot } from '@/classes/center_root'
-import * as THREE from 'three'
+import {
+  computed,
+  inject,
+  nextTick,
+  ref,
+  watch,
+} from 'vue';
+
+import type { FormInstance } from 'element-plus';
+import { ElMessage } from 'element-plus';
+import * as THREE from 'three';
+
+import { CenterRoot } from '@/classes/center_root';
+import { Close } from '@element-plus/icons-vue';
 
 const props = defineProps<{
   modelValue: boolean,
   mode: 'PipeGroup' | 'Pipe' | 'SearchTask' | 'PriorityTask' | 'GroupTask' | 'CellTask',
-  label_dict?: Map<string, string | string[] | Map<string, string | number> | number>
+  label_dict: Map<string, string | number | string[] | Map<string, string|number>>
 }>()
 
 const emit = defineEmits(['update:modelValue', 'generate'])
@@ -540,12 +550,26 @@ const handleClose = () => {
   emit('update:modelValue', false)
 }
 
-const handleColorChange = (color: string) => {
-  // Convert hex color to RGB array
-  const r = parseInt(color.slice(1, 3), 16)
-  const g = parseInt(color.slice(3, 5), 16)
-  const b = parseInt(color.slice(5, 7), 16)
-  groupForm.value.color = [r, g, b]
+// 新增 colorHex 用于 el-color-picker v-model
+const colorHex = ref('#ff0000')
+
+// 新增 lastActiveColor 用于记录最后一次选择的颜色
+const lastActiveColor = ref(colorHex.value)
+
+const handleActiveColorChange = (val: string) => {
+  lastActiveColor.value = val
+  if (val && typeof val === 'string' && val.startsWith('#')) {
+    const r = parseInt(val.slice(1, 3), 16)
+    const g = parseInt(val.slice(3, 5), 16)
+    const b = parseInt(val.slice(5, 7), 16)
+    groupForm.value.color = [r, g, b]
+  }
+}
+
+const handleVisibleChange = (visible: boolean) => {
+  if (!visible && lastActiveColor.value !== colorHex.value) {
+    colorHex.value = lastActiveColor.value
+  }
 }
 
 const handleApply = async () => {
@@ -649,18 +673,55 @@ const handleApply = async () => {
     emit('update:modelValue', false)
   }
 }
+
+watch(() => props.label_dict, (newDict) => {
+  if (typeof newDict.get === 'function') {
+    pipeForm.value.name = newDict.get('name') as string ?? ''
+    pipeForm.value.group = newDict.get('group') as string ?? ''
+    pipeForm.value.x = Number(newDict.get('x') ?? 0)
+    pipeForm.value.y = Number(newDict.get('y') ?? 0)
+    pipeForm.value.z = Number(newDict.get('z') ?? 0)
+    pipeForm.value.vec_x = Number(newDict.get('vec_x') ?? 1)
+    pipeForm.value.vec_y = Number(newDict.get('vec_y') ?? 0)
+    pipeForm.value.vec_z = Number(newDict.get('vec_z') ?? 0)
+    pipeForm.value.radius = Number(newDict.get('radius') ?? 0.5)
+    pipeForm.value.pipe_mode = newDict.get('pipe_mode') as string ?? 'inlet'
+  }
+})
+
+watch(() => props.modelValue, (val) => {
+  if (!val) {
+    // 弹窗关闭时清空
+    cellTaskForm.value = {
+      name: '',
+      start_name: '',
+      end_name: '',
+      radius: 1.0,
+      intermediate_point: '',
+    }
+  } else {
+    // 弹窗打开时用label_dict内容填充
+    if (props.label_dict && typeof props.label_dict.get === 'function') {
+      cellTaskForm.value.name = props.label_dict.get('name') as string ?? ''
+      cellTaskForm.value.start_name = props.label_dict.get('start_name') as string ?? ''
+      cellTaskForm.value.end_name = props.label_dict.get('end_name') as string ?? ''
+      cellTaskForm.value.radius = Number(props.label_dict.get('radius') ?? 1.0)
+      cellTaskForm.value.intermediate_point = props.label_dict.get('intermediate_point') as string ?? ''
+    }
+  }
+})
 </script>
 
 <style scoped>
 .right-sidebar {
   position: fixed;
   right: 0;
-  top: 127px; /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
+  top: 116px; /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
   /* bottom: 150px; */
   width: 450px;
   background: #fff;
   border-left: 1px solid #dcdfe6;
-  height: calc(100vh - 127px);
+  height: calc(100vh - 116px);
   display: flex;
   flex-direction: column;
   z-index: 1000;

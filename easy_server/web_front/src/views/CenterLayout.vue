@@ -110,10 +110,10 @@
       <div class="main-content">
         <div 
           class="sidebar"
-          :style="{ width: sidebarWidth + 'px', height: `calc(100vh - 36px - 100px)` }"
+          :style="{ width: sidebarWidth + 'px', height: `calc(100vh - 118px)` }"
         >
           <el-tree
-            v-if="treeData.length"
+            v-if="treeData.length && expandedKeys.length"
             :data="treeData"
             @node-click="handleLeftTreeClick"
             @node-contextmenu="handleRightTreeClick"
@@ -121,7 +121,10 @@
             ref="treeRef"
             highlight-current
             :current-node-key="currentNodeKey"
-            :default-expand-all="true"
+            :default-expand-all="false"
+            :default-expanded-keys="expandedKeys"
+            @node-expand="handleNodeExpand"
+            @node-collapse="handleNodeCollapse"
           />
           <div
             class="resize-handle"
@@ -307,8 +310,37 @@ const handleRightTreeClick = (event: MouseEvent, data: any) => {
 }
 
 const treeData = ref<TreeNode[]>([])
+const expandedKeys = ref<string[]>([])
+
 const update_tree = () => {
   treeData.value = rootObj.export_tree()
+  if (treeData.value && treeData.value.length > 0 && expandedKeys.value.length === 0) {
+    expandedKeys.value = [treeData.value[0].id]
+  }
+  // console.log('treeData:', JSON.stringify(treeData.value, null, 2))
+  if (treeData.value && treeData.value.length > 0) {
+    treeData.value.forEach((node, idx) => {
+      console.log(`一级节点[${idx}] label:`, node.label, 'id:', node.id, 'children:', node.children)
+    })
+  } else {
+    console.log('treeData 为空或无一级节点')
+  }
+}
+
+watch(treeData, (newVal) => {
+  if (newVal && newVal.length > 0 && expandedKeys.value.length === 0) {
+    expandedKeys.value = [newVal[0].id]
+  }
+})
+
+const handleNodeExpand = (data: any, node: any) => {
+  if (!expandedKeys.value.includes(data.id)) {
+    expandedKeys.value.push(data.id)
+  }
+}
+
+const handleNodeCollapse = (data: any, node: any) => {
+  expandedKeys.value = expandedKeys.value.filter(id => id !== data.id)
 }
 
 // ---------------- Bottom Sidebar ----------------
@@ -694,12 +726,32 @@ defineExpose({
   position: relative;
   min-width: 200px;
   max-width: 500px;
+  height: calc(100vh - 118px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
   background: #fff;
   border-right: 1px solid #dcdfe6;
   box-shadow: 1px 0 4px rgba(0, 0, 0, 0.1);
-  overflow: auto;
-  flex-shrink: 0;
   z-index: 1;
+}
+
+/* 优化横向滚动条样式 */
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background-color: transparent;
 }
 
 .resize-handle {
@@ -757,16 +809,15 @@ defineExpose({
 }
 
 .log-section {
-  flex: 2;
   display: flex;
   flex-direction: column;
+  flex: 2;
   min-width: 0;
   padding: 8px 16px;
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
-  overflow-y: auto;
 }
 
 .info-header, .log-header {
@@ -833,6 +884,12 @@ defineExpose({
   background: rgba(0, 0, 0, 0.1);
 }
 
+.log-content {
+  flex: 1 1 0%;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .log-item {
   margin-bottom: 4px;
   color: #606266;
@@ -847,69 +904,55 @@ defineExpose({
 
 .card-layout {
   display: flex;
-  gap: 0;
-  padding: 0;
+  gap: 20px;
+  padding: 0 32px;
   background: #fff;
-  border-bottom: 1px solid #e4e7ed;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  border-bottom: 1.5px solid #e4e7ed;
+  height: 56px;
+  align-items: flex-end;
   position: relative;
-  width: 100%;
+  z-index: 10;
 }
 
-.card-layout::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background-color: #e4e7ed;
-  z-index: 1;
-}
-
-.card-item {
-  padding: 0 20px;
-  height: 36px;
-  line-height: 36px;
-  font-size: 14px;
+.menu-card {
+  min-width: 96px;
+  height: 55px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
   color: #303133;
+  background: #f8fafb;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.03);
   cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1);
-  position: relative;
-  z-index: 2;
+  transition: 
+    background 0.18s,
+    color 0.18s,
+    box-shadow 0.18s;
   user-select: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  margin-bottom: 0;
+  position: relative;
 }
 
-.card-item:hover {
+.menu-card:hover {
+  background: #f0f6ff;
   color: #409eff;
-  background-color: #f5f7fa;
 }
 
-.card-item.active {
+.menu-card.active {
+  background: #fff;
   color: #409eff;
-  border-bottom-color: #409eff;
-  background-color: #fff;
+  border: 1px solid #d0e4ff;
+  border-bottom: 2.5px solid #409eff;
+  font-weight: 600;
+  z-index: 20;
+  box-shadow: 0 4px 12px rgba(64,158,255,0.08);
 }
 
-.card-item .el-icon {
-  margin-right: 4px;
-  font-size: 14px;
-  vertical-align: middle;
-}
-
-.card-item .el-icon-close {
-  margin-left: 4px;
-  font-size: 12px;
-  border-radius: 50%;
-  transition: all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1);
-  transform: scale(0.8);
-  padding: 2px;
-}
-
-.card-item .el-icon-close:hover {
-  background-color: #c0c4cc;
-  color: #fff;
+.menu-card:not(.active) {
+  border-bottom: 1.5px solid #e4e7ed;
 }
 
 .menu-bar {
@@ -932,10 +975,12 @@ defineExpose({
   cursor: pointer;
   display: flex;
   align-items: center;
-  height: 36px;
+  height:44px;
   padding: 0 20px;
   color: #303133;
+  font-size: 15px;
   transition: all 0.3s;
+  font-family: inherit;
 }
 
 .el-dropdown-link:hover {
