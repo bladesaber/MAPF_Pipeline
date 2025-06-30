@@ -674,19 +674,19 @@ const handleTreeContextMenu = (mode: string) => {
     pipes_info.forEach((info, pipe_name) => {
       const pipe = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.pipe_dict.get(
         info.group_name)!.get(pipe_name)!
-      pipe.discrete(info.radius, min_task_radius * 0.5, 
+      pipe.discrete(info.radius, min_task_radius * 0.75, 
       pipes_info_list, rootObj.get_scene())
     })
 
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.grid.discretize(
-      rootObj.get_scene(), min_task_radius * 0.5, 
+      rootObj.get_scene(), min_task_radius * 0.75, 
       label_dict.value.get('SearchTask') as string,
       pipes_info_list
     )
 
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.forEach((obstacle, key) => {
       obstacle.discrete(
-        rootObj.get_scene(), min_task_radius * 0.5, 
+        rootObj.get_scene(), min_task_radius * 0.75, 
         label_dict.value.get('SearchTask') as string, pipes_info_list
       )
     })
@@ -1025,7 +1025,7 @@ const upload_static_obstacle_pcd = async (
   project_name: string, static_obstacle_points: number[][], 
   xsize: number, ysize: number, zsize: number, resolution: number
 ) => {
-  const url = 'http://192.168.110.54:9998/path_search/upload_static_obstacle_pcd'
+  const url = 'http://192.168.110.66:9998/path_search/upload_static_obstacle_pcd'
   
   progressDialogVisible.value = true
   progressPercentage.value = 0
@@ -1087,7 +1087,7 @@ const upload_static_obstacle_pcd = async (
 const upload_relax_group_obstacle_pcd = async (
   project_name: string, relax_group_name: string, dynamic_obstacle_points: number[][]
 ) => {
-  const url = 'http://192.168.110.54:9998/path_search/upload_relax_group_obstacle_pcd'
+  const url = 'http://192.168.110.66:9998/path_search/upload_relax_group_obstacle_pcd'
 
   progressDialogVisible.value = true
   progressPercentage.value = 0
@@ -1127,7 +1127,7 @@ const upload_relax_group_obstacle_pcd = async (
       }
       
       const progress = Math.round(((i + 1) / dynamic_obstacle_points.length) * 100)
-      progressPercentage.value = progress
+        progressPercentage.value = progress
       progressLog.value = `Uploading dynamic obstacle pcd: ${progress}%`
 
     } catch (error) {
@@ -1147,10 +1147,10 @@ const requestInnerGrid = async (project_name: string) => {
   const pipe_data = rootObj.proj_dict.get(project_name)!.export_pipe_json(true)
 
   progressDialogVisible.value = true
-  progressPercentage.value = 0
+      progressPercentage.value = 0
   progressLog.value = 'Requesting inner grid...'
 
-  const url = 'http://192.168.110.54:9998/path_search/request_inner_xyzd'
+  const url = 'http://192.168.110.66:9998/path_search/request_inner_xyzd'
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -1214,12 +1214,12 @@ const requestInnerGrid = async (project_name: string) => {
     } finally {
       progressDialogVisible.value = false
     }
-}
+  }
   
 const uploadTaskCache = async (project_name: string, search_task_name: string) => {
   const search_task = rootObj.proj_dict.get(project_name)!.search_task_dict.get(search_task_name)!
 
-  const url = 'http://192.168.110.54:9998/path_search/upload_task_cache'
+  const url = 'http://192.168.110.66:9998/path_search/upload_task_cache'
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -1263,7 +1263,7 @@ const runCellTask = async (
     }
 
     const response_type = 'stream' as const
-    const url = 'http://192.168.110.54:9998/path_search/run_cell_task'
+    const url = 'http://192.168.110.66:9998/path_search/run_cell_task'
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1358,7 +1358,7 @@ const runGroupTask = async (project_name: string, search_task_name: string, prio
     }
 
     const response_type = 'stream' as const
-    const url = 'http://192.168.110.54:9998/path_search/run_group_task'
+    const url = 'http://192.168.110.66:9998/path_search/run_group_task'
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1458,7 +1458,7 @@ const runPriorityTask = async (project_name: string, search_task_name: string, p
     }
 
     const response_type = 'stream' as const
-    const url = 'http://192.168.110.54:9998/path_search/run_priority_task'
+    const url = 'http://192.168.110.66:9998/path_search/run_priority_task'
     const response = await fetch(url, {
       method: 'POST',
       headers: {

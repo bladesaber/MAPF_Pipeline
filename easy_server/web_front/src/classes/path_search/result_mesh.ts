@@ -27,7 +27,7 @@ export class PathResultMesh extends MeshObj {
     }) as THREE.Mesh;
     this.tube_mesh.name = this.name;
 
-    this.line_mesh = create_tube(this.points, 0.5, { 
+    this.line_mesh = create_tube(this.points, 0.05, { 
       color: color_to_hex(this.color),
       opacity: 0.5
     }) as THREE.Mesh;

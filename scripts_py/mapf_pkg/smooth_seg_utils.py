@@ -13,9 +13,9 @@ import torch.nn.functional as F
 import h5py
 from sklearn.neighbors import KDTree
 
-from scripts_py.version_9.mapf_pkg.bspline_utils import BsplineUtils
-from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils, CostUtils, TorchMath
-from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
+from scripts_py.mapf_pkg.bspline_utils import BsplineUtils
+from scripts_py.mapf_pkg.torch_utils import TorchUtils, CostUtils, TorchMath
+from scripts_py.mapf_pkg.visual_utils import VisUtils
 
 
 class SegmentCell(object):
@@ -299,6 +299,31 @@ class SegmentCell(object):
 
         return cost_dict
 
+    def export_cfg(self):
+        cfg = {
+            'seg_idx': self.idx,
+            'c_idxs': self.c_idxs.tolist(),
+            'group_idx': self.group_idx,
+            'cell_type': self.cell_type,
+            'left_clamp': self.left_clamp,
+            'right_clamp': self.right_clamp,
+            'left_vector': self.left_vector.tolist(),
+            'right_vector': self.right_vector.tolist(),
+            # just for front end
+            'left_intercept_num': self.left_intercept_num,
+            'right_intercept_num': self.right_intercept_num
+        }        
+        return cfg
+
+    @staticmethod
+    def restore_cfg(cfg: Dict, parent_cell):
+        seg_cell = SegmentCell(cfg['seg_idx'], cfg['group_idx'], np.array(cfg['c_idxs']), parent_cell)
+        seg_cell.left_clamp = cfg['left_clamp']
+        seg_cell.right_clamp = cfg['right_clamp']
+        seg_cell.left_vector = np.array(cfg['left_vector'])
+        seg_cell.right_vector = np.array(cfg['right_vector'])
+        return seg_cell
+
 
 class ConnectorCell(SegmentCell):
     def __init__(self, idx: int, group_idx: int, left_seg_idx: int, right_seg_idx: int, parent_cell):
@@ -409,6 +434,25 @@ class ConnectorCell(SegmentCell):
         orig_radius = table_xyzr[self.c_idxs, -1] * seg_scale[self.c_idxs]
         c_radius = np.linspace(orig_radius[0], orig_radius[-1], num=self.c_idxs.shape[0])
         return super().update_spline_NpCfg(table_xyzr, update_threshold, c_radius)
+
+    def export_cfg(self):
+        cfg = {
+            'con_idx': self.idx,
+            'group_idx': self.group_idx,
+            'cell_type': self.cell_type,
+            'left_seg_idx': self.left_seg_idx,
+            'right_seg_idx': self.right_seg_idx,
+            # just for front end
+            'c_idxs': self.c_idxs.tolist(),
+            'left_intercept_num': self.left_intercept_num,
+            'right_intercept_num': self.right_intercept_num
+        }        
+        return cfg
+
+    @staticmethod
+    def restore_cfg(cfg: Dict, parent_cell):
+        con_cell = ConnectorCell(cfg['con_idx'], cfg['group_idx'], cfg['left_seg_idx'], cfg['right_seg_idx'], parent_cell)
+        return con_cell
 
 
 class AuxCostUtil(object):
@@ -838,6 +882,23 @@ class PathCell(object):
 
     def compute_element_cost(self, with_default_weight: bool):
         raise NotImplementedError
+
+    def export_cfg(self):
+        cfg = {
+            'path_idx': self.idx,
+            'path_name': self.path_name,
+            'group_idx': self.group_idx,
+            'cell_idxs': self.cell_idxs,
+            'cell_types': self.cell_types,
+        }
+        return cfg
+
+    @staticmethod
+    def restore_cfg(cfg: Dict, parent_cell):
+        path_cell = PathCell(
+            cfg['path_name'], cfg['path_idx'], cfg['group_idx'], cfg['cell_idxs'], cfg['cell_types'], parent_cell
+        )
+        return path_cell
 
 
 class PairCell(object):
@@ -1292,10 +1353,6 @@ class GroupCell(object):
         if close_auto:
             writer.close()
 
-    def restore(self):
-        # todo non-complete
-        raise NotImplementedError
-
     def update_fix_term(self, c_idxs: List[int], is_fix_list: List[int]):
         for i in range(len(c_idxs)):
             self.c_table.loc[self.c_table.index[c_idxs[i]], 'is_fix'] = is_fix_list[i] > 0
@@ -1484,3 +1541,17 @@ class GroupCell(object):
 
             if show_plot:
                 vis.show()
+
+    def export_cfg(self):
+        # self.c_table is pd.Dataframe, please convert it to dict whose key is column
+        cfg = {
+            'group_idx': self.group_idx,
+            'c_table': self.c_table.to_dict(orient='list'),
+        }
+        return cfg
+
+    @staticmethod
+    def restore_cfg(cfg: Dict):
+        group_cell = GroupCell(cfg['group_idx'])
+        group_cell.c_table = pd.DataFrame(cfg['c_table'])
+        return group_cell

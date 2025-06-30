@@ -12,15 +12,13 @@ import subprocess
 import h5py
 import matplotlib.pyplot as plt
 
-from scripts_py.version_9.mapf_pkg.app_path import PathApp
-from scripts_py.version_9.mapf_pkg.app_utils import FragmentOpen3d
-from scripts_py.version_9.mapf_pkg.smooth_optimizer import PathOptimizer
-from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
-from scripts_py.version_9.mapf_pkg.shape_utils import ShapeUtils
+from scripts_py.mapf_pkg.app_path import PathApp
+from scripts_py.mapf_pkg.app_utils import FragmentOpen3d
+from scripts_py.mapf_pkg.smooth_optimizer import PathOptimizer
+from scripts_py.mapf_pkg.visual_utils import VisUtils
+from scripts_py.mapf_pkg.shape_utils import ShapeUtils
 
-from scripts_py.version_9.mapf_pkg.utils import TensorBoardRecorder
-
-# todo 我怀疑是因为seg_node_max不足够导致的，导致初始体有问题
+from scripts_py.mapf_pkg.utils import TensorBoardRecorder
 
 
 class SmoothApp(PathApp):

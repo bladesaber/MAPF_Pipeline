@@ -19,3 +19,6 @@ __pycache__
 /easy_server/.idea
 /pathSearch_pkg/build
 *.o
+*_
+*/node_modules
+/easy_server/web_front/node_modules

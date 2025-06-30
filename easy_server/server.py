@@ -17,11 +17,12 @@ from functools import partial
 
 from cad_server_utils import CadServerUtils
 from cad_server_utils import GmshStepReader
-from scripts_py.version_9.simulator.su2_simulator import Su2Simulator
+from scripts_py.simulator.su2_simulator import Su2Simulator
 from server_utils import StreamDataResponse, StreamTaskResponse
 
 from response_utils import StreamThreadTaskResponse, StreamProcessTaskResponse, StreamProcessDataResponse
 from path_server_utils import PathServerUtils, ProjectInfo
+from smooth_server_utils import SmoothServerUtils, SmoothInfo
 
 # Create Flask app
 app = Flask(__name__)
@@ -543,11 +544,16 @@ def simulate():
 def clear_cache():
     data = request.json
     project_ids = data.get('project_ids')
+    smooth_ids = data.get('smooth_ids')
     for project_id in project_ids:
         if project_id in PathServerUtils.project_map:
             print(f'[Debug]: Clearing cache for project {project_id}')
             PathServerUtils.project_map[project_id].grid = None
             del PathServerUtils.project_map[project_id]
+    for smooth_id in smooth_ids:
+        if smooth_id in SmoothServerUtils.smooth_map:
+            print(f'[Debug]: Clearing cache for smooth {smooth_id}')
+            del SmoothServerUtils.smooth_map[smooth_id]
     return jsonify({'is_success': True})
 
 
@@ -857,7 +863,89 @@ def run_priority_task():
         return jsonify({'error': 'Invalid response type'}), 400
 
 
+@app.route('/path_smooth/upload_smooth_obstacle_pcd', methods=['POST'])
+def upload_smooth_obstacle_pcd():
+    data = request.json
+    
+    # Get session ID from request headers or generate one
+    smooth_name = data.get('smooth_name')
+    chunk_index = data.get('chunk_index', 0)
+    total_chunks = data.get('total_chunks', 1)
+    is_last_chunk = data.get('is_last_chunk', True)
+    obstacle_xyzr = np.array(data.get('obstacle_xyzr', []))
+
+    if smooth_name not in SmoothServerUtils.smooth_map:
+        project_info = SmoothInfo()
+        project_info.obstacle_xyzr = []
+        SmoothServerUtils.smooth_map[smooth_name] = project_info
+    
+    SmoothServerUtils.smooth_map[smooth_name].obstacle_xyzr.extend(obstacle_xyzr)
+    print(f'smooth_obstacle_pcd: {len(SmoothServerUtils.smooth_map[smooth_name].obstacle_xyzr)}')
+
+    return jsonify({
+        'message': f'Received chunk {chunk_index + 1} of {total_chunks}',
+        'is_success': True
+    })
+
+
+@app.route('/path_smooth/init_smooth_map', methods=['POST'])
+def init_smooth_map():
+    data = request.json
+    smooth_name = data.get('smooth_name')
+    smooth_json = data.get('smooth_json')
+    smooth_json = SmoothServerUtils.init_smooth_map(smooth_name, smooth_json)
+    return jsonify({'is_success': True, 'smooth_json': smooth_json})
+
+
+@app.route('/path_smooth/manual_smooth', methods=['POST'])
+def manual_smooth():
+    data = request.json
+    smooth_name = data.get('smooth_name')
+    smooth_json = data.get('smooth_json')
+    lr = data.get('lr', 0.01)
+    max_iter = data.get('max_iter', 1000)
+    log_iter = data.get('log_iter', 50)
+
+    def generate():
+        try:
+            task_callback = partial(
+                SmoothServerUtils.manual_smooth,
+                smooth_name=smooth_name,
+                smooth_json=smooth_json,
+                run_times=max_iter,
+                lr=lr,
+                log_iter=log_iter
+            )
+                        
+            task = StreamProcessTaskResponse(
+                name='manual_smooth', 
+                callback_func=task_callback, 
+                interval_time=0.3,
+                min_yield_interval=0.1,
+                max_running_time=1000000
+            )
+            yield from task.start()
+
+            result = {
+                'name': 'manual_smooth',
+                'total_finished': True,
+                'result': task.result['result']
+            }
+            time.sleep(0.25)
+            yield json.dumps(result)
+
+        except Exception as e:
+            yield json.dumps({
+                'name': 'run_priority_task',
+                'total_finished': True,
+                'error': str(e)
+            })
+            return
+
+    return Response(generate(), mimetype='text/event-stream')
+
+
 if __name__ == '__main__':
-    print('Server is running on ws://192.168.110.54:9998')
+    print('Server is running on ws://192.168.110.66:9998')
     # Use threaded=True for better WebSocket support
-    app.run(host='192.168.110.54', port=9998, debug=True, threaded=True)
+    app.run(host='192.168.110.66', port=9998, debug=True, threaded=True)

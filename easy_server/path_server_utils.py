@@ -102,7 +102,7 @@ class PathServerUtils:
             ys[..., np.newaxis], 
             zs[..., np.newaxis]
         ], axis=-1).reshape(-1, 3)
-
+        
         pos_data, dist_data = positions, []
         if len(obstacle_xyzs) > 0:
             tree = KDTree(obstacle_xyzs)
@@ -354,13 +354,13 @@ class PathServerUtils:
             x, y, z = PathServerUtils.flag2xyz(flag, x_size, y_size, z_size)
             end_locs.append(MapfPkg.LocXyz(x, y, z))
             
-        # ------------------------------------------
-        for start_loc in start_locs:
-            print(f'[Debug]: Start loc: {start_loc.x}, {start_loc.y}, {start_loc.z}')
-        for end_loc in end_locs:
-            print(f'[Debug]: End loc: {end_loc.x}, {end_loc.y}, {end_loc.z}')
-        # print(f'[Debug]: Is obstacle: {project_info.grid.is_obstacle(MapfPkg.LocXyz(50, 38, 23))}')
-        # ------------------------------------------
+        # # ------------------------------------------
+        # for start_loc in start_locs:
+        #     print(f'[Debug]: Start loc: {start_loc.x}, {start_loc.y}, {start_loc.z}')
+        # for end_loc in end_locs:
+        #     print(f'[Debug]: End loc: {end_loc.x}, {end_loc.y}, {end_loc.z}')
+        # # print(f'[Debug]: Is obstacle: {project_info.grid.is_obstacle(MapfPkg.LocXyz(50, 38, 23))}')
+        # # ------------------------------------------
         
         is_success = runner.run(start_locs, end_locs)
         if is_success:

@@ -7,6 +7,7 @@ import { PipeMesh } from './path_search/pipe_mesh';
 import type { TreeNode } from '@/types/data_type';
 
 import { BoxObstacle, CylinderObstacle, PointsObstacle, SphereLineObstacle, SpheresObstacle } from './path_search/obstacle_mesh';
+import { SmoothRunner } from './path_smooth/smooth_runner';
 
 export class ProjectManager {
   name: string;
@@ -20,6 +21,7 @@ export class ProjectManager {
   search_task_dict: Map<string, SearchTask> = new Map();
 
   // ---------------- Smooth ----------------
+  smooth_task_dict: Map<string, SmoothRunner> = new Map();
 
   // ---------------- CAD ----------------
 
@@ -135,6 +137,12 @@ export class ProjectManager {
     };
 
     // ---------------- Smooth ----------------
+    const smooth_node: TreeNode = {
+      label: 'Smooth',
+      children: Array.from(this.smooth_task_dict.values()).map((smooth_task) => smooth_task.export_tree()),
+      style: 'Smooth',
+      data: { 'Project': this.name },
+    };
 
     // ---------------- CAD ----------------
 
@@ -144,7 +152,7 @@ export class ProjectManager {
       label: this.name,
       style: 'ProjectRoot',
       data: { 'Project': this.name },
-      children: [search_node],
+      children: [search_node, smooth_node],
     };
 
     return parent_node;

@@ -4,10 +4,11 @@ import torch
 from sklearn.neighbors import KDTree
 import h5py
 
-from scripts_py.version_9.mapf_pkg import smooth_seg_utils
-from scripts_py.version_9.mapf_pkg.torch_utils import TorchUtils, CostUtils
-from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
-from scripts_py.version_9.mapf_pkg.utils import TensorBoardRecorder
+from scripts_py.mapf_pkg import smooth_seg_utils
+from scripts_py.mapf_pkg.torch_utils import TorchUtils, CostUtils
+from scripts_py.mapf_pkg.visual_utils import VisUtils
+from scripts_py.mapf_pkg.utils import TensorBoardRecorder
+from scripts_py.mapf_pkg.smooth_seg_utils import SegmentCell, ConnectorCell, PathCell
 
 
 class PathConflictCell(object):
@@ -81,9 +82,6 @@ class PathOptimizer(object):
             self.obstacle_tree = KDTree(obstacle_xyzr[:, :3])
 
         self.conflict_cfg = conflict_cfg
-
-    def restore(self):
-        raise NotImplementedError
 
     def init_optimize_cfg(self, group_idx, setting_cfg: Dict):
         self.group_cells[group_idx].init_cfg(setting_cfg)
@@ -595,3 +593,41 @@ class PathOptimizer(object):
         for group_idx, group_cell in self.group_cells.items():
             group_cell.draw_curvature(vis)
         vis.show()
+
+    def restore(self, smooth_json: Dict, obstacle_xyzr: np.ndarray):
+        self.obstacle_xyzr = obstacle_xyzr
+        self.obstacle_num = self.obstacle_xyzr.shape[0]
+        if self.obstacle_num > 0:
+            self.obstacle_tensor = TorchUtils.np2tensor(self.obstacle_xyzr[:, :3], require_grad=False)
+            self.obstacle_tree = KDTree(self.obstacle_xyzr[:, :3])
+        self.conflict_cfg = smooth_json['conflict_setting']
+
+        for group_cfg in smooth_json['setting']:
+            group_idx = group_cfg['cell_setting']['group_idx']
+            group_cell = smooth_seg_utils.GroupCell.restore_cfg(group_cfg['cell_setting'])
+
+            for seg_setting in group_cfg['segments']:
+                seg_idx = seg_setting['cell_setting']['seg_idx']
+                seg_cell = SegmentCell.restore_cfg(seg_setting['cell_setting'], group_cell)
+                group_cell.seg_dict[seg_idx] = seg_cell
+
+            for con_setting in group_cfg['connectors']:
+                con_idx = con_setting['cell_setting']['con_idx']
+                con_cell = ConnectorCell.restore_cfg(con_setting['cell_setting'], group_cell)
+                group_cell.connector_dict[con_idx] = con_cell
+            
+            for path_setting in group_cfg['paths']:
+                path_idx = path_setting['cell_setting']['path_idx']
+                path_cell = PathCell.restore_cfg(path_setting['cell_setting'], group_cell)
+                group_cell.path_dict[path_idx] = path_cell
+
+            self.group_cells[group_idx] = group_cell
+        
+        for group_cfg in smooth_json['setting']:
+            group_idx = group_cfg['cell_setting']['group_idx']
+            self.init_optimize_cfg(group_idx, {
+                'segments': group_cfg['segments'],
+                'connectors': group_cfg['connectors'],
+                'paths': group_cfg['paths']
+            })
+        

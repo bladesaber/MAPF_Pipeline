@@ -86,6 +86,14 @@
         @highlightTreeNode="handleHighlightTreeNode"
       />
 
+      <PathSmooth
+        v-if="activeCard === 'Smooth'"
+        ref="pathSmoothRef"
+        @updateTree="update_tree"
+        @updateLog="update_log"
+        @highlightTreeNode="handleHighlightTreeNode"
+      />
+
       <DebugTool
         v-if="activeCard === 'Debug'"
         ref="debugToolRef"
@@ -210,6 +218,7 @@ import type { TreeNode } from '../types/data_type'
 import { CenterRoot, ProjectManager } from '../classes/center_root.ts'
 
 import PathSearch from '../components/path_search/PathSearch.vue'
+import PathSmooth from '../components/path_smooth/PathSmooth.vue'
 import DebugTool from '../components/debug_tool/DebugTool.vue'
 import DefineProject from '../components/main_fragment/DefineProject.vue'
 
@@ -221,6 +230,7 @@ provide('centerRoot', rootObj);
 provide('main_message', "Main Window Running...");
 
 const pathSearchRef = ref()
+const pathSmoothRef = ref()
 const debugToolRef = ref()
 
 // ---------------- Card Layout ----------------
@@ -278,7 +288,11 @@ const handleRightTreeClick = (event: MouseEvent, data: any) => {
         'data': data
       })
     } else if (activeCard.value === 'Smooth') {
-      console.log('smooth')
+      pathSmoothRef.value!.showContextMenu({
+        'x': event.clientX,
+        'y': event.clientY,
+        'data': data
+      })
     } else if (activeCard.value === 'CAD') {
       console.log('cad')
     } else if (activeCard.value === 'Simulate') {
@@ -485,14 +499,22 @@ const handleDefineProjectGenerate = (data: any) => {
 // ---------------- Click Event handling ----------------
 // Add API call function
 const clearCache = async () => {
+  const smooth_ids: string[] = []
+  rootObj.proj_dict.forEach((projectManager) => {
+    projectManager.smooth_task_dict.forEach((smooth_task) => {
+      smooth_ids.push(smooth_task.name)
+    })
+  })
+
   try {
-    const response = await fetch('http://192.168.110.54:9998/path_search/clear_cache', {
+    const response = await fetch('http://192.168.110.66:9998/path_search/clear_cache', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        project_ids: Array.from(rootObj.proj_dict.keys())
+        project_ids: Array.from(rootObj.proj_dict.keys()),
+        smooth_ids: smooth_ids
       })
     })
     if (!response.ok) {
