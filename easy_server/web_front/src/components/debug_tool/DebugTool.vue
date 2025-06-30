@@ -2,10 +2,14 @@
 <template>
     <div class="debug-tool" @click="handleClickOutside">
       <el-menu mode="horizontal" class="menu-bar">
-        <el-sub-menu index="1">
-          <template #title>Help</template>
-          <el-menu-item index="1-1">About</el-menu-item>
-        </el-sub-menu>
+        <el-dropdown trigger="click" placement="bottom">
+          <span class="el-dropdown-link">Help<el-icon class="el-icon--right"><arrow-down /></el-icon></span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item>About</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </el-menu>
 
       <DebugToolPanel
@@ -65,19 +69,42 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, defineExpose, inject, defineEmits } from 'vue'
-import * as THREE from 'three'
-import { ElMessage } from 'element-plus'
+import {
+  computed,
+  defineEmits,
+  defineExpose,
+  inject,
+  reactive,
+  ref,
+} from 'vue';
 
-import DebugToolPanel from './DebugToolPanel.vue'
+import { ElMessage } from 'element-plus';
+import * as THREE from 'three';
 
-import { CenterRoot } from '@/classes/center_root.ts'
-import { setVisableDict } from '@/utils/utils.ts'
-import { generateSphereObstacles_by_percentage, generateRandomPipes, 
-  generateTask, generatePointObstacles_by_percentage, generateSquaresObstacles_by_percentage } from '@/classes/debug_tool/path_debug.ts'
-import { PipeMesh } from '@/classes/path_search/pipe_mesh.ts'
-import { PointsObstacle, SpheresObstacle, SquaresObstacle } from '@/classes/path_search/obstacle_mesh.ts'
-import { SearchTask, PriorityTask, GroupTask, CellTask } from '@/classes/path_search/task_runner.ts'
+import { CenterRoot } from '@/classes/center_root.ts';
+import {
+  generatePointObstacles_by_percentage,
+  generateRandomPipes,
+  generateSphereObstacles_by_percentage,
+  generateSquaresObstacles_by_percentage,
+  generateTask,
+} from '@/classes/debug_tool/path_debug.ts';
+import {
+  PointsObstacle,
+  SpheresObstacle,
+  SquaresObstacle,
+} from '@/classes/path_search/obstacle_mesh.ts';
+import { PipeMesh } from '@/classes/path_search/pipe_mesh.ts';
+import {
+  CellTask,
+  GroupTask,
+  PriorityTask,
+  SearchTask,
+} from '@/classes/path_search/task_runner.ts';
+import { setVisableDict } from '@/utils/utils.ts';
+import { ArrowDown } from '@element-plus/icons-vue';
+
+import DebugToolPanel from './DebugToolPanel.vue';
 
 const emit = defineEmits(['updateTree', 'highlightTreeNode', 'updateLog'])
 
@@ -404,9 +431,44 @@ defineExpose({
   width: 100%;
   position: relative;
 }
-
 .menu-bar {
-  border-bottom: 1px solid #dcdfe6;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+}
+.el-dropdown-link {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 20px;
+  color: #303133;
+  font-size: 15px;
+  transition: all 0.3s;
+  font-family: inherit;
+}
+.el-dropdown-link:hover {
+  background-color: #f5f7fa;
+  color: #409eff;
+}
+.el-dropdown-link:hover .el-icon--right {
+  color: #409eff;
+}
+.el-dropdown-link + .el-dropdown-link {
+  margin-left: 8px;
+}
+.menu-bar::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: #dcdfe6;
+  z-index: 1;
 }
 
 .context-menu {

@@ -2,14 +2,27 @@
 <template>
   <div class="path-search" @click="handleClickOutside">
     <el-menu mode="horizontal" class="menu-bar">
-      <el-sub-menu index="1">
-        <template #title>Tools</template>
-        <el-menu-item index="1-1">Path Analysis</el-menu-item>
-      </el-sub-menu>
-      <el-sub-menu index="2">
-        <template #title>Help</template>
-        <el-menu-item index="2-1">About</el-menu-item>
-      </el-sub-menu>
+      <el-dropdown trigger="click" placement="bottom">
+        <span class="el-dropdown-link">
+          Tools<el-icon class="el-icon--right"><arrow-down /></el-icon>
+        </span>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item>Path Analysis</el-dropdown-item>
+            <el-dropdown-item @click="exportPathPoints">Export Path Points</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+      <el-dropdown trigger="click" placement="bottom">
+        <span class="el-dropdown-link">
+          Help<el-icon class="el-icon--right"><arrow-down /></el-icon>
+        </span>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item>About</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </el-menu>
 
     <DefinePanel
@@ -208,24 +221,53 @@
       </div>
     </el-dialog>
 
+    <EditGridPanel
+      v-model="editGridPanelVisible"
+      :grid="editGridData"
+      @save="handleEditGridSave"
+    />
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, defineExpose, inject, defineEmits } from 'vue'
-import { pass, round } from 'three/tsl'
-import { setVisableDict } from '@/utils/utils'
-import * as THREE from 'three'
-import { ElMessage } from 'element-plus'
+import {
+  computed,
+  defineEmits,
+  defineExpose,
+  inject,
+  reactive,
+  ref,
+} from 'vue';
 
-import DefinePanel from './DefinePanel.vue'
-import DefineObstacle from './DefineObstacle.vue'
+import { ElMessage } from 'element-plus';
+import { da } from 'element-plus/es/locales.mjs';
+import * as THREE from 'three';
+import {
+  pass,
+  round,
+} from 'three/tsl';
 
-import { CylinderObstacle, BoxObstacle, PointsObstacle, SphereLineObstacle } from '@/classes/path_search/obstacle_mesh.ts'
-import { CenterRoot } from '@/classes/center_root.ts'
-import { PipeMesh } from '@/classes/path_search/pipe_mesh'
-import { SearchTask, PriorityTask, GroupTask, CellTask } from '@/classes/path_search/task_runner'
-import { da } from 'element-plus/es/locales.mjs'
+import { CenterRoot } from '@/classes/center_root.ts';
+import {
+  BoxObstacle,
+  CylinderObstacle,
+  PointsObstacle,
+  SphereLineObstacle,
+} from '@/classes/path_search/obstacle_mesh.ts';
+import { PipeMesh } from '@/classes/path_search/pipe_mesh';
+import {
+  CellTask,
+  GroupTask,
+  PriorityTask,
+  SearchTask,
+} from '@/classes/path_search/task_runner';
+import { setVisableDict } from '@/utils/utils';
+import { ArrowDown } from '@element-plus/icons-vue';
+
+import DefineObstacle from './DefineObstacle.vue';
+import DefinePanel from './DefinePanel.vue';
+import EditGridPanel from './EditGridPanel.vue';
 
 const emit = defineEmits(['updateTree', 'highlightTreeNode', 'updateLog'])
 
@@ -283,7 +325,7 @@ const isAnyMenuVisible = computed(() => {
 // Add click outside handler
 const handleClickOutside = (event: MouseEvent) => {
   // Check if click is outside of any context menu
-  const contextMenus = document.querySelectorAll('.context-menu')
+  const contextMenus = document.querySelectorAll('.context-menu') as NodeListOf<HTMLElement>
   let clickedInsideMenu = false
   
   contextMenus.forEach(menu => {
@@ -369,6 +411,62 @@ const showContextMenu = (data: any) => {
   } else if (style === 'Pipe') {
     pipeContextMenuVisible.value = true
   }
+
+  setTimeout(() => {
+    const menus = document.querySelectorAll('.context-menu') as NodeListOf<HTMLElement>;
+    let menu: HTMLElement | null = null;
+    menus.forEach(m => {
+      if (getComputedStyle(m).display !== 'none') {
+        menu = m as HTMLElement;
+      }
+    });
+    if (menu) {
+      const menuHeight = (menu as HTMLElement).offsetHeight;
+      const menuWidth = (menu as HTMLElement).offsetWidth;
+      const windowHeight = window.innerHeight;
+      const windowWidth = window.innerWidth;
+      let top = data.y;
+      let left = data.x;
+
+      // 下方空间
+      const spaceBelow = windowHeight - data.y;
+      // 上方空间
+      const spaceAbove = data.y;
+
+      // 优先显示在鼠标下方
+      if (spaceBelow >= menuHeight + 8) {
+        top = data.y;
+        (menu as HTMLElement).style.maxHeight = '';
+        (menu as HTMLElement).style.overflowY = '';
+        const elMenu = (menu as HTMLElement).querySelector('.el-menu') as HTMLElement | null;
+        if (elMenu) {
+          elMenu.style.maxHeight = '';
+          elMenu.style.overflowY = '';
+        }
+      } else {
+        // 下方空间不够，菜单底部贴近窗口底部，但顶部不会高于鼠标Y
+        let maxHeight = Math.max(spaceBelow, spaceAbove) - 8;
+        if (maxHeight < 80) maxHeight = 80; // 最小高度
+        // 菜单顶部最多到鼠标Y
+        top = Math.max(8, windowHeight - menuHeight - 8, data.y - (menuHeight - spaceBelow));
+        (menu as HTMLElement).style.maxHeight = maxHeight + 'px';
+        (menu as HTMLElement).style.overflowY = 'auto';
+        const elMenu = (menu as HTMLElement).querySelector('.el-menu') as HTMLElement | null;
+        if (elMenu) {
+          elMenu.style.maxHeight = maxHeight + 'px';
+          elMenu.style.overflowY = 'auto';
+        }
+      }
+
+      // 右边界
+      if (data.x + menuWidth > windowWidth) {
+        left = windowWidth - menuWidth - 8;
+        if (left < 0) left = 0;
+        contextMenuPosition.x = left;
+      }
+      contextMenuPosition.y = top;
+    }
+  }, 0);
 }
 
 // ------ Fragment ------
@@ -664,19 +762,19 @@ const handleTreeContextMenu = (mode: string) => {
     pipes_info.forEach((info, pipe_name) => {
       const pipe = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.pipe_dict.get(
         info.group_name)!.get(pipe_name)!
-      pipe.discrete(info.radius, min_task_radius * 0.5, 
+      pipe.discrete(info.radius, min_task_radius * 0.25, 
       pipes_info_list, rootObj.get_scene())
     })
 
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.grid.discretize(
-      rootObj.get_scene(), min_task_radius * 0.5, 
+      rootObj.get_scene(), min_task_radius * 0.25, 
       label_dict.value.get('SearchTask') as string,
       pipes_info_list
     )
 
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.forEach((obstacle, key) => {
       obstacle.discrete(
-        rootObj.get_scene(), min_task_radius * 0.5, 
+        rootObj.get_scene(), min_task_radius * 0.25, 
         label_dict.value.get('SearchTask') as string, pipes_info_list
       )
     })
@@ -856,45 +954,200 @@ const handleTreeContextMenu = (mode: string) => {
       label_dict.value.get('SearchTask') as string,
       label_dict.value.get('PriorityTask') as string
     )
+  } else if (mode === 'Obstacle/EditObstacle') {
+    // 右键编辑障碍物，弹出抽屉并填充所有参数
+    const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    const obstacle = project.obstacle_dict.get(label_dict.value.get('Obstacle') as string)!
+    const newDict = new Map()
+    newDict.set('Project', label_dict.value.get('Project'))
+    newDict.set('Obstacle', label_dict.value.get('Obstacle'))
+    newDict.set('name', obstacle.name)
+    newDict.set('type', obstacle.constructor.name) // type字段和组件联动
+    newDict.set('relax_groups', obstacle.relax_groups)
+    newDict.set('_is_edit', 'true')
+    newDict.set('_origin_name', obstacle.name) // 记录原始name
+    if (obstacle instanceof CylinderObstacle) {
+      newDict.set('x', obstacle.x)
+      newDict.set('y', obstacle.y)
+      newDict.set('z', obstacle.z)
+      newDict.set('radius', obstacle.radius)
+      newDict.set('height', obstacle.height)
+      newDict.set('vector_x', obstacle.vector_x)
+      newDict.set('vector_y', obstacle.vector_y)
+      newDict.set('vector_z', obstacle.vector_z)
+    } else if (obstacle instanceof BoxObstacle) {
+      newDict.set('xmin', obstacle.xmin)
+      newDict.set('xmax', obstacle.xmax)
+      newDict.set('ymin', obstacle.ymin)
+      newDict.set('ymax', obstacle.ymax)
+      newDict.set('zmin', obstacle.zmin)
+      newDict.set('zmax', obstacle.zmax)
+    } else if (obstacle instanceof SphereLineObstacle) {
+      newDict.set('points', JSON.stringify(obstacle.points))
+      newDict.set('radius', JSON.stringify(obstacle.radius))
+    }
+    // 保证响应式
+    label_dict.value = new Map([...newDict])
+    defineObstacleVisible.value = true // 弹出抽屉
+  } else if (mode == 'Pipe/EditPipe') {
+    // 编辑Pipe，补全label_dict
+    const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    const pipeGroupName = String(label_dict.value.get('PipeGroup'))
+    const pipeName = String(label_dict.value.get('Pipe'))
+    const pipe = project.pipe_dict.get(pipeGroupName)!.get(pipeName)!
+    // 关键：每次都新建一个 Map，避免残留，但要补全上下文
+    const newDict = new Map()
+    newDict.set('Project', label_dict.value.get('Project'))
+    newDict.set('PipeGroup', pipeGroupName)
+    newDict.set('Pipe', pipeName)
+    newDict.set('name', pipe.name)
+    newDict.set('x', pipe.x)
+    newDict.set('y', pipe.y)
+    newDict.set('z', pipe.z)
+    newDict.set('radius', pipe.radius)
+    newDict.set('vec_x', pipe.vector_x)
+    newDict.set('vec_y', pipe.vector_y)
+    newDict.set('vec_z', pipe.vector_z)
+    newDict.set('group', pipe.group_name)
+    newDict.set('pipe_mode', pipe.pipe_mode)
+    newDict.set('_is_edit', 'true')
+    newDict.set('_origin_name', pipe.name)
+    // 保证响应式
+    label_dict.value = new Map([...newDict])
+    definePanelMode.value = 'Pipe'
+    setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
+  } else if (mode === 'Grid/EditGrid') {
+    const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    if (project && project.grid) {
+      editGridData.value = {
+        xlength: project.grid.xlength,
+        ylength: project.grid.ylength,
+        zlength: project.grid.zlength,
+        resolution: project.grid.resolution
+      }
+      editGridPanelVisible.value = true
+    }
+  } else if (mode == 'CellTask/EditCellTask') {
+    // 编辑 CellTask，补全 label_dict 并弹出编辑面板
+    const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    const searchTask = project.search_task_dict.get(label_dict.value.get('SearchTask') as string)!
+    const priorityTask = searchTask.priority_tasks.find(task => task.name === label_dict.value.get('PriorityTask') as string)
+    const groupTask = priorityTask!.group_tasks.get(label_dict.value.get('GroupTask') as string)!
+    const cellTask = groupTask.cell_tasks.find(cell => cell.name === label_dict.value.get('CellTask') as string)!
+    // 构造新的 label_dict，避免残留
+    const newDict = new Map()
+    newDict.set('Project', label_dict.value.get('Project'))
+    newDict.set('SearchTask', label_dict.value.get('SearchTask'))
+    newDict.set('PriorityTask', label_dict.value.get('PriorityTask'))
+    newDict.set('GroupTask', label_dict.value.get('GroupTask'))
+    newDict.set('CellTask', cellTask.name)
+    newDict.set('name', cellTask.name)
+    newDict.set('start_name', cellTask.start_name)
+    newDict.set('end_name', cellTask.end_name)
+    newDict.set('radius', cellTask.radius)
+    // PipeNames 用于下拉选项
+    const group_pipes = project.pipe_dict.get(label_dict.value.get('GroupTask') as string)!
+    const pipe_names = Array.from(group_pipes.keys())
+    newDict.set('PipeNames', pipe_names as string[])
+    newDict.set('_is_edit', 'true')
+    newDict.set('_origin_name', cellTask.name)
+    label_dict.value = new Map([...newDict])
+    definePanelMode.value = 'CellTask'
+    setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
   }
 }
 
 const handleDefineObstacleGenerate = (data: any) => {
-  if (data.type == 'CylinderObstacle') {
-    const obstacle_mesh = new CylinderObstacle(
-      data.name, [1, 0, 0],
-      data.x, data.y, data.z, 
-      data.radius, data.height, 
-      data.vector_x, data.vector_y, data.vector_z,
-      data.relax_groups,
-      rootObj.get_scene()
-    );
-    const current_label_dict = data.label_dict
-    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.obstacle_dict.set(obstacle_mesh.name, obstacle_mesh)
-    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
+  const current_label_dict = data.label_dict
+  const project = rootObj.proj_dict.get(current_label_dict.get('Project')!)!
+  const isEdit = current_label_dict.get('_is_edit') === 'true'
+  const originName = current_label_dict.get('_origin_name') || data.name
+  const oldObstacle = project.obstacle_dict.get(originName)
 
-  } else if (data.type == 'BoxObstacle') {
-    const obstacle_block = new BoxObstacle(
-      data.name, [1, 0, 0],
-      data.xmin, data.xmax, data.ymin, data.ymax, data.zmin, data.zmax,
-      data.relax_groups,
-      rootObj.get_scene()
-    );
-    const current_label_dict = data.label_dict
-    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.obstacle_dict.set(obstacle_block.name, obstacle_block)
-    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
+  // 判断是否类型变更、对象不存在或重命名
+  let canDirectEdit = false
+  const isRename = data.name !== originName
+  if (isEdit && oldObstacle && !isRename) {
+    const oldType = oldObstacle.constructor.name
+    if (oldType === data.type) {
+      canDirectEdit = true
+    } else {
+      // 类型变更，先销毁原对象和 mesh
+      oldObstacle.destory(rootObj.get_scene())
+      project.obstacle_dict.delete(originName)
+    }
+  } else if (isEdit && oldObstacle && isRename) {
+    // 改名，先销毁原对象和 mesh
+    oldObstacle.destory(rootObj.get_scene())
+    project.obstacle_dict.delete(originName)
+  }
 
-  } else if (data.type == 'SphereLineObstacle') {
-    const obstacle_sphere_line = new SphereLineObstacle(
-      data.name, [1, 0, 1],
-      data.points, data.radius,
-      data.relax_groups,
-      rootObj.get_scene()
-    );
-    const current_label_dict = data.label_dict
-    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.obstacle_dict.set(obstacle_sphere_line.name, obstacle_sphere_line)
-    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
-
+  if (canDirectEdit) {
+    // 类型未变，安全赋值
+    if (data.type == 'CylinderObstacle') {
+      const obstacle = oldObstacle as CylinderObstacle
+      obstacle.x = data.x
+      obstacle.y = data.y
+      obstacle.z = data.z
+      obstacle.radius = data.radius
+      obstacle.height = data.height
+      obstacle.vector_x = data.vector_x
+      obstacle.vector_y = data.vector_y
+      obstacle.vector_z = data.vector_z
+      obstacle.relax_groups = data.relax_groups
+      if (typeof obstacle.update_mesh === 'function') obstacle.update_mesh(rootObj.get_scene())
+      project.reset_discretize_source()
+    } else if (data.type == 'BoxObstacle') {
+      const obstacle = oldObstacle as BoxObstacle
+      obstacle.xmin = data.xmin
+      obstacle.xmax = data.xmax
+      obstacle.ymin = data.ymin
+      obstacle.ymax = data.ymax
+      obstacle.zmin = data.zmin
+      obstacle.zmax = data.zmax
+      obstacle.relax_groups = data.relax_groups
+      if (typeof obstacle.update_mesh === 'function') obstacle.update_mesh(rootObj.get_scene())
+      project.reset_discretize_source()
+    } else if (data.type == 'SphereLineObstacle') {
+      const obstacle = oldObstacle as SphereLineObstacle
+      obstacle.points = typeof data.points === 'string' ? JSON.parse(data.points) : data.points
+      obstacle.radius = typeof data.radius === 'string' ? JSON.parse(data.radius) : data.radius
+      obstacle.relax_groups = data.relax_groups
+      if (typeof obstacle.update_mesh === 'function') obstacle.update_mesh(rootObj.get_scene())
+      project.reset_discretize_source()
+    }
+  } else {
+    // 新建前，确保场景中没有同名 mesh
+    let newObstacle = null
+    if (data.type == 'CylinderObstacle') {
+      newObstacle = new CylinderObstacle(
+        data.name, [1, 0, 0],
+        data.x, data.y, data.z, 
+        data.radius, data.height, 
+        data.vector_x, data.vector_y, data.vector_z,
+        data.relax_groups,
+        rootObj.get_scene()
+      )
+    } else if (data.type == 'BoxObstacle') {
+      newObstacle = new BoxObstacle(
+        data.name, [1, 0, 0],
+        data.xmin, data.xmax, data.ymin, data.ymax, data.zmin, data.zmax,
+        data.relax_groups,
+        rootObj.get_scene()
+      )
+    } else if (data.type == 'SphereLineObstacle') {
+      newObstacle = new SphereLineObstacle(
+        data.name, [1, 0, 1],
+        typeof data.points === 'string' ? JSON.parse(data.points) : data.points,
+        typeof data.radius === 'string' ? JSON.parse(data.radius) : data.radius,
+        data.relax_groups,
+        rootObj.get_scene()
+      )
+    }
+    if (newObstacle) {
+      project.obstacle_dict.set(data.name, newObstacle)
+      project.reset_discretize_source()
+    }
   }
   hideFragmentMenu()
   emit('updateTree')
@@ -917,20 +1170,44 @@ const handleDefinePanelGenerate = (data: any) => {
 
   } else if (data.mode === 'Pipe') {
     const current_label_dict = data.label_dict
-    if (!rootObj.proj_dict.get(current_label_dict.get('Project')!)!.pipe_dict.get(current_label_dict.get('PipeGroup')!)!.has(data.name)) {
-      const group_color = rootObj.proj_dict.get(current_label_dict.get('Project')!)!.group_color_dict.get(current_label_dict.get('PipeGroup')!)!
+    const project = rootObj.proj_dict.get(current_label_dict.get('Project')!)!
+    const pipeGroup = project.pipe_dict.get(current_label_dict.get('PipeGroup')!)!
+    const originName = current_label_dict.get('_origin_name') || data.name
+    const oldPipe = pipeGroup.get(originName)
+    const isEdit = current_label_dict.get('_is_edit') === 'true'
+    const isRename = data.name !== originName
+    let canDirectEdit = false
+    if (isEdit && oldPipe && !isRename) {
+      canDirectEdit = true
+    } else if (isEdit && oldPipe && isRename) {
+      // 改名，先销毁原对象和 mesh
+      oldPipe.destory(rootObj.get_scene && rootObj.get_scene())
+      pipeGroup.delete(originName)
+    }
+    if (canDirectEdit && oldPipe) {
+      // 无论 name 是否变，只要是编辑都赋值
+      oldPipe.x = data.x
+      oldPipe.y = data.y
+      oldPipe.z = data.z
+      oldPipe.radius = data.radius
+      oldPipe.vector_x = data.vec_x
+      oldPipe.vector_y = data.vec_y
+      oldPipe.vector_z = data.vec_z
+      oldPipe.pipe_mode = data.pipe_mode
+      oldPipe.group_name = data.group
+      if (typeof oldPipe.update_mesh === 'function') oldPipe.update_mesh(rootObj.get_scene())
+      project.reset_discretize_source()
+    } else {
+      // 新建前，确保场景中没有同名 mesh
+      const group_color = project.group_color_dict.get(current_label_dict.get('PipeGroup')!)!
       const pipe_mesh = new PipeMesh(
         data.name, data.x, data.y, data.z,
         data.radius, data.vec_x, data.vec_y, data.vec_z,
         group_color, data.group, data.pipe_mode,
         rootObj.get_scene()
       )
-      rootObj.proj_dict.get(current_label_dict.get('Project')!)!.pipe_dict.get(current_label_dict.get('PipeGroup')!)!.set(
-        data.name, pipe_mesh
-      )
-      rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
-    } else {
-      ElMessage.warning('Pipe already exists')
+      pipeGroup.set(data.name, pipe_mesh)
+      project.reset_discretize_source()
     }
 
   } else if (data.mode === 'SearchTask') {
@@ -973,18 +1250,39 @@ const handleDefinePanelGenerate = (data: any) => {
   } else if (data.mode === 'CellTask') {
     const current_label_dict = data.label_dict
     const group_color = rootObj.proj_dict.get(current_label_dict.get('Project')!)!.group_color_dict.get(current_label_dict.get('GroupTask')!)!
-    const task = new CellTask(
-      data.name, data.start_name, data.end_name,
-      data.radius, group_color
-    )
     let search_task = rootObj.proj_dict.get(current_label_dict.get('Project')!)!.search_task_dict.get(current_label_dict.get('SearchTask')!)!
+    let cell_tasks: CellTask[] = []
     for (let priority_task of search_task.priority_tasks) {
       if (priority_task.name === current_label_dict.get('PriorityTask')!) {
-        priority_task.group_tasks.get(current_label_dict.get('GroupTask')!)!.cell_tasks.push(task)
+        cell_tasks = priority_task.group_tasks.get(current_label_dict.get('GroupTask')!)!.cell_tasks
       }
     }
-    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
+    const isEdit = current_label_dict.get('_is_edit') === 'true'
+    const originName = current_label_dict.get('_origin_name') || data.name
+    const isRename = data.name !== originName
 
+    if (isEdit) {
+      const idx = cell_tasks.findIndex(cell => cell.name === originName)
+      if (idx !== -1) {
+        if (isRename) {
+          // 改名，先删再加
+          const task = new CellTask(data.name, data.start_name, data.end_name, data.radius, group_color)
+          cell_tasks.splice(idx, 1, task)
+        } else {
+          // 只改属性，不删不加
+          const cell = cell_tasks[idx]
+          cell.start_name = data.start_name
+          cell.end_name = data.end_name
+          cell.radius = data.radius
+          // 如有其它属性也一并赋值
+        }
+      }
+    } else {
+      // 新建
+      const task = new CellTask(data.name, data.start_name, data.end_name, data.radius, group_color)
+      cell_tasks.push(task)
+    }
+    rootObj.proj_dict.get(current_label_dict.get('Project')!)!.reset_discretize_source()
   }
   hideFragmentMenu()
   emit('updateTree')
@@ -1015,7 +1313,7 @@ const upload_static_obstacle_pcd = async (
   project_name: string, static_obstacle_points: number[][], 
   xsize: number, ysize: number, zsize: number, resolution: number
 ) => {
-  const url = 'http://192.168.110.54:9998/path_search/upload_static_obstacle_pcd'
+  const url = 'http://192.168.110.58:9998/path_search/upload_static_obstacle_pcd'
   
   progressDialogVisible.value = true
   progressPercentage.value = 0
@@ -1077,7 +1375,7 @@ const upload_static_obstacle_pcd = async (
 const upload_relax_group_obstacle_pcd = async (
   project_name: string, relax_group_name: string, dynamic_obstacle_points: number[][]
 ) => {
-  const url = 'http://192.168.110.54:9998/path_search/upload_relax_group_obstacle_pcd'
+  const url = 'http://192.168.110.58:9998/path_search/upload_relax_group_obstacle_pcd'
 
   progressDialogVisible.value = true
   progressPercentage.value = 0
@@ -1140,7 +1438,7 @@ const requestInnerGrid = async (project_name: string) => {
   progressPercentage.value = 0
   progressLog.value = 'Requesting inner grid...'
 
-  const url = 'http://192.168.110.54:9998/path_search/request_inner_xyzd'
+  const url = 'http://192.168.110.58:9998/path_search/request_inner_xyzd'
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -1209,7 +1507,7 @@ const requestInnerGrid = async (project_name: string) => {
 const uploadTaskCache = async (project_name: string, search_task_name: string) => {
   const search_task = rootObj.proj_dict.get(project_name)!.search_task_dict.get(search_task_name)!
 
-  const url = 'http://192.168.110.54:9998/path_search/upload_task_cache'
+  const url = 'http://192.168.110.58:9998/path_search/upload_task_cache'
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -1253,7 +1551,7 @@ const runCellTask = async (
     }
 
     const response_type = 'stream' as const
-    const url = 'http://192.168.110.54:9998/path_search/run_cell_task'
+    const url = 'http://192.168.110.58:9998/path_search/run_cell_task'
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1302,6 +1600,7 @@ const runCellTask = async (
           if (data.total_finished) {
             const result = data.result
             if (result.is_success) {
+              console.log('CellTask 路径点坐标：', result.path)
               cell_task.set_result(result.path, rootObj.get_scene(), true, rootObj.proj_dict.get(project_name)!.grid)
               emit('updateTree')
             }
@@ -1348,7 +1647,7 @@ const runGroupTask = async (project_name: string, search_task_name: string, prio
     }
 
     const response_type = 'stream' as const
-    const url = 'http://192.168.110.54:9998/path_search/run_group_task'
+    const url = 'http://192.168.110.58:9998/path_search/run_group_task'
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1406,6 +1705,7 @@ const runGroupTask = async (project_name: string, search_task_name: string, prio
                   path_set.set(key, (value as { path: number[][] }).path)
                 }
                 group_task.set_result(path_set, rootObj.get_scene(), true, rootObj.proj_dict.get(project_name)!.grid)
+                console.log('GroupTask 路径点坐标：', path_set)
                 emit('updateTree')
               }
               else {
@@ -1448,7 +1748,7 @@ const runPriorityTask = async (project_name: string, search_task_name: string, p
     }
 
     const response_type = 'stream' as const
-    const url = 'http://192.168.110.54:9998/path_search/run_priority_task'
+    const url = 'http://192.168.110.58:9998/path_search/run_priority_task'
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1512,6 +1812,7 @@ const runPriorityTask = async (project_name: string, search_task_name: string, p
                   }
                   path_res.set(group_name, path_set)
                 }
+                console.log('PriorityTask 路径点坐标：', path_res)
                 priority_task.set_result(path_res, rootObj.get_scene(), true, rootObj.proj_dict.get(project_name)!.grid)
                 emit('updateTree')
               }
@@ -1557,6 +1858,62 @@ defineExpose({
   showContextMenu
 })
 
+const exportPathPoints = () => {
+  let content = ''
+  rootObj.proj_dict.forEach((project, projectName) => {
+    project.search_task_dict.forEach((searchTask, searchTaskName) => {
+      searchTask.priority_tasks.forEach(priorityTask => {
+        priorityTask.group_tasks.forEach((groupTask, groupTaskName) => {
+          groupTask.cell_tasks.forEach(cellTask => {
+            if (cellTask.has_result && cellTask.result?.points && cellTask.result.points.length > 0) {
+              content += `# Project: ${projectName}\n# SearchTask: ${searchTaskName}\n# PriorityTask: ${priorityTask.name}\n# GroupTask: ${groupTaskName}\n# CellTask: ${cellTask.name}\n`;
+              cellTask.result.points.forEach(point => {
+                content += point.join(', ') + '\n';
+              });
+              content += '\n';
+            }
+          });
+        });
+      });
+    });
+  });
+  if (!content) {
+    ElMessage.warning('没有可导出的已完成 CellTask 路径点！')
+    return
+  }
+  const blob = new Blob([content], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'all_finished_celltask_path_points.txt'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const editGridPanelVisible = ref(false)
+const editGridData = ref({
+  xlength: 0,
+  ylength: 0,
+  zlength: 0,
+  resolution: 0.1
+})
+
+const handleEditGridSave = (newGrid: any) => {
+  const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+  if (project && project.grid) {
+    project.grid.xlength = newGrid.xlength
+    project.grid.ylength = newGrid.ylength
+    project.grid.zlength = newGrid.zlength
+    project.grid.resolution = newGrid.resolution
+    if (typeof project.grid.update_mesh === 'function') {
+      project.grid.update_mesh(rootObj.get_scene())
+    }
+    project.reset_discretize_source()
+  }
+  editGridPanelVisible.value = false
+  emit('updateTree')
+}
+
 </script>
 
 <style scoped>
@@ -1567,6 +1924,48 @@ defineExpose({
 
 .menu-bar {
   border-bottom: 1px solid #dcdfe6;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+}
+
+.el-dropdown-link {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 20px;
+  color: #303133;
+  font-size: 15px;
+  transition: all 0.3s;
+  font-family: inherit;
+}
+
+.el-dropdown-link:hover {
+  background-color: #f5f7fa;
+  color: #409eff;
+}
+
+.el-dropdown-link:hover .el-icon--right {
+  color: #409eff;
+}
+
+.el-dropdown-link + .el-dropdown-link {
+  margin-left: 8px;
+}
+
+.menu-bar::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: #dcdfe6;
+  z-index: 1;
 }
 
 .context-menu {
@@ -1576,6 +1975,8 @@ defineExpose({
   border-radius: 4px;
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   z-index: 3000;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .context-menu :deep(.el-menu) {
@@ -1601,6 +2002,13 @@ defineExpose({
   bottom: 0;
   z-index: 2999;
   background: transparent;
+}
+
+/* 样式兜底 */
+.context-menu,
+.context-menu :deep(.el-menu) {
+  max-height: 80vh !important;
+  overflow-y: auto !important;
 }
 </style>
 

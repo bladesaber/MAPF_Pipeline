@@ -84,9 +84,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Close } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ref } from 'vue';
+
+import { ElMessage } from 'element-plus';
+
+import { Close } from '@element-plus/icons-vue';
 
 interface FormData {
     name: string
@@ -157,11 +159,11 @@ const handleApply = () => {
 .right-sidebar {
     position: fixed;
     right: 0;
-    top: 127px; /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
+    top: 116px; /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
     width: 450px;
     background: #fff;
     border-left: 1px solid #dcdfe6;
-    height: calc(100vh - 127px);
+    height: calc(100vh - 116px);
     display: flex;
     flex-direction: column;
     z-index: 1000;

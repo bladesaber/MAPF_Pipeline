@@ -1,9 +1,14 @@
-import * as THREE from "three";
+import * as THREE from 'three';
 
-import { MeshObj } from "../mesh_type";
-import { remove_mesh, add_mesh, create_points, color_to_hex } from "@/utils/visulize_utils";
-import { create_sphere } from "@/utils/visulize_utils";
-import { pass } from "three/tsl";
+import {
+  add_mesh,
+  color_to_hex,
+  create_points,
+  create_sphere,
+  remove_mesh,
+} from '@/utils/visulize_utils';
+
+import { MeshObj } from '../mesh_type';
 
 export class ObstacleMesh extends MeshObj {
     relax_groups: string[] = [];

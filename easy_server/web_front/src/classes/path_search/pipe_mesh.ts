@@ -1,9 +1,17 @@
-import * as THREE from "three";
+import * as THREE from 'three';
 
-import { MeshObj } from "../mesh_type";
-import { create_cone, color_to_hex, add_mesh, remove_mesh, create_points } from "@/utils/visulize_utils";
-import type { GridMesh } from "./grid";
-import { pcd2plane_dist } from "@/utils/utils";
+import { pcd2plane_dist } from '@/utils/utils';
+import {
+  add_mesh,
+  color_to_hex,
+  create_cone,
+  create_points,
+  create_sphere,
+  remove_mesh,
+} from '@/utils/visulize_utils';
+
+import { MeshObj } from '../mesh_type';
+import type { GridMesh } from './grid';
 
 export class PipeMesh extends MeshObj {
     x: number;
@@ -43,11 +51,23 @@ export class PipeMesh extends MeshObj {
     }
 
     add_mesh(scene: THREE.Scene): void {
-        const mesh = create_cone(
-            this.x, this.y, this.z, this.radius, this.radius, 
-            this.vector_x, this.vector_y, this.vector_z, 
-            { color: color_to_hex(this.color) }
-        );
+        let mesh: THREE.Mesh;
+        if (this.pipe_mode === "intermediate"){
+            mesh = create_sphere(
+                this.x, this.y, this.z, this.radius,
+                { color: color_to_hex(this.color) , output_mesh:true}
+            ) as THREE.Mesh;
+        }
+        else {
+            mesh = create_cone(
+                this.x + this.vector_x * this.radius * 0.5, 
+                this.y + this.vector_y * this.radius * 0.5, 
+                this.z + this.vector_z * this.radius * 0.5, 
+                this.radius, this.radius, 
+                this.vector_x, this.vector_y, this.vector_z, 
+                { color: color_to_hex(this.color) }
+            );
+        }
         mesh.name = this.name;
 
         // Add edge lines
