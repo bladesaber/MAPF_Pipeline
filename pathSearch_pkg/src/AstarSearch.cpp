@@ -65,10 +65,11 @@ namespace SearchSpace
             
             // // --------------------------------------------
             // double distance = MathSpace::get_distance(current->m_loc, goals[0]);
-            // bool debug = distance < 16.4;
+            // bool debug = distance < 1.5;
             // if (debug)
             // {
-            //     std::cout << "iteration: " << iteration << " goal: " << goals[0] << " current: " << current->m_loc << " distance: " << distance << std::endl;
+            //     std::cout << "iteration: " << iteration << " goal: " << goals[0] 
+            //         << " current: " << current->m_loc << " distance: " << distance << std::endl;
             // }
             // // --------------------------------------------
 
@@ -96,16 +97,18 @@ namespace SearchSpace
                     continue;
                 }
 
-                // --------------------------------------------
+                // // --------------------------------------------
                 // if (debug){
                 //     std::cout << "dx: " << dx << " dy: " << dy << " dz: " << dz << std::endl;
                 //     std::cout << "is_inverse_direction pass" << std::endl;
+                //     std::cout << "current: " << current->m_loc + LocXyz{dx, dy, dz} << " radius: " << this->m_radius << std::endl;
                 //     std::cout << "is_obstacle {dx, dy, dz}: " << std::get<0>(grid->is_obstacle(current->m_loc + LocXyz{dx, dy, dz}, this->m_radius)) << std::endl;
+                //     std::cout << "dist2obstacle {dx, dy, dz}: " << std::get<1>(grid->is_obstacle(current->m_loc + LocXyz{dx, dy, dz}, this->m_radius)) << std::endl;
                 //     // std::cout << "is_obstacle {dx, 0, 0}: " << std::get<0>(grid->is_obstacle(current->m_loc + LocXyz{dx, 0, 0}, this->m_radius)) << std::endl;
                 //     // std::cout << "is_obstacle {0, dy, 0}: " << std::get<0>(grid->is_obstacle(current->m_loc + LocXyz{0, dy, 0}, this->m_radius)) << std::endl;
                 //     // std::cout << "is_obstacle {0, 0, dz}: " << std::get<0>(grid->is_obstacle(current->m_loc + LocXyz{0, 0, dz}, this->m_radius)) << std::endl;
                 // }
-                // --------------------------------------------
+                // // --------------------------------------------
 
                 if (!grid->is_move_valid(current->m_loc, this->m_radius, dx, dy, dz))
                 {

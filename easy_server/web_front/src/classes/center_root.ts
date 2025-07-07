@@ -1,12 +1,23 @@
-import * as THREE from 'three'
+import * as THREE from 'three';
 
-import type { ObstacleMesh } from './path_search/obstacle_mesh';
-import { SearchTask, PriorityTask, GroupTask, CellTask } from './path_search/task_runner';
-import { GridMesh } from "./path_search/grid";
-import { PipeMesh } from './path_search/pipe_mesh';
 import type { TreeNode } from '@/types/data_type';
 
-import { BoxObstacle, CylinderObstacle, PointsObstacle, SphereLineObstacle, SpheresObstacle } from './path_search/obstacle_mesh';
+import { GridMesh } from './path_search/grid';
+import type { ObstacleMesh } from './path_search/obstacle_mesh';
+import {
+  BoxObstacle,
+  CylinderObstacle,
+  PointsObstacle,
+  SphereLineObstacle,
+  SpheresObstacle,
+} from './path_search/obstacle_mesh';
+import { PipeMesh } from './path_search/pipe_mesh';
+import {
+  CellTask,
+  GroupTask,
+  PriorityTask,
+  SearchTask,
+} from './path_search/task_runner';
 import { SmoothRunner } from './path_smooth/smooth_runner';
 
 export class ProjectManager {
@@ -152,7 +163,7 @@ export class ProjectManager {
     const smooth_node: TreeNode = {
       label: 'Smooth',
       children: Array.from(this.smooth_task_dict.values()).map((smooth_task) => smooth_task.export_tree()),
-      style: 'Smooth',
+      style: 'SmoothRoot',
       data: { 'Project': this.name },
     };
 

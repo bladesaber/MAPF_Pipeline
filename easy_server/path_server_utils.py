@@ -34,6 +34,7 @@ class GroupTaskInfo:
         self.run_config = run_config
         self.cell_infos = {}
 
+
 class PriorityTaskInfo:
     name: str = None
     group_infos: dict[str, GroupTaskInfo] = {}
@@ -58,7 +59,7 @@ class SearchTaskInfo:
 
 class ProjectInfo:
     static_obstacle_pcd = []
-    relax_group_obstacle_pcd: dict[str, list] = {}
+    dynamic_group_obstacle_pcd: dict[str, list] = {}
     
     inner_xyzd: tuple[np.ndarray, np.ndarray] = (np.array([]), np.array([]))
     x_size: int = None
@@ -334,13 +335,12 @@ class PathServerUtils:
                     # print(f'[Debug]: Added pipe obstacle for group: {other_group_name} and x: {x} y: {y} z: {z} radius: {project_info.flag2radius[flag]}')
         
         # add relax group obstacles to the grid
-        for relax_group_name, obstacle_pcd in project_info.relax_group_obstacle_pcd.items():
-            if relax_group_name != group_name:
-                for x, y, z, r in obstacle_pcd:
-                    runner.add_dynamic_obstacle(
-                        MapfPkg.ObstacleData(MapfPkg.LocXyz(int(x), int(y), int(z)), float(r))
-                    )
-                    # print(f'[Debug]: Added dynamic obstacle for group: {relax_group_name} and x: {x} y: {y} z: {z} radius: {r}')
+        if group_name in project_info.dynamic_group_obstacle_pcd:
+            for x, y, z, r in project_info.dynamic_group_obstacle_pcd[group_name]:
+                runner.add_dynamic_obstacle(
+                    MapfPkg.ObstacleData(MapfPkg.LocXyz(int(x), int(y), int(z)), float(r))
+                )
+                # print(f'[Debug]: Added dynamic obstacle for group: {group_name} and x: {x} y: {y} z: {z} radius: {r}')
         
         start_locs = []
         connected_nodes = nx.node_connected_component(graph, start_flag)
@@ -412,13 +412,12 @@ class PathServerUtils:
                     # print(f'[Debug]: Added pipe obstacle for group: {other_group_name} and x: {x} y: {y} z: {z} radius: {project_info.flag2radius[flag]}')
         
         # add relax group obstacles to the grid
-        for relax_group_name, obstacle_pcd in project_info.relax_group_obstacle_pcd.items():
-            if relax_group_name != group_name:
-                for x, y, z, r in obstacle_pcd:
-                    runner.add_dynamic_obstacle(
-                        MapfPkg.ObstacleData(MapfPkg.LocXyz(int(x), int(y), int(z)), float(r))
-                    )
-                    # print(f'[Debug]: Added dynamic obstacle for group 222: {relax_group_name} and x: {x} y: {y} z: {z} radius: {r}')
+        if group_name in project_info.dynamic_group_obstacle_pcd:
+            for x, y, z, r in project_info.dynamic_group_obstacle_pcd[group_name]:
+                runner.add_dynamic_obstacle(
+                    MapfPkg.ObstacleData(MapfPkg.LocXyz(int(x), int(y), int(z)), float(r))
+                )
+                # print(f'[Debug]: Added dynamic obstacle for group 222: {relax_group_name} and x: {x} y: {y} z: {z} radius: {r}')
         
         for cell_name, cell_info in group_task.cell_infos.items():
             start_loc = project_info.pipe_cfg[group_name][cell_info.start_name][:3]
@@ -515,13 +514,12 @@ class PathServerUtils:
                         # print(f'[Debug]: Added dynamic obstacle for group: {group_name} and x: {x} y: {y} z: {z} radius: {project_info.flag2radius[flag]}')
 
             # add relax group obstacles to the grid
-            for relax_group_name, obstacle_pcd in project_info.relax_group_obstacle_pcd.items():
-                if relax_group_name != group_name:
-                    for x, y, z, r in obstacle_pcd:
-                        runner.add_dynamic_obstacle(
-                            group_name,
-                            MapfPkg.ObstacleData(MapfPkg.LocXyz(int(x), int(y), int(z)), float(r))
-                        )
+            if group_name in project_info.dynamic_group_obstacle_pcd:
+                for x, y, z, r in project_info.dynamic_group_obstacle_pcd[group_name]:
+                    runner.add_dynamic_obstacle(
+                        group_name,
+                        MapfPkg.ObstacleData(MapfPkg.LocXyz(int(x), int(y), int(z)), float(r))
+                    )
 
         for group_name, group_task in priority_task.group_infos.items():
             group_graph = project_info.graph_dict[group_name]

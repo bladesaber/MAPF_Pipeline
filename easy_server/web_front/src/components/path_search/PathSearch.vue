@@ -143,6 +143,7 @@
     >
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/AddPriorityTask')">Add Priority Task</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SearchTask/EditSearchTask')">Edit Search Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/RemoveSearchTask')">Remove Search Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/ShowLineResult')">Show Line Result</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SearchTask/ShowTubeResult')">Show Tube Result</el-menu-item>
@@ -162,8 +163,8 @@
     >
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('PriorityTask/AddGroupTask')">Add Group Task</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PriorityTask/EditPriorityTask')">Edit Priority Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('PriorityTask/RemovePriorityTask')">Remove Priority Task</el-menu-item>
-        <el-menu-item @click="handleTreeContextMenu('PriorityTask/RunSearch')">Run Search</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('PriorityTask/ShowLineResult')">Show Line Result</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('PriorityTask/ShowTubeResult')">Show Tube Result</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('PriorityTask/HideLineResult')">Hide Line Result</el-menu-item>
@@ -181,6 +182,7 @@
     >
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('GroupTask/AddCellTask')">Add Cell Task</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('GroupTask/EditGroupTask')">Edit Group Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('GroupTask/RemoveGroupTask')">Remove Group Task</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('GroupTask/ShowLineResult')">Show Line Result</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('GroupTask/ShowTubeResult')">Show Tube Result</el-menu-item>
@@ -261,6 +263,7 @@ import {
   PriorityTask,
   SearchTask,
 } from '@/classes/path_search/task_runner';
+import config from '@/config';
 import { setVisableDict } from '@/utils/utils';
 import { ArrowDown } from '@element-plus/icons-vue';
 
@@ -507,6 +510,19 @@ const handleTreeContextMenu = (mode: string) => {
     definePanelMode.value = 'PriorityTask'
     setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
 
+  } else if (mode == 'SearchTask/EditSearchTask') {
+    // 编辑 SearchTask，补全 label_dict 并弹出编辑面板
+    const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    const searchTask = project.search_task_dict.get(label_dict.value.get('SearchTask') as string)!
+    const newDict = new Map()
+    newDict.set('Project', label_dict.value.get('Project'))
+    newDict.set('SearchTask', searchTask.name)
+    newDict.set('name', searchTask.name)
+    newDict.set('_is_edit', 'true')
+    newDict.set('_origin_name', searchTask.name)
+    label_dict.value = new Map([...newDict])
+    definePanelMode.value = 'SearchTask'
+    setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
   } else if (mode == 'SearchTask/RemoveSearchTask') {
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(label_dict.value.get('SearchTask') as string)!.destroy(rootObj.get_scene())
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.delete(label_dict.value.get('SearchTask') as string)
@@ -520,12 +536,47 @@ const handleTreeContextMenu = (mode: string) => {
     label_dict.value.set('GroupNames', group_names as string[])
     setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
 
+  } else if (mode == 'PriorityTask/EditPriorityTask') {
+    // 编辑 PriorityTask，补全 label_dict 并弹出编辑面板
+    const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    const searchTask = project.search_task_dict.get(label_dict.value.get('SearchTask') as string)!
+    const priorityTask = searchTask.priority_tasks.find(task => task.name === label_dict.value.get('PriorityTask') as string)!
+    const newDict = new Map()
+    newDict.set('Project', label_dict.value.get('Project'))
+    newDict.set('SearchTask', label_dict.value.get('SearchTask'))
+    newDict.set('PriorityTask', priorityTask.name)
+    newDict.set('name', priorityTask.name)
+    newDict.set('run_cfg', Object.fromEntries(priorityTask.run_config))
+    newDict.set('_is_edit', 'true')
+    newDict.set('_origin_name', priorityTask.name)
+    label_dict.value = new Map([...newDict])
+    definePanelMode.value = 'PriorityTask'
+    setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
   } else if (mode == 'GroupTask/AddCellTask') {
     definePanelMode.value = 'CellTask'
     const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
     const group_pipes = project_manager.pipe_dict.get(label_dict.value.get('GroupTask') as string)!
     const pipe_names = Array.from(group_pipes.keys())
     label_dict.value.set('PipeNames', pipe_names as string[])
+    setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
+
+  } else if (mode == 'GroupTask/EditGroupTask') {
+    // 编辑 GroupTask，补全 label_dict 并弹出编辑面板
+    const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    const searchTask = project.search_task_dict.get(label_dict.value.get('SearchTask') as string)!
+    const priorityTask = searchTask.priority_tasks.find(task => task.name === label_dict.value.get('PriorityTask') as string)!
+    const groupTask = priorityTask.group_tasks.get(label_dict.value.get('GroupTask') as string)!
+    const newDict = new Map()
+    newDict.set('Project', label_dict.value.get('Project'))
+    newDict.set('SearchTask', label_dict.value.get('SearchTask'))
+    newDict.set('PriorityTask', label_dict.value.get('PriorityTask'))
+    newDict.set('GroupTask', groupTask.name)
+    newDict.set('name', groupTask.name)
+    newDict.set('run_cfg', Object.fromEntries(groupTask.run_config))
+    newDict.set('_is_edit', 'true')
+    newDict.set('_origin_name', groupTask.name)
+    label_dict.value = new Map([...newDict])
+    definePanelMode.value = 'GroupTask'
     setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
 
   } else if (mode == 'Grid/HideGrid') {
@@ -823,36 +874,42 @@ const handleTreeContextMenu = (mode: string) => {
       })
     }
 
+    const all_group_names: string[] = []
+    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.pipe_dict.forEach((pipes, group_name) => {
+      all_group_names.push(group_name)
+    })
+    all_group_names.forEach(group_name => {
+      dynamic_obstacle_points[group_name] = []
+    })
+
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.forEach((obstacle, key) => {
       if (obstacle.discretize_source == '') {
         ElMessage.warning('Grid has not been discretized')
         return
       } else {
-        if (obstacle.relax_groups.length == 0){
+        if (obstacle.relax_groups.length == 0) {
           for (let i = 0; i < obstacle.discretize_points.length; i++) {
             static_obstacle_points.push([
               grid.value_to_grid_scaled(obstacle.discretize_points[i][0]),
-              grid.value_to_grid_scaled(obstacle.discretize_points[i][1]), 
+              grid.value_to_grid_scaled(obstacle.discretize_points[i][1]),
               grid.value_to_grid_scaled(obstacle.discretize_points[i][2]),
               obstacle.discretize_radius[i]
             ])
           }
         } else {
-          obstacle.relax_groups.forEach(group => {
-            if (!dynamic_obstacle_points[group]) {
-              dynamic_obstacle_points[group] = []
+          all_group_names.forEach(child_group_name => {
+            if (!obstacle.relax_groups.includes(child_group_name)) {
+              for (let i = 0; i < obstacle.discretize_points.length; i++) {
+                dynamic_obstacle_points[child_group_name].push([
+                  grid.value_to_grid_scaled(obstacle.discretize_points[i][0]),
+                  grid.value_to_grid_scaled(obstacle.discretize_points[i][1]),
+                  grid.value_to_grid_scaled(obstacle.discretize_points[i][2]),
+                  obstacle.discretize_radius[i]
+                ])
+              }
             }
           })
-          for (let i = 0; i < obstacle.discretize_points.length; i++) {
-            obstacle.relax_groups.forEach(group => {
-              dynamic_obstacle_points[group].push([
-                grid.value_to_grid_scaled(obstacle.discretize_points[i][0]),
-                grid.value_to_grid_scaled(obstacle.discretize_points[i][1]), 
-                grid.value_to_grid_scaled(obstacle.discretize_points[i][2]),
-                obstacle.discretize_radius[i]
-              ])
-            })
-          }
+
         }
       }
     })
@@ -976,6 +1033,8 @@ const handleTreeContextMenu = (mode: string) => {
     newDict.set('relax_groups', obstacle.relax_groups)
     newDict.set('_is_edit', 'true')
     newDict.set('_origin_name', obstacle.name) // 记录原始name
+    // 保证编辑时Relax Groups下拉有数据
+    newDict.set('RelaxGroup', Array.from(project.pipe_dict.keys()))
     if (obstacle instanceof CylinderObstacle) {
       newDict.set('x', obstacle.x)
       newDict.set('y', obstacle.y)
@@ -1300,7 +1359,7 @@ const handleDefinePanelGenerate = (data: any) => {
 
 // ------ Backend ------
 const initEnv = async (
-  project_name: string, 
+  project_name: string,
   static_obstacle_points: number[][], dynamic_obstacle_points: { [key: string]: number[][] },
   xsize: number, ysize: number, zsize: number, resolution: number
 ) => {
@@ -1310,9 +1369,9 @@ const initEnv = async (
     }
   }
   if (Object.keys(dynamic_obstacle_points).length > 0) {
-    for (const [relax_group_name, points] of Object.entries(dynamic_obstacle_points)) {
-      if (!await upload_relax_group_obstacle_pcd(project_name, relax_group_name, points)) {
-      return
+    for (const [group_name, points] of Object.entries(dynamic_obstacle_points)) {
+      if (!await upload_group_obstacle_pcd(project_name, group_name, points)) {
+        return
       }
     }
   }
@@ -1323,7 +1382,7 @@ const upload_static_obstacle_pcd = async (
   project_name: string, static_obstacle_points: number[][], 
   xsize: number, ysize: number, zsize: number, resolution: number
 ) => {
-  const url = 'http://192.168.110.66:9998/path_search/upload_static_obstacle_pcd'
+  const url = `${config.BASE_URL}/path_search/upload_static_obstacle_pcd`
   
   progressDialogVisible.value = true
   progressPercentage.value = 0
@@ -1382,8 +1441,8 @@ const upload_static_obstacle_pcd = async (
   return true
 }
 
-const upload_relax_group_obstacle_pcd = async (
-  project_name: string, relax_group_name: string, dynamic_obstacle_points: number[][]
+const upload_group_obstacle_pcd = async (
+  project_name: string, group_name: string, dynamic_obstacle_points: number[][]
 ) => {
   const url = 'http://192.168.110.66:9998/path_search/upload_relax_group_obstacle_pcd'
 
@@ -1406,26 +1465,26 @@ const upload_relax_group_obstacle_pcd = async (
         body: JSON.stringify({
           project_id: project_name,
           obstacle_pcd: chunk_data,
-          relax_group_name: relax_group_name,
+          group_name: group_name,
           chunk_index: i,
           total_chunks: total_chunks,
           is_last_chunk: i === dynamic_obstacle_points.length - CHUNK_SIZE
         })
       })
-      
+
       if (!response.ok) {
         ElMessage.error('Failed to upload dynamic obstacle pcd')
         return false
       }
-      
+
       const data = await response.json()
       if (data.error) {
         ElMessage.error(data.error)
         return false
       }
-      
+
       const progress = Math.round(((i + 1) / dynamic_obstacle_points.length) * 100)
-        progressPercentage.value = progress
+      progressPercentage.value = progress
       progressLog.value = `Uploading dynamic obstacle pcd: ${progress}%`
 
     } catch (error) {
@@ -1448,7 +1507,7 @@ const requestInnerGrid = async (project_name: string) => {
       progressPercentage.value = 0
   progressLog.value = 'Requesting inner grid...'
 
-  const url = 'http://192.168.110.66:9998/path_search/request_inner_xyzd'
+  const url = `${config.BASE_URL}/path_search/request_inner_xyzd`
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -1517,7 +1576,7 @@ const requestInnerGrid = async (project_name: string) => {
 const uploadTaskCache = async (project_name: string, search_task_name: string) => {
   const search_task = rootObj.proj_dict.get(project_name)!.search_task_dict.get(search_task_name)!
 
-  const url = 'http://192.168.110.66:9998/path_search/upload_task_cache'
+  const url = `${config.BASE_URL}/path_search/upload_task_cache`
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -1561,7 +1620,7 @@ const runCellTask = async (
     }
 
     const response_type = 'stream' as const
-    const url = 'http://192.168.110.66:9998/path_search/run_cell_task'
+    const url = `${config.BASE_URL}/path_search/run_cell_task`
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1657,7 +1716,7 @@ const runGroupTask = async (project_name: string, search_task_name: string, prio
     }
 
     const response_type = 'stream' as const
-    const url = 'http://192.168.110.66:9998/path_search/run_group_task'
+    const url = `${config.BASE_URL}/path_search/run_group_task`
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1758,7 +1817,7 @@ const runPriorityTask = async (project_name: string, search_task_name: string, p
     }
 
     const response_type = 'stream' as const
-    const url = 'http://192.168.110.66:9998/path_search/run_priority_task'
+    const url = `${config.BASE_URL}/path_search/run_priority_task`
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1868,36 +1927,37 @@ defineExpose({
   showContextMenu
 })
 
-const exportPathPoints = () => {
-  let content = ''
+const exportPathPoints = async () => {
+  const JSZip = (await import('jszip')).default
+  const zip = new JSZip()
+  let hasData = false
   rootObj.proj_dict.forEach((project, projectName) => {
     project.search_task_dict.forEach((searchTask, searchTaskName) => {
       searchTask.priority_tasks.forEach(priorityTask => {
         priorityTask.group_tasks.forEach((groupTask, groupTaskName) => {
           groupTask.cell_tasks.forEach(cellTask => {
             if (cellTask.has_result && cellTask.result?.points && cellTask.result.points.length > 0) {
-              content += `# Project: ${projectName}\n# SearchTask: ${searchTaskName}\n# PriorityTask: ${priorityTask.name}\n# GroupTask: ${groupTaskName}\n# CellTask: ${cellTask.name}\n`;
-              cellTask.result.points.forEach(point => {
-                content += point.join(', ') + '\n';
-              });
-              content += '\n';
+              hasData = true
+              const txt = cellTask.result.points.map(point => point.join(' ')).join('\n')
+              zip.file(`${cellTask.name}.txt`, txt)
             }
-          });
-        });
-      });
-    });
-  });
-  if (!content) {
+          })
+        })
+      })
+    })
+  })
+  if (!hasData) {
     ElMessage.warning('没有可导出的已完成 CellTask 路径点！')
     return
   }
-  const blob = new Blob([content], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'all_finished_celltask_path_points.txt'
-  a.click()
-  URL.revokeObjectURL(url)
+  zip.generateAsync({ type: 'blob' }).then((content) => {
+    const url = URL.createObjectURL(content)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'all_finished_celltask_path_points.zip'
+    a.click()
+    URL.revokeObjectURL(url)
+  })
 }
 
 const editGridPanelVisible = ref(false)

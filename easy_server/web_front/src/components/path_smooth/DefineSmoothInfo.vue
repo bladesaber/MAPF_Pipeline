@@ -156,6 +156,7 @@
                                                 :key="pipe.name"
                                                 :label="pipe.name"
                                                 :value="pipe.name"
+                                                :disabled="pipe.name === scope.row.to_name"
                                             />
                                         </el-select>
                                     </template>
@@ -174,6 +175,7 @@
                                                 :key="pipe.name"
                                                 :label="pipe.name"
                                                 :value="pipe.name"
+                                                :disabled="pipe.name === scope.row.from_name"
                                             />
                                         </el-select>
                                     </template>
@@ -341,12 +343,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, inject } from 'vue'
-import { Close, Plus, Delete } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import type { FormInstance } from 'element-plus'
-import { CenterRoot } from '@/classes/center_root'
-import * as THREE from 'three'
+import {
+  computed,
+  inject,
+  ref,
+  watch,
+} from 'vue';
+
+import type { FormInstance } from 'element-plus';
+import { ElMessage } from 'element-plus';
+import * as THREE from 'three';
+
+import { CenterRoot } from '@/classes/center_root';
+import {
+  Close,
+  Delete,
+  Plus,
+} from '@element-plus/icons-vue';
 
 const props = defineProps<{
     modelValue: boolean,
@@ -452,6 +465,31 @@ const handleApply = () => {
         return
     }
 
+    // 只校验当前 group 的所有接头都被覆盖
+    for (const [groupName, pipes] of Object.entries(GroupPipeDict.value)) {
+      const allPipeNames: string[] = []
+      if (Array.isArray(pipes)) {
+        pipes.forEach((pipe: any) => {
+          if (pipe && pipe.name) allPipeNames.push(pipe.name.trim())
+        })
+      }
+      const usedPipeNames = new Set<string>()
+      const paths = aidPaths.value[groupName]
+      if (Array.isArray(paths)) {
+        paths.forEach((row: any) => {
+          if (row.name && row.from_name && row.to_name) {
+            usedPipeNames.add(row.from_name.trim())
+            usedPipeNames.add(row.to_name.trim())
+          }
+        })
+      }
+      const missing = allPipeNames.filter((name: string) => !usedPipeNames.has(name))
+      if (missing.length > 0) {
+        ElMessage.error(`分组 ${groupName} 以下接头未被任何路径覆盖: ${missing.join(', ')}`)
+        return
+      }
+    }
+
     // Validate all aid paths
     let isValid = true
 
@@ -552,11 +590,11 @@ watch(() => props.modelValue, (newValue) => {
 .right-sidebar {
     position: fixed;
     right: 0;
-    top: 127px;
+    top: 116px;
     width: 450px;
     background: #fff;
     border-left: 1px solid #dcdfe6;
-    height: calc(100vh - 127px);
+    height: calc(100vh - 116px);
     display: flex;
     flex-direction: column;
     z-index: 1000;
@@ -590,7 +628,7 @@ watch(() => props.modelValue, (newValue) => {
     flex: 1 1 auto;
     overflow-y: auto;
     padding: 16px;
-    padding-bottom: 64px;
+    padding-bottom: 80px;
     min-height: 0;
 }
 
@@ -645,13 +683,14 @@ watch(() => props.modelValue, (newValue) => {
 }
 
 .button-container {
-    position: absolute;
-    bottom: 0;
-    left: 0;
+    position: fixed;
     right: 0;
+    bottom: 0;
+    width: 450px;
     padding: 16px;
     border-top: 1px solid #dcdfe6;
     background-color: #f5f7fa;
+    z-index: 1100;
 }
 
 .button-group {

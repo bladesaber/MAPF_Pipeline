@@ -1,8 +1,16 @@
-import * as THREE from 'three'
-import { Scene, Object3D, BufferGeometry, Float32BufferAttribute, CylinderGeometry,
-  Points, Line, LineBasicMaterial, PointsMaterial, Mesh, MeshBasicMaterial } from 'three'
-import { color, pass } from 'three/tsl'
-import { sample_bspline } from './math_utils.ts'
+import * as THREE from 'three';
+import {
+  BufferGeometry,
+  Float32BufferAttribute,
+  Line,
+  LineBasicMaterial,
+  Mesh,
+  MeshBasicMaterial,
+  Points,
+  PointsMaterial,
+} from 'three';
+
+import { sample_bspline } from './math_utils.ts';
 
 interface VisualizationOptions {
   color?: number

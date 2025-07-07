@@ -1,5 +1,5 @@
 // @ts-ignore
-import Plotly from 'plotly.js-dist'
+import Plotly from 'plotly.js-dist';
 
 export class GraphUtils {
   /**

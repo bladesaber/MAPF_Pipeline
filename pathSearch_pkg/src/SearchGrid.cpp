@@ -209,6 +209,17 @@ namespace GridSpace
         bool is_obstacle = false;
         for (int i = 0; i < indices.size(); ++i)
         {
+
+            // if (loc.x == 49 && loc.y == 62 && loc.z == 64) {
+            //     std::cout << "[C++]: TreeGrid: is_obstacle: loc: " 
+            //         << std::get<0>(m_data[indices[i]]) 
+            //         << " distance: " << distances[i]
+            //         << " radius: " << std::get<1>(m_data[indices[i]])
+            //         << " threshold: " << threshold
+            //         << " obs_radius: " << std::get<1>(m_data[indices[i]])
+            //         << std::endl;
+            // }
+
             // TODO: Very important, it should be consist with definition of ConflictBaseSearchNode::detect_conflict_between_groups
             if (distances[i] < threshold + std::get<1>(m_data[indices[i]]))
             {

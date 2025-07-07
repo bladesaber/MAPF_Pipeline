@@ -26,8 +26,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
-import { GraphUtils } from '@/classes/graph_utils'
+import {
+  nextTick,
+  ref,
+  watch,
+} from 'vue';
+
+import { GraphUtils } from '@/classes/graph_utils';
 
 // Props
 const props = defineProps<{
@@ -53,7 +58,7 @@ watch(() => props.modelValue, (newValue) => {
           'pie-chart',
           pieData.value.labels,
           pieData.value.values,
-          'Conflict Distribution',
+          '',
           ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57']
         )
       }
@@ -62,7 +67,7 @@ watch(() => props.modelValue, (newValue) => {
           'line-chart',
           lineData.value.x,
           lineData.value.y,
-          'Loss Over Time',
+          '',
           'Iteration',
           'Loss Value',
           '#2c3e50'
@@ -91,7 +96,7 @@ const updatePieChart = (labels: string[], values: number[]) => {
           'pie-chart',
           labels,
           values,
-          'Conflict Distribution',
+          '',
           ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57']
         )
       } catch (error) {
@@ -111,7 +116,7 @@ const updateLineChart = (xData: number[], yData: number[]) => {
           'line-chart',
           xData,
           yData,
-          'Loss Over Time',
+          '',
           'Iteration',
           'Loss Value',
           '#2c3e50'
@@ -125,10 +130,10 @@ const updateLineChart = (xData: number[], yData: number[]) => {
 
 const exportGraphs = () => {
   if (pieData.value) {
-    GraphUtils.exportAsPNG('pie-chart', 'conflict-distribution.png')
+    GraphUtils.exportAsPNG('pie-chart', 'conflict-distribution')
   }
   if (lineData.value) {
-    GraphUtils.exportAsPNG('line-chart', 'loss-over-time.png')
+    GraphUtils.exportAsPNG('line-chart', 'loss-over-time')
   }
 }
 

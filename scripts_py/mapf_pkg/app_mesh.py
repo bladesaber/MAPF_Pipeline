@@ -11,11 +11,11 @@ import pyvista
 import matplotlib.pyplot as plt
 from functools import partial
 
-from scripts_py.version_9.mapf_pkg.app_utils import FragmentOpen3d
-from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
-from scripts_py.version_9.mapf_pkg.app_smooth import SmoothApp
-from scripts_py.version_9.mapf_pkg.point_cloud_utils import PathSurfaceGenerator, Pcd2MeshUtils
-from scripts_py.version_9.mapf_pkg.postprocess_utils import GroupRadiusAdjuster, RadiusOptimizer, StepExporter
+from scripts_py.mapf_pkg.app_utils import FragmentOpen3d
+from scripts_py.mapf_pkg.visual_utils import VisUtils
+from scripts_py.mapf_pkg.app_smooth import SmoothApp
+from scripts_py.mapf_pkg.point_cloud_utils import PathSurfaceGenerator, Pcd2MeshUtils
+from scripts_py.mapf_pkg.postprocess_utils import GroupRadiusAdjuster, RadiusOptimizer, StepExporter
 
 
 class MeshApp(SmoothApp):

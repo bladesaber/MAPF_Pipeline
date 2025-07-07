@@ -23,6 +23,8 @@ from server_utils import StreamDataResponse, StreamTaskResponse
 from response_utils import StreamThreadTaskResponse, StreamProcessTaskResponse, StreamProcessDataResponse
 from path_server_utils import PathServerUtils, ProjectInfo
 from smooth_server_utils import SmoothServerUtils, SmoothInfo
+from scripts_py.mapf_pkg.point_cloud_utils import PathSurfaceGenerator
+
 
 # Create Flask app
 app = Flask(__name__)
@@ -379,7 +381,7 @@ def make_su2_mesh():
                 name='return_points', 
                 get_data_size_callback=get_points_size_callback, 
                 get_chunk_data_callback=get_points_chunk_data_callback, 
-                chunk_size=1000, time_interval=0.5)
+                chunk_size=5000, time_interval=0.5)
             yield from stream_data_response.generate()
 
             # ------ return total_finished ------
@@ -599,18 +601,20 @@ def upload_relax_group_obstacle_pcd():
     chunk_index = data.get('chunk_index', 0)
     total_chunks = data.get('total_chunks', 1)
     is_last_chunk = data.get('is_last_chunk', True)
-    obstacle_pcd = np.array(data.get('obstacle_pcd', []))
-    relax_group_name = data.get('relax_group_name')
+    obstacle_pcd = data.get('obstacle_pcd', [])
+    group_name = data.get('group_name')
 
     if project_id not in PathServerUtils.project_map:
         return jsonify({'error': 'No project data found'}), 400
     
     project_info = PathServerUtils.project_map[project_id]
 
-    if relax_group_name not in project_info.relax_group_obstacle_pcd:
-        project_info.relax_group_obstacle_pcd[relax_group_name] = []
+    if group_name not in project_info.dynamic_group_obstacle_pcd:
+        project_info.dynamic_group_obstacle_pcd[group_name] = []
+    if chunk_index == 0:
+        project_info.dynamic_group_obstacle_pcd[group_name].clear()
 
-    project_info.relax_group_obstacle_pcd[relax_group_name].extend(obstacle_pcd)
+    project_info.dynamic_group_obstacle_pcd[group_name].extend(obstacle_pcd)
 
     return jsonify({
         'message': f'Received chunk {chunk_index + 1} of {total_chunks}',
@@ -879,8 +883,13 @@ def upload_smooth_obstacle_pcd():
         project_info.obstacle_xyzr = []
         SmoothServerUtils.smooth_map[smooth_name] = project_info
     
-    SmoothServerUtils.smooth_map[smooth_name].obstacle_xyzr.extend(obstacle_xyzr)
-    print(f'smooth_obstacle_pcd: {len(SmoothServerUtils.smooth_map[smooth_name].obstacle_xyzr)}')
+    if not SmoothServerUtils.smooth_map[smooth_name].is_obstacle_pcd_ready:
+        SmoothServerUtils.smooth_map[smooth_name].obstacle_xyzr.extend(obstacle_xyzr)
+        print(f'smooth_obstacle_pcd: {len(SmoothServerUtils.smooth_map[smooth_name].obstacle_xyzr)}')
+    else:
+        return jsonify({'error': 'Obstacle pcd is already ready'}), 400
+    
+    SmoothServerUtils.smooth_map[smooth_name].is_obstacle_pcd_ready = is_last_chunk
 
     return jsonify({
         'message': f'Received chunk {chunk_index + 1} of {total_chunks}',
@@ -893,6 +902,10 @@ def init_smooth_map():
     data = request.json
     smooth_name = data.get('smooth_name')
     smooth_json = data.get('smooth_json')
+
+    if smooth_name not in SmoothServerUtils.smooth_map:
+        return jsonify({'error': 'No smooth map found'}), 400
+
     smooth_json = SmoothServerUtils.init_smooth_map(smooth_name, smooth_json)
     return jsonify({'is_success': True, 'smooth_json': smooth_json})
 
@@ -905,6 +918,9 @@ def manual_smooth():
     lr = data.get('lr', 0.01)
     max_iter = data.get('max_iter', 1000)
     log_iter = data.get('log_iter', 50)
+
+    if smooth_name not in SmoothServerUtils.smooth_map:
+        return jsonify({'error': 'No smooth map found'}), 400
 
     def generate():
         try:
@@ -942,6 +958,81 @@ def manual_smooth():
             })
             return
 
+    return Response(generate(), mimetype='text/event-stream')
+
+
+@app.route('/path_smooth/generate_surface_from_paths', methods=['POST'])
+def generate_surface_from_paths():
+    """
+    path_dict: {
+        'path_name': {
+            'path': np.ndarray, # (n, 4) means (x, y, z, radius)
+            'is_left_input': bool,
+            'is_right_input': bool,
+            'is_left_cut': bool,
+            'is_right_cut': bool,
+            'left_vec': np.ndarray, # (3,)
+            'right_vec': np.ndarray, # (3,)
+        }
+    }
+    """
+    data = request.json
+    paths = data.get('path_dict', {})
+    path_reso = data.get('path_reso', -1)
+    point_reso = data.get('point_reso', -1)
+
+    if point_reso < 0.0 or path_reso < 0.0 or len(paths) == 0:
+        return jsonify({'error': 'Invalid parameters'}), 400
+    
+    mesh = PathSurfaceGenerator.generate_surface(paths, path_reso, point_reso)
+    
+    def generate():
+        try:
+            # ------ return points ------
+            points = mesh.points.tolist()
+        
+            def get_points_size_callback():
+                return len(points)
+
+            def get_points_chunk_data_callback(data_index, chunk_size):
+                return points[data_index:data_index + chunk_size]
+
+            stream_data_response = StreamDataResponse(
+                name='return_points', 
+                get_data_size_callback=get_points_size_callback, 
+                get_chunk_data_callback=get_points_chunk_data_callback, 
+                chunk_size=5000, time_interval=0.5
+            )
+            yield from stream_data_response.generate()
+
+            # ------ return cells ------
+            time.sleep(0.5)
+            cells = mesh.cells.reshape(-1, 4).tolist()
+
+            def get_cells_size_callback():
+                return len(cells)
+
+            def get_cells_chunk_data_callback(data_index, chunk_size):
+                return cells[data_index:data_index + chunk_size]
+                
+            stream_data_response = StreamDataResponse(
+                name='return_cells', 
+                get_data_size_callback=get_cells_size_callback, 
+                get_chunk_data_callback=get_cells_chunk_data_callback, 
+                chunk_size=5000, time_interval=0.5
+            )
+            yield from stream_data_response.generate()
+
+            # ------ return total_finished ------
+            time.sleep(0.5)
+            yield json.dumps({'total_finished': True})
+        
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+
+        finally:
+            pass
+    
     return Response(generate(), mimetype='text/event-stream')
 
 

@@ -16,6 +16,7 @@ class SmoothInfo:
     optimizer: PathOptimizer
     group_name2idx: dict[str, int] = {}
     group_idx2name: dict[int, str] = {}
+    is_obstacle_pcd_ready: bool = False
 
 
 class SmoothServerUtils:
@@ -207,57 +208,6 @@ class SmoothServerUtils:
             opt.update_spline_NpCfg(group_idx)
         return opt
 
-    """
-    @staticmethod
-    def manual_smooth(smooth_name: str, smooth_json: dict, run_times: int, lr: float) -> tuple[bool, str, dict]:
-        if smooth_name not in SmoothServerUtils.smooth_map:
-            return False, f"    [ERROR]: smooth runner hasn't initiation"
-
-        # ------ restore smooth json
-        opt = SmoothServerUtils.restore_smooth_json(smooth_name, smooth_json)
-
-        # ------ prepare tensor
-        opt.prepare_tensor()
-
-        # ------ start running
-        # loss_record, loss_info = opt.run_by_hand(max_iter=run_times, lr=lr)
-        loss_record, loss_info = SmoothServerUtils.run_by_hand(opt, run_times, lr)
-
-        # ------ export smooth json
-        result_json = {}
-        smooth_info = SmoothServerUtils.smooth_map[smooth_name]
-        for group_idx, group_cell in opt.group_cells.items():
-            result_json[smooth_info.group_idx2name[group_idx]] = group_cell.export_cfg()
-
-        return loss_info, result_json
-    """
-    
-    """
-    @staticmethod
-    def auto_smooth(task_id: str, auto_run_cfg: dict) -> tuple[bool, str]:
-        if task_id not in SmoothServerUtils.smooth_map:
-            return False, f"    [ERROR]: smooth runner hasn't initiation"
-
-        # ------ restore current information
-        SmoothServerUtils.smooth_map[task_id].push_data()
-
-        # ------ prepare tensor
-        SmoothServerUtils.smooth_map[task_id].prepare_tensor()
-
-        # ------ start running
-        tensor_log_dir = os.path.join('/home/admin123456/Desktop/work/flask_server/tensor_log', task_id)
-        if os.path.exists(tensor_log_dir):
-            shutil.rmtree(tensor_log_dir)
-        os.mkdir(tensor_log_dir)
-
-        tensor_recorder = TensorBoardRecorder(tensor_log_dir)
-        loss_record, loss_info = SmoothServerUtils.smooth_map[task_id].auto_run(
-            auto_run_cfg, tensor_recorder
-        )
-
-        return True, loss_info
-    """
-
     @staticmethod
     def get_smooth_result(smooth_name: str, opt: PathOptimizer) -> dict:
         smooth_info = SmoothServerUtils.smooth_map[smooth_name]
@@ -272,9 +222,6 @@ class SmoothServerUtils:
         with_momentum=False, 
         data_queue: Queue = None
     ) -> tuple[list[float], dict[str, float]]:
-        if smooth_name not in SmoothServerUtils.smooth_map:
-            return False, f"    [ERROR]: smooth runner hasn't initiation"
-        
         # ------ restore smooth json
         opt = SmoothServerUtils.restore_smooth_json(smooth_name, smooth_json)
 
@@ -307,7 +254,10 @@ class SmoothServerUtils:
 
             # ------ log information
             if (it % log_iter == 0) or (it == 1):
-                loss_record.append(float(loss.detach().numpy()))
+                if isinstance(loss, torch.Tensor):
+                    loss_record.append(float(loss.detach().numpy()))
+                else:
+                    loss_record.append(float(loss))
                 # print(f"[iter:{it}] loss:{loss_record[-1]:.6f}")
 
                 if it != 1:
@@ -360,3 +310,11 @@ class SmoothServerUtils:
                 'loss_info': loss_info_np
             }
         })
+
+    @staticmethod
+    def sample_surface_points_from_path(path: np.ndarray) -> np.ndarray:
+        """
+        path: (n, 4) means (x, y, z, radius)
+        assume 
+        """
+

@@ -116,7 +116,7 @@
           :style="{ width: sidebarWidth + 'px', height: `calc(100vh - 118px)` }"
         >
           <el-tree
-            v-if="treeData.length && expandedKeys.length"
+            v-if="treeData.length"
             :data="treeData"
             @node-click="handleLeftTreeClick"
             @node-contextmenu="handleRightTreeClick"
@@ -209,26 +209,53 @@
   </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount, provide, nextTick, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import type { Scene, Object3D } from 'three'
-import * as THREE from 'three'
-import { pass } from 'three/tsl'
-import { ArrowDown } from '@element-plus/icons-vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  provide,
+  reactive,
+  ref,
+  watch,
+} from 'vue';
 
-import { setVisableDict } from '@/utils/utils'
-import { CylinderObstacle, BoxObstacle, PointsObstacle, SpheresObstacle, SquaresObstacle, SphereLineObstacle } from '@/classes/path_search/obstacle_mesh'
+import {
+  ElMessage,
+  ElMessageBox,
+} from 'element-plus';
+import type {
+  Object3D,
+  Scene,
+} from 'three';
+import * as THREE from 'three';
+import { pass } from 'three/tsl';
 
-import CenterViewer from '../components/CenterViewer.vue'
-import type { TreeNode } from '../types/data_type'
-import { CenterRoot, ProjectManager } from '../classes/center_root.ts'
+import {
+  BoxObstacle,
+  CylinderObstacle,
+  PointsObstacle,
+  SphereLineObstacle,
+  SpheresObstacle,
+  SquaresObstacle,
+} from '@/classes/path_search/obstacle_mesh';
+import config from '@/config';
+import { setVisableDict } from '@/utils/utils';
+import { setMeshColor } from '@/utils/visulize_utils';
+import { ArrowDown } from '@element-plus/icons-vue';
 
-import PathSearch from '../components/path_search/PathSearch.vue'
-import PathSmooth from '../components/path_smooth/PathSmooth.vue'
-import DebugTool from '../components/debug_tool/DebugTool.vue'
-import DefineProject from '../components/main_fragment/DefineProject.vue'
-import CADTool from '../components/path_cad/CADTool.vue'
-import SimulateTool from '../components/path_simulation/SimulateTool.vue'
+import {
+  CenterRoot,
+  ProjectManager,
+} from '../classes/center_root.ts';
+import CenterViewer from '../components/CenterViewer.vue';
+import DebugTool from '../components/debug_tool/DebugTool.vue';
+import DefineProject from '../components/main_fragment/DefineProject.vue';
+import CADTool from '../components/path_cad/CADTool.vue';
+import PathSearch from '../components/path_search/PathSearch.vue';
+import SimulateTool from '../components/path_simulation/SimulateTool.vue';
+import PathSmooth from '../components/path_smooth/PathSmooth.vue';
+import type { TreeNode } from '../types/data_type';
 
 // ---------------- Root Object ----------------
 const scene = new THREE.Scene();
@@ -282,8 +309,28 @@ const stopResize = () => {
   document.removeEventListener('mouseup', stopResize)
 }
 
-const handleLeftTreeClick = (event: MouseEvent, data: any) => {
-  // TODO: change the color of the tree node
+const handleLeftTreeClick = (data: any, node: any) => {
+  if (data.style === 'Obstacle') {
+    highlightMeshAndShowInfo({
+      type: 'Obstacle',
+      projectName: data.data.Project,
+      obstacleName: data.data.Obstacle,
+      pipeGroup: undefined,
+      pipeName: undefined,
+      meshName: undefined
+    })
+  } else if (data.style === 'Pipe') {
+    highlightMeshAndShowInfo({
+      type: 'Pipe',
+      projectName: data.data.Project,
+      obstacleName: undefined,
+      pipeGroup: data.data.PipeGroup,
+      pipeName: data.data.Pipe,
+      meshName: undefined
+    })
+  } else {
+    updateMeshInfo(null)
+  }
 }
 
 const handleRightTreeClick = (event: MouseEvent, data: any) => {
@@ -365,74 +412,14 @@ const update_log = (message: string) => {
 
 // ---------------- Mesh Click Event handling ----------------
 const handleLeftClickMeshSelect = (name: string) => {
-    // Reset mesh info first
-    updateMeshInfo(null)
-    
-    // find the object in rootObj.proj_dict with the same name
-    rootObj.proj_dict.forEach((project_manager) => {
-      // find whether the name is in the pipe_dict
-      project_manager.pipe_dict.forEach((pipe_dict) => {
-        pipe_dict.forEach((pipe) => {
-          if (pipe.name === name) {
-            updateMeshInfo({
-              'Name': pipe.name,
-              'Type': 'Pipe',
-              'Position': `(${pipe.x.toFixed(2)}, ${pipe.y.toFixed(2)}, ${pipe.z.toFixed(2)})`,
-              'Radius': pipe.radius.toFixed(2),
-              'Direction': `(${pipe.vector_x}, ${pipe.vector_y}, ${pipe.vector_z})`,
-              'Pipe Mode': pipe.pipe_mode,
-              'Group': pipe.group_name
-            })
-          }
-        })
-      })
-
-      // find whether the name is in the obstacle_dict
-      project_manager.obstacle_dict.forEach((obstacle) => {
-        if (obstacle.name === name) {
-          const info: Record<string, any> = {
-            'Name': obstacle.name,
-            'Type': obstacle.constructor.name
-          }
-
-          // Add properties based on obstacle type
-          if (obstacle instanceof CylinderObstacle) {
-            info['Position'] = `(${obstacle.x.toFixed(2)}, ${obstacle.y.toFixed(2)}, ${obstacle.z.toFixed(2)})`
-            info['Radius'] = obstacle.radius.toFixed(2)
-            info['Height'] = obstacle.height.toFixed(2)
-            info['Direction'] = `(${obstacle.vector_x}, ${obstacle.vector_y}, ${obstacle.vector_z})`
-            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
-          } else if (obstacle instanceof BoxObstacle) {
-            info['Bounds'] = `X: [${obstacle.xmin.toFixed(2)}, ${obstacle.xmax.toFixed(2)}], Y: [${obstacle.ymin.toFixed(2)}, ${obstacle.ymax.toFixed(2)}], Z: [${obstacle.zmin.toFixed(2)}, ${obstacle.zmax.toFixed(2)}]`
-            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
-          } else if (obstacle instanceof PointsObstacle) {
-            info['Points Count'] = obstacle.points.length
-            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
-          } else if (obstacle instanceof SpheresObstacle) {
-            info['Spheres Count'] = obstacle.points.length
-            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
-          } else if (obstacle instanceof SquaresObstacle) {
-            info['Squares Count'] = obstacle.points.length
-            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
-          } else if (obstacle instanceof SphereLineObstacle) {
-            info['Points Count'] = obstacle.points.length
-            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
-          }
-          updateMeshInfo(info)
-        }
-      })
-
-      // find whether the name is grid
-      if (project_manager.grid.name === name) {
-        updateMeshInfo({
-          'Name': project_manager.grid.name,
-          'Type': 'Grid',
-          'Size': `(${project_manager.grid.xlength.toFixed(2)}, ${project_manager.grid.ylength.toFixed(2)}, ${project_manager.grid.zlength.toFixed(2)})`,
-          'Resolution': project_manager.grid.resolution.toFixed(2),
-          'Grid Size': `(${project_manager.grid.xsize}, ${project_manager.grid.ysize}, ${project_manager.grid.zsize})`
-        })
-      }
-    })
+  highlightMeshAndShowInfo({
+    type: 'MeshName',
+    projectName: undefined,
+    obstacleName: undefined,
+    pipeGroup: undefined,
+    pipeName: undefined,
+    meshName: name
+  })
 }
 
 const handleRightClickMeshSelect = (name: string) => {
@@ -544,7 +531,7 @@ const clearCache = async () => {
   })
 
   try {
-    const response = await fetch('http://192.168.110.66:9998/path_search/clear_cache', {
+    const response = await fetch(`${config.BASE_URL}/path_search/clear_cache`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -668,6 +655,211 @@ defineExpose({
   addLog,
   updateMeshInfo
 })
+
+// 公共高亮+信息展示方法
+function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, obstacleName = undefined, pipeGroup = undefined, pipeName = undefined, meshName = undefined }: { type?: any, projectName?: any, obstacleName?: any, pipeGroup?: any, pipeName?: any, meshName?: any }) {
+  // 1. 先重置所有mesh颜色
+  rootObj.proj_dict.forEach(project => {
+    project.obstacle_dict.forEach(obstacle => {
+      Object.values(obstacle.mesh_dict).forEach(mesh => {
+        if (mesh instanceof THREE.Mesh) {
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach(mat => {
+              if ('color' in mat) setMeshColor(mesh, 0x00ff00)
+            })
+          } else if (mesh.material && 'color' in mesh.material) {
+            setMeshColor(mesh, 0x00ff00)
+          }
+        }
+      })
+    })
+    project.pipe_dict.forEach(pipeGroup => {
+      pipeGroup.forEach(pipe => {
+        Object.values(pipe.mesh_dict).forEach(mesh => {
+          if (mesh instanceof THREE.Mesh) {
+            if (Array.isArray(mesh.material)) {
+              mesh.material.forEach(mat => {
+                if ('color' in mat) setMeshColor(mesh, 0x2196f3)
+              })
+            } else if (mesh.material && 'color' in mesh.material) {
+              setMeshColor(mesh, 0x2196f3)
+            }
+          }
+        })
+      })
+    })
+  })
+
+  // 2. 高亮目标mesh并展示信息
+  if (type === 'Obstacle') {
+    const project = rootObj.proj_dict.get(projectName)
+    if (project) {
+      const obstacle = project.obstacle_dict.get(obstacleName)
+      if (obstacle) {
+        Object.values(obstacle.mesh_dict).forEach(mesh => {
+          if (mesh instanceof THREE.Mesh) {
+            if (Array.isArray(mesh.material)) {
+              mesh.material.forEach(mat => {
+                if ('color' in mat) setMeshColor(mesh, 0xffffff)
+              })
+            } else if (mesh.material && 'color' in mesh.material) {
+              setMeshColor(mesh, 0xffffff)
+            }
+          }
+        })
+        // 展示信息
+        const info: Record<string, any> = {
+          'Name': obstacle.name,
+          'Type': obstacle.constructor.name
+        }
+        if (obstacle instanceof CylinderObstacle) {
+          info['Position'] = `(${obstacle.x.toFixed(2)}, ${obstacle.y.toFixed(2)}, ${obstacle.z.toFixed(2)})`
+          info['Radius'] = obstacle.radius.toFixed(2)
+          info['Height'] = obstacle.height.toFixed(2)
+          info['Direction'] = `(${obstacle.vector_x}, ${obstacle.vector_y}, ${obstacle.vector_z})`
+          info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+        } else if (obstacle instanceof BoxObstacle) {
+          info['Bounds'] = `X: [${obstacle.xmin.toFixed(2)}, ${obstacle.xmax.toFixed(2)}], Y: [${obstacle.ymin.toFixed(2)}, ${obstacle.ymax.toFixed(2)}], Z: [${obstacle.zmin.toFixed(2)}, ${obstacle.zmax.toFixed(2)}]`
+          info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+        } else if (obstacle instanceof PointsObstacle) {
+          info['Points Count'] = obstacle.points.length
+          info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+        } else if (obstacle instanceof SpheresObstacle) {
+          info['Spheres Count'] = obstacle.points.length
+          info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+        } else if (obstacle instanceof SquaresObstacle) {
+          info['Squares Count'] = obstacle.points.length
+          info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+        } else if (obstacle instanceof SphereLineObstacle) {
+          info['Points Count'] = obstacle.points.length
+          info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+        }
+        updateMeshInfo(info)
+        return
+      }
+    }
+  } else if (type === 'Pipe') {
+    const project = rootObj.proj_dict.get(projectName)
+    if (project) {
+      const pipeGroupObj = project.pipe_dict.get(pipeGroup)
+      if (pipeGroupObj) {
+        const pipe = pipeGroupObj.get(pipeName)
+        if (pipe) {
+          Object.values(pipe.mesh_dict).forEach(mesh => {
+            if (mesh instanceof THREE.Mesh) {
+              if (Array.isArray(mesh.material)) {
+                mesh.material.forEach(mat => {
+                  if ('color' in mat) setMeshColor(mesh, 0xffffff)
+                })
+              } else if (mesh.material && 'color' in mesh.material) {
+                setMeshColor(mesh, 0xffffff)
+              }
+            }
+          })
+          updateMeshInfo({
+            'Name': pipe.name,
+            'Type': 'Pipe',
+            'Position': `(${pipe.x.toFixed(2)}, ${pipe.y.toFixed(2)}, ${pipe.z.toFixed(2)})`,
+            'Radius': pipe.radius.toFixed(2),
+            'Direction': `(${pipe.vector_x}, ${pipe.vector_y}, ${pipe.vector_z})`,
+            'Pipe Mode': pipe.pipe_mode,
+            'Group': pipe.group_name
+          })
+          return
+        }
+      }
+    }
+  } else if (type === 'MeshName' && meshName) {
+    // 通过 meshName 反查
+    rootObj.proj_dict.forEach((project_manager) => {
+      // pipe
+      project_manager.pipe_dict.forEach((pipe_dict) => {
+        pipe_dict.forEach((pipe) => {
+          if (pipe.name === meshName) {
+            Object.values(pipe.mesh_dict).forEach(mesh => {
+              if (mesh instanceof THREE.Mesh) {
+                if (Array.isArray(mesh.material)) {
+                  mesh.material.forEach(mat => {
+                    if ('color' in mat) setMeshColor(mesh, 0xffffff)
+                  })
+                } else if (mesh.material && 'color' in mesh.material) {
+                  setMeshColor(mesh, 0xffffff)
+                }
+              }
+            })
+            updateMeshInfo({
+              'Name': pipe.name,
+              'Type': 'Pipe',
+              'Position': `(${pipe.x.toFixed(2)}, ${pipe.y.toFixed(2)}, ${pipe.z.toFixed(2)})`,
+              'Radius': pipe.radius.toFixed(2),
+              'Direction': `(${pipe.vector_x}, ${pipe.vector_y}, ${pipe.vector_z})`,
+              'Pipe Mode': pipe.pipe_mode,
+              'Group': pipe.group_name
+            })
+            return
+          }
+        })
+      })
+      // obstacle
+      project_manager.obstacle_dict.forEach((obstacle) => {
+        if (obstacle.name === meshName) {
+          Object.values(obstacle.mesh_dict).forEach(mesh => {
+            if (mesh instanceof THREE.Mesh) {
+              if (Array.isArray(mesh.material)) {
+                mesh.material.forEach(mat => {
+                  if ('color' in mat) setMeshColor(mesh, 0xffffff)
+                })
+              } else if (mesh.material && 'color' in mesh.material) {
+                setMeshColor(mesh, 0xffffff)
+              }
+            }
+          })
+          const info: Record<string, any> = {
+            'Name': obstacle.name,
+            'Type': obstacle.constructor.name
+          }
+          if (obstacle instanceof CylinderObstacle) {
+            info['Position'] = `(${obstacle.x.toFixed(2)}, ${obstacle.y.toFixed(2)}, ${obstacle.z.toFixed(2)})`
+            info['Radius'] = obstacle.radius.toFixed(2)
+            info['Height'] = obstacle.height.toFixed(2)
+            info['Direction'] = `(${obstacle.vector_x}, ${obstacle.vector_y}, ${obstacle.vector_z})`
+            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+          } else if (obstacle instanceof BoxObstacle) {
+            info['Bounds'] = `X: [${obstacle.xmin.toFixed(2)}, ${obstacle.xmax.toFixed(2)}], Y: [${obstacle.ymin.toFixed(2)}, ${obstacle.ymax.toFixed(2)}], Z: [${obstacle.zmin.toFixed(2)}, ${obstacle.zmax.toFixed(2)}]`
+            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+          } else if (obstacle instanceof PointsObstacle) {
+            info['Points Count'] = obstacle.points.length
+            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+          } else if (obstacle instanceof SpheresObstacle) {
+            info['Spheres Count'] = obstacle.points.length
+            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+          } else if (obstacle instanceof SquaresObstacle) {
+            info['Squares Count'] = obstacle.points.length
+            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+          } else if (obstacle instanceof SphereLineObstacle) {
+            info['Points Count'] = obstacle.points.length
+            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+          }
+          updateMeshInfo(info)
+          return
+        }
+      })
+      // grid
+      if (project_manager.grid.name === meshName) {
+        updateMeshInfo({
+          'Name': project_manager.grid.name,
+          'Type': 'Grid',
+          'Size': `(${project_manager.grid.xlength.toFixed(2)}, ${project_manager.grid.ylength.toFixed(2)}, ${project_manager.grid.zlength.toFixed(2)})`,
+          'Resolution': project_manager.grid.resolution.toFixed(2),
+          'Grid Size': `(${project_manager.grid.xsize}, ${project_manager.grid.ysize}, ${project_manager.grid.zsize})`
+        })
+        return
+      }
+    })
+  } else {
+    updateMeshInfo(null)
+  }
+}
 
 </script>
 

@@ -1,8 +1,13 @@
-import type { TreeNode } from '@/types/data_type';
-import { MeshObj } from "../mesh_type";
 import type { Scene } from 'three';
-import { color_to_hex } from '@/utils/visulize_utils';
-import { create_points, create_tube } from '@/utils/visulize_utils';
+import * as THREE from 'three';
+
+import type { TreeNode } from '@/types/data_type';
+import {
+  color_to_hex,
+  create_tube,
+} from '@/utils/visulize_utils';
+
+import { MeshObj } from '../mesh_type';
 import { BsplineUtils } from './bspline_utils';
 
 export class SegmentCell extends MeshObj {
@@ -14,6 +19,7 @@ export class SegmentCell extends MeshObj {
   group_idx: number;
   c_idxs: number[];
   parent_cell: GroupCell;
+  private scene: Scene;
 
   left_clamp: boolean = false;
   right_clamp: boolean = false;
@@ -51,6 +57,11 @@ export class SegmentCell extends MeshObj {
 
   color: number[] = [];
 
+  tube_mesh: THREE.Mesh | null = null;
+  line_mesh: THREE.Mesh | null = null;
+  path_points: number[][] = [];
+  radius_list: number[] = [];
+
   constructor(
     smooth_name: string, task_name: string, project_name: string, segment_name: string,
     idx: number, group_idx: number, c_idxs: number[], parent_cell: GroupCell, scene: Scene,
@@ -66,6 +77,7 @@ export class SegmentCell extends MeshObj {
     this.group_idx = group_idx;
     this.c_idxs = c_idxs;
     this.parent_cell = parent_cell;
+    this.scene = scene;
     this.left_intercept_num = left_intercept_num;
     this.right_intercept_num = right_intercept_num;
     this.color = [Math.random() * 255, Math.random() * 255, Math.random() * 255];
@@ -106,11 +118,74 @@ export class SegmentCell extends MeshObj {
     )
     const spline_mat = BsplineUtils.compute_mat(ts, n_controls, this.degree, knot, fill_last_one)
     const points = this.matrix_multiply(spline_mat, control_points);
+    this.path_points = points;
 
-    const mesh = create_tube(points, 0.05, { color: color_to_hex(this.color)});
-    mesh.name = this.name;
-    this.mesh_dict[mesh.name] = mesh;
+    const control_radius: number[][] = []
+    this.c_idxs.forEach(c_idx => {
+      control_radius.push(
+        [this.parent_cell.c_table['radius'][c_idx]]
+      );
+    })
+    const radius_list: number[] = this.matrix_multiply(spline_mat, control_radius).map(radius => radius[0]);
+    this.radius_list = radius_list;
+
+    // 粗管道延迟创建，不在add_mesh中创建
+    this.tube_mesh = null;
+
+    // 细线
+    this.line_mesh = create_tube(points, 0.05, { color: color_to_hex(this.color), opacity: 0.8 }) as THREE.Mesh;
+    this.line_mesh.name = this.name + '_line';
+    this.line_mesh.visible = true;
+    this.mesh_dict[this.line_mesh.name] = this.line_mesh;
+
     super.add_mesh(scene);
+  }
+
+  show_tube_mesh() {
+    if (!this.tube_mesh) {
+      // 按需创建粗管道
+      this.tube_mesh = create_tube(this.path_points, this.radius_list[0], { 
+        color: color_to_hex(this.color), 
+        opacity: 0.5, 
+        segments: 64 
+      }) as THREE.Mesh;
+      this.tube_mesh.name = this.name + '_tube';
+      this.tube_mesh.visible = true;
+      this.mesh_dict[this.tube_mesh.name] = this.tube_mesh;
+      
+      // 添加到场景
+      this.scene.add(this.tube_mesh);
+      
+      console.log('ShowTubeResult radius_list:', this.radius_list);
+    } else {
+      this.tube_mesh.visible = true;
+    }
+  }
+
+  hide_tube_mesh() {
+    if (this.tube_mesh) {
+      this.tube_mesh.visible = false;
+      // 从场景中移除并清理资源
+      this.scene.remove(this.tube_mesh);
+      delete this.mesh_dict[this.tube_mesh.name];
+      this.tube_mesh.geometry.dispose();
+      if (this.tube_mesh.material instanceof THREE.Material) {
+        this.tube_mesh.material.dispose();
+      }
+      this.tube_mesh = null;
+    }
+  }
+
+  show_line_mesh() {
+    if (this.line_mesh) {
+      this.line_mesh.visible = true;
+    }
+  }
+
+  hide_line_mesh() {
+    if (this.line_mesh) {
+      this.line_mesh.visible = false;
+    }
   }
 
   export_json(): any {
