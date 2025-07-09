@@ -1123,14 +1123,16 @@ class GroupCell(object):
                 if first_tag not in seg_book_old_tags:
                     if not from_is_input:
                         from_vector = from_vector * -1.0
-                    terminal_seg_book[first_tag] = {'left_vector': from_vector, 'left_clamp': True}
+                    terminal_seg_book[first_tag] = terminal_seg_book.get(first_tag, {})
+                    terminal_seg_book[first_tag].update({'left_vector': from_vector, 'left_clamp': True})
 
                 last_tag = path_contain_seg[-1]
                 if last_tag not in seg_book_old_tags:
                     if to_is_input:
                         to_vector = to_vector * -1.0
-                    terminal_seg_book[last_tag] = {'right_vector': to_vector, 'right_clamp': True}
-
+                    terminal_seg_book[last_tag] = terminal_seg_book.get(last_tag, {})
+                    terminal_seg_book[last_tag].update({'right_vector': to_vector, 'right_clamp': True})
+                
                 # ------ record path contain seg
                 path_contain_seg_dict[path_name].append(path_contain_seg)
 

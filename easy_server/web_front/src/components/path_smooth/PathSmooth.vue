@@ -11,9 +11,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item>Path Analysis</el-dropdown-item>
-                <el-dropdown-item @click="exportSmoothPathPoints"
-                  >Export Path Points</el-dropdown-item
-                >
+                <el-dropdown-item @click="exportSmoothPathPoints">Export Path Points</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -25,180 +23,78 @@
       </el-sub-menu>
     </el-menu>
 
-    <DefineSmoothInfo
-      v-model="defineSmoothInfoVisible"
-      :label_dict="label_dict"
-      @generate="handleDefineSmoothInfoGenerate"
-    />
+    <DefineSmoothInfo v-model="defineSmoothInfoVisible" :label_dict="label_dict"
+      @generate="handleDefineSmoothInfoGenerate" />
 
     <ReportPlotly v-model="reportPlotlyVisible" ref="reportPlotlyRef" />
 
-    <div
-      v-show="smoothContextMenuVisible"
-      class="context-menu"
-      :style="contextMenuStyle"
-      @click.stop
-    >
+    <div v-show="smoothContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
       <el-menu>
-        <el-menu-item @click="handleTreeContextMenu('SearchTask/AddSmoothTask')"
-          >Add Smooth Task</el-menu-item
-        >
+        <el-menu-item @click="handleTreeContextMenu('SearchTask/AddSmoothTask')">Add Smooth Task</el-menu-item>
       </el-menu>
     </div>
 
-    <div
-      v-show="runSmoothContextMenuVisible"
-      class="context-menu"
-      :style="contextMenuStyle"
-      @click.stop
-    >
+    <div v-show="runSmoothContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
       <el-menu>
-        <el-menu-item @click="handleTreeContextMenu('SmoothRunner/ManualRun')"
-          >Manual Run</el-menu-item
-        >
-        <el-menu-item @click="handleTreeContextMenu('SmoothRunner/AutoRun')"
-          >Auto Run</el-menu-item
-        >
+        <el-menu-item @click="handleTreeContextMenu('SmoothRunner/ManualRun')">Manual Run</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SmoothRunner/AutoRun')">Auto Run</el-menu-item>
       </el-menu>
     </div>
 
-    <div
-      v-show="segmentCellContextMenuVisible"
-      class="context-menu"
-      :style="contextMenuStyle"
-      @click.stop
-    >
+    <div v-show="groupCellContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
       <el-menu>
-        <el-menu-item
-          @click="handleTreeContextMenu('SegmentCell/ShowLineResult')"
-          >Show Line Result</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('SegmentCell/ShowTubeResult')"
-          >Show Tube Result</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('SegmentCell/HideLineResult')"
-          >Hide Line Result</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('SegmentCell/HideTubeResult')"
-          >Hide Tube Result</el-menu-item
-        >
+        <el-menu-item @click="handleTreeContextMenu('GroupCell/CreateSurface')">Create Surface</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('GroupCell/RemoveSurface')">Remove Surface</el-menu-item>
       </el-menu>
     </div>
 
-    <div
-      v-show="connectorCellContextMenuVisible"
-      class="context-menu"
-      :style="contextMenuStyle"
-      @click.stop
-    >
+    <div v-show="segmentCellContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
       <el-menu>
-        <el-menu-item
-          @click="handleTreeContextMenu('ConnectorCell/ShowLineResult')"
-          >Show Line Result</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('ConnectorCell/ShowTubeResult')"
-          >Show Tube Result</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('ConnectorCell/HideLineResult')"
-          >Hide Line Result</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('ConnectorCell/HideTubeResult')"
-          >Hide Tube Result</el-menu-item
-        >
+        <el-menu-item @click="handleTreeContextMenu('SegmentCell/ShowLineResult')">Show Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SegmentCell/ShowTubeResult')">Show Tube Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SegmentCell/HideLineResult')">Hide Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SegmentCell/HideTubeResult')">Hide Tube Result</el-menu-item>
       </el-menu>
     </div>
 
-    <div
-      v-show="segmentCellsContextMenuVisible"
-      class="context-menu"
-      :style="contextMenuStyle"
-      @click.stop
-    >
+    <div v-show="connectorCellContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
       <el-menu>
-        <el-menu-item
-          @click="handleTreeContextMenu('SegmentCells/ShowLineResult')"
-          >Show Line Result</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('SegmentCells/ShowTubeResult')"
-          >Show Tube Result</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('SegmentCells/HideLineResult')"
-          >Hide Line Result</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('SegmentCells/HideTubeResult')"
-          >Hide Tube Result</el-menu-item
-        >
+        <el-menu-item @click="handleTreeContextMenu('ConnectorCell/ShowLineResult')">Show Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('ConnectorCell/ShowTubeResult')">Show Tube Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('ConnectorCell/HideLineResult')">Hide Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('ConnectorCell/HideTubeResult')">Hide Tube Result</el-menu-item>
       </el-menu>
     </div>
 
-    <div
-      v-show="connectorCellsContextMenuVisible"
-      class="context-menu"
-      :style="contextMenuStyle"
-      @click.stop
-    >
+    <div v-show="segmentCellsContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
       <el-menu>
-        <el-menu-item
-          @click="handleTreeContextMenu('ConnectorCells/ShowLineResult')"
-          >Show Line Result</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('ConnectorCells/ShowTubeResult')"
-          >Show Tube Result</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('ConnectorCells/HideLineResult')"
-          >Hide Line Result</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('ConnectorCells/HideTubeResult')"
-          >Hide Tube Result</el-menu-item
-        >
+        <el-menu-item @click="handleTreeContextMenu('SegmentCells/ShowLineResult')">Show Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SegmentCells/ShowTubeResult')">Show Tube Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SegmentCells/HideLineResult')">Hide Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SegmentCells/HideTubeResult')">Hide Tube Result</el-menu-item>
       </el-menu>
     </div>
 
-    <div
-      v-show="smoothTaskContextMenuVisible"
-      class="context-menu"
-      :style="contextMenuStyle"
-      @click.stop
-    >
+    <div v-show="connectorCellsContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
       <el-menu>
-        <el-menu-item
-          @click="handleTreeContextMenu('SmoothTask/ShowDiscretized')"
-          >Show Discretized</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('SmoothTask/HideDiscretized')"
-          >Hide Discretized</el-menu-item
-        >
+        <el-menu-item @click="handleTreeContextMenu('ConnectorCells/ShowLineResult')">Show Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('ConnectorCells/ShowTubeResult')">Show Tube Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('ConnectorCells/HideLineResult')">Hide Line Result</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('ConnectorCells/HideTubeResult')">Hide Tube Result</el-menu-item>
       </el-menu>
     </div>
 
-    <div
-      v-show="smoothRootContextMenuVisible"
-      class="context-menu"
-      :style="contextMenuStyle"
-      @click.stop
-    >
+    <div v-show="smoothTaskContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
       <el-menu>
-        <el-menu-item
-          @click="handleTreeContextMenu('SmoothRoot/ShowDiscretized')"
-          >Show Discretized</el-menu-item
-        >
-        <el-menu-item
-          @click="handleTreeContextMenu('SmoothRoot/HideDiscretized')"
-          >Hide Discretized</el-menu-item
-        >
+        <el-menu-item @click="handleTreeContextMenu('SmoothTask/ShowDiscretized')">Show Discretized</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SmoothTask/HideDiscretized')">Hide Discretized</el-menu-item>
+      </el-menu>
+    </div>
+
+    <div v-show="smoothRootContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
+      <el-menu>
+        <el-menu-item @click="handleTreeContextMenu('SmoothRoot/ShowDiscretized')">Show Discretized</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SmoothRoot/HideDiscretized')">Hide Discretized</el-menu-item>
       </el-menu>
     </div>
 
@@ -213,41 +109,18 @@
     <!-- manual dialog have two parameters and two buttons: lr and max_iter, cancel and run -->
     <el-dialog v-model="manualDialogVisible" title="Manual Run" width="30%">
       <div>
-        <el-form
-          :model="{ lr: manualLr, max_iter: manualMaxIter }"
-          label-width="120px"
-        >
+        <el-form :model="{ lr: manualLr, max_iter: manualMaxIter }" label-width="120px">
           <el-form-item label="Learning Rate">
-            <el-input-number
-              v-model="manualLr"
-              :min="0.001"
-              :max="1.0"
-              :step="0.001"
-              :precision="3"
-              style="width: 200px"
-            />
+            <el-input-number v-model="manualLr" :min="0.001" :max="1.0" :step="0.001" :precision="3"
+              style="width: 200px" />
           </el-form-item>
           <el-form-item label="Max Iterations">
-            <el-input-number
-              v-model="manualMaxIter"
-              :min="100"
-              :max="100000"
-              :step="100"
-              style="width: 200px"
-            />
+            <el-input-number v-model="manualMaxIter" :min="100" :max="100000" :step="100" style="width: 200px" />
           </el-form-item>
           <el-form-item label="Log Iterations">
-            <el-input-number
-              v-model="manualLogIter"
-              :min="1"
-              :max="1000"
-              :step="1"
-              style="width: 200px"
-            />
+            <el-input-number v-model="manualLogIter" :min="1" :max="1000" :step="1" style="width: 200px" />
           </el-form-item>
         </el-form>
-        <p>{{ manualLog }}</p>
-        <el-progress :percentage="runSmoothPercentage" />
       </div>
       <template #footer>
         <div class="dialog-footer">
@@ -256,6 +129,26 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="surfaceGenerateDialogVisible" title="Surface Generate" width="30%">
+      <div>
+        <el-form :model="{ path_reso: surfacePathReso, point_reso: surfacePointReso }" label-width="120px">
+          <el-form-item label="Path Reso">
+            <el-input-number v-model="surfacePathReso" :min="0.001" :max="10.0" :step="0.01" :precision="3" style="width: 200px" />
+          </el-form-item>
+          <el-form-item label="Point Reso">
+            <el-input-number v-model="surfacePointReso" :min="0.001" :max="10.0" :step="0.01" :precision="3" style="width: 200px" />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="surfaceGenerateDialogVisible = false">Cancel</el-button>
+          <el-button type="primary" @click="handleSurfaceGenerateRun">Run</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -311,11 +204,19 @@ const progressLog = ref('')
 
 // ------ manual dialog ------
 const manualDialogVisible = ref(false)
-const manualLog = ref('')
-const runSmoothPercentage = ref(0)
 const manualLr = ref(0.01)
 const manualMaxIter = ref(1000)
 const manualLogIter = ref(50)
+
+// ------ surface generate dialog ------
+const surfaceGenerateDialogVisible = ref(false)
+const surfacePathReso = ref(0.1)
+const surfacePointReso = ref(0.1)
+// Store context for surface generation
+const surfaceGenProject = ref('')
+const surfaceGenSmooth = ref('')
+const surfaceGenGroup = ref('')
+const surfaceGenMeshJson = ref<any>(null)
 
 // ------ Left Side Bar ------
 const contextMenuPosition = reactive({ x: 0, y: 0 })
@@ -334,6 +235,7 @@ const hideContextMenu = () => {
   connectorCellsContextMenuVisible.value = false
   smoothTaskContextMenuVisible.value = false
   smoothRootContextMenuVisible.value = false
+  groupCellContextMenuVisible.value = false
 }
 
 const hideFragmentMenu = () => {
@@ -365,6 +267,7 @@ const segmentCellsContextMenuVisible = ref(false)
 const connectorCellsContextMenuVisible = ref(false)
 const smoothTaskContextMenuVisible = ref(false)
 const smoothRootContextMenuVisible = ref(false)
+const groupCellContextMenuVisible = ref(false)
 const contextMenuVisibleDict = {
   smoothContextMenuVisible: smoothContextMenuVisible,
   runSmoothContextMenuVisible: runSmoothContextMenuVisible,
@@ -373,7 +276,8 @@ const contextMenuVisibleDict = {
   segmentCellsContextMenuVisible: segmentCellsContextMenuVisible,
   connectorCellsContextMenuVisible: connectorCellsContextMenuVisible,
   smoothTaskContextMenuVisible: smoothTaskContextMenuVisible,
-  smoothRootContextMenuVisible: smoothRootContextMenuVisible
+  smoothRootContextMenuVisible: smoothRootContextMenuVisible,
+  groupCellContextMenuVisible: groupCellContextMenuVisible
 }
 
 const defineSmoothInfoVisible = ref(false)
@@ -392,9 +296,9 @@ const label_dict = ref(
     | string[]
     | Map<string, string | number>
     | Map<
-        string,
-        Map<string, Map<string, string | number | number[] | boolean>>
-      >
+      string,
+      Map<string, Map<string, string | number | number[] | boolean>>
+    >
   >()
 )
 
@@ -447,6 +351,8 @@ const showContextMenu = (data: any) => {
     smoothTaskContextMenuVisible.value = true
   } else if (style === 'SmoothRoot') {
     smoothRootContextMenuVisible.value = true
+  } else if (style === 'GroupCell') {
+    groupCellContextMenuVisible.value = true
   }
 
   // ---- 自适应菜单位置，防止被遮挡 ----
@@ -587,7 +493,7 @@ const handleTreeContextMenu = (mode: string) => {
     }
 
     if (target_group_cell && target_group_cell.seg_dict[segment_name]) {
-      target_group_cell.seg_dict[segment_name].show_tube_mesh()
+      target_group_cell.seg_dict[segment_name].show_tube_mesh(rootObj.get_scene())
     }
   } else if (mode === 'SegmentCell/ShowLineResult') {
     const smooth_runner = rootObj.proj_dict
@@ -692,7 +598,7 @@ const handleTreeContextMenu = (mode: string) => {
     }
 
     if (target_group_cell && target_group_cell.connector_dict[connector_name]) {
-      target_group_cell.connector_dict[connector_name].show_tube_mesh()
+      target_group_cell.connector_dict[connector_name].show_tube_mesh(rootObj.get_scene())
     }
   } else if (mode === 'ConnectorCell/HideLineResult') {
     const smooth_runner = rootObj.proj_dict
@@ -750,7 +656,7 @@ const handleTreeContextMenu = (mode: string) => {
     }
     if (target_group_cell) {
       for (const segment_cell of Object.values(target_group_cell.seg_dict)) {
-        segment_cell.show_tube_mesh()
+        segment_cell.show_tube_mesh(rootObj.get_scene())
       }
     }
   } else if (mode === 'SegmentCells/HideLineResult') {
@@ -826,7 +732,7 @@ const handleTreeContextMenu = (mode: string) => {
     }
     if (target_group_cell) {
       for (const connector_cell of Object.values(target_group_cell.connector_dict)) {
-        connector_cell.show_tube_mesh()
+        connector_cell.show_tube_mesh(rootObj.get_scene())
       }
     }
   } else if (mode === 'ConnectorCells/HideLineResult') {
@@ -915,6 +821,31 @@ const handleTreeContextMenu = (mode: string) => {
         }
       }
     }
+  } else if (mode === 'GroupCell/CreateSurface') {
+    const project = label_dict.value.get('Project')!.toString()
+    const group_name = label_dict.value.get('label')!.toString()
+    const smooth_runner = rootObj.proj_dict
+      .get(project)!
+      .smooth_task_dict.get(label_dict.value.get('SmoothName') as string
+      ) as SmoothRunner
+    const group_cell: GroupCell = smooth_runner.group_cells.get(group_name)!
+    surfaceGenProject.value = project
+    surfaceGenSmooth.value = smooth_runner.name
+    surfaceGenGroup.value = group_name
+    surfaceGenMeshJson.value = group_cell.export_surface_mesh_json()
+    surfaceGenerateDialogVisible.value = true
+  } else if (mode === 'GroupCell/RemoveSurface') {
+    const project = label_dict.value.get('Project')!.toString()
+    const group_name = label_dict.value.get('label')!.toString()
+    const smooth_runner = rootObj.proj_dict
+      .get(project)!
+      .smooth_task_dict.get(label_dict.value.get('SmoothName') as string
+      ) as SmoothRunner
+    const group_cell: GroupCell = smooth_runner.group_cells.get(group_name)!
+    if (group_cell.fine_surface_mesh) {
+      group_cell.fine_surface_mesh.destory(rootObj.get_scene())
+    }
+    group_cell.fine_surface_mesh = null
   }
 }
 
@@ -1057,10 +988,7 @@ const handleDefineSmoothInfoGenerate = async (data: any) => {
   return true
 }
 
-const upload_smooth_obstacle_pcd = async (
-  smooth_name: string,
-  obstacle_xyzr_list: number[][]
-) => {
+const upload_smooth_obstacle_pcd = async (smooth_name: string, obstacle_xyzr_list: number[][]) => {
   const url = `${config.BASE_URL}/path_smooth/upload_smooth_obstacle_pcd`
 
   progressDialogVisible.value = true
@@ -1228,7 +1156,9 @@ const init_smooth_map = async (
           rootObj.get_scene(),
           // just for front end visualization
           segment_info.cell_setting.left_intercept_num,
-          segment_info.cell_setting.right_intercept_num
+          segment_info.cell_setting.right_intercept_num,
+          segment_info.cell_setting.left_clamp,
+          segment_info.cell_setting.right_clamp
         )
 
         segment_cell.left_clamp = segment_info.cell_setting.left_clamp
@@ -1245,6 +1175,8 @@ const init_smooth_map = async (
         segment_cell.with_analytical_tangent_computed =
           segment_info.with_analytical_tangent_computed
         segment_cell.cost_setting = segment_info.cost_setting
+        segment_cell.left_vector = segment_info.cell_setting.left_vector
+        segment_cell.right_vector = segment_info.cell_setting.right_vector
 
         group_cell.seg_dict[segment_cell.name] = segment_cell
       })
@@ -1316,9 +1248,6 @@ const init_smooth_map = async (
 
 const handleManualRun = async () => {
   manualDialogVisible.value = false
-  manualLog.value = 'Starting manual run...'
-  runSmoothPercentage.value = 0
-
   await manualRun(
     label_dict.value.get('Project') as string,
     label_dict.value.get('SmoothName') as string,
@@ -1375,46 +1304,17 @@ const manualRun = async (
     const text = new TextDecoder().decode(value)
     buffer += text
 
-    try {
-      const data = JSON.parse(buffer)
-      if (data.name === 'manual_smooth') {
-        if (data.total_finished) {
-          for (const [group_name, cell_setting] of Object.entries(
-            data.result.smooth_result
-          )) {
-            smooth_runner.group_cells
-              .get(group_name)!
-              .update_c_table(
-                (cell_setting as any).c_table,
-                rootObj.get_scene()
-              )
-          }
+    // Split buffer by newlines and process each JSON object
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || '' // Keep the last incomplete line in buffer
 
-          // Show report visualization
-          reportPlotlyVisible.value = true
+    for (const line of lines) {
+      if (line.trim() === '') continue
 
-          // Update pie chart with loss info
-          if (data.result.loss_info) {
-            const lossInfo = data.result.loss_info
-            const labels = Object.keys(lossInfo)
-            const values = Object.values(lossInfo)
-            reportPlotlyRef.value?.updatePieChart(labels, values)
-          }
-
-          // Update line chart with loss record
-          if (data.result.loss_record) {
-            const lossRecord = data.result.loss_record
-            const iterations = Array.from(
-              { length: lossRecord.length },
-              (_, i) => i + 1
-            )
-            reportPlotlyRef.value?.updateLineChart(iterations, lossRecord)
-          }
-
-          emit('updateLog', data.msg)
-          break
-        } else {
-          if (data['result'] !== undefined) {
+      try {
+        const data = JSON.parse(line)
+        if (data.name === 'manual_smooth') {
+          if (data.total_finished) {
             for (const [group_name, cell_setting] of Object.entries(
               data.result.smooth_result
             )) {
@@ -1425,31 +1325,55 @@ const manualRun = async (
                   rootObj.get_scene()
                 )
             }
+
+            // Show report visualization
+            reportPlotlyVisible.value = true
+
+            // Update pie chart with loss info
+            if (data.result.loss_info) {
+              const lossInfo = data.result.loss_info
+              const labels = Object.keys(lossInfo)
+              const values = Object.values(lossInfo)
+              reportPlotlyRef.value?.updatePieChart(labels, values)
+            }
+            // Update line chart with loss record
+            if (data.result.loss_record) {
+              const lossRecord = data.result.loss_record
+              const iterations = Array.from(
+                { length: lossRecord.length },
+                (_, i) => i + 1
+              )
+              reportPlotlyRef.value?.updateLineChart(iterations, lossRecord)
+            }
+            emit('updateLog', data.msg)
+            break
+
+          } else {
+            if (data['result'] !== undefined) {
+              for (const [group_name, cell_setting] of Object.entries(
+                data.result.smooth_result
+              )) {
+                smooth_runner.group_cells
+                  .get(group_name)!
+                  .update_c_table(
+                    (cell_setting as any).c_table,
+                    rootObj.get_scene()
+                  )
+              }
+            }
+            const message = `${data.name} Progress: ${data.progress.toFixed(
+              2
+            )}s, Message: ${data.msg}`
+            emit('updateLog', message)
           }
-          const message = `${data.name} Progress: ${data.progress.toFixed(
-            2
-          )}s, Message: ${data.msg}`
-          emit('updateLog', message)
         }
+        buffer = ''
+      } catch (error) {
+        continue
       }
-      buffer = ''
-    } catch (error) {
-      continue
+
     }
   }
-
-  // const data = await response.json()
-  // if (!data.is_success) {
-  //   ElMessage.error(data.error)
-  //   return
-  // }
-  // const result_json = data.result_json
-  // const loss_info = data.loss_info
-
-  // // update smooth runner
-  // for (const [group_name, cell_setting] of Object.entries(result_json)) {
-  //   smooth_runner.group_cells.get(group_name)!.update_c_table((cell_setting as any).c_table, rootObj.get_scene())
-  // }
 }
 
 const exportSmoothPathPoints = async () => {
@@ -1512,6 +1436,123 @@ const exportSmoothPathPoints = async () => {
       URL.revokeObjectURL(url)
     })
   }
+}
+
+const createTubeSurface = async (
+  project_name: string,
+  smooth_name: string,
+  group_name: string,
+  surface_mesh_json: any,
+  path_reso: number,
+  point_reso: number
+) => {
+  console.log('surface_mesh_json:', surface_mesh_json)
+  progressDialogVisible.value = true
+  progressPercentage.value = 0
+
+  try {
+    const url = `${config.BASE_URL}/path_smooth/generate_surface_from_paths`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        path_dict: surface_mesh_json,
+        path_reso: path_reso,
+        point_reso: point_reso
+      })
+    })
+
+    if (!response.ok) {
+      ElMessage.error('Network response was not ok')
+      return
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('Failed to get response reader')
+
+    let buffer = ''
+
+    let cells: number[][] = []
+    let points: number[][] = []
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const text = new TextDecoder().decode(value)
+      buffer += text
+
+      // Split buffer by newlines and process each JSON object
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // Keep the last incomplete line in buffer
+
+      for (const line of lines) {
+        if (line.trim() === '') continue
+
+        try {
+          const data = JSON.parse(line)
+
+          if (data.total_finished) {
+            break
+          }
+
+          if (data.name === 'return_cells') {
+            progressLog.value = 'Processing cells data...'
+            progressPercentage.value = data.progress
+            if (data.data) {
+              cells.push(...data.data)
+            }
+          } else if (data.name === 'return_points') {
+            progressLog.value = 'Processing points data...'
+            progressPercentage.value = data.progress
+            if (data.data) {
+              points.push(...data.data)
+            }
+          } else if (data.name === 'generate_surface_from_paths') {
+            progressLog.value = 'Processing mesh data...'
+          }
+
+        } catch (error) {
+          continue
+        }
+      }
+    }
+
+    const group_cell = rootObj.proj_dict
+      .get(project_name)!
+      .smooth_task_dict.get(smooth_name)!
+      .group_cells.get(group_name)!
+    group_cell.generate_surface_mesh(points, cells, [255, 0, 0], rootObj.get_scene())
+
+
+  } catch (error: any) {
+    console.error('Error generating mesh:', error)
+    progressDialogVisible.value = false
+    progressPercentage.value = 100
+    progressLog.value = 'Error generating mesh'
+    ElMessage.error(error.message || 'Failed to generate mesh')
+  } finally {
+    // Close progress dialog after a short delay
+    setTimeout(() => {
+      progressDialogVisible.value = false
+      progressPercentage.value = 0
+      progressLog.value = 'Processing...'
+    }, 2000)
+  }
+}
+
+const handleSurfaceGenerateRun = async () => {
+  surfaceGenerateDialogVisible.value = false
+  await createTubeSurface(
+    surfaceGenProject.value,
+    surfaceGenSmooth.value,
+    surfaceGenGroup.value,
+    surfaceGenMeshJson.value,
+    surfacePathReso.value,
+    surfacePointReso.value
+  )
 }
 
 // ------ Expose ------

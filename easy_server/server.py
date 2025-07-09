@@ -14,6 +14,7 @@ import subprocess
 import pyvista
 from flask_sock import Sock
 from functools import partial
+import uuid
 
 from cad_server_utils import CadServerUtils
 from cad_server_utils import GmshStepReader
@@ -583,7 +584,8 @@ def upload_static_obstacle_pcd():
         project_info.z_size = z_size + 1  # be careful with the z_size
         project_info.resolution = resolution
         PathServerUtils.project_map[project_id] = project_info
-    
+    if chunk_index == 0:
+        PathServerUtils.project_map[project_id].static_obstacle_pcd.clear()
     PathServerUtils.project_map[project_id].static_obstacle_pcd.extend(obstacle_pcd)
 
     print(f'static_obstacle_pcd: {len(PathServerUtils.project_map[project_id].static_obstacle_pcd)}')
@@ -613,7 +615,6 @@ def upload_relax_group_obstacle_pcd():
         project_info.dynamic_group_obstacle_pcd[group_name] = []
     if chunk_index == 0:
         project_info.dynamic_group_obstacle_pcd[group_name].clear()
-
     project_info.dynamic_group_obstacle_pcd[group_name].extend(obstacle_pcd)
 
     return jsonify({
@@ -913,42 +914,59 @@ def init_smooth_map():
 @app.route('/path_smooth/manual_smooth', methods=['POST'])
 def manual_smooth():
     data = request.json
-    smooth_name = data.get('smooth_name')
-    smooth_json = data.get('smooth_json')
+    smooth_name = data.get('smooth_name', None)
+    smooth_json = data.get('smooth_json', None)
+    if smooth_name is None or smooth_json is None:
+        return jsonify({'error': 'No smooth name or smooth json provided'}), 400
+
     lr = data.get('lr', 0.01)
     max_iter = data.get('max_iter', 1000)
     log_iter = data.get('log_iter', 50)
+    mode = data.get('mode', 'stream')
 
     if smooth_name not in SmoothServerUtils.smooth_map:
         return jsonify({'error': 'No smooth map found'}), 400
 
     def generate():
         try:
-            task_callback = partial(
-                SmoothServerUtils.manual_smooth,
-                smooth_name=smooth_name,
-                smooth_json=smooth_json,
-                run_times=max_iter,
-                lr=lr,
-                log_iter=log_iter
-            )
-                        
-            task = StreamProcessTaskResponse(
-                name='manual_smooth', 
-                callback_func=task_callback, 
-                interval_time=0.3,
-                min_yield_interval=0.1,
-                max_running_time=1000000
-            )
-            yield from task.start()
+            if mode == 'process_stream':
+                task_callback = partial(
+                    SmoothServerUtils.manual_smooth,
+                    smooth_name=smooth_name,
+                    smooth_json=smooth_json,
+                    run_times=max_iter,
+                    lr=lr,
+                    log_iter=log_iter,
+                    mode=mode
+                )
+                            
+                task = StreamProcessTaskResponse(
+                    name='manual_smooth', 
+                    callback_func=task_callback, 
+                    interval_time=0.3,
+                    min_yield_interval=0.1,
+                    max_running_time=1000000
+                )
+                yield from task.start()
 
-            result = {
-                'name': 'manual_smooth',
-                'total_finished': True,
-                'result': task.result['result']
-            }
-            time.sleep(0.25)
-            yield json.dumps(result)
+                result = {
+                    'name': 'manual_smooth',
+                    'total_finished': True,
+                    'result': task.result['result'],
+                    'msg': 'task_finished'
+                }
+                time.sleep(0.25)
+                yield json.dumps(result) + '\n'
+
+            elif mode == 'stream':
+                yield from SmoothServerUtils.manual_smooth(
+                    smooth_name=smooth_name,
+                    smooth_json=smooth_json,
+                    run_times=max_iter,
+                    lr=lr,
+                    log_iter=log_iter,
+                    mode=mode
+                )
 
         except Exception as e:
             yield json.dumps({
@@ -977,17 +995,56 @@ def generate_surface_from_paths():
     }
     """
     data = request.json
-    paths = data.get('path_dict', {})
-    path_reso = data.get('path_reso', -1)
-    point_reso = data.get('point_reso', -1)
+    path_dict = data.get('path_dict', {})
+    path_reso = data.get('path_reso', 0.1)
+    point_reso = data.get('point_reso', 0.1)
 
-    if point_reso < 0.0 or path_reso < 0.0 or len(paths) == 0:
+    if len(path_dict) == 0:
         return jsonify({'error': 'Invalid parameters'}), 400
     
-    mesh = PathSurfaceGenerator.generate_surface(paths, path_reso, point_reso)
-    
+    # try:
+    #     mesh = PathSurfaceGenerator.generate_surface(paths, path_reso, point_reso)
+    # except Exception as e:
+    #     return jsonify({'error': str(e)}), 400
+
+    for _, path_item in path_dict.items():
+        path_item['path'] = np.array(path_item['path'])
+        if path_item['left_vec'] is not None:
+            path_item['left_vec'] = np.array(path_item['left_vec'])
+        if path_item['right_vec'] is not None:
+            path_item['right_vec'] = np.array(path_item['right_vec'])
+            
+    # Create temp directory
+    temp_dir = os.path.join(os.getcwd(), 'temp_files')
+    os.makedirs(temp_dir, exist_ok=True)
+    surface_ply = os.path.join(temp_dir, f'surface_{uuid.uuid4()}.ply')
+    surface_stl = os.path.join(temp_dir, f'surface_{uuid.uuid4()}.stl')
+
     def generate():
         try:
+            def task_callback(data_queue):
+                PathSurfaceGenerator.generate_surface(
+                    path_dict, refine_path_reso=path_reso, point_reso=point_reso,
+                    method="meshlab",
+                    save_pcd_file=surface_ply,
+                    save_stl_file=surface_stl
+                )
+                data_queue.put({
+                    'is_finished': True,
+                    'result': None
+                })
+            
+            task = StreamProcessTaskResponse(
+                name='generate_surface_from_paths',
+                callback_func=task_callback,
+                interval_time=0.3,
+                min_yield_interval=0.1,
+                max_running_time=1000000
+            )
+            yield from task.start()
+
+            mesh = pyvista.read(surface_stl).cast_to_unstructured_grid()
+
             # ------ return points ------
             points = mesh.points.tolist()
         
@@ -997,17 +1054,18 @@ def generate_surface_from_paths():
             def get_points_chunk_data_callback(data_index, chunk_size):
                 return points[data_index:data_index + chunk_size]
 
-            stream_data_response = StreamDataResponse(
+            stream_data_response = StreamProcessDataResponse(
                 name='return_points', 
                 get_data_size_callback=get_points_size_callback, 
                 get_chunk_data_callback=get_points_chunk_data_callback, 
-                chunk_size=5000, time_interval=0.5
+                chunk_size=5000, time_interval=0.1
             )
             yield from stream_data_response.generate()
 
             # ------ return cells ------
-            time.sleep(0.5)
-            cells = mesh.cells.reshape(-1, 4).tolist()
+            time.sleep(0.25)
+            cells = mesh.cells.reshape(-1, 4)
+            cells = cells.tolist()
 
             def get_cells_size_callback():
                 return len(cells)
@@ -1015,11 +1073,11 @@ def generate_surface_from_paths():
             def get_cells_chunk_data_callback(data_index, chunk_size):
                 return cells[data_index:data_index + chunk_size]
                 
-            stream_data_response = StreamDataResponse(
+            stream_data_response = StreamProcessDataResponse(
                 name='return_cells', 
                 get_data_size_callback=get_cells_size_callback, 
                 get_chunk_data_callback=get_cells_chunk_data_callback, 
-                chunk_size=5000, time_interval=0.5
+                chunk_size=5000, time_interval=0.1
             )
             yield from stream_data_response.generate()
 
@@ -1028,10 +1086,14 @@ def generate_surface_from_paths():
             yield json.dumps({'total_finished': True})
         
         except Exception as e:
+            print(f'generate_surface_from_paths error: {e}')
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
             return jsonify({'error': str(e)}), 400
 
         finally:
-            pass
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
     
     return Response(generate(), mimetype='text/event-stream')
 

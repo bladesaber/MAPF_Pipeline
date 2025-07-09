@@ -5,6 +5,8 @@ import pandas as pd
 import torch
 from queue import Queue
 import time
+import json
+from typing import Generator
 
 from scripts_py.mapf_pkg.smooth_optimizer import PathOptimizer
 from scripts_py.mapf_pkg.utils import TensorBoardRecorder
@@ -220,8 +222,11 @@ class SmoothServerUtils:
     def manual_smooth(
         smooth_name: str, smooth_json: dict, run_times: int, lr: float, log_iter: int = 50,
         with_momentum=False, 
-        data_queue: Queue = None
-    ) -> tuple[list[float], dict[str, float]]:
+        data_queue: Queue = None, mode: str = 'process_stream'
+    ) -> tuple[list[float], dict[str, float]] | Generator[str, None, None]:
+        if mode == 'stream':
+            start_time = time.time()
+
         # ------ restore smooth json
         opt = SmoothServerUtils.restore_smooth_json(smooth_name, smooth_json)
 
@@ -258,14 +263,23 @@ class SmoothServerUtils:
                     loss_record.append(float(loss.detach().numpy()))
                 else:
                     loss_record.append(float(loss))
-                # print(f"[iter:{it}] loss:{loss_record[-1]:.6f}")
+                print(f"[iter:{it}] loss:{loss_record[-1]:.6f}")
 
                 if it != 1:
                     smooth_result = SmoothServerUtils.get_smooth_result(smooth_name, opt)
-                    data_queue.put({
-                        'is_finished': False,
-                        'result': {'smooth_result': smooth_result}
-                    })
+                    if mode == 'process_stream':
+                        data_queue.put({
+                            'is_finished': False,
+                            'result': {'smooth_result': smooth_result}
+                        })
+                    elif mode == 'stream':
+                        yield json.dumps({
+                            'is_finished': False,
+                            'result': {'smooth_result': smooth_result},
+                            'name': 'manual_smooth',
+                            'progress': time.time() - start_time,
+                            'msg': f"[iter:{it}] loss:{loss_record[-1]:.6f}"
+                        }) + '\n'
 
             # ------ compute gradient
             loss.backward()
@@ -302,14 +316,29 @@ class SmoothServerUtils:
                 loss_info_np[key] = float(val)
 
         # ------ put the final result
-        data_queue.put({
-            'is_finished': True,
-            'result': {
+        if mode == 'process_stream':
+            data_queue.put({
+                'is_finished': True,
+                'result': {
                 'smooth_result': SmoothServerUtils.get_smooth_result(smooth_name, opt),
                 'loss_record': loss_record,
                 'loss_info': loss_info_np
-            }
-        })
+                }
+            })
+        elif mode == 'stream':
+            yield json.dumps({
+                'is_success': True,
+                'is_finished': True,
+                'total_finished': True,
+                'result': {
+                    'smooth_result': SmoothServerUtils.get_smooth_result(smooth_name, opt),
+                    'loss_record': loss_record,
+                    'loss_info': loss_info_np
+                },
+                'name': 'manual_smooth',
+                'progress': time.time() - start_time,
+                'msg': f"loss:{loss_record[-1]:.6f}"
+            }) + '\n'
 
     @staticmethod
     def sample_surface_points_from_path(path: np.ndarray) -> np.ndarray:

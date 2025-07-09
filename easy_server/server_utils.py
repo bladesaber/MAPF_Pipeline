@@ -29,7 +29,7 @@ class StreamDataResponse:
         try:
             while True:
                 chunk_data = self.update_progress()
-                yield json.dumps(chunk_data)
+                yield json.dumps(chunk_data) + '\n'
                 time.sleep(self.time_interval)
                 if chunk_data['is_finished']:
                     break
@@ -99,7 +99,7 @@ class StreamTaskResponse:
         while True:
             time.sleep(self.interval_time)
             progress_data = self.update_progress()
-            yield json.dumps(progress_data)
+            yield json.dumps(progress_data) + '\n'
             if progress_data['is_finished']:
                 break
         self.thread.join()

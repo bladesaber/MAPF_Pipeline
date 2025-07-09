@@ -52,7 +52,7 @@ class StreamThreadTaskResponse:
                         'is_success': True,
                         'result': record['result']
                     }
-                    yield json.dumps(record)
+                    yield json.dumps(record) + '\n'
                     break
                 
                 # Add name and progress to the record
@@ -60,7 +60,7 @@ class StreamThreadTaskResponse:
                     'name': self.name,
                     'progress': time.time() - self.start_time
                 })
-                yield json.dumps(record)
+                yield json.dumps(record) + '\n'
                 self.last_yield_time = time.time()
                     
             except queue.Empty:
@@ -77,7 +77,7 @@ class StreamThreadTaskResponse:
                         'is_success': False,
                         'progress': time.time() - self.start_time,
                         'msg': 'Max running time reached'
-                    })
+                    }) + '\n'
                     break
 
                 # If no record is available, yield a waiting message
@@ -91,7 +91,7 @@ class StreamThreadTaskResponse:
                     'is_success': False,
                     'progress': time.time() - self.start_time,
                     'msg': f'[Debug]: Waiting for task {self.name}...'
-                })
+                }) + '\n'
                 self.last_yield_time = time.time()
 
         self.thread.join()
@@ -152,7 +152,7 @@ class StreamProcessTaskResponse:
                         'is_success': True,
                         'result': record['result']
                     }
-                    yield json.dumps(record)
+                    yield json.dumps(record) + '\n'
                     break
                 
                 # Add name and progress to the record
@@ -161,7 +161,7 @@ class StreamProcessTaskResponse:
                     'progress': time.time() - self.start_time,
                     'msg': record.get('msg', '')
                 })
-                yield json.dumps(record)
+                yield json.dumps(record) + '\n'
                 self.last_yield_time = time.time()
                     
             except queue.Empty:
@@ -178,7 +178,7 @@ class StreamProcessTaskResponse:
                         'is_success': False,
                         'progress': time.time() - self.start_time,
                         'msg': 'Max running time reached'
-                    })
+                    }) + '\n'
                     break
 
                 # If no record is available, yield a waiting message
@@ -192,7 +192,7 @@ class StreamProcessTaskResponse:
                     'is_success': False,
                     'progress': time.time() - self.start_time,
                     'msg': f'[Debug]: Waiting for task {self.name}...'
-                })
+                }) + '\n'
                 self.last_yield_time = time.time()
 
         # Clean up the process
@@ -251,7 +251,7 @@ class StreamProcessDataResponse:
                 if current_time - self.last_yield_time < self.min_yield_interval:
                     time.sleep(self.min_yield_interval - (current_time - self.last_yield_time))
                 
-                yield json.dumps(chunk_data)
+                yield json.dumps(chunk_data) + '\n'
                 self.last_yield_time = time.time()
                 
                 if chunk_data['is_finished']:

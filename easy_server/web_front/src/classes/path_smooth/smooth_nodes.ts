@@ -9,7 +9,77 @@ import {
 
 import { MeshObj } from '../mesh_type';
 import { BsplineUtils } from './bspline_utils';
+import { create_circle_set, create_surface_mesh_from_cells } from '@/utils/visulize_utils';
 
+
+export class CoarseTubeMesh extends MeshObj {
+  center_points: number[][];
+  radius_list: number[];
+  direction_list: number[][];
+  color: number[];
+
+  constructor(
+    name: string,
+    center_points: number[][],
+    radius_list: number[],
+    direction_list: number[][],
+    color: number[],
+    scene: Scene
+  ) {
+    super(name);
+    this.center_points = center_points;
+    this.radius_list = radius_list;
+    this.direction_list = direction_list;
+    this.color = color;
+
+    this.add_mesh(scene);
+  }
+
+  add_mesh(scene: Scene): void {
+    const coarse_mesh = create_circle_set(
+      this.center_points, this.radius_list, this.direction_list, { color: color_to_hex(this.color) }
+    );
+    coarse_mesh.name = this.name;
+    this.mesh_dict[this.name] = coarse_mesh;
+    scene.add(coarse_mesh);
+  }
+}
+
+interface PartSurfaceMeshInfo {
+  'name': string;
+  'path': number[][];
+  'left_vec': number[] | null;
+  'right_vec': number[] | null;
+  'is_left_input': boolean;
+  'is_right_input': boolean;
+  'is_left_cut': boolean;
+  'is_right_cut': boolean;
+}
+
+export class FineSurfaceMesh extends MeshObj {
+  vertices: number[][];
+  cells: number[][];
+  color: number[];
+
+  constructor(name: string, vertices: number[][], cells: number[][], color: number[], scene: Scene) {
+    super(name);
+    this.vertices = vertices;
+    this.cells = cells;
+    this.color = color;
+    this.add_mesh(scene);
+  }
+
+  add_mesh(scene: Scene): void {
+    const surface_mesh = create_surface_mesh_from_cells(
+      this.vertices, this.cells, { color: color_to_hex(this.color) }
+    );
+    surface_mesh.name = this.name;
+    this.mesh_dict[surface_mesh.name] = surface_mesh;
+    scene.add(surface_mesh);
+  }
+}
+
+// -------------------------------------------------
 export class SegmentCell extends MeshObj {
   smooth_name: string;
   task_name: string;
@@ -19,12 +89,13 @@ export class SegmentCell extends MeshObj {
   group_idx: number;
   c_idxs: number[];
   parent_cell: GroupCell;
-  private scene: Scene;
 
   left_clamp: boolean = false;
   right_clamp: boolean = false;
   left_vector: number[] = [0., 0., 0.];
   right_vector: number[] = [0., 0., 0.];
+  is_left_input: boolean = false;
+  is_right_input: boolean = false;
 
   density: number = 0.5;
   degree: number = 3;
@@ -57,7 +128,7 @@ export class SegmentCell extends MeshObj {
 
   color: number[] = [];
 
-  tube_mesh: THREE.Mesh | null = null;
+  tube_mesh: MeshObj | null = null;
   line_mesh: THREE.Mesh | null = null;
   path_points: number[][] = [];
   radius_list: number[] = [];
@@ -66,7 +137,8 @@ export class SegmentCell extends MeshObj {
     smooth_name: string, task_name: string, project_name: string, segment_name: string,
     idx: number, group_idx: number, c_idxs: number[], parent_cell: GroupCell, scene: Scene,
     // just for front end visualization
-    left_intercept_num: number, right_intercept_num: number
+    left_intercept_num: number, right_intercept_num: number, 
+    left_clamp: boolean, right_clamp: boolean
   ) {
     super(segment_name);
     this.smooth_name = smooth_name;
@@ -77,9 +149,10 @@ export class SegmentCell extends MeshObj {
     this.group_idx = group_idx;
     this.c_idxs = c_idxs;
     this.parent_cell = parent_cell;
-    this.scene = scene;
     this.left_intercept_num = left_intercept_num;
     this.right_intercept_num = right_intercept_num;
+    this.left_clamp = left_clamp;
+    this.right_clamp = right_clamp;
     this.color = [Math.random() * 255, Math.random() * 255, Math.random() * 255];
     this.add_mesh(scene);
   }
@@ -105,7 +178,7 @@ export class SegmentCell extends MeshObj {
         [this.parent_cell.c_table['x'][c_idx], this.parent_cell.c_table['y'][c_idx], this.parent_cell.c_table['z'][c_idx]
       ]);
     })
-    
+
     const n_controls = this.c_idxs.length;
     const knot_cfg = BsplineUtils.create_knot_cfg(n_controls, this.degree, this.left_clamp, this.right_clamp)
     const knot = knot_cfg['knot'];
@@ -141,38 +214,55 @@ export class SegmentCell extends MeshObj {
     super.add_mesh(scene);
   }
 
-  show_tube_mesh() {
+  show_tube_mesh(scene: Scene) {
     if (!this.tube_mesh) {
-      // 按需创建粗管道
-      this.tube_mesh = create_tube(this.path_points, this.radius_list[0], { 
-        color: color_to_hex(this.color), 
-        opacity: 0.5, 
-        segments: 64 
-      }) as THREE.Mesh;
-      this.tube_mesh.name = this.name + '_tube';
-      this.tube_mesh.visible = true;
-      this.mesh_dict[this.tube_mesh.name] = this.tube_mesh;
-      
-      // 添加到场景
-      this.scene.add(this.tube_mesh);
-      
-      console.log('ShowTubeResult radius_list:', this.radius_list);
+      const direction_list: number[][] = []
+      for (let i = 0; i < this.path_points.length; i++) {
+        if (i == 0) {
+          if (this.left_clamp) {
+            direction_list.push(this.left_vector);
+          } else {
+            const direction = [
+              this.path_points[i + 1][0] - this.path_points[i][0],
+              this.path_points[i + 1][1] - this.path_points[i][1],
+              this.path_points[i + 1][2] - this.path_points[i][2]
+            ]
+            direction_list.push(direction);
+          }
+        } else if (i == this.path_points.length - 1) {
+          if (this.right_clamp) {
+            direction_list.push(this.right_vector);
+          } else {
+            const direction = [
+              this.path_points[i][0] - this.path_points[i - 1][0],
+              this.path_points[i][1] - this.path_points[i - 1][1],
+              this.path_points[i][2] - this.path_points[i - 1][2]
+            ]
+            direction_list.push(direction);
+          }
+        } else {
+          const direction = [
+            this.path_points[i + 1][0] - this.path_points[i][0],
+            this.path_points[i + 1][1] - this.path_points[i][1],
+            this.path_points[i + 1][2] - this.path_points[i][2]
+          ]
+          direction_list.push(direction);
+        }
+      }
+
+      this.tube_mesh = new CoarseTubeMesh(
+        this.name + '_coarse',
+        this.path_points, this.radius_list, direction_list, this.color, scene
+      );
+
     } else {
-      this.tube_mesh.visible = true;
+      this.tube_mesh.show_mesh();
     }
   }
 
   hide_tube_mesh() {
     if (this.tube_mesh) {
-      this.tube_mesh.visible = false;
-      // 从场景中移除并清理资源
-      this.scene.remove(this.tube_mesh);
-      delete this.mesh_dict[this.tube_mesh.name];
-      this.tube_mesh.geometry.dispose();
-      if (this.tube_mesh.material instanceof THREE.Material) {
-        this.tube_mesh.material.dispose();
-      }
-      this.tube_mesh = null;
+      this.tube_mesh.hide_mesh();
     }
   }
 
@@ -227,6 +317,25 @@ export class SegmentCell extends MeshObj {
       },
     }
   }
+
+  export_surface_mesh_json(): PartSurfaceMeshInfo {
+    const path: number[][] = []
+    for (let i = 0; i < this.path_points.length; i++) {
+      path.push([
+        this.path_points[i][0], this.path_points[i][1], this.path_points[i][2], this.radius_list[i]
+      ])
+    }
+    return {
+      name: this.name,
+      path: path,
+      left_vec: this.left_clamp ? this.left_vector : null,
+      right_vec: this.right_clamp ? this.right_vector : null,
+      is_left_input: false,
+      is_right_input: false,
+      is_left_cut: false,
+      is_right_cut: false,
+    }
+  }
 }
 
 export class ConnectorCell extends SegmentCell {
@@ -243,7 +352,8 @@ export class ConnectorCell extends SegmentCell {
       smooth_name, task_name, project_name, 
       connector_name, idx, group_idx, c_idxs, parent_cell, scene,
       // just for front end visualization
-      left_intercept_num, right_intercept_num
+      left_intercept_num, right_intercept_num,
+      false, false
     );
     this.left_seg_idx = left_seg_idx;
     this.right_seg_idx = right_seg_idx;
@@ -394,6 +504,8 @@ export class GroupCell {
     [key: string]: PathCell;
   };
 
+  fine_surface_mesh: FineSurfaceMesh | null = null;
+
   constructor(smooth_name: string, task_name: string, project_name: string, group_name: string, group_idx: number) {
     this.smooth_name = smooth_name;
     this.task_name = task_name;
@@ -529,6 +641,26 @@ export class GroupCell {
         'GroupIdx': this.group_idx,
       },
       children: [aid_path_node, graph_node, seg_node, con_node, path_node],
+    }
+  }
+
+  export_surface_mesh_json(): { [key: string]: PartSurfaceMeshInfo } {
+    const part_surface_mesh_infos: { [key: string]: PartSurfaceMeshInfo } = {};
+    for (const seg of Object.values(this.seg_dict)) {
+      part_surface_mesh_infos[seg.name] = seg.export_surface_mesh_json();
+    }
+    return part_surface_mesh_infos;
+  }
+
+  generate_surface_mesh(vertices: number[][], cells: number[][], color: number[], scene: Scene): void {
+    this.fine_surface_mesh = new FineSurfaceMesh(
+      this.group_name + '_surface', vertices, cells, color, scene
+    );
+  }
+
+  hide_surface_mesh(): void {
+    if (this.fine_surface_mesh) {
+      this.fine_surface_mesh.hide_mesh();
     }
   }
 }
