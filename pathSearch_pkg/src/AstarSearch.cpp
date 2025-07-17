@@ -62,7 +62,7 @@ namespace SearchSpace
         {
             iteration++;
             SearchSpace::SearchNode *current = m_open_list.pop();
-            
+
             // // --------------------------------------------
             // double distance = MathSpace::get_distance(current->m_loc, goals[0]);
             // bool debug = distance < 1.5;

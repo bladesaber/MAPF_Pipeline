@@ -836,7 +836,8 @@ const handleTreeContextMenu = (mode: string) => {
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.forEach((obstacle, key) => {
       obstacle.discrete(
         rootObj.get_scene(), min_task_radius * 0.75, 
-        label_dict.value.get('SearchTask') as string, pipes_info_list
+        label_dict.value.get('SearchTask') as string, 
+        pipes_info_list
       )
     })
 

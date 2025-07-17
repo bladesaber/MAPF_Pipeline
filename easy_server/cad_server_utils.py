@@ -357,7 +357,8 @@ class GmshStepReader:
             }
         return entity_cfgs
 
-    def define_group(self, dim: int, tags: list[int], group_name: str) -> int:
+    @staticmethod
+    def define_group(dim: int, tags: list[int], group_name: str) -> int:
         """return the tag of the physical group"""
         return gmsh.model.addPhysicalGroup(dim, tags, name=group_name)
 
@@ -369,8 +370,14 @@ class GmshStepReader:
         gmsh.option.setNumber("Mesh.MeshSizeMin", min_size)
         gmsh.model.mesh.generate(dim)
 
-    def export_su2(self, output_file: str):
+    @staticmethod
+    def export_su2(output_file: str):
         assert output_file.endswith('.su2'), "Output file must have a .su2 extension"
+        gmsh.write(output_file)
+
+    @staticmethod
+    def export_msh(output_file: str):
+        assert output_file.endswith('.msh'), "Output file must have a .msh extension"
         gmsh.write(output_file)
 
     def set_current_model(self, entity_name: str):
@@ -408,6 +415,64 @@ class GmshStepReader:
                 pass
 
 
+class GmshStlReader(GmshStepReader):
+    _initialized = False
+
+    def __init__(self, stl_file: str) -> None:
+        if not GmshStlReader._initialized:
+            try:
+                gmsh.initialize()
+                GmshStlReader._initialized = True
+            except ValueError:
+                # If initialization fails, assume Gmsh is already initialized
+                GmshStlReader._initialized = True
+        
+        self.name = os.path.basename(stl_file).split('.')[0]
+        self.stl_file = stl_file
+        self.read_stl_file()
+
+        self.model_name = gmsh.model.getCurrent()
+        self.point_cfgs = self.get_entities(0)
+        self.edge_cfgs = self.get_entities(1)
+        self.face_cfgs = self.get_entities(2)
+        self.volume_cfgs = self.get_entities(3)
+
+    def read_stl_file(self):
+        gmsh.merge(self.stl_file)
+        gmsh.model.occ.removeAllDuplicates()
+        gmsh.model.occ.synchronize()
+
+    def mesh_stl(self, max_size: float, min_size: float):
+        surface_tags = [face_cfg['id'] for face_cfg in self.face_cfgs.values()]
+        surface_loop_tag = GmshStlReader.define_surface_loop(surface_tags, 1)
+        volume_tag = GmshStlReader.define_volume([surface_loop_tag], 1)
+
+        self.define_group(dim=2, tags=[surface_loop_tag], group_name='surface_loop')
+        self.define_group(dim=3, tags=[volume_tag], group_name='volume')
+
+        gmsh.option.setNumber("Mesh.MeshSizeMax", max_size)
+        gmsh.option.setNumber("Mesh.MeshSizeMin", min_size)
+
+        gmsh.model.geo.synchronize()
+
+    @staticmethod
+    def define_surface_loop(surface_tags: list[int], surface_loop_tag: int) -> int:
+        """return the tag of the surface loop"""
+        return gmsh.model.geo.add_surface_loop(surface_tags, surface_loop_tag)
+
+    @staticmethod
+    def define_volume(surface_loop_tags: list[int], volume_tag: int) -> int:
+        """return the tag of the volume"""
+        return gmsh.model.geo.add_volume(surface_loop_tags, volume_tag)
+
+    def close(self):
+        if GmshStlReader._initialized:
+            try:
+                gmsh.finalize()
+                GmshStlReader._initialized = False
+            except:
+                pass
+
 def debug_occ():
     from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
     cad_server_utils = CadServerUtils()
@@ -417,7 +482,7 @@ def debug_occ():
         json.dump(res_json, f)
 
 
-def debug_gmsh():
+def debug_gmsh_step():
     step_file = '/home/admin123456/Desktop/work/flask_server/test.step'
     save_dir = '/home/admin123456/Desktop/work/flask_server/test'
 
@@ -443,6 +508,20 @@ def debug_gmsh():
     step_obj.close()
 
 
+def debug_gmsh_stl():
+    stl_file = '/home/admin123456/Desktop/work/test/surface.stl'
+    save_dir = '/home/admin123456/Desktop/work/test'
+
+    stl_obj = GmshStlReader(stl_file)
+    stl_obj.mesh_stl(max_size=0.5, min_size=0.2)
+    stl_obj.generate_mesh(dim=3, max_size=0.5, min_size=0.1)
+    # stl_obj.export_msh(os.path.join(save_dir, 'test.msh'))
+    stl_obj.export_su2(os.path.join(save_dir, 'test.su2'))
+
+    stl_obj.close()
+
+
 if __name__ == "__main__":
     # debug_occ()
-    debug_gmsh()
+    # debug_gmsh_step()
+    debug_gmsh_stl()

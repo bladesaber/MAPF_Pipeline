@@ -11,67 +11,52 @@ from pathSearch_pkg.build import MapfPkg
 
 
 class CellTaskInfo:
-    name: str = None
-    start_name: str = None
-    end_name: str = None
-    radius: float = None
-    result: np.ndarray = None
-
     def __init__(self, name: str, start_name: str, end_name: str, radius: float) -> None:
-        self.name = name
-        self.start_name = start_name
-        self.end_name = end_name
-        self.radius = radius
+        self.name: str = name
+        self.start_name: str = start_name
+        self.end_name: str = end_name
+        self.radius: float = radius
+        self.result: np.ndarray = None
 
 
 class GroupTaskInfo:
-    name: str = None
-    cell_infos: dict[str, CellTaskInfo] = {}
-    run_config: dict[str, Union[str, float]] = {}
-
     def __init__(self, name: str, run_config: dict[str, Union[str, float]]) -> None:
-        self.name = name
-        self.run_config = run_config
-        self.cell_infos = {}
+        self.name: str = name
+        self.run_config: dict[str, Union[str, float]] = run_config
+        self.cell_infos: dict[str, CellTaskInfo] = {}
 
 
 class PriorityTaskInfo:
-    name: str = None
-    group_infos: dict[str, GroupTaskInfo] = {}
-    run_cfg: dict[str, Union[str, float]] = {}
-
     def __init__(self, name: str, run_cfg: dict[str, Union[str, float]]) -> None:
-        self.name = name
-        self.run_cfg = run_cfg
-        self.group_infos = {}
+        self.name: str = name
+        self.run_cfg: dict[str, Union[str, float]] = run_cfg
+        self.group_infos: dict[str, GroupTaskInfo] = {}
 
 
 class SearchTaskInfo:
-    name: str = None
-    priority_infos: dict[str, PriorityTaskInfo] = {}
-
     def __init__(self, name: str) -> None:
-        self.name = name
-        self.graph = nx.Graph()
-        self.flag2radius = {}
-        self.priority_infos = {}
+        self.name: str = name
+        self.graph: nx.Graph = nx.Graph()
+        self.flag2radius: dict[int, float] = {}
+        self.priority_infos: dict[str, PriorityTaskInfo] = {}
 
 
 class ProjectInfo:
-    static_obstacle_pcd = []
-    dynamic_group_obstacle_pcd: dict[str, list] = {}
-    
-    inner_xyzd: tuple[np.ndarray, np.ndarray] = (np.array([]), np.array([]))
-    x_size: int = None
-    y_size: int = None
-    z_size: int = None
-    resolution: float = None
-    grid: MapfPkg.DistanceGrid = None
-    pipe_cfg: dict[str, dict[str, list[float]]] = {}
-    task_infos: dict[str, SearchTaskInfo] = {}
+    def __init__(self):
+        self.static_obstacle_pcd = []
+        self.dynamic_group_obstacle_pcd: dict[str, list] = {}
+        
+        self.inner_xyzd: tuple[np.ndarray, np.ndarray] = (np.array([]), np.array([]))
+        self.x_size: int = None
+        self.y_size: int = None
+        self.z_size: int = None
+        self.resolution: float = None
+        self.grid: MapfPkg.DistanceGrid = None
+        self.pipe_cfg: dict[str, dict[str, list[float]]] = {}
+        self.task_infos: dict[str, SearchTaskInfo] = {}
 
-    graph_dict: dict[str, nx.Graph] = {}
-    flag2radius: dict[int, float] = {}
+        self.graph_dict: dict[str, nx.Graph] = {}
+        self.flag2radius: dict[int, float] = {}
 
 
 class PathServerUtils:
@@ -175,6 +160,10 @@ class PathServerUtils:
     @staticmethod
     def init_env(project_id: str, pipe_data: dict):
         project_info = PathServerUtils.project_map[project_id]
+
+        if project_info.grid is not None:
+            print(f'[Debug]: Deleting grid for project: {project_id}')
+            del project_info.grid
         project_info.grid = MapfPkg.DistanceGrid(
             project_info.x_size, 
             project_info.y_size, 
@@ -365,6 +354,7 @@ class PathServerUtils:
         is_success = runner.run(start_locs, end_locs)
         if is_success:
             result: MapfPkg.PathResult = runner.result
+            del planner
             del runner
             return {
                 'is_success': True, 
@@ -373,6 +363,7 @@ class PathServerUtils:
                 'time_cost': result.time_cost
                 }
         else:
+            del planner
             del runner
             return {'is_success': False, 'error': 'Failed to find path'}
 
@@ -463,11 +454,14 @@ class PathServerUtils:
                     'radius': path_data.radius,
                     'time_cost': path_data.time_cost
                 }
+            
+            del planner
             del runner
             return {
                 'is_success': True, 'path_set': path_set
             }
         else:
+            del planner
             del runner
             return {'is_success': False, 'error': 'Failed to find path'}
 
@@ -557,6 +551,7 @@ class PathServerUtils:
                     cell_info.radius
                 )
         
+        
         cbs_planner = MapfPkg.CbsSearchNearEnd(
             project_info.grid, 
             priority_task.run_cfg['g_weight'], 
@@ -568,6 +563,10 @@ class PathServerUtils:
         if mode == 'single':
             is_success = runner.init_root_node()
             if not is_success:
+                for group_name, planner in planner_store.items():
+                    del planner
+                del cbs_planner
+                del runner
                 return {'is_success': False, 'error': 'Failed to initialize root node'}
 
             for _ in range(priority_task.run_cfg['max_iterations']):
@@ -584,8 +583,17 @@ class PathServerUtils:
                                 'radius': path.radius,
                                 'time_cost': path.time_cost
                             }
+                    
+                    for group_name, planner in planner_store.items():
+                        del planner
+                    del cbs_planner
+                    del runner
                     return {'is_success': True, 'path_res': path_res}
-
+            
+            for group_name, planner in planner_store.items():
+                del planner
+            del cbs_planner
+            del runner
             return {'is_success': False, 'error': 'Failed to find path'}
         
         elif mode == 'stream':
@@ -601,6 +609,11 @@ class PathServerUtils:
                         'error': 'Failed to initialize root node'
                     }
                 })
+                # print(f'[Debug]: Failed to initialize root node, delete all cache.')
+                for group_name, planner in planner_store.items():
+                    del planner
+                del cbs_planner
+                del runner
                 return
             else:
                 result: MapfPkg.CbsResult = runner.result
@@ -656,6 +669,11 @@ class PathServerUtils:
                 'is_finished': True,
                 'result': {'is_success': False, 'error': 'Failed to find path'}
             })
+
+            print(f'[Debug]: Finished, delete all cache.')
+            for group_name, planner in planner_store.items():
+                del planner
+            del cbs_planner
             del runner
             return
 

@@ -192,6 +192,7 @@ export class SegmentCell extends MeshObj {
     const spline_mat = BsplineUtils.compute_mat(ts, n_controls, this.degree, knot, fill_last_one)
     const points = this.matrix_multiply(spline_mat, control_points);
     this.path_points = points;
+    console.log('this.path_points:', this.path_points)
 
     const control_radius: number[][] = []
     this.c_idxs.forEach(c_idx => {
@@ -648,6 +649,9 @@ export class GroupCell {
     const part_surface_mesh_infos: { [key: string]: PartSurfaceMeshInfo } = {};
     for (const seg of Object.values(this.seg_dict)) {
       part_surface_mesh_infos[seg.name] = seg.export_surface_mesh_json();
+    }
+    for (const con of Object.values(this.connector_dict)) {
+      part_surface_mesh_infos[con.name] = con.export_surface_mesh_json();
     }
     return part_surface_mesh_infos;
   }

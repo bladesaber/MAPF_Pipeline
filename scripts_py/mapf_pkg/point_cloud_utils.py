@@ -5,8 +5,6 @@ import math
 from sklearn.neighbors import KDTree
 from typing import Dict, Union, Literal
 
-from scripts_py.mapf_pkg.shape_utils import AxisTransform
-
 from CGAL.CGAL_Kernel import Point_3
 from CGAL.CGAL_Triangulation_3 import Delaunay_triangulation_3
 
@@ -23,6 +21,8 @@ from CGAL.CGAL_Point_set_processing_3 import (
 
 import pymeshlab
 from pymeshlab import pmeshlab
+
+from scripts_py.mapf_pkg.shape_utils import AxisTransform
 
 
 class CGALUtils:
@@ -432,8 +432,7 @@ class PathSurfaceGenerator(object):
         relax_factor: float = None,
         merge_reso: float = None,
         method: Literal["cgal", "meshlab"] = "cgal",
-        save_pcd_file: str = None,
-        save_stl_file: str = None,
+        **kwargs
     ) -> pyvista.UnstructuredGrid:
         if relax_factor is None:
             relax_factor = min(point_reso, refine_path_reso) * 0.25
@@ -475,37 +474,56 @@ class PathSurfaceGenerator(object):
         # plotter.show()
 
         if method == "cgal":
+            assert kwargs['save_stl_file'] is not None, "save_stl_file is required"
             mesh = CGALUtils.poisson_surface_reconstruction(merged_points)
+            mesh.save(kwargs['save_stl_file'])
             # plotter = pyvista.Plotter()
             # plotter.add_mesh(mesh, color='red', style='wireframe')
             # # plotter.add_mesh(pyvista.PointSet(points), color='blue', point_size=8)
             # plotter.show()
+
         elif method == "meshlab":
-            pyvista.PolyData(merged_points).save(save_pcd_file)
+            assert kwargs['save_pcd_file'] is not None, "save_pcd_file is required"
+            assert kwargs['save_stl_file'] is not None, "save_stl_file is required"
+            pyvista.PolyData(merged_points).save(kwargs['save_pcd_file'])
             PathSurfaceGenerator.pcd2mesh_by_meshlab(
-                save_pcd_file, save_stl_file, sample_num=-1, threshold=0.8
+                kwargs['save_pcd_file'], kwargs['save_stl_file'], 
+                sample_num=kwargs.get("sample_num", 1000), is_sample_first=True
             )
 
-        # return mesh
-
     @staticmethod
-    def pcd2mesh_by_meshlab(pcd_file: str, save_file: str, sample_num=-1, threshold: float = 0.8):
+    def pcd2mesh_by_meshlab(pcd_file: str, save_file: str, sample_num=-1, is_sample_first=True):
         ms = pymeshlab.MeshSet()
         ms.load_new_mesh(pcd_file)
-        ms.apply_filter('compute_normal_for_point_clouds')
-        ms.apply_filter('generate_surface_reconstruction_screened_poisson')
+        ms.apply_filter('compute_normal_for_point_clouds', k=10, smoothiter=0)
 
-        if sample_num > 0:
+        if is_sample_first and sample_num > 0:
+            ms.apply_filter(
+                'generate_simplified_point_cloud', 
+                samplenum=sample_num,
+                radius=pmeshlab.PercentageValue(0.0),
+                bestsampleflag=True,
+                bestsamplepool=10,
+                exactnumflag=False
+            )
+
+        ms.apply_filter(
+            'generate_surface_reconstruction_screened_poisson', 
+            depth=8, fulldepth=5, cgdepth=0, scale=1.1, samplespernode=1.5,
+            pointweight=4, confidence=False, preclean=True
+        )
+        if not is_sample_first and sample_num > 0:
             ms.apply_filter('generate_sampling_poisson_disk', samplenum=sample_num)
-            ms.apply_filter('generate_surface_reconstruction_screened_poisson')
-
-        if threshold > 0.0:
-            ms.apply_filter('meshing_decimation_clustering', threshold=pmeshlab.PercentageValue(threshold))
+            ms.apply_filter(
+                'generate_surface_reconstruction_screened_poisson', 
+                depth=8, fulldepth=5, cgdepth=0, scale=1.1, samplespernode=1.5,
+                pointweight=4, confidence=False, preclean=True
+            )
 
         ms.save_current_mesh(save_file)
 
 
-def test_generate_surface():
+def test_generate_surface1():
     paths = {
         "path1": {
             "name": "path1",
@@ -697,8 +715,6 @@ def test_generate_surface2():
     # # mesh.plot(style="wireframe")
     # pyvista.save_meshio("/home/admin123456/Desktop/work/test/surface.stl", mesh)
 
-    
-
 
 if __name__ == "__main__":
-    test_generate_surface2()
+    test_generate_surface1()

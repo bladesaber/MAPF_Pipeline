@@ -98,6 +98,10 @@ public:
         {
             delete task_set;
         }
+        for (auto& [name, dynamic_obstacle_set] : dynamic_obstacle_map)
+        {
+            dynamic_obstacle_set.clear();
+        }
     };
 
     void add_set(std::string name, SearchSpace::BaseSearch* planner)

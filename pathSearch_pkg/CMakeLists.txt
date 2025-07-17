@@ -3,6 +3,7 @@ project(MapfPkg)
 set(CMAKE_CXX_STANDARD 17)
 
 # cmake -DCMAKE_BUILD_TYPE=Release ..
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Add configuration types if not defined
 if(NOT CMAKE_BUILD_TYPE)

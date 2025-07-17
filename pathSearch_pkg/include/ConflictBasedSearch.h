@@ -10,6 +10,9 @@
 #include "ConstraintSelector.h"
 #include <boost/heap/pairing_heap.hpp>
 #include <boost/unordered_set.hpp>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
 
 namespace SearchSpace
 {
@@ -198,6 +201,10 @@ namespace SearchSpace
             GridSpace::SearchGrid *grid, const double g_weight = 1.0, const double h_weight = 1.0, 
             const int16_t max_iteration = 10000) : m_grid(grid), m_max_iteration(max_iteration)
         {
+            // auto now = std::chrono::system_clock::now();
+            // std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+            // std::cout << "[Debug]: Initializing ConflictBaseSearch at "
+            //           << std::put_time(std::localtime(&now_c), "%F %T") << std::endl;
             ConflictBaseSearchNode::set_weights(g_weight, h_weight);
         }
 
@@ -234,6 +241,7 @@ namespace SearchSpace
             {
                 if (!root_node->search(*m_planner_map[iter.first], m_grid, iter.second))
                 {
+                    delete root_node;
                     return false;
                 }
             }
