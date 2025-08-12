@@ -94,8 +94,14 @@
         @highlightTreeNode="handleHighlightTreeNode"
       />
 
+      <SimulateTool v-if="activeCard === 'Simulate'" 
+        ref="simulateToolRef"
+        @updateTree="update_tree"
+        @updateLog="update_log"
+        @highlightTreeNode="handleHighlightTreeNode"
+      />
+
       <CADTool v-if="activeCard === 'CAD'" />
-      <SimulateTool v-if="activeCard === 'Simulate'" />
 
       <DebugTool
         v-if="activeCard === 'Debug'"
@@ -266,6 +272,7 @@ provide('main_message', "Main Window Running...");
 
 const pathSearchRef = ref()
 const pathSmoothRef = ref()
+const simulateToolRef = ref()
 const debugToolRef = ref()
 
 // ---------------- Card Layout ----------------
@@ -273,8 +280,8 @@ const cards = [
   { name: 'Main' },
   { name: 'Design' },
   { name: 'Smooth' },
-  { name: 'CAD' },
   { name: 'Simulate' },
+  { name: 'CAD' },
   { name: 'Debug' }
 ]
 
@@ -351,7 +358,11 @@ const handleRightTreeClick = (event: MouseEvent, data: any) => {
     } else if (activeCard.value === 'CAD') {
       console.log('cad')
     } else if (activeCard.value === 'Simulate') {
-      console.log('simulate')
+      simulateToolRef.value!.showContextMenu({
+        'x': event.clientX,
+        'y': event.clientY,
+        'data': data
+      })
     } else if (activeCard.value === 'Debug') {
       debugToolRef.value!.showContextMenu({
         'x': event.clientX,

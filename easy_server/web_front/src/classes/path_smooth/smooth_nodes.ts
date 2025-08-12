@@ -10,6 +10,7 @@ import {
 import { MeshObj } from '../mesh_type';
 import { BsplineUtils } from './bspline_utils';
 import { create_circle_set, create_surface_mesh_from_cells } from '@/utils/visulize_utils';
+import { ElMessage } from 'element-plus';
 
 
 export class CoarseTubeMesh extends MeshObj {
@@ -174,8 +175,10 @@ export class SegmentCell extends MeshObj {
   add_mesh(scene: Scene): void {
     const control_points: number[][] = []
     this.c_idxs.forEach(c_idx => {
-      control_points.push(
-        [this.parent_cell.c_table['x'][c_idx], this.parent_cell.c_table['y'][c_idx], this.parent_cell.c_table['z'][c_idx]
+      control_points.push([
+        this.parent_cell.c_table['x'][c_idx], 
+        this.parent_cell.c_table['y'][c_idx], 
+        this.parent_cell.c_table['z'][c_idx]
       ]);
     })
 
@@ -192,7 +195,6 @@ export class SegmentCell extends MeshObj {
     const spline_mat = BsplineUtils.compute_mat(ts, n_controls, this.degree, knot, fill_last_one)
     const points = this.matrix_multiply(spline_mat, control_points);
     this.path_points = points;
-    console.log('this.path_points:', this.path_points)
 
     const control_radius: number[][] = []
     this.c_idxs.forEach(c_idx => {
@@ -331,10 +333,10 @@ export class SegmentCell extends MeshObj {
       path: path,
       left_vec: this.left_clamp ? this.left_vector : null,
       right_vec: this.right_clamp ? this.right_vector : null,
-      is_left_input: false,
-      is_right_input: false,
-      is_left_cut: false,
-      is_right_cut: false,
+      is_left_input: this.is_left_input,
+      is_right_input: this.is_right_input,
+      is_left_cut: this.left_clamp,
+      is_right_cut: this.right_clamp,
     }
   }
 }
@@ -665,6 +667,49 @@ export class GroupCell {
   hide_surface_mesh(): void {
     if (this.fine_surface_mesh) {
       this.fine_surface_mesh.hide_mesh();
+    }
+  }
+
+  show_surface_mesh(): void {
+    if (this.fine_surface_mesh) {
+      this.fine_surface_mesh.show_mesh();
+    }
+  }
+
+  export_simulation_json(): any {
+    if (!this.fine_surface_mesh) {
+      ElMessage.error('Fine surface mesh is not generated');
+      return;
+    }
+
+    const terminal_cfg: any[] = [];
+    Object.values(this.seg_dict).forEach((seg: SegmentCell) => {
+      if (seg.left_clamp) {
+        terminal_cfg.push({
+          name: seg.name + '/left',
+          type: 'CircleDisk',
+          x: seg.path_points[0][0],
+          y: seg.path_points[0][1],
+          z: seg.path_points[0][2],
+          vector: seg.left_vector
+        });
+      }
+      if (seg.right_clamp) {
+        terminal_cfg.push({
+          name: seg.name + '/right',
+          type: 'CircleDisk',
+          x: seg.path_points[seg.path_points.length - 1][0],
+          y: seg.path_points[seg.path_points.length - 1][1],
+          z: seg.path_points[seg.path_points.length - 1][2],
+          vector: seg.right_vector
+        });
+      }
+    });
+
+    return {
+      vertices: this.fine_surface_mesh.vertices,
+      cells: this.fine_surface_mesh.cells,
+      terminal_cfg: terminal_cfg,
     }
   }
 }

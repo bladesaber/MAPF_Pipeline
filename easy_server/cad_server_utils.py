@@ -442,16 +442,13 @@ class GmshStlReader(GmshStepReader):
         gmsh.model.occ.removeAllDuplicates()
         gmsh.model.occ.synchronize()
 
-    def mesh_stl(self, max_size: float, min_size: float):
+    def mesh_stl(self):
         surface_tags = [face_cfg['id'] for face_cfg in self.face_cfgs.values()]
         surface_loop_tag = GmshStlReader.define_surface_loop(surface_tags, 1)
         volume_tag = GmshStlReader.define_volume([surface_loop_tag], 1)
 
-        self.define_group(dim=2, tags=[surface_loop_tag], group_name='surface_loop')
+        self.define_group(dim=2, tags=[surface_loop_tag], group_name='wall')
         self.define_group(dim=3, tags=[volume_tag], group_name='volume')
-
-        gmsh.option.setNumber("Mesh.MeshSizeMax", max_size)
-        gmsh.option.setNumber("Mesh.MeshSizeMin", min_size)
 
         gmsh.model.geo.synchronize()
 
@@ -513,7 +510,7 @@ def debug_gmsh_stl():
     save_dir = '/home/admin123456/Desktop/work/test'
 
     stl_obj = GmshStlReader(stl_file)
-    stl_obj.mesh_stl(max_size=0.5, min_size=0.2)
+    stl_obj.mesh_stl()
     stl_obj.generate_mesh(dim=3, max_size=0.5, min_size=0.1)
     # stl_obj.export_msh(os.path.join(save_dir, 'test.msh'))
     stl_obj.export_su2(os.path.join(save_dir, 'test.su2'))

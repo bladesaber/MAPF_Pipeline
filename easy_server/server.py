@@ -25,6 +25,7 @@ from response_utils import StreamThreadTaskResponse, StreamProcessTaskResponse, 
 from path_server_utils import PathServerUtils, ProjectInfo
 from smooth_server_utils import SmoothServerUtils, SmoothInfo
 from scripts_py.mapf_pkg.point_cloud_utils import PathSurfaceGenerator
+from simulate_server_utils import SimulationServerUtils, SimulationTask
 
 
 # Create Flask app
@@ -543,6 +544,8 @@ def simulate():
     return Response(generate(), mimetype='text/event-stream')
 
 
+# ---------------- New API ----------------
+
 @app.route('/path_search/clear_cache', methods=['POST'])
 def clear_cache():
     data = request.json
@@ -884,11 +887,13 @@ def upload_smooth_obstacle_pcd():
         project_info.obstacle_xyzr = []
         SmoothServerUtils.smooth_map[smooth_name] = project_info
     
+    if SmoothServerUtils.smooth_map[smooth_name].is_obstacle_pcd_ready:
+        SmoothServerUtils.smooth_map[smooth_name].obstacle_xyzr.clear()
+        SmoothServerUtils.smooth_map[smooth_name].is_obstacle_pcd_ready = False
+
     if not SmoothServerUtils.smooth_map[smooth_name].is_obstacle_pcd_ready:
         SmoothServerUtils.smooth_map[smooth_name].obstacle_xyzr.extend(obstacle_xyzr)
         print(f'smooth_obstacle_pcd: {len(SmoothServerUtils.smooth_map[smooth_name].obstacle_xyzr)}')
-    else:
-        return jsonify({'error': 'Obstacle pcd is already ready'}), 400
     
     SmoothServerUtils.smooth_map[smooth_name].is_obstacle_pcd_ready = is_last_chunk
 
@@ -909,6 +914,25 @@ def init_smooth_map():
 
     smooth_json = SmoothServerUtils.init_smooth_map(smooth_name, smooth_json)
     return jsonify({'is_success': True, 'smooth_json': smooth_json})
+
+
+@app.route('/path_smooth/reset_config', methods=['POST'])
+def reset_config():
+    data = request.json
+    smooth_name = data.get('smooth_name', None)
+    smooth_json = data.get('smooth_json', None)
+
+    if smooth_name not in SmoothServerUtils.smooth_map:
+        return jsonify({'error': 'No smooth map found'}), 400
+
+    smooth_info = SmoothServerUtils.smooth_map[smooth_name]
+    for group_setting in smooth_json['setting']:
+        group_name = group_setting['group_name']
+        group_idx = group_setting['cell_setting']['group_idx']
+        smooth_info.group_name2idx[group_name] = group_idx
+        smooth_info.group_idx2name[group_idx] = group_name
+
+    return jsonify({'is_success': True})
 
 
 @app.route('/path_smooth/manual_smooth', methods=['POST'])
@@ -970,7 +994,7 @@ def manual_smooth():
 
         except Exception as e:
             yield json.dumps({
-                'name': 'run_priority_task',
+                'name': 'manual_smooth',
                 'total_finished': True,
                 'error': str(e)
             })
@@ -998,7 +1022,7 @@ def generate_surface_from_paths():
     path_dict = data.get('path_dict', {})
     path_reso = data.get('path_reso', 0.1)
     point_reso = data.get('point_reso', 0.1)
-
+    sample_num = data.get('sample_num', 1000)
     if len(path_dict) == 0:
         return jsonify({'error': 'Invalid parameters'}), 400
     
@@ -1027,7 +1051,8 @@ def generate_surface_from_paths():
                     path_dict, refine_path_reso=path_reso, point_reso=point_reso,
                     method="meshlab",
                     save_pcd_file=surface_ply,
-                    save_stl_file=surface_stl
+                    save_stl_file=surface_stl,
+                    sample_num=sample_num
                 )
                 data_queue.put({
                     'is_finished': True,
@@ -1096,6 +1121,192 @@ def generate_surface_from_paths():
                 shutil.rmtree(temp_dir)
     
     return Response(generate(), mimetype='text/event-stream')
+
+
+@app.route('/simulate/init_simulation_vertices', methods=['POST'])
+def init_simulation_vertices():
+    data = request.json
+    simulation_name = data.get('simulation_name')
+    chunk_index = data.get('chunk_index', 0)
+    total_chunks = data.get('total_chunks', 1)
+    is_last_chunk = data.get('is_last_chunk', True)
+    vertices = np.array(data.get('vertices', []))
+    
+    if simulation_name not in SimulationServerUtils.simulation_map:
+        simulation_info = SimulationTask()
+        SimulationServerUtils.simulation_map[simulation_name] = simulation_info
+    
+    if not SimulationServerUtils.simulation_map[simulation_name].is_vertices_ready:
+        SimulationServerUtils.simulation_map[simulation_name].vertices.extend(vertices)
+        print(f'simulation_vertices: {len(SimulationServerUtils.simulation_map[simulation_name].vertices)}')
+    else:
+        return jsonify({'error': 'Vertices are already ready'}), 400
+    
+    SimulationServerUtils.simulation_map[simulation_name].is_vertices_ready = is_last_chunk
+
+    return jsonify({'is_success': True})
+
+
+@app.route('/simulate/init_simulation_cells', methods=['POST'])
+def init_simulation_cells():
+    data = request.json
+    simulation_name = data.get('simulation_name')
+    chunk_index = data.get('chunk_index', 0)
+    total_chunks = data.get('total_chunks', 1)
+    is_last_chunk = data.get('is_last_chunk', True)
+    cells = np.array(data.get('cells', []))
+
+    if simulation_name not in SimulationServerUtils.simulation_map:
+        return jsonify({'error': 'No simulation map found'}), 400
+    
+    if not SimulationServerUtils.simulation_map[simulation_name].is_cells_ready:
+        SimulationServerUtils.simulation_map[simulation_name].cells.extend(cells)
+        print(f'simulation_cells: {len(SimulationServerUtils.simulation_map[simulation_name].cells)}')
+    else:
+        return jsonify({'error': 'Cells are already ready'}), 400
+    
+    SimulationServerUtils.simulation_map[simulation_name].is_cells_ready = is_last_chunk
+
+    return jsonify({'is_success': True})
+
+
+@app.route('/simulate/init_simulation_task', methods=['POST'])
+def init_simulation_task():
+    data = request.json
+    simulation_name = data.get('simulation_name')
+    
+    min_size = data.get('min_size', None)
+    if min_size is None:
+        return jsonify({'error': 'Min size is required'}), 400
+    
+    max_size = data.get('max_size', None)
+    if max_size is None:
+        return jsonify({'error': 'Max size is required'}), 400
+
+    terminal_cfg = data.get('terminal_cfg', [])
+    if len(terminal_cfg) < 2:
+        return jsonify({'error': 'Terminal cfg must contain at least 2 items'}), 400
+    
+    if simulation_name not in SimulationServerUtils.simulation_map:
+        return jsonify({'error': 'No simulation map found'}), 400
+
+    SimulationServerUtils.simulation_map[simulation_name].terminal_cfg = terminal_cfg
+
+    temp_dir = os.path.join(os.getcwd(), f'{str(uuid.uuid4())}_temp_files')
+    os.makedirs(temp_dir, exist_ok=True)
+
+    stl_file = os.path.join(temp_dir, 'mesh.stl')
+    su2_file = os.path.join(temp_dir, 'mesh.su2')
+    terminal_tag_file = os.path.join(temp_dir, 'terminal_tag.json')
+    
+    def generate():
+        try:
+            def task_callback(data_queue):
+                # ------ debug ------
+                with open(terminal_tag_file, 'w') as f:
+                    json.dump(terminal_cfg, f, indent=4)
+                
+                vertices = np.array(SimulationServerUtils.simulation_map[simulation_name].vertices)
+                cells = np.array(SimulationServerUtils.simulation_map[simulation_name].cells)
+                np.save(os.path.join(temp_dir, 'vertices.npy'), vertices)
+                np.save(os.path.join(temp_dir, 'cells.npy'), cells)
+                # ------ debug ------
+
+                SimulationTask.process(
+                    vertices=SimulationServerUtils.simulation_map[simulation_name].vertices,
+                    cells=SimulationServerUtils.simulation_map[simulation_name].cells,
+                    terminal_cfg=terminal_cfg,
+                    min_size=min_size, max_size=max_size,
+                    stl_file=stl_file, su2_file=su2_file,
+                )
+                data_queue.put({
+                    'is_finished': True,
+                    'result': {}
+                })
+            
+            task = StreamProcessTaskResponse(
+                name='init_simulation_task',
+                callback_func=task_callback,
+                interval_time=0.3,
+                min_yield_interval=0.1,
+                max_running_time=1000000
+            )
+            yield from task.start()
+
+            SimulationServerUtils.simulation_map[simulation_name].su2_reader = Su2Simulator(su2_file)
+            SimulationServerUtils.simulation_map[simulation_name].mesh = pyvista.read(stl_file)
+
+            time.sleep(0.5)
+            su2_simulator = SimulationServerUtils.simulation_map[simulation_name].su2_reader
+            yield json.dumps({
+                'name': 'return_mesh_info',
+                'is_finished': True,
+                'data': {
+                    'n_dim': su2_simulator.n_dim,
+                    'n_elem': su2_simulator.n_elem,
+                    'n_point': su2_simulator.n_point,
+                    'n_mark': su2_simulator.n_mark,
+                    'marker_dict': su2_simulator.marker_dict
+                }
+            }) + '\n'
+
+            # ------ return cells ------
+            time.sleep(0.5)
+            cells = su2_simulator.cells.tolist()
+
+            def get_cells_size_callback():
+                return len(cells)
+
+            def get_cells_chunk_data_callback(data_index, chunk_size):
+                return cells[data_index:data_index + chunk_size]
+            
+            stream_data_response = StreamProcessDataResponse(
+                name='return_cells', 
+                get_data_size_callback=get_cells_size_callback, 
+                get_chunk_data_callback=get_cells_chunk_data_callback, 
+                chunk_size=5000, time_interval=0.5)
+            yield from stream_data_response.generate()
+
+            # ------ return points ------
+            time.sleep(0.5)
+            points = su2_simulator.points.tolist()
+
+            def get_points_size_callback():
+                return len(points)
+
+            def get_points_chunk_data_callback(data_index, chunk_size):
+                return points[data_index:data_index + chunk_size]
+
+            stream_data_response = StreamProcessDataResponse(
+                name='return_points', 
+                get_data_size_callback=get_points_size_callback, 
+                get_chunk_data_callback=get_points_chunk_data_callback, 
+                chunk_size=5000, time_interval=0.5)
+            yield from stream_data_response.generate()
+
+            # ------ return total_finished ------
+            time.sleep(0.5)
+            yield json.dumps({'total_finished': True}) + '\n'
+
+        except Exception as e:
+            print(f'init_simulation_task error: {e}')
+            return jsonify({'error': str(e)}), 400
+        finally:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+
+    return Response(generate(), mimetype='text/event-stream')
+
+
+@app.route('/simulate/run_simulation', methods=['POST'])
+def run_simulation():
+    data = request.json
+    simulation_name = data.get('simulation_name')
+    if simulation_name not in SimulationServerUtils.simulation_map:
+        return jsonify({'error': 'No simulation map found'}), 400
+    
+    SimulationServerUtils.simulation_map[simulation_name].run_simulation()
+    return jsonify({'is_success': True})
 
 
 if __name__ == '__main__':

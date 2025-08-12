@@ -10,7 +10,6 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item>Path Analysis</el-dropdown-item>
                 <el-dropdown-item @click="exportSmoothPathPoints">Export Path Points</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -44,6 +43,8 @@
     <div v-show="groupCellContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('GroupCell/CreateSurface')">Create Surface</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('GroupCell/HideSurface')">Hide Surface</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('GroupCell/ShowSurface')">Show Surface</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('GroupCell/RemoveSurface')">Remove Surface</el-menu-item>
       </el-menu>
     </div>
@@ -134,10 +135,15 @@
       <div>
         <el-form :model="{ path_reso: surfacePathReso, point_reso: surfacePointReso }" label-width="120px">
           <el-form-item label="Path Reso">
-            <el-input-number v-model="surfacePathReso" :min="0.001" :max="10.0" :step="0.01" :precision="3" style="width: 200px" />
+            <el-input-number v-model="surfacePathReso" :min="0.001" :max="10.0" :step="0.01" :precision="3"
+              style="width: 200px" />
           </el-form-item>
           <el-form-item label="Point Reso">
-            <el-input-number v-model="surfacePointReso" :min="0.001" :max="10.0" :step="0.01" :precision="3" style="width: 200px" />
+            <el-input-number v-model="surfacePointReso" :min="0.001" :max="10.0" :step="0.01" :precision="3"
+              style="width: 200px" />
+          </el-form-item>
+          <el-form-item label="Sample Num">
+            <el-input-number v-model="surfaceSampleNum" :min="1000" :max="1000000" :step="100" style="width: 200px" />
           </el-form-item>
         </el-form>
       </div>
@@ -212,6 +218,7 @@ const manualLogIter = ref(50)
 const surfaceGenerateDialogVisible = ref(false)
 const surfacePathReso = ref(0.1)
 const surfacePointReso = ref(0.1)
+const surfaceSampleNum = ref(1000)
 // Store context for surface generation
 const surfaceGenProject = ref('')
 const surfaceGenSmooth = ref('')
@@ -291,13 +298,8 @@ const fragmentVisibleDict = {
 const label_dict = ref(
   new Map<
     string,
-    | string
-    | number
-    | string[]
-    | Map<string, string | number>
-    | Map<
-      string,
-      Map<string, Map<string, string | number | number[] | boolean>>
+    string | number | string[] | Map<string, string | number> | Map<
+      string, Map<string, Map<string, string | number | number[] | boolean>>
     >
   >()
 )
@@ -846,6 +848,28 @@ const handleTreeContextMenu = (mode: string) => {
       group_cell.fine_surface_mesh.destory(rootObj.get_scene())
     }
     group_cell.fine_surface_mesh = null
+  } else if (mode === 'GroupCell/HideSurface') {
+    const project = label_dict.value.get('Project')!.toString()
+    const group_name = label_dict.value.get('label')!.toString()
+    const smooth_runner = rootObj.proj_dict
+      .get(project)!
+      .smooth_task_dict.get(label_dict.value.get('SmoothName') as string
+      ) as SmoothRunner
+    const group_cell: GroupCell = smooth_runner.group_cells.get(group_name)!
+    if (group_cell.fine_surface_mesh) {
+      group_cell.hide_surface_mesh()
+    }
+  } else if (mode === 'GroupCell/ShowSurface') {
+    const project = label_dict.value.get('Project')!.toString()
+    const group_name = label_dict.value.get('label')!.toString()
+    const smooth_runner = rootObj.proj_dict
+      .get(project)!
+      .smooth_task_dict.get(label_dict.value.get('SmoothName') as string
+      ) as SmoothRunner
+    const group_cell: GroupCell = smooth_runner.group_cells.get(group_name)!
+    if (group_cell.fine_surface_mesh) {
+      group_cell.show_surface_mesh()
+    }
   }
 }
 
@@ -1178,6 +1202,28 @@ const init_smooth_map = async (
         segment_cell.left_vector = segment_info.cell_setting.left_vector
         segment_cell.right_vector = segment_info.cell_setting.right_vector
 
+        if (segment_cell.left_clamp) {
+          const x = group_cell.c_table['x'][segment_cell.c_idxs[0]]
+          const y = group_cell.c_table['y'][segment_cell.c_idxs[0]]
+          const z = group_cell.c_table['z'][segment_cell.c_idxs[0]]
+          smooth_runner.pipes_cfg.forEach((pipe_cfg, pipe_name) => {
+            if (pipe_cfg.position[0] === x && pipe_cfg.position[1] === y && pipe_cfg.position[2] === z) {
+              segment_cell.is_left_input = pipe_cfg.is_input
+            }
+          })
+        }
+
+        if (segment_cell.right_clamp) {
+          const x = group_cell.c_table['x'][segment_cell.c_idxs[-1]]
+          const y = group_cell.c_table['y'][segment_cell.c_idxs[-1]]
+          const z = group_cell.c_table['z'][segment_cell.c_idxs[-1]]
+          smooth_runner.pipes_cfg.forEach((pipe_cfg, pipe_name) => {
+            if (pipe_cfg.position[0] === x && pipe_cfg.position[1] === y && pipe_cfg.position[2] === z) {
+              segment_cell.is_right_input = pipe_cfg.is_input
+            }
+          })
+        }
+
         group_cell.seg_dict[segment_cell.name] = segment_cell
       })
 
@@ -1230,6 +1276,8 @@ const init_smooth_map = async (
       smooth_runner.group_cells.set(group_name, group_cell)
     }
   )
+
+  console.log('smooth_runner.group_cells:', smooth_runner.group_cells)
 
   // ------ obstacle cfg ------
   const obstacle_cell = new ObstacleCell(
@@ -1444,7 +1492,8 @@ const createTubeSurface = async (
   group_name: string,
   surface_mesh_json: any,
   path_reso: number,
-  point_reso: number
+  point_reso: number,
+  sample_num: number
 ) => {
   console.log('surface_mesh_json:', surface_mesh_json)
   progressDialogVisible.value = true
@@ -1460,7 +1509,8 @@ const createTubeSurface = async (
       body: JSON.stringify({
         path_dict: surface_mesh_json,
         path_reso: path_reso,
-        point_reso: point_reso
+        point_reso: point_reso,
+        sample_num: sample_num
       })
     })
 
@@ -1551,7 +1601,8 @@ const handleSurfaceGenerateRun = async () => {
     surfaceGenGroup.value,
     surfaceGenMeshJson.value,
     surfacePathReso.value,
-    surfacePointReso.value
+    surfacePointReso.value,
+    surfaceSampleNum.value
   )
 }
 

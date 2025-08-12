@@ -19,6 +19,7 @@ import {
   SearchTask,
 } from './path_search/task_runner';
 import { SmoothRunner } from './path_smooth/smooth_runner';
+import { SimulateTask } from './path_simulate/simulate_task';
 
 export class ProjectManager {
   name: string;
@@ -34,9 +35,10 @@ export class ProjectManager {
   // ---------------- Smooth ----------------
   smooth_task_dict: Map<string, SmoothRunner> = new Map();
 
-  // ---------------- CAD ----------------
-
   // ---------------- Simulate ----------------
+  simulate_task_dict: Map<string, SimulateTask> = new Map();
+
+  // ---------------- CAD ----------------
 
   constructor(
     name: string, xlength: number, ylength: number, zlength: number, resolution: number, scene: THREE.Scene
@@ -167,16 +169,22 @@ export class ProjectManager {
       data: { 'Project': this.name },
     };
 
-    // ---------------- CAD ----------------
-
     // ---------------- Simulate ----------------
+    const simulate_node: TreeNode = {
+      label: 'Simulate',
+      children: Array.from(this.simulate_task_dict.values()).map((simulate_task) => simulate_task.export_tree(this.name)),
+      style: 'SimulateRoot',
+      data: { 'Project': this.name },
+    };
+
+    // ---------------- CAD ----------------
 
     const parent_node: TreeNode = {
       id: this.name,
       label: this.name,
       style: 'ProjectRoot',
       data: { 'Project': this.name },
-      children: [search_node, smooth_node],
+      children: [search_node, smooth_node, simulate_node],
     };
 
     return parent_node;

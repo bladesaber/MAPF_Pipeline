@@ -421,6 +421,7 @@ export function create_line_set(
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
 
   // Default material (white lines)
+  console.log('color: ', options.color)
   const material = new THREE.LineBasicMaterial({
     color: options.color !== undefined ? options.color : 0xff0000
   });
@@ -581,7 +582,7 @@ export function create_surface_mesh_from_cells(
   // Create material with provided options
   const materialOptions: THREE.MeshPhongMaterialParameters = {
       side: THREE.DoubleSide,
-      // wireframe: true,
+      wireframe: true,
       transparent: options.opacity !== undefined && options.opacity < 1.0,
   };
 
