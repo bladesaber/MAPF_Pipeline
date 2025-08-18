@@ -126,6 +126,7 @@
             :current-node-key="currentNodeKey"
             :default-expand-all="false"
             :default-expanded-keys="expandedKeys"
+            :expand-on-click-node="false"
             @node-expand="handleNodeExpand"
             @node-collapse="handleNodeCollapse"
           />
@@ -140,6 +141,8 @@
             <CenterViewer 
               @leftClick-select-object="handleLeftClickMeshSelect"
               @rightClick-select-object="handleRightClickMeshSelect"
+              @rightClick-control-point="handleRightClickControlPoint"
+              @check-highlight-status="checkHighlightedMeshStatus"
             />
           </el-main>
           <div class="bottom-sidebar" :style="{ height: bottomSidebarHeight + 'px' }">
@@ -328,6 +331,20 @@ const handleLeftTreeClick = (data: any, node: any) => {
       pipeName: data.data.Pipe,
       meshName: undefined
     })
+  } else if (data.style === 'SegmentCell' || data.style === 'ConnectorCell') {
+    // 新增：支持 Segments/Connectors 节点高亮
+    const groupName = data.data.groupName;
+    const name = data.data.name;
+    if (groupName && name) {
+      const meshName = `${groupName}/${name}`;
+      highlightMeshAndShowInfo({
+        type: 'MeshName',
+        meshName
+      });
+    } else {
+      console.warn('Missing groupName or name:', { groupName, name });
+      updateMeshInfo(null);
+    }
   } else {
     updateMeshInfo(null)
   }
@@ -391,8 +408,21 @@ const handleNodeExpand = (data: any, node: any) => {
   }
 }
 
+// 递归移除所有子孙节点id
+function removeDescendantIds(node: any, ids: string[]) {
+  if (node.children && node.children.length) {
+    for (const child of node.children) {
+      ids.push(child.id);
+      removeDescendantIds(child, ids);
+    }
+  }
+}
+
 const handleNodeCollapse = (data: any, node: any) => {
-  expandedKeys.value = expandedKeys.value.filter(id => id !== data.id)
+  // 递归移除所有子孙节点id
+  const idsToRemove = [data.id];
+  removeDescendantIds(data, idsToRemove);
+  expandedKeys.value = expandedKeys.value.filter(id => !idsToRemove.includes(id));
 }
 
 // ---------------- Bottom Sidebar ----------------
@@ -411,19 +441,187 @@ const update_log = (message: string) => {
 }
 
 // ---------------- Mesh Click Event handling ----------------
+// wireframe高亮管理
+let lastHighlightWireframe: THREE.LineSegments | null = null
+let currentHighlightedMesh: THREE.Mesh | null = null
+
+// 清除高亮函数
+function clearHighlight() {
+  if (lastHighlightWireframe && lastHighlightWireframe.parent) {
+    lastHighlightWireframe.parent.remove(lastHighlightWireframe)
+    lastHighlightWireframe = null
+  }
+  currentHighlightedMesh = null
+  updateMeshInfo(null)
+}
+
+// 检查当前高亮的mesh是否仍然有效
+function checkHighlightedMeshStatus() {
+  if (currentHighlightedMesh) {
+    if (!currentHighlightedMesh.parent || !currentHighlightedMesh.visible) {
+      clearHighlight()
+    }
+  }
+}
+
+function highlightMeshWithWireframe(mesh: THREE.Mesh) {
+  if (lastHighlightWireframe && lastHighlightWireframe.parent) {
+    lastHighlightWireframe.parent.remove(lastHighlightWireframe)
+    lastHighlightWireframe = null
+  }
+  const geo = mesh.geometry.clone()
+  const mat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 })
+  const wireframe = new THREE.LineSegments(new THREE.WireframeGeometry(geo), mat)
+  wireframe.position.copy(mesh.position)
+  wireframe.rotation.copy(mesh.rotation)
+  wireframe.scale.copy(mesh.scale).multiplyScalar(1.02)
+  if (mesh.parent) {
+    mesh.parent.add(wireframe)
+  } else {
+    scene.add(wireframe)
+  }
+  wireframe.matrix.copy(mesh.matrix)
+  wireframe.matrixAutoUpdate = false
+  lastHighlightWireframe = wireframe
+  currentHighlightedMesh = mesh
+}
+
 const handleLeftClickMeshSelect = (name: string) => {
-  highlightMeshAndShowInfo({
-    type: 'MeshName',
-    projectName: undefined,
-    obstacleName: undefined,
-    pipeGroup: undefined,
-    pipeName: undefined,
-    meshName: name
-  })
+  // 如果接收到空字符串，取消高亮并清除信息
+  if (!name || name === '') {
+    clearHighlight()
+    return
+  }
+
+  // 首先检查是否是 Segments/Connectors 格式 (包含 / 分隔符)
+  if (name.includes('/')) {
+    // 检查是否是控制点
+    const mesh = scene.getObjectByName(name) as THREE.Mesh;
+    if (mesh && mesh.userData && mesh.userData.type === 'ControlPoint') {
+      // 显示控制点详细信息
+      const userData = mesh.userData;
+      const info: Record<string, any> = {
+        'Name': userData.parent?.name || name,
+        'Type': 'Control Point',
+        'Control Index': userData.c_idx,
+        'Position': `(${userData.position[0].toFixed(3)}, ${userData.position[1].toFixed(3)}, ${userData.position[2].toFixed(3)})`,
+        'Radius': userData.radius?.toFixed(3) || '1.000',
+        'Is Fixed': userData.is_fix ? 'Yes' : 'No',
+        'Is Unique': userData.is_unique ? 'Yes' : 'No',
+        'Reference Count': userData.reference_count,
+        'References': userData.references?.join(', ') || 'None',
+        'Group': userData.group_name,
+        'Group Index': userData.group_idx,
+        'Project': userData.project_name,
+        'Smooth Task': userData.smooth_name,
+        'Task': userData.task_name
+      };
+      updateMeshInfo(info);
+      highlightMeshWithWireframe(mesh);
+      return;
+    }
+    
+    // 使用 highlightMeshAndShowInfo 处理 Segments/Connectors
+    highlightMeshAndShowInfo({
+      type: 'MeshName',
+      projectName: undefined,
+      obstacleName: undefined,
+      pipeGroup: undefined,
+      pipeName: undefined,
+      meshName: name
+    })
+  } else {
+    // 使用原始逻辑处理障碍物、管道等
+    // Reset mesh info first
+    updateMeshInfo(null)
+    
+    // find the object in rootObj.proj_dict with the same name
+    rootObj.proj_dict.forEach((project_manager) => {
+      // find whether the name is in the pipe_dict
+      project_manager.pipe_dict.forEach((pipe_dict) => {
+        pipe_dict.forEach((pipe) => {
+          if (pipe.name === name) {
+            updateMeshInfo({
+              Name: pipe.name,
+              Type: 'Pipe',
+              Position: `(${pipe.x.toFixed(2)}, ${pipe.y.toFixed(2)}, ${pipe.z.toFixed(2)})`,
+              Radius: pipe.radius.toFixed(2),
+              Direction: `(${pipe.vector_x}, ${pipe.vector_y}, ${pipe.vector_z})`,
+              'Pipe Mode': pipe.pipe_mode,
+              Group: pipe.group_name
+            })
+            // 添加 mesh 高亮
+            const mesh = Object.values(pipe.mesh_dict)[0] as THREE.Mesh
+            if (mesh) {
+              highlightMeshWithWireframe(mesh)
+            }
+          }
+        })
+      })
+
+      // find whether the name is in the obstacle_dict
+      project_manager.obstacle_dict.forEach((obstacle) => {
+        if (obstacle.name === name) {
+          const info: Record<string, any> = {
+            Name: obstacle.name,
+            Type: obstacle.constructor.name
+          }
+
+          // Add properties based on obstacle type
+          if (obstacle instanceof CylinderObstacle) {
+            info['Position'] = `(${obstacle.x.toFixed(2)}, ${obstacle.y.toFixed(2)}, ${obstacle.z.toFixed(2)})`
+            info['Radius'] = obstacle.radius.toFixed(2)
+            info['Height'] = obstacle.height.toFixed(2)
+            info['Direction'] = `(${obstacle.vector_x}, ${obstacle.vector_y}, ${obstacle.vector_z})`
+            info['Relax Group'] = `(${obstacle.relax_groups.join(',')})`
+          } else if (obstacle instanceof BoxObstacle) {
+            info['Bounds'] = `X: [${obstacle.xmin.toFixed(2)}, ${obstacle.xmax.toFixed(2)}], Y: [${obstacle.ymin.toFixed(2)}, ${obstacle.ymax.toFixed(2)}], Z: [${obstacle.zmin.toFixed(2)}, ${obstacle.zmax.toFixed(2)}]`
+            info['Relax Group'] = `(${obstacle.relax_groups.join(',')})`
+          } else if (obstacle instanceof PointsObstacle) {
+            info['Points Count'] = obstacle.points.length
+            info['Relax Group'] = `(${obstacle.relax_groups.join(',')})`
+          } else if (obstacle instanceof SpheresObstacle) {
+            info['Spheres Count'] = obstacle.points.length
+            info['Relax Group'] = `(${obstacle.relax_groups.join(',')})`
+          } else if (obstacle instanceof SquaresObstacle) {
+            info['Squares Count'] = obstacle.points.length
+            info['Relax Group'] = `(${obstacle.relax_groups.join(',')})`
+          } else if (obstacle instanceof SphereLineObstacle) {
+            info['Points Count'] = obstacle.points.length
+            info['Relax Group'] = `(${obstacle.relax_groups.join(',')})`
+          }
+          updateMeshInfo(info)
+          // 添加 mesh 高亮
+          const mesh = Object.values(obstacle.mesh_dict)[0] as THREE.Mesh
+          if (mesh) {
+            highlightMeshWithWireframe(mesh)
+          }
+        }
+      })
+       // find whether the name is grid
+       if (project_manager.grid.name === name) {
+        updateMeshInfo({
+          Name: project_manager.grid.name,
+          Type: 'Grid',
+          Size: `(${project_manager.grid.xlength.toFixed(2)}, ${project_manager.grid.ylength.toFixed(2)}, ${project_manager.grid.zlength.toFixed(2)})`,
+          Resolution: project_manager.grid.resolution.toFixed(2),
+          GridSize: `(${project_manager.grid.xsize}, ${project_manager.grid.ysize}, ${project_manager.grid.zsize})`
+        })
+      }
+    })
+  }
 }
 
 const handleRightClickMeshSelect = (name: string) => {
     console.log('right click', name)
+}
+
+const handleRightClickControlPoint = (userData: any, x: number, y: number) => {
+    console.log('right click control point', userData, x, y)
+    // 将控制点右键事件传递给当前激活的组件
+    if (activeCard.value === 'Smooth' && pathSmoothRef.value) {
+        pathSmoothRef.value.handleRightClickControlPoint(userData, x, y)
+    }
 }
 
 // ---------------- Fragment Visible ----------------
@@ -653,60 +851,20 @@ const updateMeshInfo = (info: Record<string, any> | null) => {
 // Expose addLog method
 defineExpose({
   addLog,
-  updateMeshInfo
+  updateMeshInfo,
+  checkHighlightedMeshStatus
 })
 
 // 公共高亮+信息展示方法
 function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, obstacleName = undefined, pipeGroup = undefined, pipeName = undefined, meshName = undefined }: { type?: any, projectName?: any, obstacleName?: any, pipeGroup?: any, pipeName?: any, meshName?: any }) {
-  // 1. 先重置所有mesh颜色
-  rootObj.proj_dict.forEach(project => {
-    project.obstacle_dict.forEach(obstacle => {
-      Object.values(obstacle.mesh_dict).forEach(mesh => {
-        if (mesh instanceof THREE.Mesh) {
-          if (Array.isArray(mesh.material)) {
-            mesh.material.forEach(mat => {
-              if ('color' in mat) setMeshColor(mesh, 0x00ff00)
-            })
-          } else if (mesh.material && 'color' in mesh.material) {
-            setMeshColor(mesh, 0x00ff00)
-          }
-        }
-      })
-    })
-    project.pipe_dict.forEach(pipeGroup => {
-      pipeGroup.forEach(pipe => {
-        Object.values(pipe.mesh_dict).forEach(mesh => {
-          if (mesh instanceof THREE.Mesh) {
-            if (Array.isArray(mesh.material)) {
-              mesh.material.forEach(mat => {
-                if ('color' in mat) setMeshColor(mesh, 0x2196f3)
-              })
-            } else if (mesh.material && 'color' in mesh.material) {
-              setMeshColor(mesh, 0x2196f3)
-            }
-          }
-        })
-      })
-    })
-  })
-
-  // 2. 高亮目标mesh并展示信息
+  // 统一 wireframe 高亮逻辑
+  let meshToHighlight: THREE.Mesh | null = null
   if (type === 'Obstacle') {
     const project = rootObj.proj_dict.get(projectName)
     if (project) {
       const obstacle = project.obstacle_dict.get(obstacleName)
       if (obstacle) {
-        Object.values(obstacle.mesh_dict).forEach(mesh => {
-          if (mesh instanceof THREE.Mesh) {
-            if (Array.isArray(mesh.material)) {
-              mesh.material.forEach(mat => {
-                if ('color' in mat) setMeshColor(mesh, 0xffffff)
-              })
-            } else if (mesh.material && 'color' in mesh.material) {
-              setMeshColor(mesh, 0xffffff)
-            }
-          }
-        })
+        meshToHighlight = Object.values(obstacle.mesh_dict)[0] as THREE.Mesh
         // 展示信息
         const info: Record<string, any> = {
           'Name': obstacle.name,
@@ -735,6 +893,7 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
           info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
         }
         updateMeshInfo(info)
+        if (meshToHighlight) highlightMeshWithWireframe(meshToHighlight)
         return
       }
     }
@@ -745,17 +904,7 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
       if (pipeGroupObj) {
         const pipe = pipeGroupObj.get(pipeName)
         if (pipe) {
-          Object.values(pipe.mesh_dict).forEach(mesh => {
-            if (mesh instanceof THREE.Mesh) {
-              if (Array.isArray(mesh.material)) {
-                mesh.material.forEach(mat => {
-                  if ('color' in mat) setMeshColor(mesh, 0xffffff)
-                })
-              } else if (mesh.material && 'color' in mesh.material) {
-                setMeshColor(mesh, 0xffffff)
-              }
-            }
-          })
+          meshToHighlight = Object.values(pipe.mesh_dict)[0] as THREE.Mesh
           updateMeshInfo({
             'Name': pipe.name,
             'Type': 'Pipe',
@@ -765,97 +914,146 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
             'Pipe Mode': pipe.pipe_mode,
             'Group': pipe.group_name
           })
+          if (meshToHighlight) highlightMeshWithWireframe(meshToHighlight)
           return
         }
       }
     }
   } else if (type === 'MeshName' && meshName) {
-    // 通过 meshName 反查
-    rootObj.proj_dict.forEach((project_manager) => {
-      // pipe
-      project_manager.pipe_dict.forEach((pipe_dict) => {
-        pipe_dict.forEach((pipe) => {
-          if (pipe.name === meshName) {
-            Object.values(pipe.mesh_dict).forEach(mesh => {
-              if (mesh instanceof THREE.Mesh) {
-                if (Array.isArray(mesh.material)) {
-                  mesh.material.forEach(mat => {
-                    if ('color' in mat) setMeshColor(mesh, 0xffffff)
-                  })
-                } else if (mesh.material && 'color' in mesh.material) {
-                  setMeshColor(mesh, 0xffffff)
-                }
-              }
-            })
-            updateMeshInfo({
-              'Name': pipe.name,
-              'Type': 'Pipe',
-              'Position': `(${pipe.x.toFixed(2)}, ${pipe.y.toFixed(2)}, ${pipe.z.toFixed(2)})`,
-              'Radius': pipe.radius.toFixed(2),
-              'Direction': `(${pipe.vector_x}, ${pipe.vector_y}, ${pipe.vector_z})`,
-              'Pipe Mode': pipe.pipe_mode,
-              'Group': pipe.group_name
-            })
-            return
-          }
-        })
-      })
-      // obstacle
-      project_manager.obstacle_dict.forEach((obstacle) => {
-        if (obstacle.name === meshName) {
-          Object.values(obstacle.mesh_dict).forEach(mesh => {
-            if (mesh instanceof THREE.Mesh) {
-              if (Array.isArray(mesh.material)) {
-                mesh.material.forEach(mat => {
-                  if ('color' in mat) setMeshColor(mesh, 0xffffff)
-                })
-              } else if (mesh.material && 'color' in mesh.material) {
-                setMeshColor(mesh, 0xffffff)
-              }
+    // 始终用 scene.getObjectByName 查找最新 mesh
+    const mesh = scene.getObjectByName(meshName) as THREE.Mesh;
+    if (mesh && mesh instanceof THREE.Mesh) {
+      // 查找对应的 SegmentCell/ConnectorCell 对象
+      let cellFound = false;
+      let meshToHighlightLocal: THREE.Mesh | null = mesh
+      rootObj.proj_dict.forEach((project_manager) => {
+        project_manager.smooth_task_dict.forEach((smooth_task) => {
+          smooth_task.group_cells.forEach((group) => {
+            const [groupName, actualKey] = meshName.split('/');
+            if (group.group_name !== groupName) return;
+            const segment = group.seg_dict[actualKey];
+            if (segment) {
+              cellFound = true;
+              updateMeshInfo({
+                'Name': segment.name,
+                'Type': 'Segment',
+                'Project': segment.project_name,
+                'Smooth Task': segment.smooth_name,
+                'Group': segment.parent_cell.group_name,
+                'Segment Index': segment.idx,
+                'Group Index': segment.group_idx,
+                'Control Points': segment.c_idxs.length,
+                'B-spline Degree': segment.degree,
+                'Density': segment.density,
+                'Left Clamp': segment.left_clamp,
+                'Right Clamp': segment.right_clamp,
+                'Segment Scale': segment.segment_scale,
+                'Analytical Curvature': segment.with_analytical_curvature_computed,
+                'Analytical Tangent': segment.with_analytical_tangent_computed,
+                'Obstacle Thickness': segment.cost_setting?.obstacle_thickness?.toFixed(3) || '0.000',
+                'Path Thickness': segment.cost_setting?.path_thickness?.toFixed(3) || '0.000',
+                'Cost Configs Count': segment.cost_setting?.cost_cfgs?.length || 0,
+              });
+            }
+            const connector = group.connector_dict[actualKey];
+            if (connector) {
+              cellFound = true;
+              updateMeshInfo({
+                'Name': connector.name,
+                'Type': 'Connector',
+                'Project': connector.project_name,
+                'Smooth Task': connector.smooth_name,
+                'Group': connector.parent_cell.group_name,
+                'Connector Index': connector.idx,
+                'Group Index': connector.group_idx,
+                'Left Segment': connector.left_seg_idx,
+                'Right Segment': connector.right_seg_idx,
+                'B-splineDegree': connector.degree,
+                'Density': connector.density,
+                'Left Clamp': connector.left_clamp,
+                'Right Clamp': connector.right_clamp,
+                'Analytical Curvature': connector.with_analytical_curvature_computed,
+                'Analytical Tangent': connector.with_analytical_tangent_computed,
+                'Obstacle Thickness': connector.cost_setting?.obstacle_thickness?.toFixed(3) || '0.000',
+                'Path Thickness': connector.cost_setting?.path_thickness?.toFixed(3) || '0.000',
+                'Cost Configs Count': connector.cost_setting?.cost_cfgs?.length || 0,
+              });
+            }
+          });
+        });
+        // pipe
+        project_manager.pipe_dict.forEach((pipe_dict) => {
+          pipe_dict.forEach((pipe) => {
+            if (pipe.name === meshName) {
+              meshToHighlightLocal = Object.values(pipe.mesh_dict)[0] as THREE.Mesh
+              updateMeshInfo({
+                'Name': pipe.name,
+                'Type': 'Pipe',
+                'Position': `(${pipe.x.toFixed(2)}, ${pipe.y.toFixed(2)}, ${pipe.z.toFixed(2)})`,
+                'Radius': pipe.radius.toFixed(2),
+                'Direction': `(${pipe.vector_x}, ${pipe.vector_y}, ${pipe.vector_z})`,
+                'Pipe Mode': pipe.pipe_mode,
+                'Group': pipe.group_name
+              })
             }
           })
-          const info: Record<string, any> = {
-            'Name': obstacle.name,
-            'Type': obstacle.constructor.name
-          }
-          if (obstacle instanceof CylinderObstacle) {
-            info['Position'] = `(${obstacle.x.toFixed(2)}, ${obstacle.y.toFixed(2)}, ${obstacle.z.toFixed(2)})`
-            info['Radius'] = obstacle.radius.toFixed(2)
-            info['Height'] = obstacle.height.toFixed(2)
-            info['Direction'] = `(${obstacle.vector_x}, ${obstacle.vector_y}, ${obstacle.vector_z})`
-            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
-          } else if (obstacle instanceof BoxObstacle) {
-            info['Bounds'] = `X: [${obstacle.xmin.toFixed(2)}, ${obstacle.xmax.toFixed(2)}], Y: [${obstacle.ymin.toFixed(2)}, ${obstacle.ymax.toFixed(2)}], Z: [${obstacle.zmin.toFixed(2)}, ${obstacle.zmax.toFixed(2)}]`
-            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
-          } else if (obstacle instanceof PointsObstacle) {
-            info['Points Count'] = obstacle.points.length
-            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
-          } else if (obstacle instanceof SpheresObstacle) {
-            info['Spheres Count'] = obstacle.points.length
-            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
-          } else if (obstacle instanceof SquaresObstacle) {
-            info['Squares Count'] = obstacle.points.length
-            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
-          } else if (obstacle instanceof SphereLineObstacle) {
-            info['Points Count'] = obstacle.points.length
-            info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
-          }
-          updateMeshInfo(info)
-          return
-        }
-      })
-      // grid
-      if (project_manager.grid.name === meshName) {
-        updateMeshInfo({
-          'Name': project_manager.grid.name,
-          'Type': 'Grid',
-          'Size': `(${project_manager.grid.xlength.toFixed(2)}, ${project_manager.grid.ylength.toFixed(2)}, ${project_manager.grid.zlength.toFixed(2)})`,
-          'Resolution': project_manager.grid.resolution.toFixed(2),
-          'Grid Size': `(${project_manager.grid.xsize}, ${project_manager.grid.ysize}, ${project_manager.grid.zsize})`
         })
-        return
+        // obstacle
+        project_manager.obstacle_dict.forEach((obstacle) => {
+          if (obstacle.name === meshName) {
+            meshToHighlightLocal = Object.values(obstacle.mesh_dict)[0] as THREE.Mesh
+            const info: Record<string, any> = {
+              'Name': obstacle.name,
+              'Type': obstacle.constructor.name
+            }
+            if (obstacle instanceof CylinderObstacle) {
+              info['Position'] = `(${obstacle.x.toFixed(2)}, ${obstacle.y.toFixed(2)}, ${obstacle.z.toFixed(2)})`
+              info['Radius'] = obstacle.radius.toFixed(2)
+              info['Height'] = obstacle.height.toFixed(2)
+              info['Direction'] = `(${obstacle.vector_x}, ${obstacle.vector_y}, ${obstacle.vector_z})`
+              info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+            } else if (obstacle instanceof BoxObstacle) {
+              info['Bounds'] = `X: [${obstacle.xmin.toFixed(2)}, ${obstacle.xmax.toFixed(2)}], Y: [${obstacle.ymin.toFixed(2)}, ${obstacle.ymax.toFixed(2)}], Z: [${obstacle.zmin.toFixed(2)}, ${obstacle.zmax.toFixed(2)}]`
+              info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+            } else if (obstacle instanceof PointsObstacle) {
+              info['Points Count'] = obstacle.points.length
+              info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+            } else if (obstacle instanceof SpheresObstacle) {
+              info['Spheres Count'] = obstacle.points.length
+              info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+            } else if (obstacle instanceof SquaresObstacle) {
+              info['Squares Count'] = obstacle.points.length
+              info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+            } else if (obstacle instanceof SphereLineObstacle) {
+              info['Points Count'] = obstacle.points.length
+              info['Relax Group'] = `(${obstacle.relax_groups.join(', ')})`
+            }
+            updateMeshInfo(info)
+          }
+        })
+        // grid
+        if (project_manager.grid.name === meshName) {
+          updateMeshInfo({
+            'Name': project_manager.grid.name,
+            'Type': 'Grid',
+            'Size': `(${project_manager.grid.xlength.toFixed(2)}, ${project_manager.grid.ylength.toFixed(2)}, ${project_manager.grid.zlength.toFixed(2)})`,
+            'Resolution': project_manager.grid.resolution.toFixed(2),
+            'GridSize': `(${project_manager.grid.xsize}, ${project_manager.grid.ysize}, ${project_manager.grid.zsize})`
+          })
+        }
+      });
+      // 如果没有找到对应的 cell，但找到了 mesh，显示基本信息
+      if (!cellFound && mesh) {
+        updateMeshInfo({
+          'Name': meshName,
+          'Type': 'Mesh',
+          'Found in Scene': 'Yes'
+        });
       }
-    })
+      if (meshToHighlightLocal) highlightMeshWithWireframe(meshToHighlightLocal)
+    } else {
+      updateMeshInfo(null)
+    }
   } else {
     updateMeshInfo(null)
   }

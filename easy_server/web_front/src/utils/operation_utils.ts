@@ -1,12 +1,28 @@
-import * as THREE from 'three'
-import { RootObj } from '../classes/postprocess_classes/store_obj.ts'
-import { PointObj, VecPointObj, VecRadiusPointObj } from '../classes/postprocess_classes/point_obj.ts'
-import { LineObj, CircleObj, ArcObj, BsplineObj, TorusObj } from '../classes/postprocess_classes/line_obj.ts'
-import { DiskObj } from '../classes/postprocess_classes/surface_obj.ts'
-import { ElMessage } from 'element-plus'
-import { SplineSkeletonObj, CircleSurfacePointsObj } from '../classes/postprocess_classes/group_obj.ts'
-import { BaseNode, GroupNode } from '../classes/postprocess_classes/base_obj.ts'
-import { PipeShellObj, BsplineSurfaceObj } from '../classes/postprocess_classes/surface_obj.ts'
+import { ElMessage } from 'element-plus';
+
+import { BaseNode } from '../classes/postprocess_classes/base_obj.ts';
+import {
+  CircleSurfacePointsObj,
+  SplineSkeletonObj,
+} from '../classes/postprocess_classes/group_obj.ts';
+import {
+  ArcObj,
+  BsplineObj,
+  CircleObj,
+  LineObj,
+  TorusObj,
+} from '../classes/postprocess_classes/line_obj.ts';
+import {
+  PointObj,
+  VecPointObj,
+  VecRadiusPointObj,
+} from '../classes/postprocess_classes/point_obj.ts';
+import { RootObj } from '../classes/postprocess_classes/store_obj.ts';
+import {
+  BsplineSurfaceObj,
+  DiskObj,
+  PipeShellObj,
+} from '../classes/postprocess_classes/surface_obj.ts';
 
 export function generate_point(
     name: string, x: number, y: number, z: number, rootObj: RootObj

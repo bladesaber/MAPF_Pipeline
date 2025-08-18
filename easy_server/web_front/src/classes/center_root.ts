@@ -170,13 +170,19 @@ export class ProjectManager {
     // ---------------- CAD ----------------
 
     // ---------------- Simulate ----------------
+    const simulate_node: TreeNode = {
+      id: `${this.name}-simulate`,
+      label: 'Simulate',
+      style: 'Simulate',
+      data: { 'Project': this.name },
+    };
 
     const parent_node: TreeNode = {
       id: this.name,
       label: this.name,
       style: 'ProjectRoot',
       data: { 'Project': this.name },
-      children: [search_node, smooth_node],
+      children: [search_node, smooth_node, simulate_node],
     };
 
     return parent_node;
@@ -195,6 +201,12 @@ export class ProjectManager {
       }),
       tasks: Array.from(this.search_task_dict.entries()).map(([task_name, task]) => task.toJSON()),
       group_color_dict: Object.fromEntries(this.group_color_dict.entries()),
+      smooth_task: Array.from(this.smooth_task_dict.entries()).map(([smooth_task_name, smooth_task]) => {
+        return {
+          smooth_task_name: smooth_task_name,
+          smooth_task: smooth_task.export_json(),
+        };
+      }),
     }
     return save_data;
   }
@@ -290,11 +302,26 @@ export class ProjectManager {
               cell_task.name, cell_task.start_name, cell_task.end_name, cell_task.radius, 
               proj_manager.group_color_dict.get(group_task.name)!
             );
+            if (cell_task.result && cell_task.result.length > 0) {
+              cell_task_manager.set_result(cell_task.result, scene)
+            }
             group_task_manager.cell_tasks.push(cell_task_manager);
           });
         });
       });
     });
+
+    // 还原 smooth_task
+    if (json_data.smooth_task) {
+      for (const smooth of json_data.smooth_task) {
+        try {
+          const smooth_runner = SmoothRunner.load_json(smooth.smooth_task, proj_manager, scene);
+          proj_manager.smooth_task_dict.set(smooth.smooth_task_name, smooth_runner);
+        } catch (e) {
+          console.error('smooth_task 导入异常:', e, smooth);
+        }
+      }
+    }
 
     return proj_manager;
   }

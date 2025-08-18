@@ -1,0 +1,146 @@
+<template>
+  <div v-if="modelValue" class="right-sidebar">
+    <div class="right-sidebar-header">
+      <span>Edit Control Point</span>
+      <el-button link class="close-button" @click="handleClose">
+        <el-icon><Close /></el-icon>
+      </el-button>
+    </div>
+    <div class="right-sidebar-content">
+      <el-form :model="form" label-width="120px" size="small">
+        <el-form-item label="Index">
+          <el-input-number v-model="form.c_idx" disabled style="width: 150px" />
+        </el-form-item>
+        <el-form-item label="X">
+          <el-input-number v-model="form.x" :step="0.01" :precision="3" style="width: 150px" />
+        </el-form-item>
+        <el-form-item label="Y">
+          <el-input-number v-model="form.y" :step="0.01" :precision="3" style="width: 150px" />
+        </el-form-item>
+        <el-form-item label="Z">
+          <el-input-number v-model="form.z" :step="0.01" :precision="3" style="width: 150px" />
+        </el-form-item>
+        <el-form-item label="Radius">
+          <el-input-number v-model="form.radius" :min="0.01" :step="0.01" :precision="3" style="width: 150px" />
+        </el-form-item>
+        <el-form-item label="Is Fix">
+          <el-switch v-model="form.is_fix" />
+        </el-form-item>
+      </el-form>
+      <div class="button-container">
+        <div class="button-group">
+          <el-button @click="handleClose">Cancel</el-button>
+          <el-button type="primary" @click="handleApply">Apply</el-button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import {
+  defineEmits,
+  defineProps,
+  ref,
+  watch,
+} from 'vue';
+
+import { Close } from '@element-plus/icons-vue';
+
+const props = defineProps<{
+  modelValue: boolean,
+  controlPointInfo: any,
+}>();
+const emit = defineEmits(['update:modelValue', 'apply'])
+
+const form = ref({
+  c_idx: 0,
+  x: 0,
+  y: 0,
+  z: 0,
+  radius: 1,
+  is_fix: false,
+});
+
+watch(() => props.modelValue, (v) => {
+  if (v && props.controlPointInfo) {
+    // 需要从controlPointInfo和parent_cell.c_table中获取所有属性
+    const { c_idx, parent } = props.controlPointInfo;
+    const c_table = parent?.parent_cell?.c_table || parent?.c_table;
+    form.value.c_idx = c_idx;
+    form.value.x = c_table?.x?.[c_idx] ?? 0;
+    form.value.y = c_table?.y?.[c_idx] ?? 0;
+    form.value.z = c_table?.z?.[c_idx] ?? 0;
+    form.value.radius = c_table?.radius?.[c_idx] ?? 1;
+    form.value.is_fix = !!(c_table?.is_fix?.[c_idx]);
+  }
+}, { immediate: true });
+
+function handleClose() {
+  emit('update:modelValue', false)
+}
+function handleApply() {
+  emit('apply', { ...form.value })
+  emit('update:modelValue', false)
+}
+</script>
+
+<style scoped>
+.right-sidebar {
+    position: fixed;
+    right: 0;
+    top: 116px;
+    width: 450px;
+    background: #fff;
+    border-left: 1px solid #dcdfe6;
+    height: calc(100vh - 116px);
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+}
+.right-sidebar-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid #dcdfe6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #f5f7fa;
+    flex: 0 0 auto;
+}
+.right-sidebar-header span {
+    font-weight: 500;
+}
+.close-button {
+    padding: 4px;
+}
+.close-button:hover {
+    color: #409eff;
+}
+.right-sidebar-content {
+    position: relative;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 16px;
+    padding-bottom: 80px;
+    min-height: 0;
+}
+.button-container {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    width: 450px;
+    padding: 16px;
+    border-top: 1px solid #dcdfe6;
+    background-color: #f5f7fa;
+    z-index: 1100;
+}
+.button-group {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+.button-group .el-button {
+    min-width: 90px;
+}
+</style> 

@@ -66,6 +66,9 @@
         <el-menu-item @click="handleTreeContextMenu('Obstacles/AddObstacle')">Add Obstacle</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('Obstacles/ShowObstacle')">Show Obstacle</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('Obstacles/HideObstacle')">Hide Obstacle</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('Obstacles/HideDiscretized')">Hide Discretized</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('Obstacles/ShowDiscretized')">Show Discretized</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('Obstacles/RemoveObstacle')">Remove Obstacle</el-menu-item>
       </el-menu>
     </div>
 
@@ -93,6 +96,10 @@
     >
       <el-menu>
         <el-menu-item @click="handleTreeContextMenu('PipeGroups/AddPipeGroup')">Add Pipe Group</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PipeGroups/ShowPipeGroup')">Show Pipe Groups</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PipeGroups/HidePipeGroup')">Hide Pipe Groups</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PipeGroups/HideDiscretized')">Hide Discretized</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('PipeGroups/ShowDiscretized')">Show Discretized</el-menu-item>
       </el-menu>
     </div>
 
@@ -529,6 +536,34 @@ const handleTreeContextMenu = (mode: string) => {
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.reset_discretize_source()
     emit('updateTree')
 
+  } else if (mode == 'SearchTask/ShowLineResult') {
+    const search_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
+      label_dict.value.get('SearchTask') as string)!
+    search_task.priority_tasks.forEach(priority_task => {
+      priority_task.show_line_mesh()
+    })
+
+  } else if (mode == 'SearchTask/ShowTubeResult') {
+    const search_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
+      label_dict.value.get('SearchTask') as string)!
+    search_task.priority_tasks.forEach(priority_task => {
+      priority_task.show_tube_mesh()
+    })
+
+  } else if (mode == 'SearchTask/HideLineResult') {
+    const search_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
+      label_dict.value.get('SearchTask') as string)!
+    search_task.priority_tasks.forEach(priority_task => {
+      priority_task.hide_line_mesh()
+    })
+
+  } else if (mode == 'SearchTask/HideTubeResult') {
+    const search_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
+      label_dict.value.get('SearchTask') as string)!
+    search_task.priority_tasks.forEach(priority_task => {
+      priority_task.hide_tube_mesh()
+    })
+
   } else if (mode == 'PriorityTask/AddGroupTask') {
     definePanelMode.value = 'GroupTask'
     const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
@@ -629,17 +664,42 @@ const handleTreeContextMenu = (mode: string) => {
     emit('updateTree')
 
   } else if (mode == 'Obstacles/RemoveObstacle') {
-    const obstacle = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.get(label_dict.value.get('Obstacle') as string)!
-    obstacle.destory(rootObj.get_scene())
-    rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.delete(label_dict.value.get('Obstacle') as string)
+    // 删除所有障碍物
+    const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    project_manager.obstacle_dict.forEach((obstacle, obstacle_name) => {
+      obstacle.destory(rootObj.get_scene())
+    })
+    project_manager.obstacle_dict.clear()
+    project_manager.reset_discretize_source()
     emit('updateTree')
 
   } else if (mode == 'Obstacles/HideObstacle') {
-    const obstacle = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.get(label_dict.value.get('Obstacle') as string)!
+    // 隐藏所有障碍物
+    const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    project_manager.obstacle_dict.forEach((obstacle, obstacle_name) => {
+      obstacle.hide_mesh()
+    })
 
   } else if (mode == 'Obstacles/ShowObstacle') {
-    const obstacle = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.get(label_dict.value.get('Obstacle') as string)!
-    obstacle.show_mesh()
+    // 显示所有障碍物
+    const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    project_manager.obstacle_dict.forEach((obstacle, obstacle_name) => {
+      obstacle.show_mesh()
+    })
+
+  } else if (mode == 'Obstacles/HideDiscretized') {
+    // 隐藏所有障碍物的离散化网格
+    const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    project_manager.obstacle_dict.forEach((obstacle, obstacle_name) => {
+      obstacle.hide_discretize_mesh()
+    })
+
+  } else if (mode == 'Obstacles/ShowDiscretized') {
+    // 显示所有障碍物的离散化网格
+    const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    project_manager.obstacle_dict.forEach((obstacle, obstacle_name) => {
+      obstacle.show_discretize_mesh()
+    })
 
   } else if (mode == 'PriorityTask/HideLineResult') {
     const priority_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.search_task_dict.get(
@@ -760,7 +820,7 @@ const handleTreeContextMenu = (mode: string) => {
     rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.reset_discretize_source()
     emit('updateTree')
 
-  } else if (mode == 'Obstacle/HideObstacle') {
+  } else if (mode === 'Obstacle/HideObstacle') {
     const obstacle = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.obstacle_dict.get(label_dict.value.get('Obstacle') as string)!
     obstacle.hide_mesh()
 
@@ -1124,6 +1184,41 @@ const handleTreeContextMenu = (mode: string) => {
     label_dict.value = new Map([...newDict])
     definePanelMode.value = 'CellTask'
     setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
+  } else if (mode == 'PipeGroups/HideDiscretized') {
+    // 隐藏所有管道组的离散化障碍物
+    const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    project_manager.pipe_dict.forEach((pipes, group_name) => {
+      pipes.forEach((pipe, pipe_name) => {
+        pipe.hide_discrete_mesh()
+      })
+    })
+
+  } else if (mode == 'PipeGroups/ShowDiscretized') {
+    // 显示所有管道组的离散化障碍物
+    const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    project_manager.pipe_dict.forEach((pipes, group_name) => {
+      pipes.forEach((pipe, pipe_name) => {
+        pipe.show_discrete_mesh()
+      })
+    })
+
+  } else if (mode == 'PipeGroups/ShowPipeGroup') {
+    // 显示所有管道组
+    const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    project_manager.pipe_dict.forEach((pipes, group_name) => {
+      pipes.forEach((pipe, pipe_name) => {
+        pipe.show_mesh()
+      })
+    })
+
+  } else if (mode == 'PipeGroups/HidePipeGroup') {
+    // 隐藏所有管道组
+    const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
+    project_manager.pipe_dict.forEach((pipes, group_name) => {
+      pipes.forEach((pipe, pipe_name) => {
+        pipe.hide_mesh()
+      })
+    })
   }
 }
 
