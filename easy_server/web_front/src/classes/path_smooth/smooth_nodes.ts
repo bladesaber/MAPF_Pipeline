@@ -635,7 +635,16 @@ export class ControlPointCell extends MeshObj {
       parent: this, 
       type: 'ControlPoint',
       references: Array.from(this.references),
-      reference_count: this.reference_count
+      reference_count: this.reference_count,
+      position: [x, y, z],
+      radius: this.parent_cell.c_table['radius'][this.c_idx],
+      is_fix: this.parent_cell.c_table['is_fix'][this.c_idx],
+      is_unique: this.parent_cell.c_table['is_unique'][this.c_idx],
+      group_name: this.parent_cell.group_name,
+      group_idx: this.group_idx,
+      project_name: this.project_name,
+      smooth_name: this.smooth_name,
+      task_name: this.task_name
     };
     
     this.control_point_mesh = sphere;
@@ -692,6 +701,18 @@ export class ControlPointCell extends MeshObj {
     
     // 更新userData
     this.control_point_mesh.userData.reference_count = this.reference_count;
+    this.control_point_mesh.userData.references = Array.from(this.references);
+    // 更新位置和半径信息
+    if (this.parent_cell?.c_table && this.c_idx < this.parent_cell.c_table['x'].length) {
+      this.control_point_mesh.userData.position = [
+        this.parent_cell.c_table['x'][this.c_idx],
+        this.parent_cell.c_table['y'][this.c_idx],
+        this.parent_cell.c_table['z'][this.c_idx]
+      ];
+      this.control_point_mesh.userData.radius = this.parent_cell.c_table['radius'][this.c_idx];
+      this.control_point_mesh.userData.is_fix = this.parent_cell.c_table['is_fix'][this.c_idx];
+      this.control_point_mesh.userData.is_unique = this.parent_cell.c_table['is_unique'][this.c_idx];
+    }
   }
 
   // 显示控制点
@@ -724,7 +745,7 @@ export class ControlPointCell extends MeshObj {
     }
   }
 
-  // 更新控制点位置
+  // 更新控制点位置和相关信息
   update_position(): void {
     if (!this.parent_cell?.c_table || this.c_idx >= this.parent_cell.c_table['x'].length) {
       return;
@@ -736,7 +757,13 @@ export class ControlPointCell extends MeshObj {
     
     if (this.control_point_mesh) {
       this.control_point_mesh.position.set(x, y, z);
+      // 更新userData中的所有相关信息
+      this.control_point_mesh.userData.position = [x, y, z];
+      this.control_point_mesh.userData.radius = this.parent_cell.c_table['radius'][this.c_idx];
+      this.control_point_mesh.userData.is_fix = this.parent_cell.c_table['is_fix'][this.c_idx];
+      this.control_point_mesh.userData.is_unique = this.parent_cell.c_table['is_unique'][this.c_idx];
       this.control_point_mesh.userData.references = Array.from(this.references);
+      this.control_point_mesh.userData.reference_count = this.reference_count;
     }
   }
 

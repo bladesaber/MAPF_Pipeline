@@ -339,6 +339,7 @@ import DefineSmoothInfo from '@/components/path_smooth/DefineSmoothInfo.vue';
 import ReportPlotly from '@/components/ReportPlotly.vue';
 import config from '@/config';
 import { setVisableDict } from '@/utils/utils';
+import { ArrowDown } from '@element-plus/icons-vue';
 
 import AidPathsEditor from './AidPathsEditor.vue';
 import AutoRunConfigEditor from './AutoRunConfigEditor.vue';
@@ -2416,42 +2417,78 @@ const exportSmoothPathPoints = async () => {
   const segmentsZip = new JSZip()
   const connectorsZip = new JSZip()
   let hasSegment = false
-  let hasConnector = false
+  let connectorCount = 0;
+
+  // 导出前强制插值覆盖所有connector，并详细打印调试信息
+  rootObj.proj_dict.forEach(proj => {
+    proj.smooth_task_dict.forEach(smoothRunner => {
+      smoothRunner.group_cells.forEach((groupCell, groupName) => {
+        Object.values(groupCell.connector_dict).forEach((connectorCell) => {
+          const leftKey = `seg_${connectorCell.left_seg_idx}`;
+          const rightKey = `seg_${connectorCell.right_seg_idx}`;
+          const left_seg = groupCell.seg_dict[leftKey];
+          const right_seg = groupCell.seg_dict[rightKey];
+          if (
+            left_seg && right_seg &&
+            Array.isArray(left_seg.path_points) && left_seg.path_points.length > 0 &&
+            Array.isArray(right_seg.path_points) && right_seg.path_points.length > 0
+          ) {
+            const start = left_seg.path_points[left_seg.path_points.length - 1];
+            const end = right_seg.path_points[0];
+            const start_r = (left_seg.radius_list && left_seg.radius_list[left_seg.radius_list.length - 1]) || 1;
+            const end_r = (right_seg.radius_list && right_seg.radius_list[0]) || 1;
+            const N = 100; // 修改为100个点
+            const new_points = [];
+            const new_radius = [];
+            for (let i = 0; i < N; i++) {
+              const t = i / (N - 1);
+              new_points.push([
+                start[0] * (1 - t) + end[0] * t,
+                start[1] * (1 - t) + end[1] * t,
+                start[2] * (1 - t) + end[2] * t
+              ]);
+              new_radius.push(start_r * (1 - t) + end_r * t);
+            }
+            connectorCell.path_points = new_points;
+            connectorCell.radius_list = new_radius;
+          }
+          });
+      });
+    });
+  });
 
   rootObj.proj_dict.forEach(proj => {
     proj.smooth_task_dict.forEach(smoothRunner => {
       // Segments
       smoothRunner.group_cells.forEach((groupCell, groupName) => {
-        Object.values(groupCell.seg_dict).forEach((segmentCell: any) => {
-          let points: number[][] = segmentCell.path_points || []
+        Object.values(groupCell.seg_dict).forEach((segmentCell) => {
+          let points = segmentCell.path_points || []
           if (points.length > 0) {
             hasSegment = true
             const txt = points.map(pt => pt.join(' ')).join('\n')
-            segmentsZip.file(`${segmentCell.name}.txt`, txt)
+            // 包含组名的文件路径
+            segmentsZip.file(`${groupName}/${segmentCell.name}.txt`, txt)
           }
         })
         // Connectors
-        Object.values(groupCell.connector_dict).forEach(
-          (connectorCell: any) => {
-            let points: number[][] = connectorCell.path_points || []
-            if (points.length > 0) {
-              hasConnector = true
-              const txt = points.map(pt => pt.join(' ')).join('\n')
-              connectorsZip.file(`${connectorCell.name}.txt`, txt)
-            }
-          }
-        )
+        Object.values(groupCell.connector_dict).forEach((connectorCell) => {
+          connectorCount++;
+          let points = connectorCell.path_points || [];
+          const txt = points.map(pt => pt.join(' ')).join('\n');
+          // 包含组名的文件路径
+          connectorsZip.file(`${groupName}/${connectorCell.name}.txt`, txt);
+        })
       })
     })
   })
 
-  if (!hasSegment && !hasConnector) {
+  if (!hasSegment && connectorCount === 0) {
     ElMessage.warning('没有可导出的路径点！')
     return
   }
   // 下载Segments.zip
   if (hasSegment) {
-    segmentsZip.generateAsync({ type: 'blob' }).then((content: Blob) => {
+    segmentsZip.generateAsync({ type: 'blob' }).then((content) => {
       const url = URL.createObjectURL(content)
       const a = document.createElement('a')
       a.href = url
@@ -2460,9 +2497,9 @@ const exportSmoothPathPoints = async () => {
       URL.revokeObjectURL(url)
     })
   }
-  // 下载Connectors.zip
-  if (hasConnector) {
-    connectorsZip.generateAsync({ type: 'blob' }).then((content: Blob) => {
+  // 只要有connector就下载Connectors.zip
+  if (connectorCount > 0) {
+    connectorsZip.generateAsync({ type: 'blob' }).then((content) => {
       const url = URL.createObjectURL(content)
       const a = document.createElement('a')
       a.href = url
@@ -2797,7 +2834,21 @@ function handleControlPointApply(data: any) {
   for (const [segmentName, segment] of Object.entries(group_cell.seg_dict)) {
     const seg = segment as SegmentCell;
     if (seg.c_idxs.includes(c_idx)) {
+      // 检查tube是否当前可见
+      const wasTubeVisible = seg.tube_mesh && seg.tube_mesh.mesh_dict && 
+        Object.values(seg.tube_mesh.mesh_dict).some(mesh => mesh.visible);
+      
       seg.update_mesh(parent.scene);
+      // 清除tube_mesh，确保下次显示时重新创建
+      if (seg.tube_mesh) {
+        seg.tube_mesh.hide_mesh();
+        seg.tube_mesh = null;
+      }
+      
+      // 如果之前tube是可见的，重新显示
+      if (wasTubeVisible) {
+        seg.show_tube_mesh(parent.scene);
+      }
     }
   }
   
@@ -2830,10 +2881,24 @@ function handleControlPointApply(data: any) {
   for (const connectorName of connectorsToUpdate) {
     const connector = group_cell.connector_dict[connectorName] as ConnectorCell;
     if (connector) {
+      // 检查tube是否当前可见
+      const wasTubeVisible = connector.tube_mesh && connector.tube_mesh.mesh_dict && 
+        Object.values(connector.tube_mesh.mesh_dict).some(mesh => mesh.visible);
+      
       // 清除现有的path_points，让update_mesh重新生成spline路径
       connector.path_points = [];
       connector.radius_list = [];
       connector.update_mesh(parent.scene);
+      // 清除tube_mesh，确保下次显示时重新创建
+      if (connector.tube_mesh) {
+        connector.tube_mesh.hide_mesh();
+        connector.tube_mesh = null;
+      }
+      
+      // 如果之前tube是可见的，重新显示
+      if (wasTubeVisible) {
+        connector.show_tube_mesh();
+      }
     }
   }
   
@@ -2943,13 +3008,55 @@ function onBatchConnectorSave(costSettings: any) {
 </script>
 
 <style scoped>
-.path-search {
+.path-smooth {
   width: 100%;
   position: relative;
 }
 
 .menu-bar {
   border-bottom: 1px solid #dcdfe6;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+}
+
+.el-dropdown-link {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 20px;
+  color: #303133;
+  font-size: 15px;
+  transition: all 0.3s;
+  font-family: inherit;
+}
+
+.el-dropdown-link:hover {
+  background-color: #f5f7fa;
+  color: #409eff;
+}
+
+.el-dropdown-link:hover .el-icon--right {
+  color: #409eff;
+}
+
+.el-dropdown-link + .el-dropdown-link {
+  margin-left: 8px;
+}
+
+.menu-bar::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: #dcdfe6;
+  z-index: 1;
 }
 
 .context-menu {
