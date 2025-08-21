@@ -26,7 +26,7 @@
         @click.stop
       >
         <el-menu>
-          <el-menu-item @click="handleTreeContextMenu('Grid/ShowInner')">Show Inner</el-menu-item>
+          <el-menu-item @click="() => handleTreeContextMenu('Grid/ShowInner')">Show Inner</el-menu-item>
         </el-menu>
       </div>
 
@@ -37,9 +37,9 @@
         @click.stop
         >
         <el-menu>
-            <el-menu-item @click="handleTreeContextMenu('Obstacles/PointObstacles')">Random Point Obstacles</el-menu-item>
-            <el-menu-item @click="handleTreeContextMenu('Obstacles/SphereObstacles')">Random Sphere Obstacles</el-menu-item>
-            <el-menu-item @click="handleTreeContextMenu('Obstacles/SquaresObstacles')">Random Squares Obstacles</el-menu-item>
+            <el-menu-item @click="() => handleTreeContextMenu('Obstacles/PointObstacles')">Random Point Obstacles</el-menu-item>
+            <el-menu-item @click="() => handleTreeContextMenu('Obstacles/SphereObstacles')">Random Sphere Obstacles</el-menu-item>
+            <el-menu-item @click="() => handleTreeContextMenu('Obstacles/SquaresObstacles')">Random Squares Obstacles</el-menu-item>
           </el-menu>
       </div>
 
@@ -50,7 +50,7 @@
         @click.stop
         >
         <el-menu>
-            <el-menu-item @click="handleTreeContextMenu('Pipes/RandomPipes')">Random Pipes</el-menu-item>
+            <el-menu-item @click="() => handleTreeContextMenu('Pipes/RandomPipes')">Random Pipes</el-menu-item>
         </el-menu>
       </div>
 
@@ -61,7 +61,7 @@
         @click.stop
         >
         <el-menu>
-            <el-menu-item @click="handleTreeContextMenu('Tasks/RandomTasks')">Random Tasks</el-menu-item>
+            <el-menu-item @click="() => handleTreeContextMenu('Tasks/RandomTasks')">Random Tasks</el-menu-item>
         </el-menu>
       </div>
 

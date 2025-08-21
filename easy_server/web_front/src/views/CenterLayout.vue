@@ -382,23 +382,54 @@ const treeData = ref<TreeNode[]>([])
 const expandedKeys = ref<string[]>([])
 
 const update_tree = () => {
+  // 保存当前的展开状态
+  const currentExpandedKeys = [...expandedKeys.value]
+  
   treeData.value = rootObj.export_tree()
-  if (treeData.value && treeData.value.length > 0 && expandedKeys.value.length === 0) {
-    expandedKeys.value = [treeData.value[0].id]
-  }
-  // console.log('treeData:', JSON.stringify(treeData.value, null, 2))
+  
+  // 恢复展开状态，如果树为空则设置默认展开
   if (treeData.value && treeData.value.length > 0) {
+    if (currentExpandedKeys.length === 0) {
+      if (treeData.value[0].id) {
+        expandedKeys.value = [treeData.value[0].id]
+      }
+    } else {
+      // 过滤掉在新树中不存在的节点ID
+      expandedKeys.value = currentExpandedKeys.filter(key => {
+        return findNodeById(treeData.value, key) !== null
+      })
+    }
+    
     treeData.value.forEach((node, idx) => {
       console.log(`一级节点[${idx}] label:`, node.label, 'id:', node.id, 'children:', node.children)
     })
   } else {
     console.log('treeData 为空或无一级节点')
+    expandedKeys.value = []
   }
+}
+
+// 递归查找节点ID的辅助函数
+const findNodeById = (nodes: TreeNode[], id: string): TreeNode | null => {
+  for (const node of nodes) {
+    if (node.id && node.id === id) {
+      return node
+    }
+    if (node.children) {
+      const found = findNodeById(node.children, id)
+      if (found) {
+        return found
+      }
+    }
+  }
+  return null
 }
 
 watch(treeData, (newVal) => {
   if (newVal && newVal.length > 0 && expandedKeys.value.length === 0) {
-    expandedKeys.value = [newVal[0].id]
+    if (newVal[0].id) {
+      expandedKeys.value = [newVal[0].id]
+    }
   }
 })
 

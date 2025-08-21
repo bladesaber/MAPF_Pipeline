@@ -161,6 +161,7 @@ export class ProjectManager {
 
     // ---------------- Smooth ----------------
     const smooth_node: TreeNode = {
+      id: `${this.name}-smooth`,
       label: 'Smooth',
       children: Array.from(this.smooth_task_dict.values()).map((smooth_task) => smooth_task.export_tree()),
       style: 'SmoothRoot',

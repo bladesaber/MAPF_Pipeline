@@ -426,6 +426,7 @@ export class SegmentCell extends MeshObj {
 
   export_tree(): TreeNode {
     return {
+      id: `${this.project_name}-${this.smooth_name}-${this.parent_cell.group_name}-segment-${this.name}`,
       label: `${this.parent_cell.group_name}/${this.name}`,
       style: 'SegmentCell',
       data: {
@@ -1105,6 +1106,7 @@ export class ConnectorCell extends SegmentCell {
 
   export_tree(): TreeNode {
     return {
+      id: `${this.project_name}-${this.smooth_name}-${this.parent_cell.group_name}-connector-${this.name}`,
       label: `${this.parent_cell.group_name}/${this.name}`,
       style: 'ConnectorCell',
       data: {
@@ -1344,6 +1346,7 @@ export class GroupCell {
   
   export_tree(): TreeNode {
     const seg_node: TreeNode = {
+      id: `${this.project_name}-${this.smooth_name}-${this.group_name}-segments`,
       label: 'Segments',
       style: 'SegmentCells',
       data: {
@@ -1355,6 +1358,7 @@ export class GroupCell {
       children: [],
     };
     const con_node: TreeNode = {
+      id: `${this.project_name}-${this.smooth_name}-${this.group_name}-connectors`,
       label: 'Connectors',
       style: 'ConnectorCells',
       data: {
@@ -1366,6 +1370,7 @@ export class GroupCell {
       children: [],
     };
     const path_node: TreeNode = {
+      id: `${this.project_name}-${this.smooth_name}-${this.group_name}-paths`,
       label: 'Paths',
       style: 'PathCells',
       data: {
@@ -1377,6 +1382,7 @@ export class GroupCell {
       children: [],
     };
     const control_point_node: TreeNode = {
+      id: `${this.project_name}-${this.smooth_name}-${this.group_name}-control-points`,
       label: 'Control Points',
       style: 'ControlPointCells',
       data: {
@@ -1406,6 +1412,7 @@ export class GroupCell {
 
     // ---------------------------------------
     const aid_path_node: TreeNode = {
+      id: `${this.project_name}-${this.smooth_name}-${this.group_name}-aid-paths`,
       label: 'Aid Paths',
       style: 'AidPaths',
       data: {
@@ -1415,6 +1422,7 @@ export class GroupCell {
         'GroupIdx': this.group_idx,
       },
       children: this.aid_path_info.map(info => ({
+        id: `${this.project_name}-${this.smooth_name}-${this.group_name}-aid-path-${info.name}`,
         label: `${info.name} (${info.from_name} -> ${info.to_name})`,
         style: 'AidPath',
         data: {
@@ -1429,6 +1437,7 @@ export class GroupCell {
 
     // ---------------------------------------
     const graph_node: TreeNode = {
+      id: `${this.project_name}-${this.smooth_name}-${this.group_name}-graph`,
       label: 'Graph',
       style: 'Graph',
       data: {
@@ -1440,6 +1449,7 @@ export class GroupCell {
     };
 
     return {
+      id: `${this.project_name}-${this.smooth_name}-${this.group_name}`,
       label: `${this.group_name}`,
       style: 'GroupCell',
       data: {

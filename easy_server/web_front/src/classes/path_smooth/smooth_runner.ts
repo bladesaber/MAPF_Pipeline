@@ -198,6 +198,7 @@ export class SmoothRunner {
 
   export_tree(): TreeNode {
     const pipe_cfg_node: TreeNode = {
+      id: `${this.project_name}-${this.name}-pipe-config`,
       label: 'Pipe Config',
       style: 'PipeCfg',
       data: {
@@ -209,6 +210,7 @@ export class SmoothRunner {
     }
 
     const obstacle_cell_node: TreeNode = {
+      id: `${this.project_name}-${this.name}-obstacle-cell`,
       label: 'Obstacle Cell',
       style: 'ObstacleCell',
       data: {
@@ -220,6 +222,7 @@ export class SmoothRunner {
     }
 
     const auto_run_cfg_node: TreeNode = {
+      id: `${this.project_name}-${this.name}-auto-run-config`,
       label: 'Auto Run Config',
       style: 'AutoRunCfg',
       data: {
@@ -231,6 +234,7 @@ export class SmoothRunner {
     }
 
     const conflict_setting_node: TreeNode = {
+      id: `${this.project_name}-${this.name}-conflict-setting`,
       label: 'Conflict Setting',
       style: 'ConflictSetting',
       data: {
@@ -241,6 +245,7 @@ export class SmoothRunner {
     }
 
     const group_setting_node: TreeNode = {
+      id: `${this.project_name}-${this.name}-group-setting`,
       label: 'Group Setting',
       style: 'GroupSetting',
       data: {
@@ -254,6 +259,7 @@ export class SmoothRunner {
     // 若 group_cells 为空，添加占位节点
     if (!group_setting_node.children || group_setting_node.children.length === 0) {
       group_setting_node.children = [{
+        id: `${this.project_name}-${this.name}-no-groups`,
         label: 'No Groups',
         style: 'Empty',
         data: { 'Project': this.project_name, 'SmoothName': this.name, 'TaskName': this.task_name },
@@ -261,6 +267,7 @@ export class SmoothRunner {
     }
 
     const root: TreeNode = {
+      id: `${this.project_name}-${this.name}`,
       label: `${this.task_name}/${this.name}`,
       style: 'SmoothRunner',
       data: {
