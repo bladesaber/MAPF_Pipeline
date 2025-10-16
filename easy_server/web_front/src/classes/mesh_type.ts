@@ -1,6 +1,9 @@
-import * as THREE from 'three'
+import * as THREE from 'three';
 
-import { add_mesh, remove_mesh } from '../utils/visulize_utils.ts'
+import {
+  add_mesh,
+  remove_mesh,
+} from '../utils/visulize_utils.ts';
 
 export class MeshObj {
     name: string;

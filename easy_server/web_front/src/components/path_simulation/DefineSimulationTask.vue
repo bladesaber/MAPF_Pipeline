@@ -36,7 +36,7 @@
         </div>
         <el-collapse-transition>
           <div v-show="sectionOpen.mesh" class="section-content">
-            <el-form label-width="120px">
+            <el-form label-width="160px">
               <el-form-item label="Min Size">
                 <el-input-number v-model="formData.min_size" :min="0" />
               </el-form-item>
@@ -56,7 +56,7 @@
         </div>
         <el-collapse-transition>
           <div v-show="sectionOpen.runConfig" class="section-content">
-            <el-form label-width="120px">
+            <el-form label-width="160px">
               <el-form-item label="Run Iter">
                 <el-input-number v-model="runConfig.run_iter" :min="1" />
               </el-form-item>
@@ -99,7 +99,7 @@
         </div>
         <el-collapse-transition>
           <div v-show="sectionOpen.solverConfig" class="section-content">
-            <el-form label-width="120px">
+            <el-form label-width="160px">
               <el-form-item label="Solver">
                 <el-select v-model="solverConfig.solver" style="width: 100%">
                   <el-option label="EULER" value="EULER" />
@@ -187,7 +187,7 @@
         </div>
         <el-collapse-transition>
           <div v-show="sectionOpen.turbulenceModel" class="section-content">
-            <el-form label-width="120px">
+            <el-form label-width="160px">
               <el-form-item label="Model Type">
                 <el-select v-model="turbulenceModelType" placeholder="Select Model">
                   <el-option label="SST" value="SST" />
@@ -224,6 +224,125 @@
         </el-collapse-transition>
       </el-card>
 
+      <!-- OpenFOAM Parameters Section -->
+      <el-card shadow="never" class="section" :body-style="{padding: '0'}">
+        <div class="section-header" @click="sectionOpen.openfoamParams = !sectionOpen.openfoamParams" style="cursor:pointer;">
+          <span>OpenFOAM Parameters</span>
+          <el-icon :class="{'rotate': sectionOpen.openfoamParams}"><arrow-down /></el-icon>
+        </div>
+        <el-collapse-transition>
+          <div v-show="sectionOpen.openfoamParams" class="section-content">
+            <el-form label-width="160px">
+              <el-form-item label="Solver">
+                <el-select v-model="openfoamParams.solver" style="width: 100%">
+                  <el-option label="topoIncompressibleFluid" value="topoIncompressibleFluid" />
+                  <el-option label="incompressibleFluid" value="incompressibleFluid" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="Numerical Method">
+                <el-select v-model="openfoamParams.numerical_method" style="width: 100%">
+                  <el-option label="PIMPLE" value="PIMPLE" />
+                  <el-option label="PISO" value="PISO" />
+                  <el-option label="SIMPLE" value="SIMPLE" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="Delta T">
+                <el-input-number v-model="openfoamParams.deltaT" :min="0" :step="0.001" />
+              </el-form-item>
+              <el-form-item label="End Time">
+                <el-input-number v-model="openfoamParams.endTime" :min="0" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Write Interval">
+                <el-input-number v-model="openfoamParams.writeInterval" :min="1" />
+              </el-form-item>
+              <el-form-item label="Grid X">
+                <el-input-number v-model="openfoamParams.grid_x" :min="1" />
+              </el-form-item>
+              <el-form-item label="Grid Y">
+                <el-input-number v-model="openfoamParams.grid_y" :min="1" />
+              </el-form-item>
+              <el-form-item label="Grid Z">
+                <el-input-number v-model="openfoamParams.grid_z" :min="1" />
+              </el-form-item>
+              <el-form-item label="Inside Point X">
+                <el-input-number v-model="openfoamParams.inside_point[0]" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Inside Point Y">
+                <el-input-number v-model="openfoamParams.inside_point[1]" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Inside Point Z">
+                <el-input-number v-model="openfoamParams.inside_point[2]" :step="0.1" />
+              </el-form-item>
+            </el-form>
+          </div>
+        </el-collapse-transition>
+      </el-card>
+
+      <!-- Boundary Conditions Section -->
+      <el-card shadow="never" class="section" :body-style="{padding: '0'}">
+        <div class="section-header" @click="sectionOpen.boundaryConditions = !sectionOpen.boundaryConditions" style="cursor:pointer;">
+          <span>Boundary Conditions</span>
+          <el-icon :class="{'rotate': sectionOpen.boundaryConditions}"><arrow-down /></el-icon>
+        </div>
+        <el-collapse-transition>
+          <div v-show="sectionOpen.boundaryConditions" class="section-content">
+            <el-form label-width="160px">
+              <el-form-item label="Wall X Min">
+                <el-input-number v-model="boundaryConditions.wall_x_min" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Wall X Max">
+                <el-input-number v-model="boundaryConditions.wall_x_max" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Wall Y Min">
+                <el-input-number v-model="boundaryConditions.wall_y_min" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Wall Y Max">
+                <el-input-number v-model="boundaryConditions.wall_y_max" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Wall Z Min">
+                <el-input-number v-model="boundaryConditions.wall_z_min" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Wall Z Max">
+                <el-input-number v-model="boundaryConditions.wall_z_max" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Inlet Velocity X">
+                <el-input-number v-model="boundaryConditions.inlet_velocity[0]" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Inlet Velocity Y">
+                <el-input-number v-model="boundaryConditions.inlet_velocity[1]" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Inlet Velocity Z">
+                <el-input-number v-model="boundaryConditions.inlet_velocity[2]" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Inlet Center X">
+                <el-input-number v-model="boundaryConditions.inlet_center[0]" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Inlet Center Y">
+                <el-input-number v-model="boundaryConditions.inlet_center[1]" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Inlet Center Z">
+                <el-input-number v-model="boundaryConditions.inlet_center[2]" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Inlet Radius">
+                <el-input-number v-model="boundaryConditions.inlet_radius" :min="0" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Outlet Center X">
+                <el-input-number v-model="boundaryConditions.outlet_center[0]" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Outlet Center Y">
+                <el-input-number v-model="boundaryConditions.outlet_center[1]" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Outlet Center Z">
+                <el-input-number v-model="boundaryConditions.outlet_center[2]" :step="0.1" />
+              </el-form-item>
+              <el-form-item label="Outlet Radius">
+                <el-input-number v-model="boundaryConditions.outlet_radius" :min="0" :step="0.1" />
+              </el-form-item>
+            </el-form>
+          </div>
+        </el-collapse-transition>
+      </el-card>
+
       <!-- FreeStreamConditions Section -->
       <el-card shadow="never" class="section" :body-style="{padding: '0'}">
         <div class="section-header" @click="sectionOpen.freeStream = !sectionOpen.freeStream" style="cursor:pointer;">
@@ -232,7 +351,7 @@
         </div>
         <el-collapse-transition>
           <div v-show="sectionOpen.freeStream" class="section-content">
-            <el-form label-width="120px">
+            <el-form label-width="160px">
               <el-form-item label="Density">
                 <el-input-number v-model="freeStream.free_stream_density" :min="0" />
               </el-form-item>
@@ -273,15 +392,23 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, inject, computed } from 'vue';
+import {
+  computed,
+  inject,
+  reactive,
+  ref,
+} from 'vue';
 
 import { ElMessage } from 'element-plus';
 import * as THREE from 'three';
-import { Close, ArrowDown } from '@element-plus/icons-vue';
 
 import { CenterRoot } from '@/classes/center_root';
-import { SmoothRunner } from '@/classes/path_smooth/smooth_runner';
 import { GroupCell } from '@/classes/path_smooth/smooth_nodes';
+import { SmoothRunner } from '@/classes/path_smooth/smooth_runner';
+import {
+  ArrowDown,
+  Close,
+} from '@element-plus/icons-vue';
 
 const rootObj = inject<CenterRoot>('centerRoot', new CenterRoot(new THREE.Scene()))
 
@@ -308,6 +435,8 @@ const sectionOpen = reactive({
     runConfig: true,
     solverConfig: false,
     turbulenceModel: false,
+    openfoamParams: false,
+    boundaryConditions: false,
     freeStream: false,
     mesh: false,
 });
@@ -356,6 +485,35 @@ const turbulenceModelSA = ref({
 const turbulenceModel = computed(() => {
     return turbulenceModelType.value === 'SST' ? turbulenceModelSST.value : turbulenceModelSA.value;
 });
+
+// OpenFOAM Parameters
+const openfoamParams = ref({
+    solver: 'topoIncompressibleFluid',
+    numerical_method: 'PIMPLE',
+    deltaT: 0.005,
+    endTime: 10.0,
+    writeInterval: 100,
+    grid_x: 30,
+    grid_y: 30,
+    grid_z: 30,
+    inside_point: [2.0, 2.0, 1.0],
+});
+
+// Boundary Conditions
+const boundaryConditions = ref({
+    wall_x_min: 0,
+    wall_x_max: 4,
+    wall_y_min: 0,
+    wall_y_max: 4,
+    wall_z_min: 0,
+    wall_z_max: 2,
+    inlet_velocity: [2.0, 0.0, 0.0],
+    inlet_center: [0.0, 2.0, 1.0],
+    inlet_radius: 0.5,
+    outlet_center: [4.0, 2.0, 1.0],
+    outlet_radius: 0.5,
+});
+
 const freeStream = ref({
     free_stream_density: 1.225,
     free_stream_pressure: 101325.0,
@@ -390,6 +548,8 @@ const handleGenerate = () => {
         run_config: runConfig.value,
         solver_config: solverConfig.value,
         turbulence_model: turbulenceModel.value,
+        openfoam_params: openfoamParams.value,
+        boundary_conditions: boundaryConditions.value,
         free_stream: freeStream.value,
         mesh_config: {
             min_size: formData.value.min_size,
@@ -405,53 +565,72 @@ const handleGenerate = () => {
 .right-sidebar {
     position: fixed;
     right: 0;
-    top: 116px;
-    /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
-    /* bottom: 150px; */
-    width: 450px;
-    background: #fff;
-    border-left: 1px solid #dcdfe6;
-    height: calc(100vh - 116px);
+    top: 124px;
+    width: 500px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border-left: 1px solid rgba(226, 232, 240, 0.6);
+    height: calc(100vh - 124px);
     display: flex;
     flex-direction: column;
     z-index: 1000;
-    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
 }
 
 .right-sidebar-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid #dcdfe6;
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.6);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: #f5f7fa;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.9) 100%);
     flex: 0 0 auto;
 }
 
 .right-sidebar-header span {
-    font-weight: 500;
+    font-weight: 600;
+    color: #1e293b;
+    font-size: 16px;
+    letter-spacing: 0.025em;
 }
 
 .close-button {
-    padding: 4px;
+    padding: 10px;
+    border-radius: 10px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    color: #64748b;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(226, 232, 240, 0.4);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 600;
 }
 
 .close-button:hover {
-    color: #409eff;
+    color: #ffffff;
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    border-color: #ef4444;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 .right-sidebar-content {
     position: relative;
     flex: 1 1 auto;
     overflow-y: auto;
-    padding: 16px;
-    padding-bottom: 64px;
+    padding: 20px;
+    padding-bottom: 100px;
     min-height: 0;
+    background: rgba(248, 250, 252, 0.3);
 }
 
-/* Update scrollbar styles */
+/* 现代化滚动条样式 */
 .right-sidebar-content::-webkit-scrollbar {
-    width: 3px;
+    width: 4px;
 }
 
 .right-sidebar-content::-webkit-scrollbar-track {
@@ -459,26 +638,54 @@ const handleGenerate = () => {
 }
 
 .right-sidebar-content::-webkit-scrollbar-thumb {
-    background: #dcdfe6;
-    border-radius: 3px;
+    background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 100%);
+    border-radius: 6px;
+    transition: all 0.2s ease;
 }
 
 .right-sidebar-content::-webkit-scrollbar-thumb:hover {
-    background: #c0c4cc;
+    background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
 }
 
 .section {
     margin-bottom: 24px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid rgba(226, 232, 240, 0.4);
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.section:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: rgba(99, 102, 241, 0.2);
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.08);
+    transform: translateY(-1px);
 }
 
 .section-header {
-    font-weight: 500;
+    font-weight: 600;
     margin-bottom: 16px;
-    color: #606266;
+    color: #1e293b;
+    font-size: 15px;
+    letter-spacing: 0.025em;
+    border-bottom: 2px solid rgba(99, 102, 241, 0.2);
+    padding-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.section-header:hover {
+    color: #6366f1;
+    border-bottom-color: rgba(99, 102, 241, 0.4);
 }
 
 .section-content {
-    padding: 0 8px;
+    padding: 0;
 }
 
 .vector-input,
@@ -499,18 +706,115 @@ const handleGenerate = () => {
 }
 
 :deep(.el-form-item) {
-    margin-bottom: 16px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+:deep(.el-form-item__content) {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+    flex: 1;
+    margin-left: 0;
 }
 
 :deep(.el-form-item__label) {
-    padding-bottom: 4px;
-    line-height: 1.5;
+    padding-bottom: 6px;
+    line-height: 1.4;
+    font-weight: 500;
+    color: #374151;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    text-align: right;
+    word-break: break-word;
+    hyphens: auto;
+    min-height: 32px;
+    padding-right: 16px;
+    white-space: normal;
+    overflow-wrap: break-word;
+    width: 160px;
+    flex-shrink: 0;
+}
+
+:deep(.el-input) {
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+:deep(.el-input__wrapper) {
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+:deep(.el-input__wrapper:hover) {
+    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
+}
+
+:deep(.el-input__wrapper.is-focus) {
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+:deep(.el-input-number) {
+    width: 100%;
+    display: flex;
+    align-items: center;
+}
+
+:deep(.el-input-number .el-input__wrapper) {
+    border-radius: 8px;
+}
+
+:deep(.el-input-number .el-input-number__decrease),
+:deep(.el-input-number .el-input-number__increase) {
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+:deep(.el-input-number .el-input-number__decrease:hover),
+:deep(.el-input-number .el-input-number__increase:hover) {
+    background-color: #6366f1;
+    color: white;
+}
+
+:deep(.el-select) {
+    width: 100%;
+}
+
+:deep(.el-select .el-input__wrapper) {
+    border-radius: 8px;
+}
+
+:deep(.el-switch) {
+    display: flex;
+    align-items: center;
+    height: 32px;
+}
+
+:deep(.el-switch__core) {
+    border-radius: 16px;
+    transition: all 0.3s ease;
+}
+
+:deep(.el-switch.is-checked .el-switch__core) {
+    background-color: #6366f1;
+    border-color: #6366f1;
 }
 
 .button-container {
-    padding: 16px;
-    border-top: 1px solid #dcdfe6;
-    background-color: #f5f7fa;
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    width: 500px;
+    padding: 20px;
+    border-top: 1px solid rgba(226, 232, 240, 0.6);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.9) 100%);
+    backdrop-filter: blur(20px);
+    z-index: 1100;
 }
 
 .button-group {
@@ -520,6 +824,35 @@ const handleGenerate = () => {
 }
 
 .button-group .el-button {
-    min-width: 90px;
+    min-width: 100px;
+    height: 40px;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.button-group .el-button--primary {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+    border: none;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.button-group .el-button--primary:hover {
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+}
+
+.button-group .el-button--default {
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(226, 232, 240, 0.6);
+    color: #64748b;
+}
+
+.button-group .el-button--default:hover {
+    background: rgba(255, 255, 255, 1);
+    border-color: rgba(99, 102, 241, 0.3);
+    color: #6366f1;
+    transform: translateY(-1px);
 }
 </style>

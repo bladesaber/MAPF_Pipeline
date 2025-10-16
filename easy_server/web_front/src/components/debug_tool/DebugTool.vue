@@ -26,7 +26,7 @@
         @click.stop
       >
         <el-menu>
-          <el-menu-item @click="handleTreeContextMenu('Grid/ShowInner')">Show Inner</el-menu-item>
+          <el-menu-item @click="() => handleTreeContextMenu('Grid/ShowInner')">Show Inner</el-menu-item>
         </el-menu>
       </div>
 
@@ -37,9 +37,9 @@
         @click.stop
         >
         <el-menu>
-            <el-menu-item @click="handleTreeContextMenu('Obstacles/PointObstacles')">Random Point Obstacles</el-menu-item>
-            <el-menu-item @click="handleTreeContextMenu('Obstacles/SphereObstacles')">Random Sphere Obstacles</el-menu-item>
-            <el-menu-item @click="handleTreeContextMenu('Obstacles/SquaresObstacles')">Random Squares Obstacles</el-menu-item>
+            <el-menu-item @click="() => handleTreeContextMenu('Obstacles/PointObstacles')">Random Point Obstacles</el-menu-item>
+            <el-menu-item @click="() => handleTreeContextMenu('Obstacles/SphereObstacles')">Random Sphere Obstacles</el-menu-item>
+            <el-menu-item @click="() => handleTreeContextMenu('Obstacles/SquaresObstacles')">Random Squares Obstacles</el-menu-item>
           </el-menu>
       </div>
 
@@ -50,7 +50,7 @@
         @click.stop
         >
         <el-menu>
-            <el-menu-item @click="handleTreeContextMenu('Pipes/RandomPipes')">Random Pipes</el-menu-item>
+            <el-menu-item @click="() => handleTreeContextMenu('Pipes/RandomPipes')">Random Pipes</el-menu-item>
         </el-menu>
       </div>
 
@@ -61,7 +61,7 @@
         @click.stop
         >
         <el-menu>
-            <el-menu-item @click="handleTreeContextMenu('Tasks/RandomTasks')">Random Tasks</el-menu-item>
+            <el-menu-item @click="() => handleTreeContextMenu('Tasks/RandomTasks')">Random Tasks</el-menu-item>
         </el-menu>
       </div>
 
@@ -432,34 +432,47 @@ defineExpose({
   position: relative;
 }
 .menu-bar {
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
   position: relative;
   z-index: 1;
   display: flex;
   align-items: center;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
 }
+
 .el-dropdown-link {
   cursor: pointer;
   display: flex;
   align-items: center;
-  height: 44px;
-  padding: 0 20px;
-  color: #303133;
-  font-size: 15px;
-  transition: all 0.3s;
+  height: 48px;
+  padding: 0 24px;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   font-family: inherit;
+  border-radius: 8px;
+  margin: 0 4px;
+  letter-spacing: 0.025em;
 }
+
 .el-dropdown-link:hover {
-  background-color: #f5f7fa;
-  color: #409eff;
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+  transform: translateY(-1px);
 }
+
 .el-dropdown-link:hover .el-icon--right {
-  color: #409eff;
+  color: #6366f1;
+  transform: translateY(-1px);
 }
+
 .el-dropdown-link + .el-dropdown-link {
   margin-left: 8px;
 }
+
 .menu-bar::after {
   content: '';
   position: absolute;
@@ -467,31 +480,42 @@ defineExpose({
   left: 0;
   right: 0;
   height: 1px;
-  background-color: #dcdfe6;
+  background: linear-gradient(90deg, transparent 0%, rgba(226, 232, 240, 0.6) 50%, transparent 100%);
   z-index: 1;
 }
 
 .context-menu {
   position: fixed;
-  background: white;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   z-index: 3000;
+  padding: 8px;
 }
 
 .context-menu :deep(.el-menu) {
   border-right: none;
+  background: transparent;
 }
 
 .context-menu :deep(.el-menu-item) {
-  height: 32px;
-  line-height: 32px;
+  height: 40px;
+  line-height: 40px;
   padding: 0 16px;
+  border-radius: 8px;
+  margin: 2px 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 500;
+  color: #475569;
+  font-size: 14px;
 }
 
 .context-menu :deep(.el-menu-item:hover) {
-  background-color: #f5f7fa;
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+  transform: translateX(4px);
 }
 
 /* Add styles for click outside handler */

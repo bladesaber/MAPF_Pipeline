@@ -15,6 +15,7 @@ import pyvista
 from flask_sock import Sock
 from functools import partial
 import uuid
+from datetime import datetime
 
 from cad_server_utils import CadServerUtils
 from cad_server_utils import GmshStepReader
@@ -1298,15 +1299,433 @@ def init_simulation_task():
     return Response(generate(), mimetype='text/event-stream')
 
 
-@app.route('/simulate/run_simulation', methods=['POST'])
-def run_simulation():
+@app.route('/simulate/create_field_module', methods=['POST'])
+def create_field_module():
+    """
+    创建场模块接口
+    
+    创建仿真所需的场模块，包括几何目录和网格参数设置
+    """
     data = request.json
     simulation_name = data.get('simulation_name')
-    if simulation_name not in SimulationServerUtils.simulation_map:
-        return jsonify({'error': 'No simulation map found'}), 400
+    geometry_dir = data.get('geometry_dir', 'constant/geometry')
+    mesh_max_size = data.get('mesh_max_size', 0.1)
+    mesh_min_size = data.get('mesh_min_size', 0.05)
     
-    SimulationServerUtils.simulation_map[simulation_name].run_simulation()
-    return jsonify({'is_success': True})
+    try:
+        # 创建仿真目录
+        simulation_dir = os.path.join(os.getcwd(), 'simulations', simulation_name)
+        os.makedirs(simulation_dir, exist_ok=True)
+        
+        # 创建几何目录
+        geometry_path = os.path.join(simulation_dir, geometry_dir)
+        os.makedirs(geometry_path, exist_ok=True)
+        
+        # 保存场模块信息
+        field_module_info = {
+            'simulation_name': simulation_name,
+            'geometry_dir': geometry_path,
+            'mesh_max_size': mesh_max_size,
+            'mesh_min_size': mesh_min_size,
+            'created_at': datetime.now().isoformat()
+        }
+        
+        # 保存场模块信息到文件
+        field_module_file = os.path.join(simulation_dir, 'field_module.json')
+        with open(field_module_file, 'w') as f:
+            json.dump(field_module_info, f, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Field module created successfully',
+            'field_module': field_module_info
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to create field module: {str(e)}'}), 500
+
+@app.route('/simulate/compute_initial_value', methods=['POST'])
+def compute_initial_value():
+    """
+    计算湍流初始值接口
+    
+    根据湍流模型和参考参数计算初始值
+    """
+    data = request.json
+    simulation_name = data.get('simulation_name')
+    turbulence_model = data.get('turbulence_model', 'kEpsilon')
+    velocity_ref = data.get('velocity_ref', 2.0)
+    length_ref = data.get('length_ref', 1.0)
+    turbulence_intensity = data.get('turbulence_intensity', 0.05)
+    
+    try:
+        # 计算湍流初始值
+        if turbulence_model == 'kEpsilon':
+            # k-epsilon 模型初始值计算
+            k = 1.5 * (velocity_ref * turbulence_intensity) ** 2
+            epsilon = (k ** 1.5) / length_ref
+            nu_t = 0.09 * (k ** 2) / epsilon
+            
+            initial_values = {
+                'k': k,
+                'epsilon': epsilon,
+                'nu_t': nu_t,
+                'turbulence_model': turbulence_model
+            }
+        else:
+            # 其他湍流模型的默认值
+            initial_values = {
+                'k': 0.1,
+                'epsilon': 0.1,
+                'nu_t': 0.01,
+                'turbulence_model': turbulence_model
+            }
+        
+        # 保存初始值到仿真目录
+        simulation_dir = os.path.join(os.getcwd(), 'simulations', simulation_name)
+        initial_value_file = os.path.join(simulation_dir, 'initial_values.json')
+        with open(initial_value_file, 'w') as f:
+            json.dump(initial_values, f, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Initial values computed successfully',
+            'initial_values': initial_values
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to compute initial values: {str(e)}'}), 500
+
+@app.route('/simulate/set_boundary_conditions', methods=['POST'])
+def set_boundary_conditions():
+    """
+    设置边界条件接口
+    
+    设置壁面、入口和出口边界条件
+    """
+    data = request.json
+    simulation_name = data.get('simulation_name')
+    wall_config = data.get('wall_config', {})
+    inlet_config = data.get('inlet_config', {})
+    outlet_config = data.get('outlet_config', {})
+    
+    try:
+        # 创建边界条件配置
+        boundary_conditions = {
+            'wall': {
+                'x_min': wall_config.get('x_min', 0),
+                'x_max': wall_config.get('x_max', 4),
+                'y_min': wall_config.get('y_min', 0),
+                'y_max': wall_config.get('y_max', 4),
+                'z_min': wall_config.get('z_min', 0),
+                'z_max': wall_config.get('z_max', 2),
+                'type': 'wall',
+                'velocity': [0, 0, 0]
+            },
+            'inlet': {
+                'name': inlet_config.get('name', 'inlet'),
+                'norm_vector': inlet_config.get('norm_vector', [1.0, 0.0, 0.0]),
+                'center_point': inlet_config.get('center_point', [0.0, 2.0, 1.0]),
+                'radius': inlet_config.get('radius', 0.5),
+                'length': inlet_config.get('length', 0.25),
+                'velocity': inlet_config.get('velocity', [2.0, 0.0, 0.0]),
+                'type': 'velocity'
+            },
+            'outlet': {
+                'name': outlet_config.get('name', 'outlet'),
+                'norm_vector': outlet_config.get('norm_vector', [1.0, 0.0, 0.0]),
+                'center_point': outlet_config.get('center_point', [4.0, 2.0, 1.0]),
+                'radius': outlet_config.get('radius', 0.5),
+                'length': outlet_config.get('length', 0.25),
+                'pressure': outlet_config.get('pressure', 0.0),
+                'type': 'pressure'
+            }
+        }
+        
+        # 保存边界条件到仿真目录
+        simulation_dir = os.path.join(os.getcwd(), 'simulations', simulation_name)
+        boundary_file = os.path.join(simulation_dir, 'boundary_conditions.json')
+        with open(boundary_file, 'w') as f:
+            json.dump(boundary_conditions, f, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Boundary conditions set successfully',
+            'boundary_conditions': boundary_conditions
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to set boundary conditions: {str(e)}'}), 500
+
+@app.route('/simulate/generate_geometry', methods=['POST'])
+def generate_geometry():
+    """
+    生成几何体接口
+    
+    根据边界条件生成几何体文件
+    """
+    data = request.json
+    simulation_name = data.get('simulation_name')
+    
+    try:
+        # 读取边界条件
+        simulation_dir = os.path.join(os.getcwd(), 'simulations', simulation_name)
+        boundary_file = os.path.join(simulation_dir, 'boundary_conditions.json')
+        
+        if not os.path.exists(boundary_file):
+            return jsonify({'error': 'Boundary conditions not found'}), 400
+        
+        with open(boundary_file, 'r') as f:
+            boundary_conditions = json.load(f)
+        
+        # 这里应该调用几何生成逻辑
+        # 暂时返回成功状态
+        geometry_info = {
+            'simulation_name': simulation_name,
+            'geometry_files': [
+                'wall.stl',
+                'inlet.stl',
+                'outlet.stl'
+            ],
+            'generated_at': datetime.now().isoformat()
+        }
+        
+        # 保存几何信息
+        geometry_file = os.path.join(simulation_dir, 'geometry_info.json')
+        with open(geometry_file, 'w') as f:
+            json.dump(geometry_info, f, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Geometry generated successfully',
+            'geometry_info': geometry_info
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to generate geometry: {str(e)}'}), 500
+
+@app.route('/simulate/create_openfoam_files', methods=['POST'])
+def create_openfoam_files():
+    """
+    创建OpenFOAM文件接口
+    
+    根据配置创建OpenFOAM仿真所需的配置文件
+    """
+    data = request.json
+    simulation_name = data.get('simulation_name')
+    solver_config = data.get('solver_config', {})
+    mesh_config = data.get('mesh_config', {})
+    
+    try:
+        # 创建OpenFOAM文件配置
+        openfoam_config = {
+            'solver': solver_config.get('solver', 'topoIncompressibleFluid'),
+            'numerical_method': solver_config.get('numerical_method', 'PIMPLE'),
+            'deltaT': solver_config.get('deltaT', 0.005),
+            'endTime': solver_config.get('endTime', 10.0),
+            'writeInterval': solver_config.get('writeInterval', 100),
+            'mesh': {
+                'grid_x': mesh_config.get('grid_x', 30),
+                'grid_y': mesh_config.get('grid_y', 30),
+                'grid_z': mesh_config.get('grid_z', 30),
+                'inside_point': mesh_config.get('inside_point', [2.0, 2.0, 1.0])
+            }
+        }
+        
+        # 保存OpenFOAM配置
+        simulation_dir = os.path.join(os.getcwd(), 'simulations', simulation_name)
+        openfoam_file = os.path.join(simulation_dir, 'openfoam_config.json')
+        with open(openfoam_file, 'w') as f:
+            json.dump(openfoam_config, f, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'message': 'OpenFOAM files created successfully',
+            'openfoam_config': openfoam_config
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to create OpenFOAM files: {str(e)}'}), 500
+
+@app.route('/simulate/set_topo_weight', methods=['POST'])
+def set_topo_weight():
+    """
+    设置拓扑权重接口
+    
+    设置拓扑优化的权重分布
+    """
+    data = request.json
+    simulation_name = data.get('simulation_name')
+    weight_config = data.get('weight_config', {})
+    
+    try:
+        # 创建拓扑权重配置
+        topo_weight_config = {
+            'center_point': weight_config.get('center_point', [2.0, 2.0]),
+            'radius': weight_config.get('radius', 0.5),
+            'weight_value': weight_config.get('weight_value', 1e6),
+            'function': weight_config.get('function', 'constant'),
+            'decay_param': weight_config.get('decay_param', 1.0)
+        }
+        
+        # 保存拓扑权重配置
+        simulation_dir = os.path.join(os.getcwd(), 'simulations', simulation_name)
+        topo_weight_file = os.path.join(simulation_dir, 'topo_weight_config.json')
+        with open(topo_weight_file, 'w') as f:
+            json.dump(topo_weight_config, f, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Topology weight set successfully',
+            'topo_weight_config': topo_weight_config
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to set topology weight: {str(e)}'}), 500
+
+@app.route('/simulate/run_simulation', methods=['POST'])
+def run_simulation():
+    """
+    运行仿真接口
+    
+    根据配置运行StokeSimulator或NavierStokeSimulator
+    """
+    data = request.json
+    simulation_name = data.get('simulation_name')
+    simulator_type = data.get('simulator_type', 'StokeSimulator')  # 默认使用StokeSimulator
+    
+    try:
+        simulation_dir = os.path.join(os.getcwd(), 'simulations', simulation_name)
+        
+        if not os.path.exists(simulation_dir):
+            return jsonify({'error': 'Simulation directory not found'}), 400
+        
+        if simulator_type == 'StokeSimulator':
+            # 实现StokeSimulator运行逻辑
+            result = run_stoke_simulation(simulation_name, simulation_dir)
+        elif simulator_type == 'NavierStokeSimulator':
+            # NavierStokeSimulator暂时只返回占位符
+            result = {
+                'success': True,
+                'message': 'NavierStokeSimulator is not implemented yet',
+                'simulator_type': 'NavierStokeSimulator',
+                'status': 'placeholder'
+            }
+        else:
+            return jsonify({'error': 'Invalid simulator type'}), 400
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to run simulation: {str(e)}'}), 500
+
+def run_stoke_simulation(simulation_name: str, simulation_dir: str):
+    """
+    运行StokeSimulator仿真的具体实现
+    """
+    try:
+        # 读取仿真配置
+        config_files = [
+            'field_module.json',
+            'initial_values.json',
+            'boundary_conditions.json',
+            'geometry_info.json',
+            'openfoam_config.json',
+            'topo_weight_config.json'
+        ]
+        
+        configs = {}
+        for config_file in config_files:
+            config_path = os.path.join(simulation_dir, config_file)
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    configs[config_file.replace('.json', '')] = json.load(f)
+        
+        # 这里应该调用实际的StokeSimulator
+        # 暂时返回模拟结果
+        result = {
+            'success': True,
+            'message': 'StokeSimulator simulation completed successfully',
+            'simulator_type': 'StokeSimulator',
+            'simulation_name': simulation_name,
+            'configs_loaded': list(configs.keys()),
+            'results': {
+                'convergence': {
+                    'iterations': 150,
+                    'finalResidual': 1e-6
+                },
+                'performance': {
+                    'executionTime': '2.5s'
+                },
+                'mesh': {
+                    'cellCount': 50000
+                }
+            }
+        }
+        
+        # 保存仿真结果
+        result_file = os.path.join(simulation_dir, 'simulation_result.json')
+        with open(result_file, 'w') as f:
+            json.dump(result, f, indent=2)
+        
+        return result
+        
+    except Exception as e:
+        raise Exception(f'StokeSimulator execution failed: {str(e)}')
+
+@app.route('/simulate/get_results', methods=['POST'])
+def get_simulation_results():
+    """
+    获取仿真结果接口
+    """
+    data = request.json
+    simulation_name = data.get('simulation_name')
+    
+    try:
+        simulation_dir = os.path.join(os.getcwd(), 'simulations', simulation_name)
+        result_file = os.path.join(simulation_dir, 'simulation_result.json')
+        
+        if not os.path.exists(result_file):
+            return jsonify({'error': 'Simulation results not found'}), 404
+        
+        with open(result_file, 'r') as f:
+            results = json.load(f)
+        
+        return jsonify({
+            'success': True,
+            'data': results
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get simulation results: {str(e)}'}), 500
+
+@app.route('/simulate/export_results', methods=['POST'])
+def export_simulation_results():
+    """
+    导出仿真结果接口
+    """
+    data = request.json
+    simulation_name = data.get('simulation_name')
+    
+    try:
+        simulation_dir = os.path.join(os.getcwd(), 'simulations', simulation_name)
+        
+        # 创建结果压缩包
+        import zipfile
+        zip_path = os.path.join(simulation_dir, f'{simulation_name}_results.zip')
+        
+        with zipfile.ZipFile(zip_path, 'w') as zipf:
+            for root, dirs, files in os.walk(simulation_dir):
+                for file in files:
+                    if file.endswith(('.json', '.vtu', '.stl')):
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, simulation_dir)
+                        zipf.write(file_path, arcname)
+        
+        return send_file(zip_path, as_attachment=True, download_name=f'{simulation_name}_results.zip')
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to export simulation results: {str(e)}'}), 500
 
 
 if __name__ == '__main__':

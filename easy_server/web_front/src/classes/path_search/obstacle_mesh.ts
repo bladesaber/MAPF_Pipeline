@@ -69,7 +69,7 @@ export class ObstacleMesh extends MeshObj {
                 const dy = y - pipe.y;
                 const dz = z - pipe.z;
                 const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                return distance <= pipe.radius + 0.25;
+                return distance <= pipe.radius;
             });
         });
 

@@ -4,11 +4,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, inject, computed } from 'vue'
-import * as THREE from 'three'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { CenterRoot } from '../classes/center_root.ts'
-import { setMeshColor } from '../utils/visulize_utils.ts'
+import {
+  computed,
+  inject,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+} from 'vue';
+
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+import { CenterRoot } from '../classes/center_root.ts';
+
+// 不再修改材质颜色，采用外围wireframe高亮
 
 const container = ref<HTMLElement | null>(null)
 let camera: THREE.PerspectiveCamera
@@ -20,7 +29,7 @@ let clickEventX: number = 0
 let clickEventY: number = 0
 
 const emit = defineEmits([
-  'leftClick-select-object', 'rightClick-select-object'
+  'leftClick-select-object', 'rightClick-select-object', 'rightClick-control-point', 'check-highlight-status'
 ])
 const rootObj = inject<CenterRoot>('centerRoot', new CenterRoot(new THREE.Scene()))
 
@@ -90,60 +99,22 @@ const init = () => {
 
 // ---------------- handle selected mesh ----------------
 let selectedMesh: THREE.Mesh | null = null
-const originalColors = new Map<THREE.Mesh, number>()  // Store original colors
-
-const getOriginalColor = (mesh: THREE.Mesh): number => {
-  if (!originalColors.has(mesh)) {
-    // Store the original color if not already stored
-    if (mesh.material instanceof THREE.Material) {
-      const color = (mesh.material as THREE.MeshBasicMaterial).color.getHex()
-      originalColors.set(mesh, color)
-    }
-  }
-  return originalColors.get(mesh) || 0xff00ff
-}
-
-const resetMeshColor = (mesh: THREE.Mesh) => {
-  if (mesh.material instanceof THREE.Material) {
-    const originalColor = getOriginalColor(mesh)
-    setMeshColor(mesh, originalColor)
-  }
-}
-
-const highlightMesh = (mesh: THREE.Mesh) => {
-  if (mesh.material instanceof THREE.Material) {
-    // Store original color before changing it
-    getOriginalColor(mesh)
-    setMeshColor(mesh, 0xffffff)  // Highlight color white
-  }
-}
+// 不再修改材质颜色，采用外围wireframe高亮
 
 const handleMeshSelection = (mesh: THREE.Mesh, eventType: 'left' | 'right') => {
-  // Store original color of new mesh before any changes
-  getOriginalColor(mesh)
-
-  // Reset previous selection and its edges
-  if (selectedMesh) {
-    resetMeshColor(selectedMesh)
-    // Find and reset the edge mesh if it exists
-    const edgeMesh = rootObj.get_scene().children.find(
-      child => child instanceof THREE.Mesh && 
-      child.name === `${selectedMesh?.name}_edges`
-    ) as THREE.Mesh | undefined
-    if (edgeMesh) {
-      resetMeshColor(edgeMesh)
-    }
-  }
-
-  // Set new selection
+  // 仅记录被选中的mesh，不改变其材质颜色
   selectedMesh = mesh
-  highlightMesh(selectedMesh)
 
   // Emit appropriate event
   if (eventType === 'left') {
     emit('leftClick-select-object', selectedMesh.name)
   } else {
-    emit('rightClick-select-object', selectedMesh.name, clickEventX, clickEventY)
+    // 判断是否为控制点
+    if (selectedMesh.userData && selectedMesh.userData.type === 'ControlPoint') {
+      emit('rightClick-control-point', selectedMesh.userData, clickEventX, clickEventY)
+    } else {
+      emit('rightClick-select-object', selectedMesh.name, clickEventX, clickEventY)
+    }
   }
 }
 
@@ -163,18 +134,25 @@ const onMouseLeftClick = (event: MouseEvent) => {
 
   if (intersects.length > 0) {
     // Skip the first intersection (outer box) and find the first valid mesh
-    const mesh = intersects.slice(1).find(obj => 
+    const mesh = intersects.find(obj => 
       obj.object instanceof THREE.Mesh && 
       !(obj.object.parent instanceof THREE.GridHelper) &&
       !(obj.object.parent instanceof THREE.AxesHelper) &&
       !obj.object.name.includes('_discretize') &&  // Skip discretize meshes
       // Allow selection of grid edges but not the main grid mesh
-      (obj.object.name.includes('_edges') || !obj.object.name.includes('grid'))
+      (obj.object.name.includes('_edges') || !obj.object.name.includes('grid')) &&
+      (obj.object.visible === true)
     )
 
     if (mesh) {
       handleMeshSelection(mesh.object as THREE.Mesh, 'left')
+    } else {
+      // 点击其它对象但不是有效mesh，通知清除
+      emit('leftClick-select-object', '')
     }
+  } else {
+    // 点击空白处，通知清除
+    emit('leftClick-select-object', '')
   }
 }
 
@@ -195,8 +173,20 @@ const onMouseRightClick = (event: MouseEvent) => {
   const intersects = raycaster.intersectObjects(rootObj.get_scene().children, true)
 
   if (intersects.length > 0) {
+    // 优先找控制点
+    const mesh = intersects.find(obj =>
+      obj.object.userData && obj.object.userData.type === 'ControlPoint'
+    );
+    if (mesh) {
+      clickEventX = event.clientX;
+      clickEventY = event.clientY;
+      handleMeshSelection(mesh.object as THREE.Mesh, 'right');
+      document.addEventListener('mouseup', onRightMouseUp);
+      return;
+    }
+    // 否则按原有逻辑找普通mesh
     // Skip the first intersection (outer box) and find the first valid mesh
-    const mesh = intersects.slice(1).find(obj => 
+    const fallback = intersects.slice(1).find(obj => 
       obj.object instanceof THREE.Mesh && 
       !(obj.object.parent instanceof THREE.GridHelper) &&
       !(obj.object.parent instanceof THREE.AxesHelper) &&
@@ -204,10 +194,10 @@ const onMouseRightClick = (event: MouseEvent) => {
       // Allow selection of grid edges but not the main grid mesh
       (obj.object.name.includes('_edges') || !obj.object.name.includes('grid'))
     )
-    if (mesh) {
+    if (fallback) {
       clickEventX = event.clientX
       clickEventY = event.clientY
-      handleMeshSelection(mesh.object as THREE.Mesh, 'right')
+      handleMeshSelection(fallback.object as THREE.Mesh, 'right')
       document.addEventListener('mouseup', onRightMouseUp)
     }
   }
@@ -228,6 +218,8 @@ const onContextMenu = (event: MouseEvent) => {
 const animate = () => {
   requestAnimationFrame(animate)
   controls.update()
+  // 触发高亮mesh状态检查
+  emit('check-highlight-status')
   renderer.render(rootObj.get_scene(), camera)
 }
 

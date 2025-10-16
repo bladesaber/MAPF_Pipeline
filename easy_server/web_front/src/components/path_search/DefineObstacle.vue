@@ -575,7 +575,7 @@ watch(() => props.label_dict, (newDict) => {
 .right-sidebar {
   position: fixed;
   right: 0;
-  top: 116px; /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
+  top: 124px; /* 36px (card-layout) + 36px (menu-bar) + 60px (menu-bar) */
   /* bottom: 150px; */
   width: 450px;
   background: #fff;
@@ -606,7 +606,7 @@ watch(() => props.label_dict, (newDict) => {
 }
 
 .close-button:hover {
-  color: #409eff;
+  color: #6366f1;
 }
 
 .right-sidebar-content {

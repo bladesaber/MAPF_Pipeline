@@ -119,7 +119,7 @@ watch(() => props.grid, (newGrid) => {
 .right-sidebar {
   position: fixed;
   right: 0;
-  top: 116px;
+  top: 124px;
   width: 450px;
   background: #fff;
   border-left: 1px solid #dcdfe6;
@@ -149,7 +149,7 @@ watch(() => props.grid, (newGrid) => {
 }
 
 .close-button:hover {
-  color: #409eff;
+  color: #6366f1;
 }
 
 .right-sidebar-content {

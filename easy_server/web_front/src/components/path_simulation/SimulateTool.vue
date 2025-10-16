@@ -12,6 +12,7 @@
           </el-dropdown-menu>
         </template>
       </el-dropdown>
+      
     </el-menu>
 
     <DefineSimulationTask v-model="defineSimulationTaskVisible" :label_dict="label_dict"
@@ -19,6 +20,14 @@
 
     <DefineBoundary v-model="defineBoundaryVisible" :mode="defineBoundaryMode" :boundary_list="boundary_list"
       :label_dict="label_dict" @generate="handleBoundaryGenerate" />
+
+    <!-- 新增：拓扑权重配置组件 -->
+    <TopoWeightConfig v-model="topoWeightConfigVisible" :label_dict="label_dict" 
+      :simulation_data="currentSimulationData" @generate="handleTopoWeightConfigGenerate" />
+
+    <!-- 新增：仿真结果可视化组件 -->
+    <!-- <SimulationResults v-model="simulationResultsVisible" :simulation_name="currentSimulationName" 
+      :results_data="simulationResults" @export="handleExportResults" /> -->
 
     <div v-show="groupCellContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
       <el-menu>
@@ -29,7 +38,24 @@
 
     <div v-show="simulateTaskContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
       <el-menu>
+        <el-menu-item @click="handleTreeContextMenu('SimulateTask/CreateFieldModule')">Create Field Module</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SimulateTask/ComputeInitialValue')">Compute Initial Value</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SimulateTask/SetBoundaryConditions')">Set Boundary Conditions</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SimulateTask/GenerateGeometry')">Generate Geometry</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SimulateTask/CreateOpenFoamFiles')">Create OpenFOAM Files</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SimulateTask/SetTopoWeight')">Set Topology Weight</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('SimulateTask/RunSimulation')">Run Simulation</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('SimulateTask/ViewResults')">View Results</el-menu-item>
+      </el-menu>
+    </div>
+
+    <!-- 新增：Simulate节点右键菜单 -->
+    <div v-show="simulateContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
+      <el-menu>
+        <el-menu-item @click="handleTreeContextMenu('Simulate/CreateSimulationTask')">Create Simulation Task</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('Simulate/ViewAllTasks')">View All Tasks</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('Simulate/ExportResults')">Export All Results</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('Simulate/SimulationSettings')">Simulation Settings</el-menu-item>
       </el-menu>
     </div>
 
@@ -80,8 +106,6 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowDown } from '@element-plus/icons-vue';
-
 import {
   computed,
   defineEmits,
@@ -92,26 +116,34 @@ import {
   reactive,
   ref,
 } from 'vue';
+
+import { ElMessage } from 'element-plus';
 import * as THREE from 'three';
 
 import { CenterRoot } from '@/classes/center_root.ts';
-import DefineSimulationTask from './DefineSimulationTask.vue';
-import { ElMessage } from 'element-plus';
-import { SimulateTask } from '@/classes/path_simulate/simulate_task';
-import { SimulateRunConfig } from '@/classes/path_simulate/simulate_task';
-import { SimulateSolverConfig } from '@/classes/path_simulate/simulate_task';
-import { ShearStressTransportTurbulenceModel, SpalartAllmarasTurbulenceModel, TurbulenceModel } from '@/classes/path_simulate/simulate_task';
-import { FreeStreamConditions } from '@/classes/path_simulate/simulate_task';
+import {
+  FreeStreamConditions,
+  ShearStressTransportTurbulenceModel,
+  SimulateIsothermalWallCfg,
+  SimulateMassflowInletCfg,
+  SimulateMassflowOutletCfg,
+  SimulatePressureInletCfg,
+  SimulatePressureOutletCfg,
+  SimulateRunConfig,
+  SimulateSolverConfig,
+  SimulateTask,
+  SimulateTotalConditionsInletCfg,
+  SimulateVelocityInletCfg,
+  SimulateVelocityOutletCfg,
+  SpalartAllmarasTurbulenceModel,
+  TurbulenceModel,
+} from '@/classes/path_simulate/simulate_task';
 import config from '@/config';
+import { ArrowDown } from '@element-plus/icons-vue';
 
 import DefineBoundary from './DefineBoundary.vue';
-
-import {
-  SimulateTotalConditionsInletCfg, SimulateMassflowInletCfg,
-  SimulatePressureInletCfg, SimulateVelocityInletCfg,
-  SimulateMassflowOutletCfg, SimulatePressureOutletCfg, SimulateVelocityOutletCfg,
-  SimulateIsothermalWallCfg,
-} from '@/classes/path_simulate/simulate_task';
+import DefineSimulationTask from './DefineSimulationTask.vue';
+import TopoWeightConfig from './TopoWeightConfig.vue';
 
 const emit = defineEmits(['updateTree', 'highlightTreeNode', 'updateLog'])
 
@@ -136,10 +168,18 @@ const inletsContextMenuVisible = ref(false)
 const outletsContextMenuVisible = ref(false)
 const wallsContextMenuVisible = ref(false)
 const simulateTaskContextMenuVisible = ref(false)
+const simulateContextMenuVisible = ref(false)
 const defineSimulationTaskVisible = ref(false)
 const defineBoundaryVisible = ref(false)
 const defineBoundaryMode = ref<'Inlet' | 'Outlet' | 'Wall'>('Inlet')
 const boundary_list = ref<string[]>([])
+
+// ------ 新增：拓扑权重配置和结果相关 ------
+const topoWeightConfigVisible = ref(false)
+const simulationResultsVisible = ref(false)
+const currentSimulationData = ref<any>(null)
+const currentSimulationName = ref('')
+const simulationResults = ref<any>(null)
 
 // ------ progress dialog ------
 const progressDialogVisible = ref(false)
@@ -162,15 +202,21 @@ const hideContextMenu = () => {
   outletsContextMenuVisible.value = false
   wallsContextMenuVisible.value = false
   simulateTaskContextMenuVisible.value = false
+  simulateContextMenuVisible.value = false
 }
 
 const hideFragmentMenu = () => {
   defineSimulationTaskVisible.value = false
   defineBoundaryVisible.value = false
+  topoWeightConfigVisible.value = false
+  simulationResultsVisible.value = false
 }
 
 const showContextMenu = (data: any) => {
   console.log('showContextMenu', data)
+  console.log('data.data.style:', data.data?.style)
+  console.log('data.data.label:', data.data?.label)
+  console.log('data.data:', data.data)
 
   hideContextMenu()
 
@@ -201,6 +247,18 @@ const showContextMenu = (data: any) => {
   label_dict.value = newLabelDict
 
   const style = label_dict.value.get('style')
+  console.log('Detected style:', style)
+  console.log('Available context menus:', {
+    groupCell: groupCellContextMenuVisible.value,
+    network: networkContextMenuVisible.value,
+    boundary: boundaryContextMenuVisible.value,
+    simulateTask: simulateTaskContextMenuVisible.value,
+    simulate: simulateContextMenuVisible.value,
+    inlets: inletsContextMenuVisible.value,
+    outlets: outletsContextMenuVisible.value,
+    walls: wallsContextMenuVisible.value
+  })
+  
   if (style === 'GroupCell') {
     groupCellContextMenuVisible.value = true
   }
@@ -213,6 +271,9 @@ const showContextMenu = (data: any) => {
   else if (style === 'SimulateTask') {
     simulateTaskContextMenuVisible.value = true
   }
+  else if (style === 'Simulate') {
+    simulateContextMenuVisible.value = true
+  }
   else if (style === 'Inlets') {
     inletsContextMenuVisible.value = true
   }
@@ -221,6 +282,15 @@ const showContextMenu = (data: any) => {
   }
   else if (style === 'Walls') {
     wallsContextMenuVisible.value = true
+  }
+  else {
+    console.log('Unknown style:', style, 'No context menu will be shown')
+  }
+  
+  // 强制显示Simulate菜单用于测试
+  if (data.data?.label === 'Simulate' || data.data?.label === '仿真') {
+    console.log('Force showing Simulate menu for testing')
+    simulateContextMenuVisible.value = true
   }
 
 
@@ -301,8 +371,49 @@ const handleTreeContextMenu = (mode: string) => {
   } else if (mode === 'SimulateBoundary/show_boundary_mesh') {
     const simulate_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.simulate_task_dict.get(label_dict.value.get('SimulateTask') as string)
     simulate_task!.network_mesh!.show_boundary_mesh(label_dict.value.get('SimulateBoundary') as string)
+  } else if (mode === 'SimulateTask/CreateFieldModule') {
+    // 步骤1: 创建场模块
+    createFieldModule(label_dict.value.get('SimulateTask') as string)
+  } else if (mode === 'SimulateTask/ComputeInitialValue') {
+    // 步骤2: 计算湍流初始值
+    computeInitialValue(label_dict.value.get('SimulateTask') as string)
+  } else if (mode === 'SimulateTask/SetBoundaryConditions') {
+    // 步骤3: 设置边界条件
+    setBoundaryConditions(label_dict.value.get('SimulateTask') as string)
+  } else if (mode === 'SimulateTask/GenerateGeometry') {
+    // 步骤4: 生成几何体
+    generateGeometry(label_dict.value.get('SimulateTask') as string)
+  } else if (mode === 'SimulateTask/CreateOpenFoamFiles') {
+    // 步骤5: 创建OpenFOAM文件
+    createOpenFoamFiles(label_dict.value.get('SimulateTask') as string)
+  } else if (mode === 'SimulateTask/SetTopoWeight') {
+    // 步骤6: 设置拓扑权重
+    currentSimulationData.value = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.simulate_task_dict.get(label_dict.value.get('SimulateTask') as string)?.export_simulation_json()
+    currentSimulationName.value = label_dict.value.get('SimulateTask') as string
+    topoWeightConfigVisible.value = true
   } else if (mode === 'SimulateTask/RunSimulation') {
-    run_simulation(label_dict.value.get('SimulationName') as string)
+    // 运行仿真
+    run_simulation(label_dict.value.get('SimulateTask') as string)
+  } else if (mode === 'SimulateTask/ViewResults') {
+    // 查看仿真结果
+    currentSimulationName.value = label_dict.value.get('SimulateTask') as string
+    loadSimulationResults(currentSimulationName.value)
+    simulationResultsVisible.value = true
+  } else if (mode === 'Simulate/CreateSimulationTask') {
+    // 在Simulate节点下创建仿真任务
+    defineSimulationTaskVisible.value = true
+  } else if (mode === 'Simulate/ViewAllTasks') {
+    // 查看所有仿真任务
+    ElMessage.info('查看所有仿真任务功能')
+    // 这里可以实现查看所有任务的逻辑
+  } else if (mode === 'Simulate/ExportResults') {
+    // 导出所有仿真结果
+    ElMessage.info('导出所有仿真结果功能')
+    // 这里可以实现导出所有结果的逻辑
+  } else if (mode === 'Simulate/SimulationSettings') {
+    // 仿真设置
+    ElMessage.info('仿真设置功能')
+    // 这里可以实现仿真设置的逻辑
   } else if (mode === 'Inlets/add_inlet') {
     defineBoundaryMode.value = 'Inlet'
     const simulate_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.simulate_task_dict.get(label_dict.value.get('SimulateTask') as string)
@@ -380,6 +491,22 @@ const handleSimulationTaskGenerate = async (data: any) => {
     data.free_stream.viscosity_model,
     data.free_stream.thermodynamic_pressure,
   )
+
+  // 检查 simulation_json 是否存在
+  if (!data.simulation_json) {
+    ElMessage.error('Fine surface mesh is not generated. Please generate the fine surface mesh first.')
+    return
+  }
+
+  if (!data.simulation_json.vertices) {
+    ElMessage.error('Vertices data is missing. Please generate the fine surface mesh first.')
+    return
+  }
+
+  if (!data.simulation_json.cells) {
+    ElMessage.error('Cells data is missing. Please generate the fine surface mesh first.')
+    return
+  }
 
   if (!await upload_vertices(data.name, data.simulation_json.vertices)) {
     ElMessage.error('Failed to upload vertices')
@@ -713,6 +840,452 @@ const handleBoundaryGenerate = (data: any) => {
   emit('updateTree')
 }
 
+// ------ 新增：OpenFOAM配置处理 ------
+const handleOpenFoamConfigGenerate = async (configData: any) => {
+  try {
+    progressDialogVisible.value = true
+    progressPercentage.value = 0
+    progressLog.value = '配置OpenFOAM仿真参数...'
+
+    const url = `${config.BASE_URL}/simulate/configure_openfoam`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        simulation_name: currentSimulationName.value,
+        openfoam_config: configData
+      })
+    })
+
+    if (!response.ok) {
+      ElMessage.error('配置OpenFOAM失败')
+      return
+    }
+
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('OpenFOAM配置成功')
+      topoWeightConfigVisible.value = false
+    } else {
+      ElMessage.error(result.error || '配置失败')
+    }
+  } catch (error) {
+    ElMessage.error('配置OpenFOAM时发生错误')
+    console.error(error)
+  } finally {
+    progressDialogVisible.value = false
+  }
+}
+
+// ------ 新增：加载仿真结果 ------
+const loadSimulationResults = async (simulation_name: string) => {
+  try {
+    progressDialogVisible.value = true
+    progressPercentage.value = 0
+    progressLog.value = '加载仿真结果...'
+
+    const url = `${config.BASE_URL}/simulate/get_results`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        simulation_name: simulation_name
+      })
+    })
+
+    if (!response.ok) {
+      ElMessage.error('加载仿真结果失败')
+      return
+    }
+
+    const result = await response.json()
+    if (result.success) {
+      simulationResults.value = result.data
+      ElMessage.success('仿真结果加载成功')
+    } else {
+      ElMessage.error(result.error || '加载失败')
+    }
+  } catch (error) {
+    ElMessage.error('加载仿真结果时发生错误')
+    console.error(error)
+  } finally {
+    progressDialogVisible.value = false
+  }
+}
+
+// ------ 新增：导出仿真结果 ------
+const exportSimulationResults = async (simulation_name: string) => {
+  try {
+    progressDialogVisible.value = true
+    progressPercentage.value = 0
+    progressLog.value = '导出仿真结果...'
+
+    const url = `${config.BASE_URL}/simulate/export_results`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        simulation_name: simulation_name
+      })
+    })
+
+    if (!response.ok) {
+      ElMessage.error('导出仿真结果失败')
+      return
+    }
+
+    // 处理文件下载
+    const blob = await response.blob()
+    const downloadUrl = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = downloadUrl
+    link.download = `${simulation_name}_results.zip`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(downloadUrl)
+
+    ElMessage.success('仿真结果导出成功')
+  } catch (error) {
+    ElMessage.error('导出仿真结果时发生错误')
+    console.error(error)
+  } finally {
+    progressDialogVisible.value = false
+  }
+}
+
+// ------ 新增：处理结果导出 ------
+const handleExportResults = (exportData: any) => {
+  console.log('导出结果数据:', exportData)
+  // 实现具体的结果导出逻辑
+}
+
+
+// ------ 新增：拓扑权重配置处理 ------
+const handleTopoWeightConfigGenerate = async (configData: any) => {
+  try {
+    progressDialogVisible.value = true
+    progressPercentage.value = 0
+    progressLog.value = '应用拓扑权重配置...'
+
+    const url = `${config.BASE_URL}/simulate/apply_topo_weight`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        simulation_name: currentSimulationName.value,
+        weight_config: configData
+      })
+    })
+
+    if (!response.ok) {
+      ElMessage.error('应用拓扑权重配置失败')
+      return
+    }
+
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('拓扑权重配置应用成功')
+      topoWeightConfigVisible.value = false
+    } else {
+      ElMessage.error(result.error || '配置失败')
+    }
+  } catch (error) {
+    ElMessage.error('应用拓扑权重配置时发生错误')
+    console.error(error)
+  } finally {
+    progressDialogVisible.value = false
+  }
+}
+
+// ------ 拓扑优化仿真步骤实现 ------
+
+// 步骤1: 创建场模块
+const createFieldModule = async (simulation_name: string) => {
+  try {
+    progressDialogVisible.value = true
+    progressPercentage.value = 0
+    progressLog.value = '创建场模块...'
+
+    const url = `${config.BASE_URL}/simulate/create_field_module`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        simulation_name: simulation_name,
+        geometry_dir: `constant/geometry`,
+        mesh_max_size: 0.1,
+        mesh_min_size: 0.05
+      })
+    })
+
+    if (!response.ok) {
+      ElMessage.error('创建场模块失败')
+      return
+    }
+
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('场模块创建成功')
+      progressPercentage.value = 100
+      progressLog.value = '场模块创建完成'
+    } else {
+      ElMessage.error(result.error || '创建失败')
+    }
+  } catch (error) {
+    ElMessage.error('创建场模块时发生错误')
+    console.error(error)
+  } finally {
+    progressDialogVisible.value = false
+  }
+}
+
+// 步骤2: 计算湍流初始值
+const computeInitialValue = async (simulation_name: string) => {
+  try {
+    progressDialogVisible.value = true
+    progressPercentage.value = 0
+    progressLog.value = '计算湍流初始值...'
+
+    const url = `${config.BASE_URL}/simulate/compute_initial_value`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        simulation_name: simulation_name,
+        turbulence_model: 'kEpsilon',
+        velocity_ref: 2.0,
+        length_ref: 1.0,
+        turbulence_intensity: 0.05
+      })
+    })
+
+    if (!response.ok) {
+      ElMessage.error('计算湍流初始值失败')
+      return
+    }
+
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('湍流初始值计算成功')
+      progressPercentage.value = 100
+      progressLog.value = '湍流初始值计算完成'
+    } else {
+      ElMessage.error(result.error || '计算失败')
+    }
+  } catch (error) {
+    ElMessage.error('计算湍流初始值时发生错误')
+    console.error(error)
+  } finally {
+    progressDialogVisible.value = false
+  }
+}
+
+// 步骤3: 设置边界条件
+const setBoundaryConditions = async (simulation_name: string) => {
+  try {
+    progressDialogVisible.value = true
+    progressPercentage.value = 0
+    progressLog.value = '设置边界条件...'
+
+    const url = `${config.BASE_URL}/simulate/set_boundary_conditions`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        simulation_name: simulation_name,
+        wall_config: {
+          x_min: 0, x_max: 4, y_min: 0, y_max: 4, z_min: 0, z_max: 2
+        },
+        inlet_config: {
+          name: 'inlet',
+          norm_vector: [1.0, 0.0, 0.0],
+          center_point: [0.0, 2.0, 1.0],
+          radius: 0.5,
+          length: 0.25,
+          velocity: [2.0, 0.0, 0.0]
+        },
+        outlet_config: {
+          name: 'outlet',
+          norm_vector: [1.0, 0.0, 0.0],
+          center_point: [4.0, 2.0, 1.0],
+          radius: 0.5,
+          length: 0.25,
+          pressure: 0.0
+        }
+      })
+    })
+
+    if (!response.ok) {
+      ElMessage.error('设置边界条件失败')
+      return
+    }
+
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('边界条件设置成功')
+      progressPercentage.value = 100
+      progressLog.value = '边界条件设置完成'
+    } else {
+      ElMessage.error(result.error || '设置失败')
+    }
+  } catch (error) {
+    ElMessage.error('设置边界条件时发生错误')
+    console.error(error)
+  } finally {
+    progressDialogVisible.value = false
+  }
+}
+
+// 步骤4: 生成几何体
+const generateGeometry = async (simulation_name: string) => {
+  try {
+    progressDialogVisible.value = true
+    progressPercentage.value = 0
+    progressLog.value = '生成几何体...'
+
+    const url = `${config.BASE_URL}/simulate/generate_geometry`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        simulation_name: simulation_name
+      })
+    })
+
+    if (!response.ok) {
+      ElMessage.error('生成几何体失败')
+      return
+    }
+
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('几何体生成成功')
+      progressPercentage.value = 100
+      progressLog.value = '几何体生成完成'
+    } else {
+      ElMessage.error(result.error || '生成失败')
+    }
+  } catch (error) {
+    ElMessage.error('生成几何体时发生错误')
+    console.error(error)
+  } finally {
+    progressDialogVisible.value = false
+  }
+}
+
+// 步骤5: 创建OpenFOAM文件
+const createOpenFoamFiles = async (simulation_name: string) => {
+  try {
+    progressDialogVisible.value = true
+    progressPercentage.value = 0
+    progressLog.value = '创建OpenFOAM文件...'
+
+    const url = `${config.BASE_URL}/simulate/create_openfoam_files`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        simulation_name: simulation_name,
+        solver_config: {
+          solver: 'topoIncompressibleFluid',
+          numerical_method: 'PIMPLE',
+          deltaT: 0.005,
+          endTime: 10.0,
+          writeInterval: 100
+        },
+        mesh_config: {
+          grid_x: 30,
+          grid_y: 30,
+          grid_z: 30,
+          inside_point: [2.0, 2.0, 1.0]
+        }
+      })
+    })
+
+    if (!response.ok) {
+      ElMessage.error('创建OpenFOAM文件失败')
+      return
+    }
+
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('OpenFOAM文件创建成功')
+      progressPercentage.value = 100
+      progressLog.value = 'OpenFOAM文件创建完成'
+    } else {
+      ElMessage.error(result.error || '创建失败')
+    }
+  } catch (error) {
+    ElMessage.error('创建OpenFOAM文件时发生错误')
+    console.error(error)
+  } finally {
+    progressDialogVisible.value = false
+  }
+}
+
+// 步骤6: 设置拓扑权重
+const setTopoWeight = async (simulation_name: string) => {
+  try {
+    progressDialogVisible.value = true
+    progressPercentage.value = 0
+    progressLog.value = '设置拓扑权重...'
+
+    const url = `${config.BASE_URL}/simulate/set_topo_weight`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        simulation_name: simulation_name,
+        weight_config: {
+          center_point: [2.0, 2.0],
+          radius: 0.5,
+          weight_value: 1e6
+        }
+      })
+    })
+
+    if (!response.ok) {
+      ElMessage.error('设置拓扑权重失败')
+      return
+    }
+
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('拓扑权重设置成功')
+      progressPercentage.value = 100
+      progressLog.value = '拓扑权重设置完成'
+    } else {
+      ElMessage.error(result.error || '设置失败')
+    }
+  } catch (error) {
+    ElMessage.error('设置拓扑权重时发生错误')
+    console.error(error)
+  } finally {
+    progressDialogVisible.value = false
+  }
+}
+
 const run_simulation = async (simulation_name: string) => {
   const simulate_task = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!.simulate_task_dict.get(label_dict.value.get('SimulateTask') as string)
   const simulation_json = simulate_task!.export_simulation_json()
@@ -748,32 +1321,88 @@ onUnmounted(() => {
 }
 
 .menu-bar {
-  border-bottom: 1px solid #dcdfe6;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+.el-dropdown-link {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 24px;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: inherit;
+  border-radius: 8px;
+  margin: 0 4px;
+  letter-spacing: 0.025em;
+}
+
+.el-dropdown-link:hover {
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+  transform: translateY(-1px);
+}
+
+.el-dropdown-link:hover .el-icon--right {
+  color: #6366f1;
+  transform: translateY(-1px);
+}
+
+.el-dropdown-link + .el-dropdown-link {
+  margin-left: 8px;
+}
+
+.menu-bar::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(226, 232, 240, 0.6) 50%, transparent 100%);
+  z-index: 1;
 }
 
 .context-menu {
   position: fixed;
-  background: white;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   z-index: 3000;
   max-height: 80vh;
   overflow-y: auto;
+  padding: 8px;
 }
 
 .context-menu :deep(.el-menu) {
   border-right: none;
+  background: transparent;
 }
 
 .context-menu :deep(.el-menu-item) {
-  height: 32px;
-  line-height: 32px;
+  height: 40px;
+  line-height: 40px;
   padding: 0 16px;
+  border-radius: 8px;
+  margin: 2px 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 500;
+  color: #475569;
+  font-size: 14px;
 }
 
 .context-menu :deep(.el-menu-item:hover) {
-  background-color: #f5f7fa;
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+  transform: translateX(4px);
 }
 
 /* Add styles for click outside handler */
