@@ -1,3 +1,4 @@
+import { ElMessage } from 'element-plus';
 import type { Scene } from 'three';
 import * as THREE from 'three';
 
@@ -139,7 +140,7 @@ export class FineSurfaceMesh extends MeshObj {
     );
     surface_mesh.name = this.name;
     this.mesh_dict[surface_mesh.name] = surface_mesh;
-    scene.add(surface_mesh);
+    super.add_mesh(scene);
   }
 }
 
@@ -153,7 +154,8 @@ export class SegmentCell extends MeshObj {
   group_idx: number;
   c_idxs: number[];
   parent_cell: GroupCell;
-  protected scene: Scene;
+  
+
 
   left_clamp: boolean = false;
   right_clamp: boolean = false;
@@ -214,7 +216,6 @@ export class SegmentCell extends MeshObj {
     this.group_idx = group_idx;
     this.c_idxs = c_idxs;
     this.parent_cell = parent_cell;
-    this.scene = scene;
     this.left_intercept_num = left_intercept_num;
     this.right_intercept_num = right_intercept_num;
     this.left_clamp = left_clamp;
@@ -248,6 +249,7 @@ export class SegmentCell extends MeshObj {
     const meshName = `${this.parent_cell.group_name}/${this.name}`;
     const color = this.color.length > 0 ? this.color : [0.5, 0.5, 0.5];
     
+    // TODO
     // 清理所有同名且userData.type==='smooth'的mesh
     scene.children
       .filter(obj => obj.name === meshName && obj.userData && obj.userData.type === 'smooth')
@@ -262,6 +264,9 @@ export class SegmentCell extends MeshObj {
       console.warn('SegmentCell.add_mesh 缺少 c_idxs 或 c_table,跳过渲染', this.name, this.c_idxs, this.parent_cell?.c_table);
       return;
     }
+
+
+
     const control_points: number[][] = []
     this.c_idxs.forEach(c_idx => {
       control_points.push([
@@ -310,14 +315,12 @@ export class SegmentCell extends MeshObj {
     this.line_mesh.visible = true;
     this.line_mesh.userData = { group_name: this.parent_cell.group_name, name: this.name, group_idx: this.group_idx, type: 'smooth' };
     this.mesh_dict[meshName] = this.line_mesh;
-    if (scene && !scene.children.includes(this.line_mesh)) {
-      scene.add(this.line_mesh);
-    }
 
     super.add_mesh(scene);
   }
 
   show_tube_mesh(scene: Scene) {
+    console.log('show_tube_mesh', this.name)
     if (!this.tube_mesh) {
       const direction_list: number[][] = []
       for (let i = 0; i < this.path_points.length; i++) {
@@ -369,8 +372,8 @@ export class SegmentCell extends MeshObj {
     }
   }
 
-  show_line_mesh() {
-    if (!this.line_mesh) this.add_mesh(this.scene);
+  show_line_mesh(scene: Scene) {
+    if (!this.line_mesh) this.add_mesh(scene);
     if (this.line_mesh) {
       this.line_mesh.visible = true;
     } else {
@@ -378,12 +381,12 @@ export class SegmentCell extends MeshObj {
     }
   }
 
-  hide_line_mesh() {
+  hide_line_mesh(scene: Scene) {
     // 循环移除所有同名mesh，彻底清理
     const meshName = `${this.parent_cell.group_name}/${this.name}`;
     let mesh;
-    while ((mesh = this.scene.getObjectByName(meshName))) {
-      this.scene.remove(mesh);
+    while ((mesh = scene.getObjectByName(meshName))) {
+      scene.remove(mesh);
       if ((mesh as THREE.Mesh).geometry) (mesh as THREE.Mesh).geometry.dispose();
       if ((mesh as THREE.Mesh).material && (mesh as THREE.Mesh).material instanceof THREE.Material) {
         ((mesh as THREE.Mesh).material as THREE.Material).dispose();
@@ -393,7 +396,7 @@ export class SegmentCell extends MeshObj {
   }
 
   update_mesh(scene: Scene) {
-    this.hide_line_mesh();
+    this.hide_line_mesh(scene);
     this.hide_tube_mesh();
     this.add_mesh(scene);
   }
@@ -718,9 +721,6 @@ export class ControlPointCell extends MeshObj {
 
   // 显示控制点
   show_control_point(): void {
-    if (this.reference_count > 0 && !this.control_point_mesh) {
-      this.create_control_point_mesh();
-    }
     if (this.control_point_mesh) {
       this.control_point_mesh.visible = true;
     }
@@ -920,8 +920,6 @@ export class ConnectorCell extends SegmentCell {
     }
   }
 
- 
-
   add_mesh(scene: Scene): void {
     const meshName = `${this.parent_cell.group_name}/${this.name}`;
     // 清理所有同名且userData.type==='smooth'的mesh
@@ -983,7 +981,7 @@ export class ConnectorCell extends SegmentCell {
     this.mesh_dict[meshName] = this.line_mesh;
     scene.add(this.line_mesh);
   }
-
+  
   remove_mesh(scene: Scene) {
     for (const key in this.mesh_dict) {
       scene.remove(this.mesh_dict[key]);
@@ -998,24 +996,35 @@ export class ConnectorCell extends SegmentCell {
   }
 
   update_mesh(scene: Scene) {
+    this.hide_line_mesh(scene);
     this.hide_tube_mesh();
-    this.remove_mesh(scene);
     this.add_mesh(scene);
   }
 
-  show_line_mesh() {
+  show_line_mesh(scene: Scene) {
+    if (!this.line_mesh) this.add_mesh(scene);
     if (this.line_mesh) {
       this.line_mesh.visible = true;
+    } else {
+      console.warn('[show_line_mesh] 无法显示 line_mesh', this.name);
     }
   }
 
-  hide_line_mesh() {
-    if (this.line_mesh) {
-      this.line_mesh.visible = false;
+  hide_line_mesh(scene: Scene) {
+    // 循环移除所有同名mesh，彻底清理
+    const meshName = `${this.parent_cell.group_name}/${this.name}`;
+    let mesh;
+    while ((mesh = scene.getObjectByName(meshName))) {
+      scene.remove(mesh);
+      if ((mesh as THREE.Mesh).geometry) (mesh as THREE.Mesh).geometry.dispose();
+      if ((mesh as THREE.Mesh).material && (mesh as THREE.Mesh).material instanceof THREE.Material) {
+        ((mesh as THREE.Mesh).material as THREE.Material).dispose();
+      }
     }
+    this.line_mesh = null;
   }
 
-  show_tube_mesh() {
+  show_tube_mesh(scene: Scene) {
     if (!this.tube_mesh && this.path_points && this.path_points.length > 1) {
       const direction_list: number[][] = []
       for (let i = 0; i < this.path_points.length; i++) {
@@ -1066,7 +1075,7 @@ export class ConnectorCell extends SegmentCell {
 
       this.tube_mesh = new CoarseTubeMesh(
         this.name + '_coarse',
-        this.path_points, this.radius_list, direction_list, this.color, this.scene
+        this.path_points, this.radius_list, direction_list, this.color, scene
       );
 
     } else if (this.tube_mesh) {
@@ -1079,6 +1088,7 @@ export class ConnectorCell extends SegmentCell {
       this.tube_mesh.hide_mesh();
     }
   }
+
 
   export_json(): any {
     return {
@@ -1172,9 +1182,6 @@ export class PathCell {
     this.cost_cfgs = [];
     this.element_cost_cfgs = [];
   }
-
-  path_points: number[][] = [];
-  radius_list: number[] = [];
 
   export_json(): any {
     return {
@@ -1299,33 +1306,6 @@ export class GroupCell {
         
       }
     }
-  }
-
-  // 调试方法：检查控制点的引用状态
-  debug_control_points(): void {
-    // console.log(`=== Debug Control Points for Group: ${this.group_name} ===`);
-    
-    // 检查段的控制点
-    for (const [segmentName, segment] of Object.entries(this.seg_dict)) {
-      console.log(`  ${segmentName}: c_idxs = [${segment.c_idxs.join(', ')}]`);
-    }
-    
-    // 检查连接器的控制点
-    console.log('Connectors:');
-    for (const [connectorName, connector] of Object.entries(this.connector_dict)) {
-      console.log(`  ${connectorName}: c_idxs = [${connector.c_idxs.join(', ')}]`);
-    }
-    
-    // 检查控制点的引用状态
-    console.log('Control Points:');
-    for (const [controlPointName, controlPoint] of Object.entries(this.control_point_dict)) {
-      const refCount = controlPoint.getReferenceCount();
-      const references = controlPoint.getReferences();
-      const isVisible = controlPoint.isVisible();
-      console.log(`  ${controlPointName}: refCount=${refCount}, visible=${isVisible}, references=[${references.join(', ')}]`);
-    }
-    
-    console.log('=== End Debug ===');
   }
 
   export_json(): any {
@@ -1485,6 +1465,12 @@ export class GroupCell {
     }
   }
 
+  show_surface_mesh(): void {
+    if (this.fine_surface_mesh) {
+      this.fine_surface_mesh.show_mesh();
+    }
+  }
+
   // 显示特定段或连接器的控制点
   show_control_points_for_cell(cellName: string): void {
     // 查找该段或连接器使用的所有控制点
@@ -1615,9 +1601,6 @@ export class GroupCell {
         });
       }
     }
-    
-    // 调试信息
-    this.debug_control_points();
   }
 
   // 只隐藏段的控制点
@@ -1692,6 +1675,43 @@ export class GroupCell {
         this.control_point_dict[key].remove_control_point();
         delete this.control_point_dict[key];
       }
+    }
+  }
+
+  export_simulation_json(): any {
+    if (!this.fine_surface_mesh) {
+      ElMessage.error('Fine surface mesh is not generated');
+      return;
+    }
+
+    const terminal_cfg: any[] = [];
+    Object.values(this.seg_dict).forEach((seg: SegmentCell) => {
+      if (seg.left_clamp) {
+        terminal_cfg.push({
+          name: seg.name + '/left',
+          type: 'CircleDisk',
+          x: seg.path_points[0][0],
+          y: seg.path_points[0][1],
+          z: seg.path_points[0][2],
+          vector: seg.left_vector
+        });
+      }
+      if (seg.right_clamp) {
+        terminal_cfg.push({
+          name: seg.name + '/right',
+          type: 'CircleDisk',
+          x: seg.path_points[seg.path_points.length - 1][0],
+          y: seg.path_points[seg.path_points.length - 1][1],
+          z: seg.path_points[seg.path_points.length - 1][2],
+          vector: seg.right_vector
+        });
+      }
+    });
+
+    return {
+      vertices: this.fine_surface_mesh.vertices,
+      cells: this.fine_surface_mesh.cells,
+      terminal_cfg: terminal_cfg,
     }
   }
 }

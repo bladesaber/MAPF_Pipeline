@@ -144,7 +144,7 @@ const handleSave = () => {
 .right-sidebar {
     position: fixed;
     right: 0;
-    top: 116px;
+    top: 124px;
     width: 450px;
     background: #fff;
     border-left: 1px solid #dcdfe6;
@@ -170,7 +170,7 @@ const handleSave = () => {
     padding: 4px;
 }
 .close-button:hover {
-    color: #409eff;
+    color: #6366f1;
 }
 .right-sidebar-content {
     position: relative;
@@ -181,15 +181,29 @@ const handleSave = () => {
     min-height: 0;
 }
 .section-header {
-    margin: 16px 0 8px 0;
-    padding-bottom: 8px;
-    border-bottom: 2px solid #409eff;
+    margin: 20px 0 12px 0;
+    padding-bottom: 12px;
+    border-bottom: 2px solid rgba(99, 102, 241, 0.2);
+    position: relative;
 }
+
+.section-header::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+    border-radius: 1px;
+}
+
 .section-header h3 {
     margin: 0;
-    color: #303133;
+    color: #1e293b;
     font-size: 16px;
     font-weight: 600;
+    letter-spacing: 0.025em;
 }
 .group-section {
     margin-bottom: 16px;

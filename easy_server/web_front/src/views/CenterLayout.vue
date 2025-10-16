@@ -94,8 +94,14 @@
         @highlightTreeNode="handleHighlightTreeNode"
       />
 
+      <SimulateTool v-if="activeCard === 'Simulate'" 
+        ref="simulateToolRef"
+        @updateTree="update_tree"
+        @updateLog="update_log"
+        @highlightTreeNode="handleHighlightTreeNode"
+      />
+
       <CADTool v-if="activeCard === 'CAD'" />
-      <SimulateTool v-if="activeCard === 'Simulate'" />
 
       <DebugTool
         v-if="activeCard === 'Debug'"
@@ -269,6 +275,7 @@ provide('main_message', "Main Window Running...");
 
 const pathSearchRef = ref()
 const pathSmoothRef = ref()
+const simulateToolRef = ref()
 const debugToolRef = ref()
 
 // ---------------- Card Layout ----------------
@@ -276,8 +283,8 @@ const cards = [
   { name: 'Main' },
   { name: 'Design' },
   { name: 'Smooth' },
-  { name: 'CAD' },
   { name: 'Simulate' },
+  { name: 'CAD' },
   { name: 'Debug' }
 ]
 
@@ -368,7 +375,11 @@ const handleRightTreeClick = (event: MouseEvent, data: any) => {
     } else if (activeCard.value === 'CAD') {
       console.log('cad')
     } else if (activeCard.value === 'Simulate') {
-      console.log('simulate')
+      simulateToolRef.value!.showContextMenu({
+        'x': event.clientX,
+        'y': event.clientY,
+        'data': data
+      })
     } else if (activeCard.value === 'Debug') {
       debugToolRef.value!.showContextMenu({
         'x': event.clientX,
@@ -1095,35 +1106,52 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
 <style>
 /* 全局样式，不使用 scoped */
 .el-dropdown-menu {
-  min-width: 120px !important;
+  min-width: 140px !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(226, 232, 240, 0.6) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12) !important;
+  padding: 8px !important;
 }
 
 .el-dropdown-menu__item {
-  height: 36px !important;
-  line-height: 36px !important;
+  height: 40px !important;
+  line-height: 40px !important;
   padding: 0 16px !important;
-  background-color: #f0f2f5 !important;
+  background-color: transparent !important;
+  border-radius: 8px !important;
+  margin: 2px 0 !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 500 !important;
+  color: #475569 !important;
+  font-size: 14px !important;
 }
 
 .el-dropdown-menu__item:hover {
-  background-color: #ecf5ff !important;
+  background: rgba(99, 102, 241, 0.08) !important;
+  color: #6366f1 !important;
+  transform: translateX(4px) !important;
 }
 
 .el-dropdown-menu__item.is-active {
-  background-color: #ecf5ff !important;
-  color: #409eff !important;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%) !important;
+  color: #6366f1 !important;
+  border: 1px solid rgba(99, 102, 241, 0.2) !important;
 }
 
 /* 箭头动画 */
 .el-icon--right {
-  transition: transform 0.3s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   font-size: 12px;
+  color: #94a3b8;
 }
 
 .el-icon--right.is-active {
   transform: rotate(180deg);
-  color: #409eff;
+  color: #6366f1;
 }
+
 </style>
 
 <style scoped>
@@ -1137,6 +1165,8 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
     top: 0;
     right: 0;
     bottom: 0;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
 }
 
 .main-content {
@@ -1146,6 +1176,7 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
   overflow: hidden;
   width: 100%;
   height: calc(100vh - 36px);
+  background: transparent;
 }
 
 .sidebar {
@@ -1159,39 +1190,46 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
   padding: 0;
   margin: 0;
   flex-shrink: 0;
-  background: #fff;
-  border-right: 1px solid #dcdfe6;
-  box-shadow: 1px 0 4px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
   z-index: 1;
 }
 
-/* 优化横向滚动条样式 */
+/* 现代化滚动条样式 */
 .sidebar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 .sidebar::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.2);
-  border-radius: 3px;
+  background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 100%);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
 }
 
 .sidebar::-webkit-scrollbar-track {
-  background-color: transparent;
+  background: transparent;
 }
 
 .resize-handle {
   position: absolute;
   top: 0;
-  right: -5px;
-  width: 10px;
+  right: -3px;
+  width: 6px;
   height: 100%;
   cursor: col-resize;
   background: transparent;
+  transition: all 0.2s ease;
 }
 
 .resize-handle:hover {
-  background: rgba(0, 0, 0, 0.1);
+  background: linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.1) 50%, transparent 100%);
 }
 
 .viewer-container {
@@ -1200,25 +1238,31 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
   flex-direction: column;
   min-width: 600px;
   overflow: hidden;
+  background: transparent;
 }
 
 .viewer {
   flex: 1;
   padding: 0;
   overflow: hidden;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
   position: relative;
   z-index: 0;
+  border-radius: 16px 0 0 0;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
 }
 
 .bottom-sidebar {
   position: relative;
-  background: #fff;
-  border-top: 1px solid #dcdfe6;
-  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(226, 232, 240, 0.6);
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.08);
   min-height: 100px;
   max-height: 400px;
   overflow: hidden;
+  border-radius: 0 0 16px 0;
 }
 
 .bottom-sidebar-content {
@@ -1231,7 +1275,8 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border-right: 1px solid #dcdfe6;
+  border-right: 1px solid rgba(226, 232, 240, 0.6);
+  background: rgba(248, 250, 252, 0.5);
 }
 
 .log-section {
@@ -1239,61 +1284,77 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
   flex-direction: column;
   flex: 2;
   min-width: 0;
-  padding: 8px 16px;
-  font-size: 12px;
-  line-height: 1.5;
+  padding: 12px 20px;
+  font-size: 13px;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-all;
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .info-header, .log-header {
-  padding: 8px 16px;
-  background: #f5f7fa;
-  border-bottom: 1px solid #dcdfe6;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.9) 100%);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-weight: bold;
-  color: #303133;
+  font-weight: 600;
+  color: #1e293b;
   position: relative;
+  font-size: 14px;
+  letter-spacing: 0.025em;
 }
 
 .info-content {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 16px;
-  font-size: 12px;
+  padding: 16px 20px;
+  font-size: 13px;
 }
 
 .info-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .info-row {
   display: flex;
-  gap: 8px;
-  padding: 4px 0;
-  border-bottom: 1px solid #ebeef5;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.4);
+  transition: all 0.2s ease;
+}
+
+.info-row:hover {
+  background: rgba(99, 102, 241, 0.02);
+  border-radius: 6px;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 .info-label {
-  font-weight: bold;
-  color: #606266;
-  min-width: 100px;
+  font-weight: 600;
+  color: #475569;
+  min-width: 120px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .info-value {
-  color: #303133;
+  color: #1e293b;
   word-break: break-all;
+  font-weight: 500;
 }
 
 .no-info {
-  color: #909399;
+  color: #94a3b8;
   text-align: center;
-  padding: 16px;
+  padding: 24px;
   font-style: italic;
+  font-size: 14px;
 }
 
 .resize-handle-horizontal {
@@ -1301,13 +1362,14 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
   top: 0;
   left: 0;
   right: 0;
-  height: 5px;
+  height: 6px;
   cursor: row-resize;
   background: transparent;
+  transition: all 0.2s ease;
 }
 
 .resize-handle-horizontal:hover {
-  background: rgba(0, 0, 0, 0.1);
+  background: linear-gradient(180deg, transparent 0%, rgba(99, 102, 241, 0.1) 50%, transparent 100%);
 }
 
 .log-content {
@@ -1317,10 +1379,18 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
 }
 
 .log-item {
-  margin-bottom: 4px;
-  color: #606266;
-  border-bottom: 1px solid #ebeef5;
-  padding-bottom: 4px;
+  margin-bottom: 6px;
+  color: #475569;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.3);
+  padding-bottom: 6px;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.log-item:hover {
+  background: rgba(99, 102, 241, 0.02);
+  color: #1e293b;
 }
 
 .log-item:last-child {
@@ -1330,61 +1400,74 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
 
 .card-layout {
   display: flex;
-  gap: 20px;
-  padding: 0 32px;
-  background: #fff;
-  border-bottom: 1.5px solid #e4e7ed;
-  height: 56px;
-  align-items: flex-end;
+  gap: 8px;
+  padding: 0 24px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+  height: 64px;
+  align-items: center;
   position: relative;
   z-index: 10;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
 }
 
 .menu-card {
-  min-width: 96px;
-  height: 55px;
+  min-width: 100px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-  color: #303133;
-  background: #f8fafb;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+  font-size: 14px;
+  color: #64748b;
+  background: rgba(248, 250, 252, 0.8);
+  border-radius: 12px;
   cursor: pointer;
-  transition: 
-    background 0.18s,
-    color 0.18s,
-    box-shadow 0.18s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
-  border: 1px solid transparent;
-  border-bottom: none;
-  margin-bottom: 0;
+  border: 1px solid rgba(226, 232, 240, 0.6);
   position: relative;
+  font-weight: 500;
+  letter-spacing: 0.025em;
 }
 
 .menu-card:hover {
-  background: #f0f6ff;
-  color: #409eff;
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+  border-color: rgba(99, 102, 241, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 25px rgba(99, 102, 241, 0.15);
 }
 
 .menu-card.active {
-  background: #fff;
-  color: #409eff;
-  border: 1px solid #d0e4ff;
-  border-bottom: 2.5px solid #409eff;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #ffffff;
+  border-color: #6366f1;
   font-weight: 600;
   z-index: 20;
-  box-shadow: 0 4px 12px rgba(64,158,255,0.08);
+  box-shadow: 0 8px 25px rgba(99, 102, 241, 0.25);
+  transform: translateY(-2px);
 }
 
-.menu-card:not(.active) {
-  border-bottom: 1.5px solid #e4e7ed;
+.menu-card.active::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: 14px;
+  z-index: -1;
+  opacity: 0.3;
+  filter: blur(8px);
 }
 
 .menu-bar {
-  border-bottom: 1px solid #dcdfe6;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
   position: relative;
   z-index: 1;
 }
@@ -1401,45 +1484,75 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
   cursor: pointer;
   display: flex;
   align-items: center;
-  height:44px;
-  padding: 0 20px;
-  color: #303133;
-  font-size: 15px;
-  transition: all 0.3s;
+  height: 48px;
+  padding: 0 24px;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   font-family: inherit;
+  border-radius: 8px;
+  margin: 0 4px;
+  letter-spacing: 0.025em;
 }
 
 .el-dropdown-link:hover {
-  background-color: #f5f7fa;
-  color: #409eff;
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+  transform: translateY(-1px);
 }
 
 .el-dropdown-link:hover .el-icon--right {
-  color: #409eff;
+  color: #6366f1;
+  transform: translateY(-1px);
 }
 
-/* Update tree styles */
+/* 现代化树形菜单样式 */
 :deep(.el-tree) {
   background: transparent;
-  padding: 8px 0;
+  padding: 12px 0;
 }
 
 :deep(.el-tree-node__content) {
-  height: 32px;
-  transition: all 0.3s;
+  height: 36px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 8px;
+  margin: 2px 8px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  letter-spacing: 0.025em;
 }
 
 :deep(.el-tree-node.is-current > .el-tree-node__content) {
-  background-color: #ecf5ff !important;
-  color: #409eff !important;
-  font-weight: bold !important;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%) !important;
+  color: #6366f1 !important;
+  font-weight: 600 !important;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.1);
 }
 
 :deep(.el-tree-node__content:hover) {
-  background-color: #f5f7fa !important;
+  background: rgba(99, 102, 241, 0.05) !important;
+  color: #6366f1 !important;
+  transform: translateX(4px);
 }
 
-/* Add separator between sections */
+:deep(.el-tree-node__expand-icon) {
+  color: #94a3b8;
+  transition: all 0.3s ease;
+}
+
+:deep(.el-tree-node__expand-icon:hover) {
+  color: #6366f1;
+}
+
+:deep(.el-tree-node__expand-icon.is-leaf) {
+  color: transparent;
+}
+
+/* 添加分隔线 */
 .menu-bar::after {
   content: '';
   position: absolute;
@@ -1447,8 +1560,48 @@ function highlightMeshAndShowInfo({ type = undefined, projectName = undefined, o
   left: 0;
   right: 0;
   height: 1px;
-  background-color: #dcdfe6;
+  background: linear-gradient(90deg, transparent 0%, rgba(226, 232, 240, 0.6) 50%, transparent 100%);
   z-index: 1;
+}
+
+/* 添加全局动画效果 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 为卡片添加进入动画 */
+.menu-card {
+  animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.menu-card:nth-child(1) { animation-delay: 0.1s; }
+.menu-card:nth-child(2) { animation-delay: 0.2s; }
+.menu-card:nth-child(3) { animation-delay: 0.3s; }
+.menu-card:nth-child(4) { animation-delay: 0.4s; }
+.menu-card:nth-child(5) { animation-delay: 0.5s; }
+.menu-card:nth-child(6) { animation-delay: 0.6s; }
+
+/* 为侧边栏添加进入动画 */
+.sidebar {
+  animation: slideInLeft 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 </style>

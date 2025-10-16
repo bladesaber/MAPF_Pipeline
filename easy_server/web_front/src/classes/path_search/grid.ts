@@ -211,7 +211,8 @@ export class GridMesh extends MeshObj {
                 const dy = y - pipe.y;
                 const dz = z - pipe.z;
                 const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                return distance <= pipe.radius + 0.25;
+                // 使用传入的pipe_dict中的radius，而不是固定的+0.25偏移
+                return distance <= pipe.radius;
             });
         });
         this.surface_obstacle_points = filtered_points;

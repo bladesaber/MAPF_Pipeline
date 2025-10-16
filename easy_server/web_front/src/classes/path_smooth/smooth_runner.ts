@@ -89,6 +89,14 @@ export class ObstacleCell extends MeshObj {
     super.add_mesh(scene);
   }
 
+  // 更新点集并重建可视化
+  update_xyzr(new_xyzr: number[][], pipe_dict: Map<string, PipeCfg>, scene: THREE.Scene): void {
+    this.original_xyzr = new_xyzr;
+    this.filtered_xyzr = ObstacleCell.filter_xyzr(pipe_dict, new_xyzr);
+    this.destory(scene);
+    this.add_mesh(scene);
+  }
+
   static filter_xyzr(pipe_dict: Map<string, PipeCfg>, original_xyzr: number[][]): number[][] {
     return original_xyzr.filter(xyzr => {
       // if distance between point and pipe is less than pipe radius plus obstacle radius, then it is filtered
@@ -355,8 +363,37 @@ export class SmoothRunner {
                 seg_cell.with_analytical_curvature_computed = seg.with_analytical_curvature_computed;
                 seg_cell.with_analytical_tangent_computed = seg.with_analytical_tangent_computed;
                 seg_cell.cost_setting = seg.cost_setting;
+                
+                // 设置 left_vector 和 right_vector
                 seg_cell.left_vector = seg.cell_setting?.left_vector || [0,0,0];
                 seg_cell.right_vector = seg.cell_setting?.right_vector || [0,0,0];
+                
+                // 如果 left_clamp 为 true，从 pipes_cfg 中获取正确的 left_vector
+                if (seg_cell.left_clamp) {
+                  const x = group_cell.c_table['x'][seg_cell.c_idxs[0]];
+                  const y = group_cell.c_table['y'][seg_cell.c_idxs[0]];
+                  const z = group_cell.c_table['z'][seg_cell.c_idxs[0]];
+                  runner.pipes_cfg.forEach((pipe_cfg, pipe_name) => {
+                    if (pipe_cfg.position[0] === x && pipe_cfg.position[1] === y && pipe_cfg.position[2] === z) {
+                      seg_cell.left_vector = pipe_cfg.direction;
+                      seg_cell.is_left_input = pipe_cfg.is_input;
+                    }
+                  });
+                }
+                
+                // 如果 right_clamp 为 true，从 pipes_cfg 中获取正确的 right_vector
+                if (seg_cell.right_clamp) {
+                  const x = group_cell.c_table['x'][seg_cell.c_idxs[seg_cell.c_idxs.length - 1]];
+                  const y = group_cell.c_table['y'][seg_cell.c_idxs[seg_cell.c_idxs.length - 1]];
+                  const z = group_cell.c_table['z'][seg_cell.c_idxs[seg_cell.c_idxs.length - 1]];
+                  runner.pipes_cfg.forEach((pipe_cfg, pipe_name) => {
+                    if (pipe_cfg.position[0] === x && pipe_cfg.position[1] === y && pipe_cfg.position[2] === z) {
+                      seg_cell.right_vector = pipe_cfg.direction;
+                      seg_cell.is_right_input = pipe_cfg.is_input;
+                    }
+                  });
+                }
+                
                 seg_cell.path_points = seg.path_points || [];
                 seg_cell.radius_list = seg.radius_list || [];
                 group_cell.seg_dict[seg_cell.name] = seg_cell;
@@ -430,6 +467,35 @@ export class SmoothRunner {
                 con_cell.with_analytical_curvature_computed = con.with_analytical_curvature_computed;
                 con_cell.with_analytical_tangent_computed = con.with_analytical_tangent_computed;
                 con_cell.cost_setting = con.cost_setting;
+                
+                // 设置 left_vector 和 right_vector
+                con_cell.left_vector = con.cell_setting?.left_vector || [0,0,0];
+                con_cell.right_vector = con.cell_setting?.right_vector || [0,0,0];
+                
+                // 如果 left_clamp 为 true，从 pipes_cfg 中获取正确的 left_vector
+                if (con_cell.left_clamp && c_idxs.length > 0) {
+                  const x = group_cell.c_table['x'][c_idxs[0]];
+                  const y = group_cell.c_table['y'][c_idxs[0]];
+                  const z = group_cell.c_table['z'][c_idxs[0]];
+                  runner.pipes_cfg.forEach((pipe_cfg, pipe_name) => {
+                    if (pipe_cfg.position[0] === x && pipe_cfg.position[1] === y && pipe_cfg.position[2] === z) {
+                      con_cell.left_vector = pipe_cfg.direction;
+                    }
+                  });
+                }
+                
+                // 如果 right_clamp 为 true，从 pipes_cfg 中获取正确的 right_vector
+                if (con_cell.right_clamp && c_idxs.length > 0) {
+                  const x = group_cell.c_table['x'][c_idxs[c_idxs.length - 1]];
+                  const y = group_cell.c_table['y'][c_idxs[c_idxs.length - 1]];
+                  const z = group_cell.c_table['z'][c_idxs[c_idxs.length - 1]];
+                  runner.pipes_cfg.forEach((pipe_cfg, pipe_name) => {
+                    if (pipe_cfg.position[0] === x && pipe_cfg.position[1] === y && pipe_cfg.position[2] === z) {
+                      con_cell.right_vector = pipe_cfg.direction;
+                    }
+                  });
+                }
+                
                 con_cell.path_points = con.path_points || [];
                 con_cell.radius_list = con.radius_list || [];
                 // 打印日志辅助排查
@@ -490,8 +556,8 @@ export class SmoothRunner {
                 );
                 path_cell.cost_cfgs = path.cost_setting?.cost_cfgs || [];
                 path_cell.element_cost_cfgs = path.cost_setting?.element_cost_cfgs || [];
-                path_cell.path_points = path.path_points || [];
-                path_cell.radius_list = path.radius_list || [];
+                // path_cell.path_points = path.path_points || [];
+                // path_cell.radius_list = path.radius_list || [];
                 group_cell.path_dict[path.path_name] = path_cell;
               } catch (e) {
                 console.error('path 导入异常:', e, path);

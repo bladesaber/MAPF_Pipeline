@@ -442,7 +442,7 @@ const showContextMenu = (data: any) => {
       // 上方空间
       const spaceAbove = data.y;
 
-      // 优先显示在鼠标下�?
+      // 优先显示在鼠标下�?
       if (spaceBelow >= menuHeight + 8) {
         top = data.y;
         (menu as HTMLElement).style.maxHeight = '';
@@ -455,7 +455,7 @@ const showContextMenu = (data: any) => {
       } else {
         // 下方空间不够，菜单底部贴近窗口底部，但顶部不会高于鼠标Y
         let maxHeight = Math.max(spaceBelow, spaceAbove) - 8;
-        if (maxHeight < 80) maxHeight = 80; // 最小高�?
+        if (maxHeight < 80) maxHeight = 80; // 最小高�?
         // 菜单顶部最多到鼠标Y
         top = Math.max(8, windowHeight - menuHeight - 8, data.y - (menuHeight - spaceBelow));
         (menu as HTMLElement).style.maxHeight = maxHeight + 'px';
@@ -467,7 +467,7 @@ const showContextMenu = (data: any) => {
         }
       }
 
-      // 右边�?
+      // 右边�?
       if (data.x + menuWidth > windowWidth) {
         left = windowWidth - menuWidth - 8;
         if (left < 0) left = 0;
@@ -518,7 +518,7 @@ const handleTreeContextMenu = (mode: string) => {
     setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
 
   } else if (mode == 'SearchTask/EditSearchTask') {
-    // 编辑 SearchTask，补�?label_dict 并弹出编辑面�?
+    // 编辑 SearchTask，补�?label_dict 并弹出编辑面�?
     const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
     const searchTask = project.search_task_dict.get(label_dict.value.get('SearchTask') as string)!
     const newDict = new Map()
@@ -572,7 +572,7 @@ const handleTreeContextMenu = (mode: string) => {
     setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
 
   } else if (mode == 'PriorityTask/EditPriorityTask') {
-    // 编辑 PriorityTask，补�?label_dict 并弹出编辑面�?
+    // 编辑 PriorityTask，补�?label_dict 并弹出编辑面�?
     const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
     const searchTask = project.search_task_dict.get(label_dict.value.get('SearchTask') as string)!
     const priorityTask = searchTask.priority_tasks.find(task => task.name === label_dict.value.get('PriorityTask') as string)!
@@ -596,7 +596,7 @@ const handleTreeContextMenu = (mode: string) => {
     setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
 
   } else if (mode == 'GroupTask/EditGroupTask') {
-    // 编辑 GroupTask，补�?label_dict 并弹出编辑面�?
+    // 编辑 GroupTask，补�?label_dict 并弹出编辑面�?
     const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
     const searchTask = project.search_task_dict.get(label_dict.value.get('SearchTask') as string)!
     const priorityTask = searchTask.priority_tasks.find(task => task.name === label_dict.value.get('PriorityTask') as string)!
@@ -1083,18 +1083,18 @@ const handleTreeContextMenu = (mode: string) => {
       label_dict.value.get('PriorityTask') as string
     )
   } else if (mode === 'Obstacle/EditObstacle') {
-    // 右键编辑障碍物，弹出抽屉并填充所有参�?
+    // 右键编辑障碍物，弹出抽屉并填充所有参�?
     const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
     const obstacle = project.obstacle_dict.get(label_dict.value.get('Obstacle') as string)!
     const newDict = new Map()
     newDict.set('Project', label_dict.value.get('Project'))
     newDict.set('Obstacle', label_dict.value.get('Obstacle'))
     newDict.set('name', obstacle.name)
-    newDict.set('type', obstacle.constructor.name) // type字段和组件联�?
+    newDict.set('type', obstacle.constructor.name) // type字段和组件联�?
     newDict.set('relax_groups', obstacle.relax_groups)
     newDict.set('_is_edit', 'true')
     newDict.set('_origin_name', obstacle.name) // 记录原始name
-    // 保证编辑时Relax Groups下拉有数�?
+    // 保证编辑时Relax Groups下拉有数�?
     newDict.set('RelaxGroup', Array.from(project.pipe_dict.keys()))
     if (obstacle instanceof CylinderObstacle) {
       newDict.set('x', obstacle.x)
@@ -1116,7 +1116,7 @@ const handleTreeContextMenu = (mode: string) => {
       newDict.set('points', JSON.stringify(obstacle.points))
       newDict.set('radius', JSON.stringify(obstacle.radius))
     }
-    // 保证响应�?
+    // 保证响应�?
     label_dict.value = new Map([...newDict])
     defineObstacleVisible.value = true // 弹出抽屉
   } else if (mode == 'Pipe/EditPipe') {
@@ -1125,7 +1125,7 @@ const handleTreeContextMenu = (mode: string) => {
     const pipeGroupName = String(label_dict.value.get('PipeGroup'))
     const pipeName = String(label_dict.value.get('Pipe'))
     const pipe = project.pipe_dict.get(pipeGroupName)!.get(pipeName)!
-    // 关键：每次都新建一�?Map，避免残留，但要补全上下�?
+    // 关键：每次都新建一�?Map，避免残留，但要补全上下�?
     const newDict = new Map()
     newDict.set('Project', label_dict.value.get('Project'))
     newDict.set('PipeGroup', pipeGroupName)
@@ -1142,7 +1142,7 @@ const handleTreeContextMenu = (mode: string) => {
     newDict.set('pipe_mode', pipe.pipe_mode)
     newDict.set('_is_edit', 'true')
     newDict.set('_origin_name', pipe.name)
-    // 保证响应�?
+    // 保证响应�?
     label_dict.value = new Map([...newDict])
     definePanelMode.value = 'Pipe'
     setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
@@ -1158,13 +1158,13 @@ const handleTreeContextMenu = (mode: string) => {
       editGridPanelVisible.value = true
     }
   } else if (mode == 'CellTask/EditCellTask') {
-    // 编辑 CellTask，补�?label_dict 并弹出编辑面�?
+    // 编辑 CellTask，补�?label_dict 并弹出编辑面�?
     const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
     const searchTask = project.search_task_dict.get(label_dict.value.get('SearchTask') as string)!
     const priorityTask = searchTask.priority_tasks.find(task => task.name === label_dict.value.get('PriorityTask') as string)
     const groupTask = priorityTask!.group_tasks.get(label_dict.value.get('GroupTask') as string)!
     const cellTask = groupTask.cell_tasks.find(cell => cell.name === label_dict.value.get('CellTask') as string)!
-    // 构造新�?label_dict，避免残�?
+    // 构造新�?label_dict，避免残�?
     const newDict = new Map()
     newDict.set('Project', label_dict.value.get('Project'))
     newDict.set('SearchTask', label_dict.value.get('SearchTask'))
@@ -1185,7 +1185,7 @@ const handleTreeContextMenu = (mode: string) => {
     definePanelMode.value = 'CellTask'
     setVisableDict('definePanelVisible', fragmentVisibleDict, true, true)
   } else if (mode == 'PipeGroups/HideDiscretized') {
-    // 隐藏所有管道组的离散化障碍�?
+    // 隐藏所有管道组的离散化障碍�?
     const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
     project_manager.pipe_dict.forEach((pipes, group_name) => {
       pipes.forEach((pipe, pipe_name) => {
@@ -1194,7 +1194,7 @@ const handleTreeContextMenu = (mode: string) => {
     })
 
   } else if (mode == 'PipeGroups/ShowDiscretized') {
-    // 显示所有管道组的离散化障碍�?
+    // 显示所有管道组的离散化障碍�?
     const project_manager = rootObj.proj_dict.get(label_dict.value.get('Project') as string)!
     project_manager.pipe_dict.forEach((pipes, group_name) => {
       pipes.forEach((pipe, pipe_name) => {
@@ -1237,18 +1237,18 @@ const handleDefineObstacleGenerate = (data: any) => {
     if (oldType === data.type) {
       canDirectEdit = true
     } else {
-      // 类型变更，先销毁原对象�?mesh
+      // 类型变更，先销毁原对象�?mesh
       oldObstacle.destory(rootObj.get_scene())
       project.obstacle_dict.delete(originName)
     }
   } else if (isEdit && oldObstacle && isRename) {
-    // 改名，先销毁原对象�?mesh
+    // 改名，先销毁原对象�?mesh
     oldObstacle.destory(rootObj.get_scene())
     project.obstacle_dict.delete(originName)
   }
 
   if (canDirectEdit) {
-    // 类型未变，安全赋�?
+    // 类型未变，安全赋�?
     if (data.type == 'CylinderObstacle') {
       const obstacle = oldObstacle as CylinderObstacle
       obstacle.x = data.x
@@ -1282,7 +1282,7 @@ const handleDefineObstacleGenerate = (data: any) => {
       project.reset_discretize_source()
     }
   } else {
-    // 新建前，确保场景中没有同�?mesh
+    // 新建前，确保场景中没有同�?mesh
     let newObstacle = null
     if (data.type == 'CylinderObstacle') {
       newObstacle = new CylinderObstacle(
@@ -1345,12 +1345,12 @@ const handleDefinePanelGenerate = (data: any) => {
     if (isEdit && oldPipe && !isRename) {
       canDirectEdit = true
     } else if (isEdit && oldPipe && isRename) {
-      // 改名，先销毁原对象�?mesh
+      // 改名，先销毁原对象�?mesh
       oldPipe.destory(rootObj.get_scene && rootObj.get_scene())
       pipeGroup.delete(originName)
     }
     if (canDirectEdit && oldPipe) {
-      // 无论 name 是否变，只要是编辑都赋�?
+      // 无论 name 是否变，只要是编辑都赋�?
       oldPipe.x = data.x
       oldPipe.y = data.y
       oldPipe.z = data.z
@@ -1363,7 +1363,7 @@ const handleDefinePanelGenerate = (data: any) => {
       if (typeof oldPipe.update_mesh === 'function') oldPipe.update_mesh(rootObj.get_scene())
       project.reset_discretize_source()
     } else {
-      // 新建前，确保场景中没有同�?mesh
+      // 新建前，确保场景中没有同�?mesh
       const group_color = project.group_color_dict.get(current_label_dict.get('PipeGroup')!)!
       const pipe_mesh = new PipeMesh(
         data.name, data.x, data.y, data.z,
@@ -1430,7 +1430,7 @@ const handleDefinePanelGenerate = (data: any) => {
       const idx = cell_tasks.findIndex(cell => cell.name === originName)
       if (idx !== -1) {
         if (isRename) {
-          // 改名，先删再�?
+          // 改名，先删再�?
           const task = new CellTask(data.name, data.start_name, data.end_name, data.radius, group_color)
           cell_tasks.splice(idx, 1, task)
         } else {
@@ -1439,7 +1439,7 @@ const handleDefinePanelGenerate = (data: any) => {
           cell.start_name = data.start_name
           cell.end_name = data.end_name
           cell.radius = data.radius
-          // 如有其它属性也一并赋�?
+          // 如有其它属性也一并赋�?
         }
       }
     } else {
@@ -2043,7 +2043,7 @@ const exportPathPoints = async () => {
     })
   })
   if (!hasData) {
-    ElMessage.warning('没有可导出的已完�?CellTask 路径点！')
+    ElMessage.warning('没有可导出的已完�?CellTask 路径点！')
     return
   }
   zip.generateAsync({ type: 'blob' }).then((content) => {
@@ -2089,9 +2089,10 @@ const handleEditGridSave = (newGrid: any) => {
 }
 
 .menu-bar {
-  border-bottom: 1px solid #dcdfe6;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
   position: relative;
   z-index: 1;
   display: flex;
@@ -2102,21 +2103,27 @@ const handleEditGridSave = (newGrid: any) => {
   cursor: pointer;
   display: flex;
   align-items: center;
-  height: 44px;
-  padding: 0 20px;
-  color: #303133;
-  font-size: 15px;
-  transition: all 0.3s;
+  height: 48px;
+  padding: 0 24px;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   font-family: inherit;
+  border-radius: 8px;
+  margin: 0 4px;
+  letter-spacing: 0.025em;
 }
 
 .el-dropdown-link:hover {
-  background-color: #f5f7fa;
-  color: #409eff;
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+  transform: translateY(-1px);
 }
 
 .el-dropdown-link:hover .el-icon--right {
-  color: #409eff;
+  color: #6366f1;
+  transform: translateY(-1px);
 }
 
 .el-dropdown-link + .el-dropdown-link {
@@ -2130,33 +2137,44 @@ const handleEditGridSave = (newGrid: any) => {
   left: 0;
   right: 0;
   height: 1px;
-  background-color: #dcdfe6;
+  background: linear-gradient(90deg, transparent 0%, rgba(226, 232, 240, 0.6) 50%, transparent 100%);
   z-index: 1;
 }
 
 .context-menu {
   position: fixed;
-  background: white;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   z-index: 3000;
   max-height: 80vh;
   overflow-y: auto;
+  padding: 8px;
 }
 
 .context-menu :deep(.el-menu) {
   border-right: none;
+  background: transparent;
 }
 
 .context-menu :deep(.el-menu-item) {
-  height: 32px;
-  line-height: 32px;
+  height: 40px;
+  line-height: 40px;
   padding: 0 16px;
+  border-radius: 8px;
+  margin: 2px 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 500;
+  color: #475569;
+  font-size: 14px;
 }
 
 .context-menu :deep(.el-menu-item:hover) {
-  background-color: #f5f7fa;
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+  transform: translateX(4px);
 }
 
 /* Add styles for click outside handler */

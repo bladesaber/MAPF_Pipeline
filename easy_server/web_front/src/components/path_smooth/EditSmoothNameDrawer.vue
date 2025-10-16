@@ -60,37 +60,57 @@ const handleApply = () => {
 .right-sidebar {
   position: fixed;
   right: 0;
-  top: 116px;
+  top: 124px;
   width: 450px;
-  background: #fff;
-  border-left: 1px solid #dcdfe6;
-  height: calc(100vh - 116px);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-left: 1px solid rgba(226, 232, 240, 0.6);
+  height: calc(100vh - 124px);
   display: flex;
   flex-direction: column;
   z-index: 1000;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
 }
 
 .right-sidebar-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid #dcdfe6;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #f5f7fa;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.9) 100%);
   flex: 0 0 auto;
 }
 
 .right-sidebar-header span {
-  font-weight: 500;
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 16px;
+  letter-spacing: 0.025em;
 }
 
 .close-button {
-  padding: 4px;
+  padding: 10px;
+  border-radius: 10px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(226, 232, 240, 0.4);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .close-button:hover {
-  color: #409eff;
+  color: #ffffff;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border-color: #ef4444;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 .right-sidebar-content {

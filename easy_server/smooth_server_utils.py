@@ -14,11 +14,12 @@ from scripts_py.mapf_pkg.torch_utils import TorchUtils
 
 
 class SmoothInfo:
-    obstacle_xyzr: list = []
-    optimizer: PathOptimizer
-    group_name2idx: dict[str, int] = {}
-    group_idx2name: dict[int, str] = {}
-    is_obstacle_pcd_ready: bool = False
+    def __init__(self):
+        self.obstacle_xyzr: list = []
+        self.optimizer: PathOptimizer = None
+        self.group_name2idx: dict[str, int] = {}
+        self.group_idx2name: dict[int, str] = {}
+        self.is_obstacle_pcd_ready: bool = False
 
 
 class SmoothServerUtils:
@@ -340,10 +341,4 @@ class SmoothServerUtils:
                 'msg': f"loss:{loss_record[-1]:.6f}"
             }) + '\n'
 
-    @staticmethod
-    def sample_surface_points_from_path(path: np.ndarray) -> np.ndarray:
-        """
-        path: (n, 4) means (x, y, z, radius)
-        assume 
-        """
 

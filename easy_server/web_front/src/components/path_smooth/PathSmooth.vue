@@ -108,7 +108,10 @@
 
     <div v-show="groupCellContextMenuVisible" class="context-menu" :style="contextMenuStyle" @click.stop>
       <el-menu>
+        <el-menu-item @click="handleTreeContextMenu('GroupCell/ManualRun')">Manual Run</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('GroupCell/CreateSurface')">Create Surface</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('GroupCell/HideSurface')">Hide Surface</el-menu-item>
+        <el-menu-item @click="handleTreeContextMenu('GroupCell/ShowSurface')">Show Surface</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('GroupCell/RemoveSurface')">Remove Surface</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('GroupCell/ShowLineResult')">Show Line Result</el-menu-item>
         <el-menu-item @click="handleTreeContextMenu('GroupCell/ShowTubeResult')">Show Tube Result</el-menu-item>
@@ -163,14 +166,46 @@
       </template>
     </el-dialog>
 
+    <!-- Group Manual Run dialog for single group execution -->
+    <el-dialog v-model="groupManualDialogVisible" title="Group Manual Run" width="30%">
+      <div>
+        <el-form :model="{ lr: groupManualLr, max_iter: groupManualMaxIter }" label-width="120px">
+          <el-form-item label="Group Name">
+            <el-input v-model="currentGroupName" readonly style="width: 200px" />
+          </el-form-item>
+          <el-form-item label="Learning Rate">
+            <el-input-number v-model="groupManualLr" :min="0.001" :max="1.0" :step="0.001" :precision="3"
+              style="width: 200px" />
+          </el-form-item>
+          <el-form-item label="Max Iterations">
+            <el-input-number v-model="groupManualMaxIter" :min="100" :max="100000" :step="100" style="width: 200px" />
+          </el-form-item>
+          <el-form-item label="Log Iterations">
+            <el-input-number v-model="groupManualLogIter" :min="1" :max="1000" :step="1" style="width: 200px" />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="groupManualDialogVisible = false">Cancel</el-button>
+          <el-button type="primary" @click="handleGroupManualRun">Run Group</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="surfaceGenerateDialogVisible" title="Surface Generate" width="30%">
       <div>
         <el-form :model="{ path_reso: surfacePathReso, point_reso: surfacePointReso }" label-width="120px">
           <el-form-item label="Path Reso">
-            <el-input-number v-model="surfacePathReso" :min="0.001" :max="10.0" :step="0.01" :precision="3" style="width: 200px" />
+            <el-input-number v-model="surfacePathReso" :min="0.001" :max="10.0" :step="0.01" :precision="3"
+              style="width: 200px" />
           </el-form-item>
           <el-form-item label="Point Reso">
-            <el-input-number v-model="surfacePointReso" :min="0.001" :max="10.0" :step="0.01" :precision="3" style="width: 200px" />
+            <el-input-number v-model="surfacePointReso" :min="0.001" :max="10.0" :step="0.01" :precision="3"
+              style="width: 200px" />
+          </el-form-item>
+          <el-form-item label="Sample Num">
+            <el-input-number v-model="surfaceSampleNum" :min="1000" :max="1000000" :step="100" style="width: 200px" />
           </el-form-item>
         </el-form>
       </div>
@@ -185,11 +220,15 @@
      <div
       v-show="controlPointContextMenuVisible"
       class="context-menu"
-      :style="contextMenuStyle"
+      :style="{
+        ...contextMenuStyle,
+        zIndex: 9999,
+      }"
       @click.stop
     >
       <el-menu>
         <el-menu-item @click="handleControlPointContextMenu('EditControlPoint')">Edit Control Point</el-menu-item>
+        <el-menu-item @click="handleControlPointContextMenu('EditControlPoints')">Edit Control Points</el-menu-item>
       </el-menu>
     </div>
 
@@ -288,6 +327,14 @@
     @update:modelValue="val => { console.log('ControlPointEditor visible:', val); controlPointEditorVisible = val; }"
   />
   
+  <BatchControlPointEditor
+    v-model="batchControlPointEditorVisible"
+    :controlPointInfo="currentControlPointInfo"
+    :segmentInfo="currentSegmentInfo"
+    @apply="handleBatchControlPointApply"
+    @update:modelValue="val => { console.log('BatchControlPointEditor visible:', val); batchControlPointEditorVisible = val; }"
+  />
+  
   <BatchSegmentEditor
     v-model="batchSegmentEditorVisible"
     :initialCostSettings="currentBatchSegmentCostSettings"
@@ -344,6 +391,7 @@ import { ArrowDown } from '@element-plus/icons-vue';
 import AidPathsEditor from './AidPathsEditor.vue';
 import AutoRunConfigEditor from './AutoRunConfigEditor.vue';
 import BatchConnectorEditor from './BatchConnectorEditor.vue';
+import BatchControlPointEditor from './BatchControlPointEditor.vue';
 import BatchSegmentEditor from './BatchSegmentEditor.vue';
 import ConflictSettingEditor from './ConflictSettingEditor.vue';
 import ConnectorCellEditor from './ConnectorCellEditor.vue';
@@ -370,10 +418,18 @@ const manualLr = ref(0.01)
 const manualMaxIter = ref(1000)
 const manualLogIter = ref(50)
 
+// ------ group manual dialog ------
+const groupManualDialogVisible = ref(false)
+const groupManualLr = ref(0.01)
+const groupManualMaxIter = ref(1000)
+const groupManualLogIter = ref(50)
+const currentGroupName = ref('')
+
 // ------ surface generate dialog ------
 const surfaceGenerateDialogVisible = ref(false)
 const surfacePathReso = ref(0.1)
 const surfacePointReso = ref(0.1)
+const surfaceSampleNum = ref(1000)
 // Store context for surface generation
 const surfaceGenProject = ref('')
 const surfaceGenSmooth = ref('')
@@ -464,13 +520,8 @@ const fragmentVisibleDict = {
 const label_dict = ref(
   new Map<
     string,
-    | string
-    | number
-    | string[]
-    | Map<string, string | number>
-    | Map<
-      string,
-      Map<string, Map<string, string | number | number[] | boolean>>
+    string | number | string[] | Map<string, string | number> | Map<
+      string, Map<string, Map<string, string | number | number[] | boolean>>
     >
   >()
 )
@@ -620,6 +671,14 @@ function onSegmentCellSave(newData: any) {
         
         // 刷新mesh以反映更改
         segment_cell.update_mesh(rootObj.get_scene());
+        
+        // 检查是否需要更新离散点（如果段壁厚被修改且连接着接头）
+        const oldThickness = currentSegmentData.value.cost_setting?.obstacle_thickness || 0;
+        const newThickness = newData.cost_setting?.obstacle_thickness || 0;
+        if (Math.abs(oldThickness - newThickness) > 0.001) {
+          console.log(`[onSegmentCellSave] 段 ${segment_cell.name} 的壁厚从 ${oldThickness} 修改为 ${newThickness}，检查是否需要更新离散点`);
+          updateDiscretizedPointsAfterSegmentThicknessChange(segment_cell, group_cell, smooth_runner);
+        }
         
         ElMessage.success('Segment updated successfully');
         emit('updateTree'); // 更新树视图
@@ -900,13 +959,13 @@ const handleTreeContextMenu = async (mode: string) => {
         smooth_runner.group_cells.forEach((group_cell, group_name) => {
           // 清理SegmentCell
           Object.values(group_cell.seg_dict).forEach(segment_cell => {
-            segment_cell.hide_line_mesh()
+            segment_cell.hide_line_mesh(rootObj.get_scene())
             segment_cell.hide_tube_mesh()
           })
           
           // 清理ConnectorCell
           Object.values(group_cell.connector_dict).forEach(connector_cell => {
-            connector_cell.hide_line_mesh()
+            connector_cell.hide_line_mesh(rootObj.get_scene())
             connector_cell.hide_tube_mesh()
           })
 
@@ -962,7 +1021,7 @@ const handleTreeContextMenu = async (mode: string) => {
     }
 
     if (target_group_cell && target_group_cell.seg_dict[segment_name]) {
-      target_group_cell.seg_dict[segment_name].show_line_mesh()
+      target_group_cell.seg_dict[segment_name].show_line_mesh(rootObj.get_scene())
     }
   } else if (mode === 'SegmentCell/HideLineResult') {
     const smooth_runner = rootObj.proj_dict
@@ -984,7 +1043,7 @@ const handleTreeContextMenu = async (mode: string) => {
     }
 
     if (target_group_cell && target_group_cell.seg_dict[segment_name]) {
-      target_group_cell.seg_dict[segment_name].hide_line_mesh()
+      target_group_cell.seg_dict[segment_name].hide_line_mesh(rootObj.get_scene())
     }
   } else if (mode === 'SegmentCell/HideTubeResult') {
     const smooth_runner = rootObj.proj_dict
@@ -1028,7 +1087,7 @@ const handleTreeContextMenu = async (mode: string) => {
     }
 
     if (target_group_cell && target_group_cell.connector_dict[connector_name]) {
-      target_group_cell.connector_dict[connector_name].show_line_mesh()
+      target_group_cell.connector_dict[connector_name].show_line_mesh(rootObj.get_scene())
     }
   } else if (mode === 'ConnectorCell/ShowTubeResult') {
     const smooth_runner = rootObj.proj_dict
@@ -1050,7 +1109,7 @@ const handleTreeContextMenu = async (mode: string) => {
     }
 
     if (target_group_cell && target_group_cell.connector_dict[connector_name]) {
-      target_group_cell.connector_dict[connector_name].show_tube_mesh()
+      target_group_cell.connector_dict[connector_name].show_tube_mesh(rootObj.get_scene())
     }
   } else if (mode === 'ConnectorCell/HideLineResult') {
     const smooth_runner = rootObj.proj_dict
@@ -1072,7 +1131,7 @@ const handleTreeContextMenu = async (mode: string) => {
     }
 
     if (target_group_cell && target_group_cell.connector_dict[connector_name]) {
-      target_group_cell.connector_dict[connector_name].hide_line_mesh()
+      target_group_cell.connector_dict[connector_name].hide_line_mesh(rootObj.get_scene())
     }
   } else if (mode === 'ConnectorCell/HideTubeResult') {
     const smooth_runner = rootObj.proj_dict
@@ -1112,7 +1171,7 @@ const handleTreeContextMenu = async (mode: string) => {
     }
     if (target_group_cell) {
       for (const segment_cell of Object.values(target_group_cell.seg_dict)) {
-        segment_cell.show_line_mesh()
+        segment_cell.show_line_mesh(rootObj.get_scene())
       }
     }
   } else if (mode === 'SegmentCells/ShowTubeResult') {
@@ -1150,7 +1209,7 @@ const handleTreeContextMenu = async (mode: string) => {
     }
     if (target_group_cell) {
       for (const segment_cell of Object.values(target_group_cell.seg_dict)) {
-        segment_cell.hide_line_mesh()
+        segment_cell.hide_line_mesh(rootObj.get_scene())
       }
     }
   } else if (mode === 'SegmentCells/HideTubeResult') {
@@ -1188,7 +1247,7 @@ const handleTreeContextMenu = async (mode: string) => {
     }
     if (target_group_cell) {
       for (const connector_cell of Object.values(target_group_cell.connector_dict)) {
-        connector_cell.show_line_mesh()
+        connector_cell.show_line_mesh(rootObj.get_scene())
       }
     }
   } else if (mode === 'ConnectorCells/ShowTubeResult') {
@@ -1207,7 +1266,7 @@ const handleTreeContextMenu = async (mode: string) => {
     }
     if (target_group_cell) {
       for (const connector_cell of Object.values(target_group_cell.connector_dict)) {
-        connector_cell.show_tube_mesh()
+        connector_cell.show_tube_mesh(rootObj.get_scene())
       }
     }
   } else if (mode === 'ConnectorCells/HideLineResult') {
@@ -1226,7 +1285,7 @@ const handleTreeContextMenu = async (mode: string) => {
     }
     if (target_group_cell) {
       for (const connector_cell of Object.values(target_group_cell.connector_dict)) {
-        connector_cell.hide_line_mesh()
+        connector_cell.hide_line_mesh(rootObj.get_scene())
       }
     }
   } else if (mode === 'ConnectorCells/HideTubeResult') {
@@ -1296,6 +1355,16 @@ const handleTreeContextMenu = async (mode: string) => {
         }
       }
     }
+  } else if (mode === 'GroupCell/ManualRun') {
+    const project = label_dict.value.get('Project')!.toString()
+    const group_name = label_dict.value.get('label')!.toString()
+    const smooth_name = label_dict.value.get('SmoothName')!.toString()
+    
+    // 设置当前组名
+    currentGroupName.value = group_name
+    
+    // 显示Group Manual Run对话框
+    groupManualDialogVisible.value = true
   } else if (mode === 'GroupCell/CreateSurface') {
     const project = label_dict.value.get('Project')!.toString()
     const group_name = label_dict.value.get('label')!.toString()
@@ -1330,10 +1399,10 @@ const handleTreeContextMenu = async (mode: string) => {
     const group_cell = smooth_runner.group_cells.get(group_name)
     if (group_cell) {
       for (const segment_cell of Object.values(group_cell.seg_dict)) {
-        segment_cell.show_line_mesh()
+        segment_cell.show_line_mesh(rootObj.get_scene())
       }
       for (const connector_cell of Object.values(group_cell.connector_dict)) {
-        connector_cell.show_line_mesh()
+        connector_cell.show_line_mesh(rootObj.get_scene())
       }
     }
   } else if (mode === 'GroupCell/ShowTubeResult') {
@@ -1347,7 +1416,7 @@ const handleTreeContextMenu = async (mode: string) => {
         segment_cell.show_tube_mesh(rootObj.get_scene())
       }
       for (const connector_cell of Object.values(group_cell.connector_dict)) {
-        connector_cell.show_tube_mesh()
+        connector_cell.show_tube_mesh(rootObj.get_scene())
       }
     }
   } else if (mode === 'GroupCell/HideLineResult') {
@@ -1358,10 +1427,10 @@ const handleTreeContextMenu = async (mode: string) => {
     const group_cell = smooth_runner.group_cells.get(group_name)
     if (group_cell) {
       for (const segment_cell of Object.values(group_cell.seg_dict)) {
-        segment_cell.hide_line_mesh()
+        segment_cell.hide_line_mesh(rootObj.get_scene())
       }
       for (const connector_cell of Object.values(group_cell.connector_dict)) {
-        connector_cell.hide_line_mesh()
+        connector_cell.hide_line_mesh(rootObj.get_scene())
       }
     }
   } else if (mode === 'GroupCell/HideTubeResult') {
@@ -1751,6 +1820,28 @@ const handleTreeContextMenu = async (mode: string) => {
     }
     ElMessage.error('未找到可编辑的连接器节点');
     return;
+  } else if (mode === 'GroupCell/HideSurface') {
+    const project = label_dict.value.get('Project')!.toString()
+    const group_name = label_dict.value.get('label')!.toString()
+    const smooth_runner = rootObj.proj_dict
+      .get(project)!
+      .smooth_task_dict.get(label_dict.value.get('SmoothName') as string
+      ) as SmoothRunner
+    const group_cell: GroupCell = smooth_runner.group_cells.get(group_name)!
+    if (group_cell.fine_surface_mesh) {
+      group_cell.hide_surface_mesh()
+    }
+  } else if (mode === 'GroupCell/ShowSurface') {
+    const project = label_dict.value.get('Project')!.toString()
+    const group_name = label_dict.value.get('label')!.toString()
+    const smooth_runner = rootObj.proj_dict
+      .get(project)!
+      .smooth_task_dict.get(label_dict.value.get('SmoothName') as string
+      ) as SmoothRunner
+    const group_cell: GroupCell = smooth_runner.group_cells.get(group_name)!
+    if (group_cell.fine_surface_mesh) {
+      group_cell.show_surface_mesh()
+    }
   }
 }
 
@@ -1810,20 +1901,61 @@ const handleDefineSmoothInfoGenerate = async (data: any) => {
   const grid = rootObj.proj_dict.get(
     label_dict.value.get('Project') as string
   )!.grid
-  if (grid.discretize_source == '') {
-    ElMessage.warning('Grid has not been discretized') 
-    return null
+  
+  // 为平滑功能创建独立的障碍物离散化逻辑，不依赖路径搜索的离散化状态
+  if (grid.discretize_source == '' || grid.discretize_source !== 'smooth') {
+    // 如果grid没有被平滑离散化过，或者被其他源离散化过，则重新进行平滑离散化
+    console.log('[handleDefineSmoothInfoGenerate] 为平滑功能进行独立的障碍物离散化')
+    
+    // 创建管道信息列表用于障碍物过滤
+    const pipes_info_list: { x: number, y: number, z: number, radius: number }[] = []
+    
+    // 从平滑配置中获取管道信息
+    if (dataForBackend.pipes_config) {
+      Object.values(dataForBackend.pipes_config).forEach((pipe: any) => {
+        pipes_info_list.push({
+          x: pipe.position[0],
+          y: pipe.position[1], 
+          z: pipe.position[2],
+          radius: pipe.radius
+        })
+      })
+    }
+    
+    // 使用平滑专用的分辨率进行离散化
+    const smooth_resolution = grid.resolution || 0.1 // 使用默认分辨率
+    grid.discretize(rootObj.get_scene(), smooth_resolution, 'smooth', pipes_info_list)
   }
+  
+  // 获取离散化后的障碍物点
   grid.surface_obstacle_points.forEach(point => {
     obstacle_xyzr_list.push([point[0], point[1], point[2], 0.0])
   })
 
+  // 为平滑功能独立处理障碍物离散化
+  const pipes_info_list_for_obstacles: { x: number, y: number, z: number, radius: number }[] = []
+  if (dataForBackend.pipes_config) {
+    Object.values(dataForBackend.pipes_config).forEach((pipe: any) => {
+      pipes_info_list_for_obstacles.push({
+        x: pipe.position[0],
+        y: pipe.position[1], 
+        z: pipe.position[2],
+        radius: pipe.radius
+      })
+    })
+  }
+  
   rootObj.proj_dict
     .get(label_dict.value.get('Project') as string)!
     .obstacle_dict.forEach((obstacle, key) => {
-      if (obstacle.discretize_source == '') {
-        ElMessage.warning('Obstacle has not been discretized')
-        return null
+      // 为平滑功能独立进行障碍物离散化，不依赖路径搜索的离散化状态
+      if (obstacle.discretize_source == '' || obstacle.discretize_source !== 'smooth') {
+        console.log(`[handleDefineSmoothInfoGenerate] 为障碍物 ${key} 进行独立的平滑离散化`)
+        obstacle.discrete(
+          rootObj.get_scene(), grid.resolution, 
+          'smooth', // 使用'smooth'作为离散化源标识
+          pipes_info_list_for_obstacles
+        )
       }
       if (obstacle.relax_groups.length == 0) {
         obstacle.discretize_points.forEach(point => {
@@ -2099,48 +2231,72 @@ const init_smooth_map = async (
         name: aid_name,
         from_name: (aid_info as any).from_name,
           to_name: (aid_info as any).to_name
-      })
-    }
+        })
+      }
 
-    group_cell.graph_cfg.seg_node_max = group_info.graph_cfg.seg_node_max
-    group_cell.graph_cfg.seg_node_min = group_info.graph_cfg.seg_node_min
-    group_cell.c_table = group_info.cell_setting.c_table
+      group_cell.graph_cfg.seg_node_max = group_info.graph_cfg.seg_node_max
+      group_cell.graph_cfg.seg_node_min = group_info.graph_cfg.seg_node_min
+      group_cell.c_table = group_info.cell_setting.c_table
 
-    group_info.segments.forEach((segment_info: any) => {
-      const segment_cell = new SegmentCell(
+      group_info.segments.forEach((segment_info: any) => {
+        const segment_cell = new SegmentCell(
           smooth_name,
           search_task_name,
           project_name,
-        `${group_name}/seg_${segment_info.seg_idx}`,
-        segment_info.seg_idx,
-        group_cell.group_idx!,
-        segment_info.cell_setting.c_idxs,
-        group_cell,
-        rootObj.get_scene(),
-        // just for front end visualization
-        segment_info.cell_setting.left_intercept_num,
-        segment_info.cell_setting.right_intercept_num,
-        segment_info.cell_setting.left_clamp,
-        segment_info.cell_setting.right_clamp
-      )
+          `${group_name}/seg_${segment_info.seg_idx}`,
+          segment_info.seg_idx,
+          group_cell.group_idx!,
+          segment_info.cell_setting.c_idxs,
+          group_cell,
+          rootObj.get_scene(),
+          // just for front end visualization
+          segment_info.cell_setting.left_intercept_num,
+          segment_info.cell_setting.right_intercept_num,
+          segment_info.cell_setting.left_clamp,
+          segment_info.cell_setting.right_clamp
+        )
 
-      segment_cell.left_clamp = segment_info.cell_setting.left_clamp
-      segment_cell.right_clamp = segment_info.cell_setting.right_clamp
-      segment_cell.degree = segment_info.bspline_degree
-      segment_cell.density = segment_info.bspline_density
-      segment_cell.left_intercept_ratio = segment_info.left_intercept_ratio
-      segment_cell.right_intercept_ratio = segment_info.right_intercept_ratio
-      segment_cell.left_overlap_ratio = segment_info.left_overlap_ratio
-      segment_cell.right_overlap_ratio = segment_info.right_overlap_ratio
-      segment_cell.segment_scale = segment_info.segment_scale
-      segment_cell.with_analytical_curvature_computed =
-        segment_info.with_analytical_curvature_computed
-      segment_cell.with_analytical_tangent_computed =
-        segment_info.with_analytical_tangent_computed
-      segment_cell.cost_setting = segment_info.cost_setting
+        segment_cell.left_clamp = segment_info.cell_setting.left_clamp
+        segment_cell.right_clamp = segment_info.cell_setting.right_clamp
+        segment_cell.degree = segment_info.bspline_degree
+        segment_cell.density = segment_info.bspline_density
+        segment_cell.left_intercept_ratio = segment_info.left_intercept_ratio
+        segment_cell.right_intercept_ratio = segment_info.right_intercept_ratio
+        segment_cell.left_overlap_ratio = segment_info.left_overlap_ratio
+        segment_cell.right_overlap_ratio = segment_info.right_overlap_ratio
+        segment_cell.segment_scale = segment_info.segment_scale
+        segment_cell.with_analytical_curvature_computed =
+          segment_info.with_analytical_curvature_computed
+        segment_cell.with_analytical_tangent_computed =
+          segment_info.with_analytical_tangent_computed
+        segment_cell.cost_setting = segment_info.cost_setting
+        segment_cell.left_vector = segment_info.cell_setting.left_vector
+        segment_cell.right_vector = segment_info.cell_setting.right_vector
 
-      group_cell.seg_dict[segment_cell.name] = segment_cell
-    })
+        if (segment_cell.left_clamp) {
+          const x = group_cell.c_table['x'][segment_cell.c_idxs[0]]
+          const y = group_cell.c_table['y'][segment_cell.c_idxs[0]]
+          const z = group_cell.c_table['z'][segment_cell.c_idxs[0]]
+          smooth_runner.pipes_cfg.forEach((pipe_cfg, pipe_name) => {
+            if (pipe_cfg.position[0] === x && pipe_cfg.position[1] === y && pipe_cfg.position[2] === z) {
+              segment_cell.is_left_input = pipe_cfg.is_input
+            }
+          })
+        }
+
+        if (segment_cell.right_clamp) {
+          const x = group_cell.c_table['x'][segment_cell.c_idxs[-1]]
+          const y = group_cell.c_table['y'][segment_cell.c_idxs[-1]]
+          const z = group_cell.c_table['z'][segment_cell.c_idxs[-1]]
+          smooth_runner.pipes_cfg.forEach((pipe_cfg, pipe_name) => {
+            if (pipe_cfg.position[0] === x && pipe_cfg.position[1] === y && pipe_cfg.position[2] === z) {
+              segment_cell.is_right_input = pipe_cfg.is_input
+            }
+          })
+        }
+
+        group_cell.seg_dict[segment_cell.name] = segment_cell
+      })
 
     group_info.connectors.forEach((connector_info: any) => {
       // 调试信息：检查connector_info的结构
@@ -2233,6 +2389,8 @@ const init_smooth_map = async (
     }
   )
 
+  console.log('smooth_runner.group_cells:', smooth_runner.group_cells)
+
   // ------ obstacle cfg ------
   const obstacle_cell = new ObstacleCell(
     'smooth_obstacle',
@@ -2240,6 +2398,7 @@ const init_smooth_map = async (
     rootObj.get_scene()
   )
   smooth_runner.obstacle_cell = obstacle_cell
+  
 
   // 确保所有 ConnectorCell 都能正确渲染
   smooth_runner.group_cells.forEach((group_cell) => {
@@ -2264,6 +2423,18 @@ const handleManualRun = async () => {
     manualMaxIter.value,
     manualLr.value,
     manualLogIter.value
+  )
+}
+
+const handleGroupManualRun = async () => {
+  groupManualDialogVisible.value = false
+  await groupManualRun(
+    label_dict.value.get('Project') as string,
+    label_dict.value.get('SmoothName') as string,
+    currentGroupName.value,
+    groupManualMaxIter.value,
+    groupManualLr.value,
+    groupManualLogIter.value
   )
 }
 
@@ -2412,6 +2583,187 @@ const manualRun = async (
   }
 }
 
+const groupManualRun = async (
+  project_name: string,
+  smooth_name: string,
+  group_name: string,
+  max_iter: number,
+  lr: number,
+  log_iter: number
+) => {
+  const url = `${config.BASE_URL}/path_smooth/manual_smooth`
+
+  const smooth_runner = rootObj.proj_dict
+    .get(project_name)!
+    .smooth_task_dict.get(smooth_name) as SmoothRunner
+  
+  // 只导出指定组的配置
+  const group_cell = smooth_runner.group_cells.get(group_name)
+  if (!group_cell) {
+    ElMessage.error(`Group ${group_name} not found`)
+    return
+  }
+  
+  // 创建只包含指定组的smooth_json，保持与原有API兼容的格式
+  const group_export = group_cell.export_json()
+  
+  // 添加path_result字段，这是后端期望的格式
+  group_export.path_result = {}
+  
+  // 为每个segment和connector添加path_result
+  Object.values(group_cell.seg_dict).forEach(seg => {
+    if (seg.path_points && seg.path_points.length > 0) {
+      group_export.path_result[`seg_${seg.idx}`] = seg.path_points.map(point => [
+        point[0], point[1], point[2], 
+        seg.radius_list?.[seg.path_points.indexOf(point)] || 0.1
+      ])
+    }
+  })
+  
+  Object.values(group_cell.connector_dict).forEach(con => {
+    if (con.path_points && con.path_points.length > 0) {
+      group_export.path_result[`con_${con.idx}`] = con.path_points.map(point => [
+        point[0], point[1], point[2], 
+        con.radius_list?.[con.path_points.indexOf(point)] || 0.1
+      ])
+    }
+  })
+  
+  const group_smooth_json = {
+    smooth_name: smooth_name,
+    task_name: smooth_runner.task_name,
+    project_name: project_name,
+    setting: [group_export], // 后端期望的是数组格式
+    pipes_cfg: smooth_runner.pipes_cfg,
+    conflict_setting: smooth_runner.conflict_setting,
+    auto_run_cfg: smooth_runner.auto_run_cfg
+  }
+
+  console.log('group_smooth_json:', group_smooth_json)
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      smooth_name: smooth_name,
+      smooth_json: group_smooth_json,
+      lr: lr,
+      max_iter: max_iter,
+      log_iter: log_iter
+    })
+  })
+
+  if (!response.ok) {
+    ElMessage.error('Network response was not ok')
+    return
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('Failed to get response reader')
+
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    const text = new TextDecoder().decode(value)
+    buffer += text
+
+    // Split buffer by newlines and process each JSON object
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || '' // Keep the last incomplete line in buffer
+
+    for (const line of lines) {
+      if (line.trim() === '') continue
+
+      try {
+        const data = JSON.parse(line)
+        if (data.name === 'manual_smooth') {
+          if (data.total_finished) {
+            // 只更新指定组的结果
+            if (data.result.smooth_result && data.result.smooth_result[group_name]) {
+              const cell_setting = data.result.smooth_result[group_name]
+              group_cell.update_c_table(cell_setting.c_table, rootObj.get_scene());
+              
+              // 更新所有控制点的位置
+              for (const controlPoint of Object.values(group_cell.control_point_dict)) {
+                controlPoint.update_position();
+              }
+              
+              // 1. 先刷新所有Segments
+              for (const seg of Object.values(group_cell.seg_dict)) {
+                seg.update_mesh(rootObj.get_scene());
+              }
+              // 2. 再刷新所有Connectors
+              for (const con of Object.values(group_cell.connector_dict)) {
+                // 清除现有的path_points，让update_mesh重新生成spline路径
+                con.path_points = [];
+                con.radius_list = [];
+                con.update_mesh(rootObj.get_scene());
+              }
+            }
+
+            // Show report visualization
+            reportPlotlyVisible.value = true
+
+            // Update pie chart with loss info
+            if (data.result.loss_info) {
+              const lossInfo = data.result.loss_info
+              const labels = Object.keys(lossInfo)
+              const values = Object.values(lossInfo)
+              reportPlotlyRef.value?.updatePieChart(labels, values)
+            }
+            // Update line chart with loss record
+            if (data.result.loss_record) {
+              const lossRecord = data.result.loss_record
+              const iterations = Array.from(
+                { length: lossRecord.length },
+                (_, i) => i + 1
+              )
+              reportPlotlyRef.value?.updateLineChart(iterations, lossRecord)
+            }
+            emit('updateLog', data.msg)
+            break
+
+          } else {
+            if (data['result'] !== undefined && data.result.smooth_result && data.result.smooth_result[group_name]) {
+              const cell_setting = data.result.smooth_result[group_name]
+              group_cell.update_c_table(cell_setting.c_table, rootObj.get_scene());
+              
+              // 更新所有控制点的位置
+              for (const controlPoint of Object.values(group_cell.control_point_dict)) {
+                controlPoint.update_position();
+              }
+              
+              // 1. 先刷新所有Segments
+              for (const seg of Object.values(group_cell.seg_dict)) {
+                seg.update_mesh(rootObj.get_scene());
+              }
+              // 2. 再刷新所有Connectors
+              for (const con of Object.values(group_cell.connector_dict)) {
+                // 清除现有的path_points，让update_mesh重新生成spline路径
+                con.path_points = [];
+                con.radius_list = [];
+                con.update_mesh(rootObj.get_scene());
+              }
+            }
+            const message = `${data.name} Progress: ${data.progress.toFixed(
+              2
+            )}s, Message: ${data.msg}`
+            emit('updateLog', message)
+          }
+        }
+        buffer = ''
+      } catch (error) {
+        continue
+      }
+    }
+  }
+}
+
 const exportSmoothPathPoints = async () => {
   const JSZip = (await import('jszip')).default
   const segmentsZip = new JSZip()
@@ -2516,13 +2868,17 @@ const createTubeSurface = async (
   group_name: string,
   surface_mesh_json: any,
   path_reso: number,
-  point_reso: number
+  point_reso: number,
+  sample_num: number
 ) => {
   progressDialogVisible.value = true
   progressPercentage.value = 0
 
   try {
     const url = `${config.BASE_URL}/path_smooth/generate_surface_from_paths`
+
+    console.log('surface_mesh_json11111111:', surface_mesh_json)
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -2531,7 +2887,8 @@ const createTubeSurface = async (
       body: JSON.stringify({
         path_dict: surface_mesh_json,
         path_reso: path_reso,
-        point_reso: point_reso
+        point_reso: point_reso,
+        sample_num: sample_num
       })
     })
 
@@ -2622,8 +2979,307 @@ const handleSurfaceGenerateRun = async () => {
     surfaceGenGroup.value,
     surfaceGenMeshJson.value,
     surfacePathReso.value,
-    surfacePointReso.value
+    surfacePointReso.value,
+    surfaceSampleNum.value
   )
+}
+
+// 处理段壁厚修改后的离散点更新
+function updateDiscretizedPointsAfterSegmentThicknessChange(segment_cell: any, group_cell: any, smooth_runner: any) {
+  console.log(`[updateDiscretizedPointsAfterSegmentThicknessChange] 处理段 ${segment_cell.name} 的壁厚修改`);
+  
+  // 检查该段是否连接着接头
+  const connectedConnectors: any[] = [];
+  
+  // 查找连接到该段的接头
+  Object.values(group_cell.connector_dict).forEach((connector: any) => {
+    if (connector.left_seg_idx === segment_cell.idx || connector.right_seg_idx === segment_cell.idx) {
+      connectedConnectors.push(connector);
+    }
+  });
+  
+  if (connectedConnectors.length === 0) {
+    console.log(`[updateDiscretizedPointsAfterSegmentThicknessChange] 段 ${segment_cell.name} 没有连接接头，无需更新离散点`);
+    return;
+  }
+  
+  console.log(`[updateDiscretizedPointsAfterSegmentThicknessChange] 段 ${segment_cell.name} 连接了 ${connectedConnectors.length} 个接头`);
+  
+  // 为每个连接的接头更新离散点
+  connectedConnectors.forEach((connector: any) => {
+    updateDiscretizedPointsForConnector(connector, group_cell, smooth_runner);
+  });
+}
+
+// 为特定接头更新离散点
+function updateDiscretizedPointsForConnector(connector: any, group_cell: any, smooth_runner: any) {
+  console.log(`[updateDiscretizedPointsForConnector] 处理接头 ${connector.name} 的离散点更新`);
+  
+  // 获取接头的端点位置
+  const leftSeg = group_cell.seg_dict[`seg_${connector.left_seg_idx}`];
+  const rightSeg = group_cell.seg_dict[`seg_${connector.right_seg_idx}`];
+  
+  if (!leftSeg || !rightSeg || !leftSeg.path_points || !rightSeg.path_points || 
+      leftSeg.path_points.length === 0 || rightSeg.path_points.length === 0) {
+    console.log(`[updateDiscretizedPointsForConnector] 接头 ${connector.name} 的段信息不完整，跳过更新`);
+    return;
+  }
+  
+  // 计算接头的有效半径（考虑段壁厚）
+  const posL = leftSeg.path_points[leftSeg.path_points.length - 1];
+  const posR = rightSeg.path_points[0];
+  const rConL = connector.radius_list?.[0] || 0;
+  const rConR = connector.radius_list?.[connector.radius_list.length - 1] || 0;
+  const rSegL = leftSeg.radius_list?.[leftSeg.radius_list.length - 1] || 0;
+  const rSegR = rightSeg.radius_list?.[0] || 0;
+  
+  const effL = Math.max(rConL, rSegL) + Number(leftSeg.cost_setting?.obstacle_thickness || 0);
+  const effR = Math.max(rConR, rSegR) + Number(rightSeg.cost_setting?.obstacle_thickness || 0);
+  
+  // 创建管道配置用于离散点更新
+  const pipes_dict = new Map<string, PipeCfg>();
+  
+  // 添加接头左端点
+  const nameL = `${group_cell.group_name}/con_${connector.idx}_left`;
+  pipes_dict.set(nameL, new PipeCfg(nameL, effL, [posL[0], posL[1], posL[2]], [0,0,1], group_cell.group_name, false, 1));
+  
+  // 添加接头右端点
+  const nameR = `${group_cell.group_name}/con_${connector.idx}_right`;
+  pipes_dict.set(nameR, new PipeCfg(nameR, effR, [posR[0], posR[1], posR[2]], [0,0,1], group_cell.group_name, false, 1));
+  
+  // 检测接头位置并更新相应的离散点
+  const project = rootObj.proj_dict.get(label_dict.value.get('Project') as string);
+  if (!project) return;
+  
+  // 检查接头是否在障碍物表面附近
+  let isOnObstacleSurface = false;
+  let closestObstacleDistance = Infinity;
+  
+  // 收集所有需要检查的点：接头端点 + 接头路径上的点
+  const connectorPositions = [posL, posR];
+  
+  // 如果接头有路径点，也检查路径上的点
+  if (connector.path_points && connector.path_points.length > 0) {
+    console.log(`[updateDiscretizedPointsForConnector] 接头 ${connector.name} 有 ${connector.path_points.length} 个路径点`);
+    connector.path_points.forEach((pathPoint: number[], index: number) => {
+      connectorPositions.push(pathPoint);
+    });
+  }
+  
+  console.log(`[updateDiscretizedPointsForConnector] 检查接头 ${connector.name} 的位置，共检查 ${connectorPositions.length} 个点`);
+  
+  for (let i = 0; i < connectorPositions.length; i++) {
+    const pos = connectorPositions[i];
+    const pointType = i < 2 ? (i === 0 ? '左端点' : '右端点') : `路径点${i-1}`;
+    
+    // 检查是否与任何障碍物表面点接近
+    for (const [obstacleKey, obstacle] of project.obstacle_dict) {
+      if (obstacle.discretize_points && obstacle.discretize_points.length > 0) {
+        for (const obsPoint of obstacle.discretize_points) {
+          const distance = Math.sqrt(
+            Math.pow(pos[0] - obsPoint[0], 2) + 
+            Math.pow(pos[1] - obsPoint[1], 2) + 
+            Math.pow(pos[2] - obsPoint[2], 2)
+          );
+          
+          if (distance < closestObstacleDistance) {
+            closestObstacleDistance = distance;
+          }
+          
+          // 使用更小的阈值，因为障碍物表面点通常比较密集
+          if (distance < 0.5) { // 减小阈值到0.5
+            console.log(`[updateDiscretizedPointsForConnector] 接头${pointType} [${pos[0].toFixed(2)}, ${pos[1].toFixed(2)}, ${pos[2].toFixed(2)}] 距离障碍物 ${obstacleKey} 的离散点 [${obsPoint[0].toFixed(2)}, ${obsPoint[1].toFixed(2)}, ${obsPoint[2].toFixed(2)}] 距离为 ${distance.toFixed(3)}，小于阈值0.5`);
+            isOnObstacleSurface = true;
+            break;
+          }
+        }
+        if (isOnObstacleSurface) break;
+      }
+    }
+    if (isOnObstacleSurface) break;
+  }
+  
+  console.log(`[updateDiscretizedPointsForConnector] 接头 ${connector.name} 最近障碍物距离: ${closestObstacleDistance.toFixed(3)}, 是否在障碍物表面附近: ${isOnObstacleSurface}`);
+  
+  if (isOnObstacleSurface) {
+    console.log(`[updateDiscretizedPointsForConnector] 接头 ${connector.name} 在障碍物表面附近，更新黑色离散点`);
+    // 更新黑色离散点（障碍物表面）
+    // 需要包含所有相关的管道配置，不仅仅是当前接头的配置
+    const allPipesDict = getAllRelevantPipesForObstacleUpdate(group_cell, smooth_runner);
+    updateBlackDiscretizedPoints(allPipesDict, project);
+  } else {
+    console.log(`[updateDiscretizedPointsForConnector] 接头 ${connector.name} 在场景四周，更新红色离散点`);
+    // 更新红色离散点（场景四周）
+    updateRedDiscretizedPoints(pipes_dict, smooth_runner, project);
+  }
+}
+
+// 获取所有相关的管道配置用于障碍物更新
+function getAllRelevantPipesForObstacleUpdate(group_cell: any, smooth_runner: any): Map<string, PipeCfg> {
+  console.log(`[getAllRelevantPipesForObstacleUpdate] 获取所有相关的管道配置`);
+  
+  const allPipesDict = new Map<string, PipeCfg>();
+  
+  // 1. 添加所有管口配置
+  if (smooth_runner.pipes_cfg) {
+    smooth_runner.pipes_cfg.forEach((cfg: any, name: string) => {
+      allPipesDict.set(name, new PipeCfg(name, cfg.radius, cfg.position, cfg.direction, cfg.group_name, cfg.is_input, cfg.radius_scale));
+    });
+  }
+  
+  // 2. 添加所有接头的有效半径配置
+  Object.values(group_cell.connector_dict).forEach((connector: any) => {
+    const leftSeg = group_cell.seg_dict[`seg_${connector.left_seg_idx}`];
+    const rightSeg = group_cell.seg_dict[`seg_${connector.right_seg_idx}`];
+    
+    if (leftSeg && leftSeg.path_points && leftSeg.path_points.length > 0) {
+      const posL = leftSeg.path_points[leftSeg.path_points.length - 1];
+      const rConL = connector.radius_list?.[0] || 0;
+      const rSegL = leftSeg.radius_list?.[leftSeg.radius_list.length - 1] || 0;
+      const effL = Math.max(rConL, rSegL) + Number(leftSeg.cost_setting?.obstacle_thickness || 0);
+      const nameL = `${group_cell.group_name}/con_${connector.idx}_left`;
+      allPipesDict.set(nameL, new PipeCfg(nameL, effL, [posL[0], posL[1], posL[2]], [0,0,1], group_cell.group_name, false, 1));
+    }
+    
+    if (rightSeg && rightSeg.path_points && rightSeg.path_points.length > 0) {
+      const posR = rightSeg.path_points[0];
+      const rConR = connector.radius_list?.[connector.radius_list.length - 1] || 0;
+      const rSegR = rightSeg.radius_list?.[0] || 0;
+      const effR = Math.max(rConR, rSegR) + Number(rightSeg.cost_setting?.obstacle_thickness || 0);
+      const nameR = `${group_cell.group_name}/con_${connector.idx}_right`;
+      allPipesDict.set(nameR, new PipeCfg(nameR, effR, [posR[0], posR[1], posR[2]], [0,0,1], group_cell.group_name, false, 1));
+    }
+  });
+  
+  // 3. 添加所有段端点的有效半径配置（与管口相接的）
+  const dist = (a: number[], b: number[]) => Math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2);
+  const epsEq = (a: number[], b: number[], eps = 1e-6) => Math.abs(a[0]-b[0]) < eps && Math.abs(a[1]-b[1]) < eps && Math.abs(a[2]-b[2]) < eps;
+  
+  const matchPipeForPoint = (pt: number[], preferGroup?: string): any | null => {
+    if (!pt || !smooth_runner.pipes_cfg) return null;
+    
+    // 1) 先在同组内做"精确坐标"匹配
+    let exact: any | null = null;
+    smooth_runner.pipes_cfg.forEach((cfg: any) => {
+      if (!preferGroup || cfg.group_name === preferGroup) {
+        if (epsEq(pt, cfg.position)) exact = cfg;
+      }
+    });
+    if (exact) return { cfg: exact, dist: 0 };
+    
+    // 2) 再做最近点匹配兜底
+    let best: any = null; let bestD = Infinity;
+    smooth_runner.pipes_cfg.forEach((cfg: any) => {
+      if (!preferGroup || cfg.group_name === preferGroup) {
+        const d = dist(pt, cfg.position);
+        if (d < bestD) { bestD = d; best = cfg; }
+      }
+    });
+    return bestD < 1e-2 ? { cfg: best, dist: bestD } : null;
+  };
+  
+  Object.values(group_cell.seg_dict).forEach((segment: any) => {
+    if (Array.isArray(segment.path_points) && segment.path_points.length > 0) {
+      // 使用控制点端位置（与管口精确相等）优先匹配
+      const leftCtrl: number[] = segment.c_idxs && segment.c_idxs.length > 0 ? [
+        group_cell.c_table['x'][segment.c_idxs[0]],
+        group_cell.c_table['y'][segment.c_idxs[0]],
+        group_cell.c_table['z'][segment.c_idxs[0]]
+      ] : segment.path_points[0];
+      const rightCtrl: number[] = segment.c_idxs && segment.c_idxs.length > 0 ? [
+        group_cell.c_table['x'][segment.c_idxs[segment.c_idxs.length - 1]],
+        group_cell.c_table['y'][segment.c_idxs[segment.c_idxs.length - 1]],
+        group_cell.c_table['z'][segment.c_idxs[segment.c_idxs.length - 1]]
+      ] : segment.path_points[segment.path_points.length - 1];
+
+      const leftMatch = matchPipeForPoint(leftCtrl, group_cell.group_name);
+      const rightMatch = matchPipeForPoint(rightCtrl, group_cell.group_name);
+      
+      if (leftMatch) {
+        const leftPipe = leftMatch.cfg;
+        const eff = Number(leftPipe.radius) + Number(segment.cost_setting?.obstacle_thickness || 0);
+        const key = `${group_cell.group_name}/seg_${segment.idx}_left_pipe`;
+        allPipesDict.set(key, new PipeCfg(key, eff, [leftCtrl[0], leftCtrl[1], leftCtrl[2]], leftPipe.direction || [0,0,1], group_cell.group_name, leftPipe.is_input, 1));
+      }
+      if (rightMatch) {
+        const rightPipe = rightMatch.cfg;
+        const eff = Number(rightPipe.radius) + Number(segment.cost_setting?.obstacle_thickness || 0);
+        const key = `${group_cell.group_name}/seg_${segment.idx}_right_pipe`;
+        allPipesDict.set(key, new PipeCfg(key, eff, [rightCtrl[0], rightCtrl[1], rightCtrl[2]], rightPipe.direction || [0,0,1], group_cell.group_name, rightPipe.is_input, 1));
+      }
+    }
+  });
+  
+  console.log(`[getAllRelevantPipesForObstacleUpdate] 获取到 ${allPipesDict.size} 个管道配置`);
+  return allPipesDict;
+}
+
+// 更新红色离散点
+function updateRedDiscretizedPoints(pipes_dict: Map<string, PipeCfg>, smooth_runner: any, project: any) {
+  console.log(`[updateRedDiscretizedPoints] 更新红色离散点`);
+  
+  // 获取当前的障碍物点列表
+  let obstacle_xyzr_list: number[][] = [];
+  
+  // 从Grid获取障碍物点
+  if (project.grid.discretize_source) {
+    project.grid.surface_obstacle_points.forEach((p: number[]) => obstacle_xyzr_list.push([p[0], p[1], p[2], 0.0]));
+  }
+  
+  // 从障碍物获取离散点
+  project.obstacle_dict.forEach((ob: any) => {
+    if (ob.discretize_source && ob.relax_groups.length == 0) {
+      ob.discretize_points.forEach((p: number[]) => obstacle_xyzr_list.push([p[0], p[1], p[2], 0.0]));
+    }
+  });
+  
+  // 更新ObstacleCell的红色点
+  if (smooth_runner.obstacle_cell) {
+    smooth_runner.obstacle_cell.update_xyzr(obstacle_xyzr_list, pipes_dict, rootObj.get_scene());
+    console.log(`[updateRedDiscretizedPoints] ObstacleCell 红色点已更新`);
+  }
+}
+
+// 更新黑色离散点
+function updateBlackDiscretizedPoints(pipes_dict: Map<string, PipeCfg>, project: any) {
+  console.log(`[updateBlackDiscretizedPoints] 更新黑色离散点，管道配置数量: ${pipes_dict.size}`);
+  
+  // 将pipes_dict转换为障碍物离散化所需的格式
+  const pipes_info_list: { x: number, y: number, z: number, radius: number }[] = [];
+  pipes_dict.forEach((cfg: PipeCfg, name: string) => {
+    pipes_info_list.push({
+      x: cfg.position[0],
+      y: cfg.position[1],
+      z: cfg.position[2],
+      radius: cfg.radius
+    });
+    console.log(`[updateBlackDiscretizedPoints] 管道配置 ${name}: pos=(${cfg.position[0].toFixed(2)}, ${cfg.position[1].toFixed(2)}, ${cfg.position[2].toFixed(2)}), radius=${cfg.radius.toFixed(3)}`);
+  });
+  
+  // 重新离散化所有障碍物
+  let updatedObstacles = 0;
+  project.obstacle_dict.forEach((ob: any, key: string) => {
+    if (ob.discretize_points && ob.discretize_points.length > 0) {
+      console.log(`[updateBlackDiscretizedPoints] 重新离散化障碍物 ${key} 的黑色点，原有 ${ob.discretize_points.length} 个点`);
+      
+      // 保存原有的离散化源，确保使用正确的源标识
+      const originalSource = ob.discretize_source || 'smooth';
+      
+      ob.discrete(
+        rootObj.get_scene(), 
+        project.grid.resolution, 
+        originalSource, // 保持原有的离散化源标识
+        pipes_info_list
+      );
+      
+      console.log(`[updateBlackDiscretizedPoints] 障碍物 ${key} 重新离散化完成，现在有 ${ob.discretize_points.length} 个点`);
+      updatedObstacles++;
+    } else {
+      console.log(`[updateBlackDiscretizedPoints] 障碍物 ${key} 没有离散点，跳过更新`);
+    }
+  });
+  
+  console.log(`[updateBlackDiscretizedPoints] 黑色离散点更新完成，共更新了 ${updatedObstacles} 个障碍物`);
 }
 
 // 新增离散化主流程，参数组装方式完全参照 DefineSmoothInfo.vue 的 handleApply
@@ -2749,13 +3405,9 @@ async function discretizeObstacle() {
     const result = await handleDefineSmoothInfoGenerate(params);
     
     if (result) {
-      // 离散化成功后，只渲染新生成的那一组line
+      // 先更新连接器，再更新段；这样段端点可以读取接头半径
       for (const group_cell of smooth_runner.group_cells.values()) {
-        for (const seg of Object.values(group_cell.seg_dict)) {
-          seg.update_mesh(rootObj.get_scene());
-        }
         for (const con of Object.values(group_cell.connector_dict)) {
-          // 自动推断connector的path_points
           if (!con.path_points || con.path_points.length < 2) {
             const left_seg = group_cell.seg_dict[`seg_${con.left_seg_idx}`];
             const right_seg = group_cell.seg_dict[`seg_${con.right_seg_idx}`];
@@ -2772,7 +3424,203 @@ async function discretizeObstacle() {
           }
           con.update_mesh(rootObj.get_scene());
         }
+        for (const seg of Object.values(group_cell.seg_dict)) {
+          seg.update_mesh(rootObj.get_scene());
+        }
       }
+
+      // 刷新红点（ObstacleCell）
+      try {
+        const project = label_dict.value.get('Project') as string;
+        const project_manager = rootObj.proj_dict.get(project)!;
+        let obstacle_xyzr_list: number[][] = [];
+        const grid = project_manager.grid;
+        
+        // 为平滑功能独立进行Grid离散化，不依赖路径搜索的离散化状态
+        if (!grid.discretize_source || grid.discretize_source !== 'smooth') {
+          console.log('[discretizeObstacle] 为平滑功能进行独立的Grid离散化');
+          
+          // 创建管道信息列表用于障碍物过滤
+          const pipes_info_list: { x: number, y: number, z: number, radius: number }[] = [];
+          if (smooth_runner.pipes_cfg) {
+            smooth_runner.pipes_cfg.forEach((cfg: any, name: string) => {
+              pipes_info_list.push({
+                x: cfg.position[0],
+                y: cfg.position[1],
+                z: cfg.position[2],
+                radius: cfg.radius
+              });
+            });
+          }
+          
+          // 使用平滑专用的分辨率进行离散化
+          const smooth_resolution = grid.resolution || 0.1;
+          grid.discretize(rootObj.get_scene(), smooth_resolution, 'smooth', pipes_info_list);
+        }
+        
+        // 获取Grid的障碍物点
+        if (grid.discretize_source) {
+          grid.surface_obstacle_points.forEach((p: number[]) => obstacle_xyzr_list.push([p[0], p[1], p[2], 0.0]));
+        }
+        
+        // 为平滑功能独立进行障碍物离散化
+        const pipes_info_list_for_obstacles: { x: number, y: number, z: number, radius: number }[] = [];
+        if (smooth_runner.pipes_cfg) {
+          smooth_runner.pipes_cfg.forEach((cfg: any, name: string) => {
+            pipes_info_list_for_obstacles.push({
+              x: cfg.position[0],
+              y: cfg.position[1],
+              z: cfg.position[2],
+              radius: cfg.radius
+            });
+          });
+        }
+        
+        project_manager.obstacle_dict.forEach((ob: any) => {
+          // 为平滑功能独立进行障碍物离散化，不依赖路径搜索的离散化状态
+          if (!ob.discretize_source || ob.discretize_source !== 'smooth') {
+            console.log(`[discretizeObstacle] 为障碍物进行独立的平滑离散化`);
+            ob.discrete(
+              rootObj.get_scene(), grid.resolution, 
+              'smooth', // 使用'smooth'作为离散化源标识
+              pipes_info_list_for_obstacles
+            );
+          }
+          
+          if (ob.discretize_source && ob.relax_groups.length == 0) {
+            ob.discretize_points.forEach((p: number[]) => obstacle_xyzr_list.push([p[0], p[1], p[2], 0.0]));
+          }
+        });
+        
+        const pipes_dict = new Map<string, PipeCfg>();
+        if (smooth_runner.pipes_cfg) {
+          smooth_runner.pipes_cfg.forEach((cfg: any, name: string) => {
+            pipes_dict.set(name, new PipeCfg(name, cfg.radius, cfg.position, cfg.direction, cfg.group_name, cfg.is_input, cfg.radius_scale));
+          });
+        }
+        
+        for (const group_cell of smooth_runner.group_cells.values()) {
+          for (const con of Object.values(group_cell.connector_dict)) {
+            
+            const leftSeg = group_cell.seg_dict[`seg_${con.left_seg_idx}`];
+            const rightSeg = group_cell.seg_dict[`seg_${con.right_seg_idx}`];
+            
+            if (leftSeg && leftSeg.path_points.length > 0) {
+              const posL = leftSeg.path_points[leftSeg.path_points.length - 1];
+              const rConL = con.radius_list?.[0] || 0;
+              const rSegL = leftSeg.radius_list?.[leftSeg.radius_list.length - 1] || 0;
+              const effL = Math.max(rConL, rSegL) + Number(leftSeg.cost_setting?.obstacle_thickness || 0);
+              const nameL = `${group_cell.group_name}/con_${con.idx}_left`;
+              pipes_dict.set(nameL, new PipeCfg(nameL, effL, [posL[0], posL[1], posL[2]], [0,0,1], group_cell.group_name, false, 1));
+            }
+            if (rightSeg && rightSeg.path_points.length > 0) {
+              const posR = rightSeg.path_points[0];
+              const rConR = con.radius_list?.[con.radius_list.length - 1] || 0;
+              const rSegR = rightSeg.radius_list?.[0] || 0;
+              const effR = Math.max(rConR, rSegR) + Number(rightSeg.cost_setting?.obstacle_thickness || 0);
+              const nameR = `${group_cell.group_name}/con_${con.idx}_right`;
+              pipes_dict.set(nameR, new PipeCfg(nameR, effR, [posR[0], posR[1], posR[2]], [0,0,1], group_cell.group_name, false, 1));
+            }
+          }
+          
+          // 同时把与管口相接的段端点也加入过滤：半径 = 管口半径 + 段Obstacle Thickness
+          const dist = (a: number[], b: number[]) => Math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2);
+          const epsEq = (a: number[], b: number[], eps = 1e-6) => Math.abs(a[0]-b[0]) < eps && Math.abs(a[1]-b[1]) < eps && Math.abs(a[2]-b[2]) < eps;
+          const matchPipeForPoint = (pt: number[], preferGroup?: string): any | null => {
+            if (!pt || !smooth_runner.pipes_cfg) return null;
+            // 1) 先在同组内做"精确坐标"匹配（控制点坐标和 pipe.position 一致）
+            let exact: any | null = null;
+            smooth_runner.pipes_cfg.forEach((cfg: any) => {
+              if (!preferGroup || cfg.group_name === preferGroup) {
+                if (epsEq(pt, cfg.position)) exact = cfg;
+              }
+            });
+            if (exact) return { cfg: exact, dist: 0 };
+            // 2) 再做最近点匹配兜底
+            let best: any = null; let bestD = Infinity;
+            smooth_runner.pipes_cfg.forEach((cfg: any) => {
+              if (!preferGroup || cfg.group_name === preferGroup) {
+                const d = dist(pt, cfg.position);
+                if (d < bestD) { bestD = d; best = cfg; }
+              }
+            });
+            return bestD < 1e-2 ? { cfg: best, dist: bestD } : null;
+          };
+          
+          for (const seg of Object.values(group_cell.seg_dict)) {
+            const segment = seg as any;
+            if (Array.isArray(segment.path_points) && segment.path_points.length > 0) {
+              // 使用控制点端位置（与管口精确相等）优先匹配
+              const leftCtrl: number[] = segment.c_idxs && segment.c_idxs.length > 0 ? [
+                group_cell.c_table['x'][segment.c_idxs[0]],
+                group_cell.c_table['y'][segment.c_idxs[0]],
+                group_cell.c_table['z'][segment.c_idxs[0]]
+              ] : segment.path_points[0];
+              const rightCtrl: number[] = segment.c_idxs && segment.c_idxs.length > 0 ? [
+                group_cell.c_table['x'][segment.c_idxs[segment.c_idxs.length - 1]],
+                group_cell.c_table['y'][segment.c_idxs[segment.c_idxs.length - 1]],
+                group_cell.c_table['z'][segment.c_idxs[segment.c_idxs.length - 1]]
+              ] : segment.path_points[segment.path_points.length - 1];
+
+              // console.log(`[discretizeObstacle] 段 ${segment.name} 左端点: (${leftCtrl})`);
+              // console.log(`[discretizeObstacle] 段 ${segment.name} 右端点: (${rightCtrl})`);
+
+              const leftMatch = matchPipeForPoint(leftCtrl, group_cell.group_name);
+              const rightMatch = matchPipeForPoint(rightCtrl, group_cell.group_name);
+              
+              // console.log(`[discretizeObstacle] 段 ${segment.name} 左端点匹配结果: ${leftMatch ? `匹配到管口 ${leftMatch.cfg.name} (距离=${leftMatch.dist.toExponential(2)})` : '未匹配到管口'}`);
+              // console.log(`[discretizeObstacle] 段 ${segment.name} 右端点匹配结果: ${rightMatch ? `匹配到管口 ${rightMatch.cfg.name} (距离=${rightMatch.dist.toExponential(2)})` : '未匹配到管口'}`);
+              
+              if (leftMatch) {
+                const leftPipe = leftMatch.cfg;
+                const eff = Number(leftPipe.radius) + Number(segment.cost_setting?.obstacle_thickness || 0);
+                const key = `${group_cell.group_name}/seg_${segment.idx}_left_pipe`;
+                pipes_dict.set(key, new PipeCfg(key, eff, [leftCtrl[0], leftCtrl[1], leftCtrl[2]], leftPipe.direction || [0,0,1], group_cell.group_name, leftPipe.is_input, 1));
+              }
+              if (rightMatch) {
+                const rightPipe = rightMatch.cfg;
+                const eff = Number(rightPipe.radius) + Number(segment.cost_setting?.obstacle_thickness || 0);
+                const key = `${group_cell.group_name}/seg_${segment.idx}_right_pipe`;
+                pipes_dict.set(key, new PipeCfg(key, eff, [rightCtrl[0], rightCtrl[1], rightCtrl[2]], rightPipe.direction || [0,0,1], group_cell.group_name, rightPipe.is_input, 1));
+              }
+            }
+          }
+        }
+        
+        // 显示所有管道配置的详细信息
+        pipes_dict.forEach((cfg: PipeCfg, name: string) => {
+          console.log(`[discretizeObstacle] ${name}: pos=(${cfg.position[0].toFixed(2)}, ${cfg.position[1].toFixed(2)}, ${cfg.position[2].toFixed(2)}), radius=${cfg.radius.toFixed(3)}`);
+        });
+        
+        if (smooth_runner.obstacle_cell) {
+          smooth_runner.obstacle_cell.update_xyzr(obstacle_xyzr_list, pipes_dict, rootObj.get_scene());
+          // console.log(`[discretizeObstacle] ObstacleCell 红色点已更新`);
+        }
+        
+        
+        // 同步刷新 Grid 的红点（surface_obstacle_points）
+        try {
+          const pipe_list: { x: number, y: number, z: number, radius: number }[] = [];
+          pipes_dict.forEach((cfg: PipeCfg) => {
+            pipe_list.push({ x: cfg.position[0], y: cfg.position[1], z: cfg.position[2], radius: cfg.radius });
+          });
+          
+          // console.log(`[discretizeObstacle] 准备更新Grid，传入的pipe_list包含 ${pipe_list.length} 个管道:`);
+          pipe_list.forEach((pipe, index) => {
+            console.log(`[discretizeObstacle] pipe[${index}]: pos=(${pipe.x.toFixed(2)}, ${pipe.y.toFixed(2)}, ${pipe.z.toFixed(2)}), radius=${pipe.radius.toFixed(3)}`);
+          });
+          
+          const gridRes = project_manager.grid.resolution;
+          const gridSrc = project_manager.grid.discretize_source || 'smooth';
+          project_manager.grid.discretize(rootObj.get_scene(), gridRes, gridSrc, pipe_list);
+          // console.log(`[discretizeObstacle] Grid 红色点已更新`);
+        } catch (e) {
+          console.warn('[discretizeObstacle] 更新Grid红色点时出错:', e);
+        }
+      } catch (e) {
+        console.warn('[discretizeObstacle] 刷新红色点时出错:', e);
+      }
+
       ElMessage.success('离散化成功完成！');
     } else {
       ElMessage.error('离散化失败，请检查参数和网络连接');
@@ -2802,6 +3650,47 @@ function handleControlPointContextMenu(mode: string) {
   controlPointContextMenuVisible.value = false
   if (mode === 'EditControlPoint') {
     controlPointEditorVisible.value = true
+  } else if (mode === 'EditControlPoints') {
+    // 获取当前段信息
+    const info = currentControlPointInfo.value
+    if (info && info.parent) {
+      const { c_idx, parent } = info
+      const group_cell = parent?.parent_cell
+      
+      if (group_cell) {
+        // 查找包含当前控制点的段
+        let targetSegment = null
+        for (const [segmentName, segment] of Object.entries(group_cell.seg_dict)) {
+          const seg = segment as SegmentCell
+          if (seg.c_idxs && seg.c_idxs.includes(c_idx)) {
+            targetSegment = seg
+            break
+          }
+        }
+        
+        // 如果没找到段，尝试在连接器中查找
+        if (!targetSegment) {
+          for (const [connectorName, connector] of Object.entries(group_cell.connector_dict)) {
+            const con = connector as ConnectorCell
+            if (con.c_idxs && con.c_idxs.includes(c_idx)) {
+              targetSegment = con
+              break
+            }
+          }
+        }
+        
+        if (targetSegment) {
+          // 构建段信息
+          const segmentInfo = {
+            ...targetSegment,
+            name: targetSegment.name || 'Unknown',
+            c_idxs: targetSegment.c_idxs || []
+          }
+          currentSegmentInfo.value = segmentInfo
+        }
+      }
+    }
+    batchControlPointEditorVisible.value = true
   }
 }
 
@@ -2897,7 +3786,7 @@ function handleControlPointApply(data: any) {
       
       // 如果之前tube是可见的，重新显示
       if (wasTubeVisible) {
-        connector.show_tube_mesh();
+        connector.show_tube_mesh(rootObj.get_scene());
       }
     }
   }
@@ -2905,6 +3794,121 @@ function handleControlPointApply(data: any) {
   // 确保控制点保持显示状态（如果之前是显示的）
   if (controlPoint.isVisible()) {
     controlPoint.show_control_point();
+  }
+}
+
+function handleBatchControlPointApply(updates: any[]) {
+  // 批量更新控制点
+  const info = currentControlPointInfo.value
+  if (!info || !updates || updates.length === 0) return
+  
+  const { parent } = info
+  
+  // 获取GroupCell
+  const group_cell = parent?.parent_cell
+  if (!group_cell) return
+  
+  // 更新c_table
+  const c_table = group_cell.c_table
+  if (!c_table) return
+  
+  // 批量更新所有控制点
+  for (const update of updates) {
+    const { c_idx, x, y, z, radius, is_fix } = update
+    
+    c_table.x[c_idx] = x
+    c_table.y[c_idx] = y
+    c_table.z[c_idx] = z
+    c_table.radius[c_idx] = radius
+    c_table.is_fix[c_idx] = is_fix ? 1 : 0
+    c_table.is_unique[c_idx] = c_table.is_unique[c_idx] || 0 // 保持原有值
+    
+    // 更新控制点位置
+    const controlPoint = group_cell.get_or_create_control_point(c_idx, parent.scene);
+    controlPoint.update_position();
+    
+    // 确保控制点保持显示状态（如果之前是显示的）
+    if (controlPoint.isVisible()) {
+      controlPoint.show_control_point();
+    }
+  }
+  
+  // 更新所有使用这些控制点的段
+  for (const [segmentName, segment] of Object.entries(group_cell.seg_dict)) {
+    const seg = segment as SegmentCell;
+    const hasUpdatedControlPoint = updates.some(update => seg.c_idxs.includes(update.c_idx));
+    
+    if (hasUpdatedControlPoint) {
+      // 检查tube是否当前可见
+      const wasTubeVisible = seg.tube_mesh && seg.tube_mesh.mesh_dict && 
+        Object.values(seg.tube_mesh.mesh_dict).some(mesh => mesh.visible);
+      
+      seg.update_mesh(parent.scene);
+      // 清除tube_mesh，确保下次显示时重新创建
+      if (seg.tube_mesh) {
+        seg.tube_mesh.hide_mesh();
+        seg.tube_mesh = null;
+      }
+      
+      // 如果之前tube是可见的，重新显示
+      if (wasTubeVisible) {
+        seg.show_tube_mesh(parent.scene);
+      }
+    }
+  }
+  
+  // 收集需要更新的连接器，避免重复更新
+  const connectorsToUpdate = new Set<string>();
+  
+  // 更新所有使用这些控制点的连接器
+  for (const update of updates) {
+    for (const [connectorName, connector] of Object.entries(group_cell.connector_dict)) {
+      const con = connector as ConnectorCell;
+      if (con.c_idxs.includes(update.c_idx)) {
+        connectorsToUpdate.add(connectorName);
+      }
+    }
+  }
+  
+  // 更新所有连接到被更新段的连接器
+  for (const [segmentName, segment] of Object.entries(group_cell.seg_dict)) {
+    const seg = segment as SegmentCell;
+    const hasUpdatedControlPoint = updates.some(update => seg.c_idxs.includes(update.c_idx));
+    
+    if (hasUpdatedControlPoint) {
+      // 找到所有连接到这个段的连接器
+      for (const [connectorName, connector] of Object.entries(group_cell.connector_dict)) {
+        const con = connector as ConnectorCell;
+        if (con.left_seg_idx === seg.idx || con.right_seg_idx === seg.idx) {
+          connectorsToUpdate.add(connectorName);
+        }
+      }
+    }
+  }
+  
+  // 批量更新所有需要更新的连接器
+  for (const connectorName of connectorsToUpdate) {
+    const connector = group_cell.connector_dict[connectorName] as ConnectorCell;
+    if (connector) {
+      // 检查tube是否当前可见
+      const wasTubeVisible = connector.tube_mesh && connector.tube_mesh.mesh_dict && 
+        Object.values(connector.tube_mesh.mesh_dict).some(mesh => mesh.visible);
+      
+      // 清除现有的path_points，让update_mesh重新生成spline路径
+      connector.path_points = [];
+      connector.radius_list = [];
+      connector.update_mesh(parent.scene);
+      // 清除tube_mesh，确保下次显示时重新创建
+      if (connector.tube_mesh) {
+        connector.tube_mesh.hide_mesh();
+        connector.tube_mesh = null;
+      }
+      
+      // 如果之前tube是可见的，重新显示
+      if (wasTubeVisible) {
+        connector.show_tube_mesh(rootObj.get_scene());
+      }
+    }
   }
 }
 
@@ -2922,6 +3926,8 @@ function handleRightClickMeshSelect() {
 }
 
 const controlPointEditorVisible = ref(false);
+const batchControlPointEditorVisible = ref(false);
+const currentSegmentInfo = ref<any>(null);
 
 // ------ 批量编辑相关变量 ------
 const batchSegmentEditorVisible = ref(false);
@@ -2957,10 +3963,19 @@ function onBatchSegmentSave(costSettings: any) {
       if (targetGroupCell) {
         // 批量更新所有段节点的Cost Settings
         Object.values(targetGroupCell.seg_dict).forEach(segment_cell => {
+          const oldThickness = segment_cell.cost_setting?.obstacle_thickness || 0;
+          const newThickness = costSettings.obstacle_thickness || 0;
+          
           segment_cell.cost_setting.obstacle_thickness = costSettings.obstacle_thickness;
           segment_cell.cost_setting.path_thickness = costSettings.path_thickness;
           // 刷新mesh以反映更改
           segment_cell.update_mesh(rootObj.get_scene());
+          
+          // 检查是否需要更新离散点（如果段壁厚被修改且连接着接头）
+          if (Math.abs(oldThickness - newThickness) > 0.001) {
+            console.log(`[onBatchSegmentSave] 段 ${segment_cell.name} 的壁厚从 ${oldThickness} 修改为 ${newThickness}，检查是否需要更新离散点`);
+            updateDiscretizedPointsAfterSegmentThicknessChange(segment_cell, targetGroupCell, smooth_runner);
+          }
         });
         
         ElMessage.success('所有段节点的Cost Settings已更新');
@@ -3014,9 +4029,10 @@ function onBatchConnectorSave(costSettings: any) {
 }
 
 .menu-bar {
-  border-bottom: 1px solid #dcdfe6;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
   position: relative;
   z-index: 1;
   display: flex;
@@ -3027,21 +4043,27 @@ function onBatchConnectorSave(costSettings: any) {
   cursor: pointer;
   display: flex;
   align-items: center;
-  height: 44px;
-  padding: 0 20px;
-  color: #303133;
-  font-size: 15px;
-  transition: all 0.3s;
+  height: 48px;
+  padding: 0 24px;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   font-family: inherit;
+  border-radius: 8px;
+  margin: 0 4px;
+  letter-spacing: 0.025em;
 }
 
 .el-dropdown-link:hover {
-  background-color: #f5f7fa;
-  color: #409eff;
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+  transform: translateY(-1px);
 }
 
 .el-dropdown-link:hover .el-icon--right {
-  color: #409eff;
+  color: #6366f1;
+  transform: translateY(-1px);
 }
 
 .el-dropdown-link + .el-dropdown-link {
@@ -3055,33 +4077,44 @@ function onBatchConnectorSave(costSettings: any) {
   left: 0;
   right: 0;
   height: 1px;
-  background-color: #dcdfe6;
+  background: linear-gradient(90deg, transparent 0%, rgba(226, 232, 240, 0.6) 50%, transparent 100%);
   z-index: 1;
 }
 
 .context-menu {
   position: fixed;
-  background: white;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   z-index: 3000;
   max-height: 80vh;
   overflow-y: auto;
+  padding: 8px;
 }
 
 .context-menu :deep(.el-menu) {
   border-right: none;
+  background: transparent;
 }
 
 .context-menu :deep(.el-menu-item) {
-  height: 32px;
-  line-height: 32px;
+  height: 40px;
+  line-height: 40px;
   padding: 0 16px;
+  border-radius: 8px;
+  margin: 2px 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 500;
+  color: #475569;
+  font-size: 14px;
 }
 
 .context-menu :deep(.el-menu-item:hover) {
-  background-color: #f5f7fa;
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+  transform: translateX(4px);
 }
 
 /* Add styles for click outside handler */
@@ -3093,5 +4126,161 @@ function onBatchConnectorSave(costSettings: any) {
   bottom: 0;
   z-index: 2999;
   background: transparent;
+}
+
+/* 现代化弹框样式 - 仅针对此组件 */
+:deep(.el-dialog) {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(226, 232, 240, 0.6) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15) !important;
+}
+
+:deep(.el-dialog__header) {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.9) 100%) !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6) !important;
+  border-radius: 16px 16px 0 0 !important;
+  padding: 20px 24px !important;
+}
+
+:deep(.el-dialog__title) {
+  color: #1e293b !important;
+  font-weight: 600 !important;
+  font-size: 18px !important;
+  letter-spacing: 0.025em !important;
+}
+
+:deep(.el-dialog__headerbtn) {
+  top: 20px !important;
+  right: 24px !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 8px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+:deep(.el-dialog__headerbtn:hover) {
+  background: rgba(99, 102, 241, 0.08) !important;
+  color: #6366f1 !important;
+  transform: scale(1.1) !important;
+}
+
+:deep(.el-dialog__body) {
+  padding: 24px !important;
+  background: rgba(248, 250, 252, 0.3) !important;
+}
+
+:deep(.el-dialog__footer) {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.9) 100%) !important;
+  border-top: 1px solid rgba(226, 232, 240, 0.6) !important;
+  border-radius: 0 0 16px 16px !important;
+  padding: 20px 24px !important;
+}
+
+/* 现代化按钮样式 */
+:deep(.el-button) {
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  letter-spacing: 0.025em !important;
+}
+
+:deep(.el-button--primary) {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3) !important;
+}
+
+:deep(.el-button--primary:hover) {
+  background: linear-gradient(135deg, #5b21b6 0%, #7c3aed 100%) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4) !important;
+}
+
+:deep(.el-button--default) {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid rgba(226, 232, 240, 0.6) !important;
+  color: #475569 !important;
+}
+
+:deep(.el-button--default:hover) {
+  background: rgba(99, 102, 241, 0.08) !important;
+  border-color: rgba(99, 102, 241, 0.2) !important;
+  color: #6366f1 !important;
+  transform: translateY(-1px) !important;
+}
+
+/* 现代化数字输入框样式 */
+:deep(.el-input-number) {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid rgba(226, 232, 240, 0.6) !important;
+  border-radius: 8px !important;
+  transition: all 0.3s ease !important;
+}
+
+:deep(.el-input-number:hover) {
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+:deep(.el-input-number.is-focus) {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
+}
+
+:deep(.el-input-number__decrease),
+:deep(.el-input-number__increase) {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid rgba(226, 232, 240, 0.6) !important;
+  color: #475569 !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border-radius: 6px !important;
+}
+
+:deep(.el-input-number__decrease:hover),
+:deep(.el-input-number__increase:hover) {
+  background: rgba(99, 102, 241, 0.08) !important;
+  border-color: rgba(99, 102, 241, 0.2) !important;
+  color: #6366f1 !important;
+  transform: scale(1.05) !important;
+}
+
+:deep(.el-input-number__input) {
+  background: transparent !important;
+  color: #1e293b !important;
+  font-weight: 500 !important;
+}
+
+/* 现代化表单样式 */
+:deep(.el-form-item__label) {
+  color: #1e293b !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  letter-spacing: 0.025em !important;
+}
+
+:deep(.el-form-item) {
+  margin-bottom: 20px !important;
+}
+
+:deep(.el-form-item__content) {
+  display: flex !important;
+  align-items: center !important;
+}
+
+:deep(.el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid rgba(226, 232, 240, 0.6) !important;
+  border-radius: 8px !important;
+  transition: all 0.3s ease !important;
+}
+
+:deep(.el-input__wrapper:hover) {
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+:deep(.el-input__wrapper.is-focus) {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
 }
 </style>
