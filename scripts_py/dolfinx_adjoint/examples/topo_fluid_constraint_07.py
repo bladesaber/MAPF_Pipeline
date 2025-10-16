@@ -1,8 +1,11 @@
 '''
-拓扑优化受到先验topology weight影响,当预设好路径时,拓扑优化不会产生新的路径,只会在原设路径上进行优化.
+拓扑优化受到先验topology weight影响,当预设好路径(guess path)时,拓扑优化不会产生新的路径,只会在原设路径上进行优化.
 当不存在预设好路径时,即topo_weight初始值均为0.5时,尽管存在障碍物因素,拓扑优化依然会自动产生新的路径.
 
-
+一个想法是多次交替expand和shrink:
+    1.在expand阶段, guess path附近topology weight设置为1.0
+    2.在shrink阶段, 进行拓扑优化, 并只保留高权重区域.
+    3.重复上述过程, 直到收敛.
 '''
 
 import dolfinx
