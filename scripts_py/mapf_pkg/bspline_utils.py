@@ -28,7 +28,9 @@ class BsplineUtils(object):
         return c1 + c2
 
     @staticmethod
-    def compute_mat(ts: np.ndarray, pcd_num: int, degree: int, knot: np.ndarray, fill_last_one=True):
+    def compute_mat(
+        ts: np.ndarray, pcd_num: int, degree: int, knot: np.ndarray, fill_last_one=True
+    ):
         b_mat = np.zeros(shape=(ts.shape[0], pcd_num))
         for j, t in enumerate(ts):
             for i in range(pcd_num):
@@ -41,11 +43,13 @@ class BsplineUtils(object):
     def create_knot_cfg(pcd_num: int, degree: int, left_clamp=True, right_clamp=True):
         if left_clamp and right_clamp:
             knot = np.linspace(0.0, 1.0, pcd_num - degree + 1)
-            knot = np.concatenate([
-                np.full(shape=(degree,), fill_value=0.0),
-                knot,
-                np.full(shape=(degree,), fill_value=1.0)
-            ])
+            knot = np.concatenate(
+                [
+                    np.full(shape=(degree,), fill_value=0.0),
+                    knot,
+                    np.full(shape=(degree,), fill_value=1.0),
+                ]
+            )
             fill_last_one = True
 
         elif left_clamp and (not right_clamp):
@@ -62,12 +66,17 @@ class BsplineUtils(object):
             knot = np.linspace(0.0, 1.0, pcd_num + degree + 1)
             fill_last_one = False
 
-        return {'knot': knot, 'fill_last_one': fill_last_one}
+        return {"knot": knot, "fill_last_one": fill_last_one}
 
     @staticmethod
     def create_ts(
-            sample_num: int, degree: int, knot: np.ndarray, left_clamp=True, right_clamp=True,
-            left_split_num=None, right_split_num=None
+        sample_num: int,
+        degree: int,
+        knot: np.ndarray,
+        left_clamp=True,
+        right_clamp=True,
+        left_split_num=None,
+        right_split_num=None,
     ):
         if left_split_num is None:
             left_split_num = degree
@@ -85,7 +94,9 @@ class BsplineUtils(object):
             ts = np.linspace(knot[left_split_num], 1.0, sample_num)
         else:
             # Restrict to range where the curve is defined
-            ts = np.linspace(knot[left_split_num], knot[-right_split_num - 1], sample_num)
+            ts = np.linspace(
+                knot[left_split_num], knot[-right_split_num - 1], sample_num
+            )
         return ts
 
     @staticmethod
@@ -125,7 +136,9 @@ class BsplineUtils(object):
         return c1 + c2
 
     @staticmethod
-    def compute_first_order_mat(t_list: np.ndarray, pcd_num: int, degree: int, knot: np.ndarray):
+    def compute_first_order_mat(
+        t_list: np.ndarray, pcd_num: int, degree: int, knot: np.ndarray
+    ):
         """
         Since I can't estimate the real distance of t_list, the curvature will be wrong estimate,
          value of curvature related to t_list
@@ -137,7 +150,9 @@ class BsplineUtils(object):
         return b_mat
 
     @staticmethod
-    def compute_second_order_mat(t_list: np.ndarray, pcd_num: int, degree: int, knot: np.ndarray):
+    def compute_second_order_mat(
+        t_list: np.ndarray, pcd_num: int, degree: int, knot: np.ndarray
+    ):
         """
         Since I can't estimate the real distance of t_list, the curvature will be wrong estimate,
          value of curvature related to t_list
@@ -149,21 +164,26 @@ class BsplineUtils(object):
         return b_mat
 
     @staticmethod
-    def compute_curvature(t_list: np.ndarray, pcd: np.ndarray, degree: int, knot: np.ndarray):
+    def compute_curvature(
+        t_list: np.ndarray, pcd: np.ndarray, degree: int, knot: np.ndarray
+    ):
         mat1 = BsplineUtils.compute_first_order_mat(t_list, pcd.shape[0], degree, knot)
         pcd_order1 = mat1.dot(pcd)
         mat2 = BsplineUtils.compute_second_order_mat(t_list, pcd.shape[0], degree, knot)
         pcd_order2 = mat2.dot(pcd)
         a = np.linalg.norm(
             np.cross(pcd_order1, pcd_order2, axis=1).reshape((pcd_order1.shape[0], -1)),
-            axis=1, ord=2
+            axis=1,
+            ord=2,
         )
         b = np.power(np.linalg.norm(pcd_order1, axis=1, ord=2), 3.0)
         return a / (b + 1e-8)
 
     @staticmethod
     def compute_menger_curvature(
-            pcd: np.ndarray, start_vec: np.ndarray = None, end_vec: np.ndarray = None
+        pcd: np.ndarray,
+        start_vec: np.ndarray | None = None,
+        end_vec: np.ndarray | None = None,
     ):
         pcd_list = []
         if start_vec is not None:
@@ -186,7 +206,11 @@ class BsplineUtils(object):
         return 1.0 / radius
 
     @staticmethod
-    def compute_approximate_curvature(pcd: np.ndarray, start_vec: np.ndarray = None, end_vec: np.ndarray = None):
+    def compute_approximate_curvature(
+        pcd: np.ndarray,
+        start_vec: np.ndarray | None = None,
+        end_vec: np.ndarray | None = None,
+    ):
         pcd_list = []
         if start_vec is not None:
             pcd_list.append((pcd[0] - start_vec).reshape((1, -1)))
@@ -201,19 +225,33 @@ class BsplineUtils(object):
         length0, length1 = lengths[:-1], lengths[1:]
         cos_theta = np.sum(vector0 * vector1, axis=1) / (length0 * length1)
 
-        curvature = np.arccos(cos_theta) / np.minimum(length0, length1)  # real curvature
+        curvature = np.arccos(cos_theta) / np.minimum(
+            length0, length1
+        )  # real curvature
         # arc_theta = np.log((1.0 - cos_theta) * 11.0 + 1.0)
         # curvature = arc_theta / np.minimum(length0, length1)
 
         return curvature
 
     @staticmethod
-    def compute_ts(control_pcd: np.ndarray, pcd: np.ndarray, degree: int, left_clamp: bool, right_clamp: bool):
-        knot_cfg = BsplineUtils.create_knot_cfg(control_pcd.shape[0], degree, left_clamp, right_clamp)
+    def compute_ts(
+        control_pcd: np.ndarray,
+        pcd: np.ndarray,
+        degree: int,
+        left_clamp: bool,
+        right_clamp: bool,
+    ):
+        knot_cfg = BsplineUtils.create_knot_cfg(
+            control_pcd.shape[0], degree, left_clamp, right_clamp
+        )
 
         def cost_fun(ts):
             mat = BsplineUtils.compute_mat(
-                ts, control_pcd.shape[0], degree, knot_cfg['knot'], knot_cfg['fill_last_one']
+                ts,
+                control_pcd.shape[0],
+                degree,
+                knot_cfg["knot"],
+                knot_cfg["fill_last_one"],
             )
             pcd_tmp = mat.dot(control_pcd)
             cost = np.sum(np.power(pcd - pcd_tmp, 2.0))
@@ -226,15 +264,24 @@ class BsplineUtils(object):
 
     @staticmethod
     def compute_spline_length(
-            c_pcd: np.ndarray, degree: int, left_clamp: bool, right_clamp: bool,
-            sample_num_init: int = 50, sample_change_ratio: float = 1.5, atol=5e-1
+        c_pcd: np.ndarray,
+        degree: int,
+        left_clamp: bool,
+        right_clamp: bool,
+        sample_num_init: int = 50,
+        sample_change_ratio: float = 1.5,
+        atol=5e-1,
     ):
-        knot_cfg = BsplineUtils.create_knot_cfg(c_pcd.shape[0], degree, left_clamp, right_clamp)
+        knot_cfg = BsplineUtils.create_knot_cfg(
+            c_pcd.shape[0], degree, left_clamp, right_clamp
+        )
         sample_num, last_length = sample_num_init, None
         for _ in range(20):
-            ts = BsplineUtils.create_ts(sample_num, degree, knot_cfg['knot'], left_clamp, right_clamp)
+            ts = BsplineUtils.create_ts(
+                sample_num, degree, knot_cfg["knot"], left_clamp, right_clamp
+            )
             spline_mat = BsplineUtils.compute_mat(
-                ts, c_pcd.shape[0], degree, knot_cfg['knot'], knot_cfg['fill_last_one']
+                ts, c_pcd.shape[0], degree, knot_cfg["knot"], knot_cfg["fill_last_one"]
             )
             r_pcd = spline_mat.dot(c_pcd)
             length = np.sum(np.linalg.norm(r_pcd[1:, :] - r_pcd[:-1, :], axis=1, ord=2))

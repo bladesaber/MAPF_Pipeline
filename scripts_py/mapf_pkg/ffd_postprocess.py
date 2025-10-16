@@ -10,7 +10,7 @@ from sklearn.neighbors import KDTree
 import networkx as nx
 from typing import Union, Dict
 
-from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
+from scripts_py.mapf_pkg.visual_utils import VisUtils
 
 
 class QuadMesh(object):
@@ -22,9 +22,7 @@ class QuadMesh(object):
         self.c_table: pd.DataFrame = None
         self.dense_num: int = None
 
-    def convert_triangle_mesh_to_quad(
-            self, mesh: Union[pyvista.PolyData, pyvista.UnstructuredGrid], mesh_info: Dict
-    ):
+    def convert_triangle_mesh_to_quad(self, mesh: Union[pyvista.PolyData, pyvista.UnstructuredGrid], mesh_info: Dict):
         tri_con = mesh_info['tri_con']
         self.pcd = np.concatenate([
             mesh_info['pcd'],

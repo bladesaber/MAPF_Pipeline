@@ -2,7 +2,7 @@ import numpy as np
 import argparse
 import json
 
-from scripts_py.version_9.mapf_pkg.shape_utils import ShapeUtils
+from scripts_py.mapf_pkg.shape_utils import ShapeUtils
 
 
 def create_search_init_cfg(pipes_cfg: dict):

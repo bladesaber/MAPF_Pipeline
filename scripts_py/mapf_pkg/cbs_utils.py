@@ -5,8 +5,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from build import mapf_pipeline
-from scripts_py.version_9.mapf_pkg import conflict_select_utils
-from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
+from scripts_py.mapf_pkg import conflict_select_utils
+from scripts_py.mapf_pkg.visual_utils import VisUtils
 
 
 class CbsNode(object):

@@ -11,9 +11,9 @@ from functools import partial
 import argparse
 import cadquery as cq
 
-from scripts_py.version_9.mapf_pkg.app_utils import AppWindow
-from scripts_py.version_9.mapf_pkg.app_utils import FragmentOpen3d
-from scripts_py.version_9.mapf_pkg.shape_utils import ShapeUtils
+from scripts_py.mapf_pkg.app_utils import AppWindow
+from scripts_py.mapf_pkg.app_utils import FragmentOpen3d
+from scripts_py.mapf_pkg.shape_utils import ShapeUtils
 
 
 class EnvironmentApp(AppWindow):

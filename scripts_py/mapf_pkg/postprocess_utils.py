@@ -7,12 +7,12 @@ from typing import Dict
 import matplotlib.pyplot as plt
 import pyvista
 
-from scripts_py.version_9.mapf_pkg.bspline_utils import BsplineUtils
-from scripts_py.version_9.mapf_pkg.torch_utils import TorchMath, TorchUtils
-from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
+from scripts_py.mapf_pkg.bspline_utils import BsplineUtils
+from scripts_py.mapf_pkg.torch_utils import TorchMath, TorchUtils
+from scripts_py.mapf_pkg.visual_utils import VisUtils
 
-from scripts_py.version_9.mapf_pkg.cad_utils import OcctUtil, OcctVis, OcctIO, OcctAux, OcctOperation, OcctProfile
-from scripts_py.version_9.mapf_pkg.smooth_seg_utils import AuxCostUtil
+from scripts_py.mapf_pkg.cad_utils import OcctUtil, OcctVis, OcctIO, OcctAux, OcctOperation, OcctProfile
+from scripts_py.mapf_pkg.smooth_seg_utils import AuxCostUtil
 
 
 class CellRadiusAdjuster(object):

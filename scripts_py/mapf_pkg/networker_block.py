@@ -3,7 +3,7 @@ import argparse
 import json
 import os
 
-from scripts_py.version_9.mapf_pkg import networker_path
+from scripts_py.mapf_pkg import networker_path
 
 
 class SimpleBlocker(object):

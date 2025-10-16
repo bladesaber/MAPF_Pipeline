@@ -12,14 +12,14 @@ import pyvista
 import h5py
 from typing import Dict
 
-from scripts_py.version_9.mapf_pkg.app_env import EnvironmentApp
-from scripts_py.version_9.mapf_pkg.app_utils import FragmentOpen3d
-from scripts_py.version_9.mapf_pkg.networker_block import SimpleBlocker
-from scripts_py.version_9.mapf_pkg.algo_utils import create_search_init_cfg, \
+from scripts_py.mapf_pkg.app_env import EnvironmentApp
+from scripts_py.mapf_pkg.app_utils import FragmentOpen3d
+from scripts_py.mapf_pkg.networker_block import SimpleBlocker
+from scripts_py.mapf_pkg.algo_utils import create_search_init_cfg, \
     create_obs_pcd, discrete_pipe_position
-from scripts_py.version_9.mapf_pkg.constrain_utils import DynamicHumanConstrain
-from scripts_py.version_9.mapf_pkg.cbs_utils import CbsSolver
-from scripts_py.version_9.mapf_pkg.visual_utils import VisUtils
+from scripts_py.mapf_pkg.constrain_utils import DynamicHumanConstrain
+from scripts_py.mapf_pkg.cbs_utils import CbsSolver
+from scripts_py.mapf_pkg.visual_utils import VisUtils
 
 
 class PathApp(EnvironmentApp):
