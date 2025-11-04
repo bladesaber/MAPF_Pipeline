@@ -8,7 +8,8 @@ from scripts_py.mesh_utils import MeshObj
 
 
 class VtuRecorder(object):
-    def __init__(self, mesh: MeshObj, save_dir: str, is_binary=True):
+    def __init__(self, mesh: MeshObj, save_dir: str, name='report', is_binary=True):
+        self.name = name
         self.mesh = mesh
         if os.path.exists(save_dir):
             shutil.rmtree(save_dir)
@@ -36,7 +37,7 @@ class VtuRecorder(object):
             self.mesh.grid.cell_data[key] = value
 
     def save(self, step: int):
-        self.mesh.grid.save(os.path.join(self.save_dir, f'report_{step:05d}.vtu'), binary=self.is_binary)
+        self.mesh.grid.save(os.path.join(self.save_dir, f'{self.name}_{step:05d}.vtu'), binary=self.is_binary)
 
 
 class TensorBoardRecorder(object):

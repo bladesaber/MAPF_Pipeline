@@ -41,7 +41,7 @@ from scripts_py.dolfinx_utils import DolfinUtils
 from scripts_py.dolfinx_utils import AssembleUtils
 from scripts_py.dolfinx_adjoint.topology_utils.topology_fluid import FluidCost
 
-from scripts_py.dolfinx_adjoint.vtu_recorder import VtuRecorder
+from scripts_py.vtu_recorder import VtuRecorder
 
 
 class FluidPipeBoundary(FluidBoundary):
@@ -359,7 +359,7 @@ class FluidShapeOptimizer(FluidSimulator):
             return {'is_success': False, 'log': report_dict['log']}
         
         dire_np: np.ndarray = report_dict['shape_grad'].x.array.copy()
-        dire_np = dire_np.reshape((-1, self.mesh.tdim))    
+        dire_np = dire_np.reshape((-1, self.mesh.tdim))
         if with_norm:
             dire_np = dire_np / np.max(np.abs(np.linalg.norm(dire_np, ord=2, axis=1)))
 

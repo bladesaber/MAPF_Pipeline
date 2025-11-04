@@ -11,6 +11,7 @@ from basix.ufl import element, mixed_element
 import numpy as np
 import pandas as pd
 import pyvista
+from functools import partial
 
 from scripts_py.mesh_utils import MeshUtils, MeshObj
 from scripts_py.dolfinx_utils import DolfinUtils, BoundaryUtils
@@ -114,7 +115,7 @@ class FluidSimulator(object):
         self.scalar_element = element("CG", self.mesh.cell_types(), degree=1)                           # point scalar
 
         self.W = dolfinx.fem.functionspace(self.mesh.domain, self.mix_element)
-        self.W0, self.W1 = self.W.sub(0), self.W.sub(1)
+        self.W0, self.W1 = self.W.sub(0), self.W.sub(1)    
         self.V, self.V_to_W_dofs = self.W0.collapse()
         self.Q, self.Q_to_W_dofs = self.W1.collapse()
 
@@ -157,15 +158,15 @@ class StokeSimulator(FluidSimulator):
         self.eqn_map: dict[str, Any] = {}
 
     def define_equation(self, nu_value: float, body_force=(0., 0., 0.)):
-        u, p = ufl.split(ufl.TrialFunction(self.W))
-        v, q = ufl.split(ufl.TestFunction(self.W))
+        u, p = ufl.split(ufl.TrialFunction(self.W))  # type: ignore
+        v, q = ufl.split(ufl.TestFunction(self.W))  # type: ignore
 
         nu = dolfinx.fem.Function(self.nu_function_space)
-        nu.x.array[:] = nu_value
+        nu.x.array[:] = nu_value  # type: ignore
         # f = dolfinx.fem.Constant(self.mesh.domain, np.zeros(self.mesh.tdim))
         # f = dolfinx.fem.Constant(self.mesh.domain, body_force[:self.mesh.tdim])
         f = dolfinx.fem.Function(self.V_map_space, name='body_force')
-        f.x.array[:] = np.tile(np.array(body_force[:self.mesh.tdim]), (self.mesh.num_points, 1)).reshape(-1)
+        f.x.array[:] = np.tile(np.array(body_force[:self.mesh.tdim]), (self.mesh.num_points, 1)).reshape(-1)  # type: ignore
 
         stoke_form = (
             nu * inner(grad(u), grad(v)) * self.dx  # type: ignore
@@ -191,15 +192,14 @@ class StokeSimulator(FluidSimulator):
         for name, bry_info in self.boundaries.items():
             if bry_info.boundary_type == 'velocity':
                 
-                vel_np: np.ndarray = bry_info.value  # type: ignore
-                def vel_exp_func(x):
-                    num = x.shape[1]
-                    bry_values = np.zeros((self.mesh.tdim, num))
-                    bry_values[0] = vel_np[0]
-                    bry_values[1] = vel_np[1]
-                    if self.mesh.tdim == 3:
-                        bry_values[2] = vel_np[2]
-                    return bry_values
+                inflow_velocity_exp = partial(
+                    FluidBoundary.inflow_velocity_exp,
+                    velocity=np.array(bry_info.value),
+                    tdim=self.mesh.tdim,
+                    face_center=bry_info.face_center,
+                    face_norm_vector=bry_info.face_norm_vector,
+                    face_radius=bry_info.face_radius
+                )
                 
                 bry_info.bry_cell = BoundaryCell.define_bry_cell(
                     name=name,
@@ -211,7 +211,7 @@ class StokeSimulator(FluidSimulator):
                             self.mesh.domain, style='facet', mesh_tags=self.mesh.facet_tags, marker=bry_info.marker
                         )
                     ),
-                    bc_value=vel_exp_func,
+                    bc_value=inflow_velocity_exp,
                     is_mixed_element=True,
                 )
 
@@ -271,10 +271,10 @@ class StokeSimulator(FluidSimulator):
         uh: dolfinx.fem.Function = self.eqn_map['uh']
         
         vel_ref = dolfinx.fem.Function(self.V_map_space, name='vel_ref')
-        vel_ref.interpolate(uh.sub(0).collapse())
+        vel_ref.interpolate(uh.sub(0).collapse())  # type: ignore
         p_ref = uh.sub(1).collapse()
 
-        vel_ref_np = vel_ref.x.array.reshape((-1, self.mesh.tdim))
+        vel_ref_np = vel_ref.x.array.reshape((-1, self.mesh.tdim))  # type: ignore
         if vel_ref_np.shape[1] == 2:
             vel_ref_np = np.concatenate([vel_ref_np, np.zeros((vel_ref_np.shape[0], 1))], axis=1)
         
@@ -300,15 +300,15 @@ class NavierStokeSimulator(StokeSimulator):
 
     def define_equation(self, nu_value: float, constant_nu=True, body_force=(0., 0., 0.)):
         up = dolfinx.fem.Function(self.W, name='state')
-        u, p = ufl.split(up)
-        v, q = ufl.split(ufl.TestFunction(self.W))
+        u, p = ufl.split(up)  # type: ignore
+        v, q = ufl.split(ufl.TestFunction(self.W))  # type: ignore
 
         nu = dolfinx.fem.Function(self.nu_function_space)
-        nu.x.array[:] = nu_value
+        nu.x.array[:] = nu_value  # type: ignore
         # f = dolfinx.fem.Constant(self.mesh.domain, np.zeros(self.mesh.topology_dim))
         # f = dolfinx.fem.Constant(self.mesh.domain, body_force[:self.mesh.topology_dim])
         f = dolfinx.fem.Function(self.V_map_space, name='body_force')
-        f.x.array[:] = np.tile(np.array(body_force[:self.mesh.tdim]), (self.mesh.num_points, 1)).reshape(-1)
+        f.x.array[:] = np.tile(np.array(body_force[:self.mesh.tdim]), (self.mesh.num_points, 1)).reshape(-1)  # type: ignore
 
         lhs_form = (
             nu * inner(grad(u), grad(v)) * ufl.dx  # type: ignore
@@ -343,7 +343,7 @@ class NavierStokeSimulator(StokeSimulator):
             comm=self.mesh.domain.comm,
             f_form=self.eqn_map['lhs_form'],
             uh=uh,
-            jacobi_form=jacobi_form,
+            jacobi_form=jacobi_form,  # type: ignore
             bcs=[bry_info.bry_cell.bc for bry_info in self.boundaries.values()],
             mat_assemble_method=mat_assemble_method,
             snes_setting=snes_option if (snes_option is not None) else self.snes_option,
@@ -358,8 +358,8 @@ class NavierStokeSimulator(StokeSimulator):
 
 
 def debug_stoke():
-    mesh_file = '/home/admin123456/Desktop/work/gmsh_test/test2.msh'
-    xdmf_file = '/home/admin123456/Desktop/work/gmsh_test/test2.xdmf'
+    mesh_file = '/home/admin123456/Desktop/work/gmsh_test/t8/test2.msh'
+    xdmf_file = '/home/admin123456/Desktop/work/gmsh_test/t8/test2.xdmf'
     # MeshUtils.msh_to_XDMF(mesh_file, xdmf_file, dim=2)
     
     mesh = MeshObj(xdmf_file=xdmf_file)
@@ -370,7 +370,10 @@ def debug_stoke():
         name='inlet',
         boundary_type='velocity',
         value=[3.5, 0.],
-        marker=22
+        marker=22,
+        face_center=[0.0, 0.25],
+        face_norm_vector=[1.0, 0.0],
+        face_radius=0.25
     )
     outlet_bry = FluidBoundary(
         name='outlet',
@@ -391,7 +394,7 @@ def debug_stoke():
     
     simulator.define_boundary()
     simulator.run(with_residual=True)
-    simulator.save('/home/admin123456/Desktop/work/gmsh_test/stoke_res.vtu')
+    simulator.save('/home/admin123456/Desktop/work/gmsh_test/t8/stoke_res.vtu')
 
 
 def debug_navier_stoke():

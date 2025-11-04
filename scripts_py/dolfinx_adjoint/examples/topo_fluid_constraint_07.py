@@ -112,8 +112,8 @@ tree = KDTree(cell_center)
 inner_idxs_list = tree.query_radius(detail_path, r=0.25, return_distance=False)
 path_cell_idxs = np.unique(np.concatenate(inner_idxs_list, axis=-1))
 
-# optim.topo_weight_init = 0.3
-# optim.set_topo_weight(path_cell_idxs, 0.7)
+optim.topo_weight_init = 0.2
+optim.set_topo_weight(path_cell_idxs, 0.8)
 
 # --- 7. test state solution at first step ---
 # optim.optimizer.compute_state(

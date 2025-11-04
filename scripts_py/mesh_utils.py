@@ -4,7 +4,15 @@ from typing import Literal, Union, Callable
 
 import dolfinx
 from dolfinx import geometry
-from dolfinx.io import XDMFFile, gmshio  # type: ignore
+from dolfinx.io import XDMFFile
+try:
+    if dolfinx.__version__ == '0.10.0':  # type: ignore
+        from dolfinx.io import gmsh as gmshio
+    else:
+        from dolfinx.io import gmshio  # type: ignore
+except ImportError:
+    raise ImportError("[Error]: gmshio is not installed.")
+
 from mpi4py import MPI
 import ufl
 import basix
@@ -158,7 +166,11 @@ class MeshUtils(object):
         return ufl.Measure("dx", domain=domain)
 
     @staticmethod
-    def define_meshTag(domain: dolfinx.mesh.Mesh, indices: np.ndarray, markers: np.ndarray, dim: int) -> dolfinx.mesh.MeshTags:
+    def define_meshTag(
+        domain: dolfinx.mesh.Mesh, marker: int, dim: int, location_func: Callable
+    ) -> dolfinx.mesh.MeshTags:
+        indices = dolfinx.mesh.locate_entities_boundary(domain, dim, location_func)
+        markers = np.full(indices.shape[0], fill_value=marker).astype(np.int32)
         mesh_tag = dolfinx.mesh.meshtags(domain, dim, indices, markers)
         return mesh_tag
 

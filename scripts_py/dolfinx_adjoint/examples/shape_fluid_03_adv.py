@@ -94,4 +94,4 @@ optim.add_boundary(wall_free_bry)
 optim.define_problem()
 
 # --- 5. run optimization ---
-optim.run(max_iteration=100)
+optim.run(max_iteration=600)

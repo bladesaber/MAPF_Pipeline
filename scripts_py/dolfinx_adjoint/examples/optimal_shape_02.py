@@ -19,7 +19,7 @@ from scripts_py.dolfinx_adjoint.solver_optimize import ShapeOptimizer
 from scripts_py.dolfinx_adjoint.regularization_shape import ShapeRegularizationPipe
 from scripts_py.mesh_utils import MeshUtils, MeshObj
 from scripts_py.dolfinx_utils import DolfinUtils
-from scripts_py.dolfinx_adjoint.vtu_recorder import VtuRecorder
+from scripts_py.vtu_recorder import VtuRecorder
 
 
 # --- 1. define mesh ---

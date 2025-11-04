@@ -255,7 +255,7 @@ class PetscNonlinearPdeHelper:
             dolfinx_petsc.apply_lifting(F_vec, [jacobi_form], bcs=[bcs], x0=[x], alpha=-1.0)
             F_vec.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
 
-        # todo why need x0=x
+        # TODO why need x0=x
         dolfinx_petsc.set_bc(F_vec, bcs, x0=x, alpha=-1.0)  # x0[dof] - bc.value[dof] 促使x等于Dirichlet边界的值
         F_vec.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
 

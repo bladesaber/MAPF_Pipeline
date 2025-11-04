@@ -21,11 +21,11 @@ from scripts_py.dolfinx_adjoint.solver_optimize import ShapeOptimizer
 from scripts_py.dolfinx_adjoint.regularization_shape import ShapeRegularizationPipe, VolumeRegularization
 from scripts_py.mesh_utils import MeshUtils, MeshObj
 from scripts_py.dolfinx_utils import DolfinUtils
-from scripts_py.dolfinx_adjoint.vtu_recorder import VtuRecorder
+from scripts_py.vtu_recorder import VtuRecorder
 
 
-msh_file = "/home/admin123456/Desktop/work/gmsh_test/test/t3/optimal_pipe_03.msh"
-xdmf_file = "/home/admin123456/Desktop/work/gmsh_test/test/t3/optimal_pipe_03.xdmf"
+msh_file = "/home/admin123456/Desktop/work/gmsh_test/t3/optimal_pipe_03.msh"
+xdmf_file = "/home/admin123456/Desktop/work/gmsh_test/t3/optimal_pipe_03.xdmf"
 # MeshUtils.msh_to_XDMF(name='model', msh_file=msh_file, xdmf_file=xdmf_file, dim=2)
 
 mesh = MeshObj(xdmf_file=xdmf_file, mesh_name="model")
@@ -257,7 +257,7 @@ opt_problem = ShapeOptimizer(
     scalar_product_kwargs={"method": "default"}
 )
 
-recorder = VtuRecorder(mesh, save_dir='/home/admin123456/Desktop/work/gmsh_test/test/t3/res')
+recorder = VtuRecorder(mesh, save_dir='/home/admin123456/Desktop/work/gmsh_test/t3/res')
 
 def record_Up(step):
     vel_ref = dolfinx.fem.Function(point_vector_func_space, name='vel_ref')

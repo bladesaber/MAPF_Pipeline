@@ -38,7 +38,7 @@ from scripts_py.mesh_utils import MeshUtils, MeshObj
 from scripts_py.dolfinx_utils import DolfinUtils
 from scripts_py.dolfinx_utils import AssembleUtils
 
-from scripts_py.dolfinx_adjoint.vtu_recorder import VtuRecorder
+from scripts_py.vtu_recorder import VtuRecorder
 
 
 class FluidCost(object):
@@ -328,9 +328,7 @@ class FluidTopologyOptimizer(FluidSimulator):
                 integral_form=regularization_item.reg_form,
                 control=self.topo_weight,  # type: ignore
                 weight=regularization_item.weight,
-                target_value=self.volume * regularization_item.kwargs['target_ratio'],
-                method='pct_div',
-                max_bound=10.0,
+                target_value=self.volume * regularization_item.kwargs['target_ratio']
             )
         else:
             raise ValueError(f'Invalid regularization style: {regularization_item.style}')
@@ -427,7 +425,7 @@ class FluidTopologyOptimizer(FluidSimulator):
 
         return {'is_success': True, 'gradient': grad_np}
     
-    def record_Upw(self, step: int):
+    def record_Upw(self, step: int, **kwargs):
         vel_ref = dolfinx.fem.Function(self.point_vector_func_space, name='vel_ref')
         vel_ref.interpolate(self.uh.sub(0).collapse())  # type: ignore
         p_ref = self.uh.sub(1).collapse()  # type: ignore
@@ -438,7 +436,10 @@ class FluidTopologyOptimizer(FluidSimulator):
 
         self.recorder.update_point_data('U', vel_ref_np)
         self.recorder.update_point_data('p', p_ref.x.array.copy())
-        self.recorder.update_cell_data('topo_weight', self.topo_weight.x.array.copy())  # type: ignore
+        self.recorder.update_cell_data('topo_weight', self.topo_weight.x.array.copy())  # type: ignore        
+        if kwargs.get('shape_gradient', None) is not None:
+            self.recorder.update_cell_data('shape_gradient', kwargs['shape_gradient'])
+        
         self.recorder.save(step)
 
     def run(
@@ -523,7 +524,7 @@ class FluidTopologyOptimizer(FluidSimulator):
                     loss_last = loss_current
                     loss_current = loss_new
                     step_length_last = step_length
-                    self.record_Upw(step)
+                    self.record_Upw(step, shape_gradient=direction_np)
                     break
                 
             if not find_best_step:
@@ -655,7 +656,7 @@ class ConstrainedTopologyOptimizer(FluidTopologyOptimizer):
         else:
             raise ValueError(f'Invalid cost style: {cost_item.style}')
 
-    def record_Upw(self, step: int):
+    def record_Upw(self, step: int, **kwargs):
         vel_ref = dolfinx.fem.Function(self.point_vector_func_space, name='vel_ref')
         vel_ref.interpolate(self.uh.sub(0).collapse())  # type: ignore
         p_ref = self.uh.sub(1).collapse()  # type: ignore
@@ -668,6 +669,8 @@ class ConstrainedTopologyOptimizer(FluidTopologyOptimizer):
         self.recorder.update_point_data('p', p_ref.x.array.copy())
         self.recorder.update_cell_data('topo_weight', self.topo_weight.x.array.copy())  # type: ignore
         self.recorder.update_cell_data('obstacle_source', self.obstacle_source.x.array.copy())  # type: ignore
+        if kwargs.get('shape_gradient', None) is not None:
+            self.recorder.update_cell_data('shape_gradient', kwargs['shape_gradient'])
         self.recorder.save(step)
 
 

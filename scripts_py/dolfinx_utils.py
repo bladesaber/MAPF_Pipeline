@@ -1,16 +1,20 @@
-import numpy as np
-from typing import Union, Callable, List, Sequence, Literal
-
 import dolfinx
 from dolfinx.fem import petsc as dolfinx_petsc
 from petsc4py import PETSc
 from mpi4py import MPI
-from dolfinx.mesh import create_unit_square
+from dolfinx import cpp as _cpp # type: ignore
+from dolfinx.fem.bcs import DirichletBC
 
 import ufl
 import ufl.form
 from ufl.core import expr
 from basix.ufl import element
+import numpy.typing as npt
+from ufl.algorithms.analysis import extract_arguments
+
+import numpy as np
+from typing import Union, Callable, List, Optional, Any
+import numbers
 
 
 class DolfinUtils(object):
@@ -24,7 +28,26 @@ class DolfinUtils(object):
         return dolfinx.fem.form(form)  # type: ignore
 
     @staticmethod
+    def extract_arguments(form: ufl.Form) -> dict:
+        args = extract_arguments(form)
+        args_num = len(args)
+        if args_num == 2:
+            return {
+                'type': 'bilinear',
+                'trial_function': args[0],
+                'test_function': args[1],
+            }
+        elif args_num == 1:
+            return {
+                'type': 'linear',
+                'test_function': args[0],
+            }
+        else:
+            return {'type': 'function'}
+
+    @staticmethod
     def create_expression(form: expr, V: dolfinx.fem.FunctionSpace):  # type: ignore
+        # TODO: check if the interpolation points is correct
         return dolfinx.fem.Expression(form, V.element.interpolation_points())
 
     @staticmethod
@@ -93,6 +116,13 @@ class DolfinUtils(object):
 
 
 class BoundaryUtils(object):
+    dirichlet_bc_cpp_object: Union[
+        _cpp.fem.DirichletBC_complex64,
+        _cpp.fem.DirichletBC_complex128,
+        _cpp.fem.DirichletBC_float32,
+        _cpp.fem.DirichletBC_float64,
+    ]
+    
     @staticmethod
     def apply_boundary_to_vec(
         b_vec: PETSc.Vec,
@@ -139,8 +169,9 @@ class BoundaryUtils(object):
         value_func_space: dolfinx.fem.FunctionSpace|tuple[dolfinx.fem.FunctionSpace, dolfinx.fem.FunctionSpace],
         dofs: np.ndarray|list[np.ndarray],
         bc_value: Union[Callable, float, np.ndarray, dolfinx.fem.Function, dolfinx.fem.Constant],
-        is_mixed_element: bool
-    ) -> dolfinx.fem.DirichletBC:
+        is_mixed_element: bool,
+        wrap_dirichlet_bc: bool = True,
+    ) -> Union[dolfinx.fem.DirichletBC, 'dirichlet_bc_cpp_object']: # type: ignore
         '''
         Args:
             - bc_func_space: boundary function space
@@ -224,39 +255,96 @@ class BoundaryUtils(object):
             
             u_d = dolfinx.fem.Function(value_func_space)
             u_d.interpolate(bc_value)  # type: ignore
-            if is_mixed_element:
-                dirichlet_bc = dolfinx.fem.dirichletbc(value=u_d, dofs=dofs, V=bc_func_space)  # type: ignore
+            if is_mixed_element:                
+                # dirichlet_bc = dolfinx.fem.dirichletbc(value=u_d, dofs=dofs, V=bc_func_space)
+                bc_cpp = BoundaryUtils.define_dirichlet_bc_cpp(value=u_d, dofs=dofs, V=bc_func_space)
             else:
-                dirichlet_bc = dolfinx.fem.dirichletbc(value=u_d, dofs=dofs)  # type: ignore
+                # dirichlet_bc = dolfinx.fem.dirichletbc(value=u_d, dofs=dofs)  # type: ignore
+                bc_cpp = BoundaryUtils.define_dirichlet_bc_cpp(value=u_d, dofs=dofs)
 
         elif isinstance(bc_value, dolfinx.fem.Function):
             if is_mixed_element:
-                dirichlet_bc = dolfinx.fem.dirichletbc(value=bc_value, dofs=dofs, V=bc_func_space)  # type: ignore
+                # dirichlet_bc = dolfinx.fem.dirichletbc(value=bc_value, dofs=dofs, V=bc_func_space)  # type: ignore
+                bc_cpp = BoundaryUtils.define_dirichlet_bc_cpp(value=bc_value, dofs=dofs, V=bc_func_space)                
             else:
-                dirichlet_bc = dolfinx.fem.dirichletbc(value=bc_value, dofs=dofs)  # type: ignore
+                # dirichlet_bc = dolfinx.fem.dirichletbc(value=bc_value, dofs=dofs)  # type: ignore
+                bc_cpp = BoundaryUtils.define_dirichlet_bc_cpp(value=bc_value, dofs=dofs)
             
         elif isinstance(bc_value, np.ndarray):
             assert value_func_space is not None, "value_func_space is not None"
             u_d = dolfinx.fem.Function(value_func_space)
             u_d.x.array[:] = bc_value  # type: ignore
             if is_mixed_element:
-                dirichlet_bc = dolfinx.fem.dirichletbc(value=u_d, dofs=dofs, V=bc_func_space)  # type: ignore
+                # dirichlet_bc = dolfinx.fem.dirichletbc(value=u_d, dofs=dofs, V=bc_func_space)  # type: ignore
+                bc_cpp = BoundaryUtils.define_dirichlet_bc_cpp(value=u_d, dofs=dofs, V=bc_func_space)                
             else:
-                dirichlet_bc = dolfinx.fem.dirichletbc(value=u_d, dofs=dofs)  # type: ignore
+                # dirichlet_bc = dolfinx.fem.dirichletbc(value=u_d, dofs=dofs)  # type: ignore
+                bc_cpp = BoundaryUtils.define_dirichlet_bc_cpp(value=u_d, dofs=dofs)
             
         elif isinstance(bc_value, float):
             assert bc_func_space is not None, "bc_func_space is not None"
             assert is_mixed_element is False, "is_mixed_element must be False"
-            dirichlet_bc = dolfinx.fem.dirichletbc(value=bc_value, dofs=dofs, V=bc_func_space)  # type: ignore
+            # dirichlet_bc = dolfinx.fem.dirichletbc(value=bc_value, dofs=dofs, V=bc_func_space)  # type: ignore
+            bc_cpp = BoundaryUtils.define_dirichlet_bc_cpp(value=bc_value, dofs=dofs, V=bc_func_space)
         
         elif isinstance(bc_value, dolfinx.fem.Constant):
             assert bc_func_space is not None, "bc_func_space is not None"
             assert is_mixed_element is False, "is_mixed_element must be False"
-            dirichlet_bc = dolfinx.fem.dirichletbc(value=bc_value, dofs=dofs, V=bc_func_space)  # type: ignore
+            # dirichlet_bc = dolfinx.fem.dirichletbc(value=bc_value, dofs=dofs, V=bc_func_space)  # type: ignore
+            bc_cpp = BoundaryUtils.define_dirichlet_bc_cpp(value=bc_value, dofs=dofs, V=bc_func_space)
         
         else:
             raise ValueError(f"Unsupported bc_value type: {type(bc_value)}")
-        return dirichlet_bc
+        
+        if wrap_dirichlet_bc:
+            return dolfinx.fem.DirichletBC(bc_cpp)
+        else:
+            return bc_cpp
+
+    @staticmethod
+    def define_dirichlet_bc_cpp(
+        value: Union[dolfinx.fem.Function, dolfinx.fem.Constant, np.ndarray, Any],
+        dofs: Union[npt.NDArray[np.int32], np.ndarray, list[np.ndarray]],
+        V: Optional[dolfinx.fem.FunctionSpace] = None,
+    ) -> 'dirichlet_bc_cpp_object': # type: ignore
+        """Reference: dirichletbc function from dolfinx/fem/bcs.py
+        """        
+        if isinstance(value, numbers.Number):
+            value = np.asarray(value)
+
+        try:
+            dtype = value.dtype
+            if np.issubdtype(dtype, np.float32):
+                bctype = _cpp.fem.DirichletBC_float32
+            elif np.issubdtype(dtype, np.float64):
+                bctype = _cpp.fem.DirichletBC_float64
+            elif np.issubdtype(dtype, np.complex64):
+                bctype = _cpp.fem.DirichletBC_complex64
+            elif np.issubdtype(dtype, np.complex128):
+                bctype = _cpp.fem.DirichletBC_complex128
+            else:
+                raise NotImplementedError(f"Type {value.dtype} not supported.")
+        except AttributeError:
+            raise AttributeError("Boundary condition value must have a dtype attribute.")
+
+        # Unwrap value object, if required
+        if isinstance(value, np.ndarray):
+            _value = value
+        else:
+            try:
+                _value = value._cpp_object  # type: ignore
+            except AttributeError:
+                _value = value
+
+        if V is not None:
+            try:
+                bc = bctype(_value, dofs, V)
+            except TypeError:
+                bc = bctype(_value, dofs, V._cpp_object)
+        else:
+            bc = bctype(_value, dofs)
+        
+        return bc
 
     @staticmethod
     def create_homogenize_bc(
@@ -337,7 +425,7 @@ class AssembleUtils(object):
             a_mat.assemble()
             BoundaryUtils.apply_boundary_to_matrix_explicit(a_mat, bcs)
         elif method == "lift":
-            if a_mat is None:
+            if a_mat is None:                
                 a_mat = dolfinx_petsc.assemble_matrix(
                     a_form, bcs=bcs, diagonal=diagonal
                 )
