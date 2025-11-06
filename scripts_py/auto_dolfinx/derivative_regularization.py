@@ -91,26 +91,22 @@ class NormalDerivativeRegularization(object):
         self, 
         name: str, 
         mesh: MeshObj,
-        boundaries: dict[str, AutoFluidBoundary],
-        beta: float = 1.0,
+        fix_markers: list[int],
+        beta: float = 0.1,
         gamma: float = 1.0e4,
         mat_assemble_method: Literal['identity_row', 'lift'] = 'lift'
     ):
         self.name = name
         self.mesh = mesh
         self.domain = self.mesh.domain
-        self.boundaries: dict[str, AutoFluidBoundary] = boundaries
         
         self.point_scalar_func_space = DolfinUtils.point_scalar_function_space(self.domain)
         coordinate_space = self.domain.ufl_domain().ufl_coordinate_element()
         self.deformation_space = dolfinx.fem.functionspace(self.domain, coordinate_space)
                 
         self.bcs = []
-        for name, bry_info in self.boundaries.items():
-            if bry_info.is_free:
-                continue
-            
-            bc_zero = dolfinx.fem.Function(self.deformation_space, name=f'{name}_control')
+        for marker in fix_markers:
+            bc_zero = dolfinx.fem.Function(self.deformation_space, name=f'{marker}_control')
             self.bcs.append(
                 BoundaryUtils.define_dirichlet_bc(
                     bc_func_space=self.deformation_space,
@@ -118,7 +114,7 @@ class NormalDerivativeRegularization(object):
                     dofs=MeshUtils.extract_entity_dofs(
                         self.deformation_space, self.mesh.fdim,
                         MeshUtils.extract_entity_indices(
-                            self.mesh.domain, style='facet', mesh_tags=self.mesh.facet_tags, marker=bry_info.marker
+                            self.mesh.domain, style='facet', mesh_tags=self.mesh.facet_tags, marker=marker
                         )
                     ),
                     bc_value=bc_zero,  # type: ignore

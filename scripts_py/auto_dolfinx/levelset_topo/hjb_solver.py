@@ -4,6 +4,7 @@ import dolfinx
 import ufl
 
 import numpy as np
+import petsc4py.PETSc as PETSc
 
 from scripts_py.eqn_ts_solver import TSProblemSolver
 
@@ -20,8 +21,9 @@ class HamiltonJacobiSolver(object):
     ):
         self.domain = domain
         self.velocity = velocity
-        self.phi = phi
-        self.phi_dot = dolfinx.fem.Function(self.phi.function_space)
+        self.phi: dolfinx.fem.Function = dolfinx.fem.Function(phi.function_space, name='phi')  # type: ignore
+        self.phi.x.array[:] = phi.x.array.copy()  # type: ignore
+        self.phi_dot: dolfinx.fem.Function = dolfinx.fem.Function(phi.function_space, name='phi_dot')  # type: ignore
         
         self.with_diffusion = with_diffusion
         self.diffusion_coefficient = diffusion_coefficient
@@ -78,7 +80,8 @@ class HamiltonJacobiSolver(object):
         ksp_option: dict,
         snes_option: dict,
         mat_assemble_method: Literal['identity_row', 'lift'],
-    ):
+        only_solver: bool = False,
+    ) -> np.ndarray|PETSc.TS:  # type: ignore        
         res_dict = TSProblemSolver.solve_implicit_by_petsc(
             comm=self.domain.comm,
             f_form=self.f_form,
@@ -99,14 +102,17 @@ class HamiltonJacobiSolver(object):
             source_term=None, # type: ignore
             interpolate_func=None,
             post_step_func=None,
-            with_monitor=False
+            with_snes_monitor=False,
+            only_solver=only_solver
         )
+        if only_solver:
+            return res_dict['solver']
+
         if not res_dict['is_solved']:
             raise ValueError(f"Failed to solve Hamilton-Jacobi equation.")
         
-        self.phi.x.array[:] = res_dict['res'].x.array.copy()  # type: ignore
-        return {
-            'is_success': True,
-            'phi': self.phi
-        }
+        return res_dict['res'].x.array
+    
+    def get_solution(self) -> np.ndarray:
+        return self.phi.x.array
     

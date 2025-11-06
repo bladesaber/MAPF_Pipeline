@@ -12,7 +12,7 @@ from scripts_py.mesh_utils import MeshUtils
 class ReinitializationSolver(object):
     '''reinitialization level set function to a signed distance function without moving the zero-level set'''    
     @staticmethod
-    def solve(domain: dolfinx.mesh.Mesh, phi: dolfinx.fem.Function) -> dolfinx.fem.Function:
+    def solve(domain: dolfinx.mesh.Mesh, phi: dolfinx.fem.Function) -> np.ndarray:
         grid: pyvista.UnstructuredGrid = MeshUtils.mesh_to_vtk(domain)
         phi_np = phi.x.array.copy()
         cell_conns =grid.cell_connectivity.reshape((-1, 3))
@@ -61,6 +61,12 @@ class ReinitializationSolver(object):
         surface_tree = KDTree(surface_points)
         dists_list, idxs_list = surface_tree.query(grid.points, k=1, return_distance=True)
         abs_sdf = np.concatenate(dists_list, axis=-1)
-        phi.x.array[:] = np.sign(phi_np) * abs_sdf
-        
-        return phi
+        return np.sign(phi_np) * abs_sdf
+
+
+def debug():
+    pass
+
+
+if __name__ == "__main__":
+    debug()

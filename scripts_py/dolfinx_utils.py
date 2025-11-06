@@ -255,7 +255,7 @@ class BoundaryUtils(object):
             
             u_d = dolfinx.fem.Function(value_func_space)
             u_d.interpolate(bc_value)  # type: ignore
-            if is_mixed_element:                
+            if is_mixed_element:
                 # dirichlet_bc = dolfinx.fem.dirichletbc(value=u_d, dofs=dofs, V=bc_func_space)
                 bc_cpp = BoundaryUtils.define_dirichlet_bc_cpp(value=u_d, dofs=dofs, V=bc_func_space)
             else:

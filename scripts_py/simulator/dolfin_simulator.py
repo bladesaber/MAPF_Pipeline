@@ -115,7 +115,8 @@ class FluidSimulator(object):
         self.scalar_element = element("CG", self.mesh.cell_types(), degree=1)                           # point scalar
 
         self.W = dolfinx.fem.functionspace(self.mesh.domain, self.mix_element)
-        self.W0, self.W1 = self.W.sub(0), self.W.sub(1)    
+        self.W0, self.W1 = self.W.sub(0), self.W.sub(1)
+        
         self.V, self.V_to_W_dofs = self.W0.collapse()
         self.Q, self.Q_to_W_dofs = self.W1.collapse()
 

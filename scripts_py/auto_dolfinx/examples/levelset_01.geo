@@ -1,0 +1,41 @@
+size = 0.02;
+width = 2.0;
+height = 1.0;
+p0 = newp;
+Point(p0) = {0.0, 0.0, 0.0, size};
+p1 = newp;
+Point(p1) = {width, 0.0, 0.0, size};
+p2 = newp;
+Point(p2) = {width, 15.0/32.0 * height, 0.0, size};
+p3 = newp;
+Point(p3) = {width, 17.0/32.0 * height, 0.0, size};
+p4 = newp;
+Point(p4) = {width, height, 0.0, size};
+p5 = newp;
+Point(p5) = {0.0, height, 0.0, size};
+
+l0 = newl;
+Line(l0) = {p0, p1};
+l1 = newl;
+Line(l1) = {p1, p2};
+l2 = newl;
+Line(l2) = {p2, p3};
+l3 = newl;
+Line(l3) = {p3, p4};
+l4 = newl;
+Line(l4) = {p4, p5};
+l5 = newl;
+Line(l5) = {p5, p0};
+
+ll0 = newll;
+Line Loop(ll0) = {l0, l1, l2, l3, l4, l5};
+s0 = news;
+Plane Surface(s0) = {ll0};
+// Physical Line(1) = {l5};
+// Physical Line(2) = {l2};
+// Physical Surface(0) = {s0};
+
+Physical Surface("volume", 9) = {8};
+Physical Curve("wall_fix", 10) = {6};
+Physical Curve("wall_free", 11) = {5, 1, 2, 4};
+Physical Curve("wall_force", 12) = {3};
