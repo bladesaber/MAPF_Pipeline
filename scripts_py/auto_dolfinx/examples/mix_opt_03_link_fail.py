@@ -1,5 +1,6 @@
 '''
 该文件主要对min_opt_03.py的流程做整合,实现固液同步优化
+# Solid topology optimization is always failed,估计是受到fluid zone引导产生类似于初始值收敛的问题
 '''
 
 import dolfinx
@@ -235,7 +236,7 @@ def solve_fluid_problem():
         volume_form = heaviside_step_fun(-phi, rho_max=1.0) * ufl.dx  # type: ignore
         target_volume = AssembleUtils.assemble_scalar(volume_form) * 0.9
         
-        volume_weight = 1.0
+        volume_weight = 5.0
         volume_ = assemble_scalar(volume_form, domain, tape)
         volume_loss = volume_weight * 0.5 * (volume_ - target_volume) ** 2  # type: ignore
         
@@ -346,15 +347,16 @@ def solve_topo_solid(fluid_result: dict):
         
         rho = DolfinxFunction(point_scalar_func_space, name='rho')
         
-        # ------ init rho ------
-        rho.x.array[:] = 1e-2  # type: ignore
-        with stop_annotating():
-            # NOTE: please don't annotate here
-            init_rho = dolfinx.fem.Function(point_scalar_func_space, name='fluid_zone')
-            init_rho.interpolate(DolfinUtils.create_expression(fluid_zone, point_scalar_func_space))  # type: ignore
-            rho.x.array[np.where(init_rho.x.array < 1e-6)[0]] = 0.5  # type: ignore
-            recorder.update_point_data('rho', rho.x.array)  # type: ignore
-        # rho.x.array[:] = 0.5  # type: ignore
+        # TODO: always fail
+        # # ------ init rho ------
+        # rho.x.array[:] = 1e-2  # type: ignore
+        # with stop_annotating():
+        #     # NOTE: please don't annotate here
+        #     init_rho = dolfinx.fem.Function(point_scalar_func_space, name='fluid_zone')
+        #     init_rho.interpolate(DolfinUtils.create_expression(fluid_zone, point_scalar_func_space))  # type: ignore
+        #     rho.x.array[np.where(init_rho.x.array < 1e-6)[0]] = 0.5  # type: ignore
+        #     recorder.update_point_data('rho', rho.x.array)  # type: ignore
+        rho.x.array[:] = 0.5  # type: ignore
         
         a_form = ufl.inner(alpha_fun(rho) * sigma(strain), epsilon(strain_v)) * ufl.dx  # type: ignore
         L_form = ufl.dot(surface_f, strain_v) * ufl.dx + ufl.dot(T, strain_v) * ufl.ds

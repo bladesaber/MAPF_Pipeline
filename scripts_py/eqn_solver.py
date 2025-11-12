@@ -11,6 +11,8 @@ from functools import partial
 import pandas as pd
 import pyvista
 
+from line_profiler import profile
+
 from scripts_py.sparse_utils import PetscUtils, ScipySparseUtils
 from scripts_py.dolfinx_utils import AssembleUtils, BoundaryUtils, DolfinUtils
 
@@ -91,7 +93,7 @@ class LinearProblemSolver(object):
         for key, value in solver_setting.items():
             opts.setValue(key, value)
         solver.setFromOptions()
-
+        
         if mat is not None:
             solver.setOperators(mat)
         return solver

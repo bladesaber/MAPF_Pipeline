@@ -4,10 +4,10 @@ from typing import Literal, Union, Callable
 
 import dolfinx
 from dolfinx import geometry
-from dolfinx.io import XDMFFile
+from dolfinx.io import XDMFFile  # type: ignore
 try:
     if dolfinx.__version__ == '0.10.0':  # type: ignore
-        from dolfinx.io import gmsh as gmshio
+        from dolfinx.io import gmsh as gmshio  # type: ignore
     else:
         from dolfinx.io import gmshio  # type: ignore
 except ImportError:
@@ -22,17 +22,31 @@ import numpy as np
 import pyvista
 from sklearn.neighbors import KDTree
 import collections
+import gmsh, meshio
 
 from scripts_py.dolfinx_utils import DolfinUtils
+
+
+'''
+TODO
+Dolfinx support the following cell types:
+    - triangle
+    - quadrilateral
+    - tetrahedron
+    - hexahedron
+please add support for other cell types.
+if using quadrilateral or hexahedron, may be degree of velocity and pressure in CFD can be set to 1 ?
+
+TODO
+use topology optimization generate fluid path rather than path search
+'''
 
 
 class MeshUtils(object):
     @staticmethod
     def read_msh(msh_file: str, dim: int) -> (dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags, dolfinx.mesh.MeshTags):  # type: ignore
         assert msh_file.endswith(".msh")
-        doamin, cell_tags, facet_tags = gmshio.read_from_msh(
-            msh_file, MPI.COMM_WORLD, gdim=dim
-        )
+        doamin, cell_tags, facet_tags = gmshio.read_from_msh(msh_file, MPI.COMM_WORLD, gdim=dim)
         return doamin, cell_tags, facet_tags
 
     @staticmethod
@@ -75,11 +89,15 @@ class MeshUtils(object):
     def save_XDMF(
         xdmf_file: str,
         domain: dolfinx.mesh.Mesh,
-        cell_tags: dolfinx.mesh.MeshTags,
         facet_tags: dolfinx.mesh.MeshTags,
+        cell_tags: dolfinx.mesh.MeshTags,
+        name="model"
     ):
         """Save后Points的顺序会改变,原因不明"""
         assert xdmf_file.endswith(".xdmf")
+        domain.name = name
+        cell_tags.name = f"{domain.name}_cells"
+        facet_tags.name = f"{domain.name}_facets"
         with XDMFFile(domain.comm, xdmf_file, "w") as f:
             domain.topology.create_connectivity(
                 domain.topology.dim - 1, domain.topology.dim
@@ -87,6 +105,57 @@ class MeshUtils(object):
             f.write_mesh(domain)
             f.write_meshtags(cell_tags, domain.geometry)
             f.write_meshtags(facet_tags, domain.geometry)
+
+    @staticmethod
+    def convert_mesh_to_msh(
+        points: np.ndarray, 
+        cells_2d: np.ndarray, 
+        msh_file: str, 
+        temp_dir: str,
+        cells_3d: np.ndarray|None=None,
+        xdmf_file: str|None=None,
+    ):
+        gdim = 2
+        if cells_2d.shape[1] == 3:
+            cell_type_2d = pyvista.CellType.TRIANGLE
+        elif cells_2d.shape[1] == 4:
+            cell_type_2d = pyvista.CellType.QUAD
+        else:
+            raise ValueError(f"cells_2d.shape[1] must be 3 or 4, but got {cells_2d.shape[1]}.")
+        cell_dict = {cell_type_2d: cells_2d}
+        
+        if cells_3d is not None:
+            gdim = 3
+            if cells_3d.shape[1] == 4:
+                cell_type_3d = pyvista.CellType.TETRA
+            elif cells_3d.shape[1] == 8:
+                cell_type_3d = pyvista.CellType.HEXAHEDRON
+            else:
+                raise ValueError(f"cells_3d.shape[1] must be 4 or 8, but got {cells_3d.shape[1]}.")
+            cell_dict[cell_type_3d] = cells_3d
+        grid = pyvista.UnstructuredGrid(cell_dict, points)
+        
+        temp_grid_vtu = os.path.join(temp_dir, 'temp_grid.vtu')
+        temp_grid_msh = os.path.join(temp_dir, 'temp_grid.msh')
+        
+        grid.save(temp_grid_vtu, binary=False)
+        mesh = meshio.read(temp_grid_vtu)
+        meshio.write(temp_grid_msh, mesh, file_format="gmsh22", binary=False)
+        
+        # ------ postprocess through gmsh ------
+        gmsh.initialize()
+        gmsh.merge(temp_grid_msh)
+        entity_dimtags: list[tuple[int, int]] = gmsh.model.getEntities(gdim)
+        assert len(entity_dimtags) == 1, "Only one volume is allowed"
+        
+        vol_dim, vol_tag = entity_dimtags[0]
+        gmsh.model.addPhysicalGroup(vol_dim, [vol_tag], name='volume')
+        # gmsh.model.geo.synchronize()  # must remove
+        gmsh.write(msh_file)
+        gmsh.finalize()
+        
+        if xdmf_file is not None:
+            MeshUtils.msh_to_XDMF(msh_file=msh_file, xdmf_file=xdmf_file, dim=gdim)
 
     @staticmethod
     def get_topology_dim(domain: dolfinx.mesh.Mesh):
@@ -97,9 +166,39 @@ class MeshUtils(object):
         return domain.topology.dim - 1
 
     @staticmethod
+    def get_cell_type(domain: dolfinx.mesh.Mesh) -> Literal[
+        dolfinx.mesh.CellType.triangle,  # type: ignore
+        dolfinx.mesh.CellType.quadrilateral,  # type: ignore
+        dolfinx.mesh.CellType.tetrahedron,  # type: ignore
+        dolfinx.mesh.CellType.hexahedron # type: ignore
+    ]:
+        cell_type = domain.topology.cell_type
+        assert cell_type in [
+            dolfinx.mesh.CellType.triangle,  # type: ignore
+            dolfinx.mesh.CellType.quadrilateral,  # type: ignore
+            dolfinx.mesh.CellType.tetrahedron,  # type: ignore
+            dolfinx.mesh.CellType.hexahedron # type: ignore
+        ], f"cell_type must be one of {dolfinx.mesh.CellType.triangle},\
+        {dolfinx.mesh.CellType.quadrilateral},\
+        {dolfinx.mesh.CellType.tetrahedron},\
+        {dolfinx.mesh.CellType.hexahedron}."
+        return cell_type
+
+    @staticmethod
     def mesh_to_vtk(domain: dolfinx.mesh.Mesh, tdim: int|None=None, entities=None):
         cells, cell_types, geometry = dolfinx.plot.vtk_mesh(domain, tdim, entities)
-        grid = pyvista.UnstructuredGrid(cells, cell_types, geometry)
+        cell_type = MeshUtils.get_cell_type(domain)
+        if cell_type == dolfinx.mesh.CellType.triangle:
+            vista_cell_types = [pyvista.CellType.TRIANGLE] * len(cell_types)
+        elif cell_type == dolfinx.mesh.CellType.quadrilateral:
+            vista_cell_types = [pyvista.CellType.QUAD] * len(cell_types)
+        elif cell_type == dolfinx.mesh.CellType.tetrahedron:
+            vista_cell_types = [pyvista.CellType.TETRA] * len(cell_types)
+        elif cell_type == dolfinx.mesh.CellType.hexahedron:
+            vista_cell_types = [pyvista.CellType.HEXAHEDRON] * len(cell_types)
+        else:
+            raise ValueError(f"[Error]: Invalid cell type: {cell_type}.")
+        grid = pyvista.UnstructuredGrid(cells, vista_cell_types, geometry)        
         return grid
 
     @staticmethod
@@ -204,10 +303,28 @@ class MeshUtils(object):
     ) -> np.ndarray:
         ''' return connectivity of cells '''
         if isinstance(mesh, pyvista.UnstructuredGrid):
+            cell_types = list(mesh.cells_dict.keys())
             if dim == 2:
-                return mesh.cells.reshape(-1, 4)[:, 1:]
+                if (pyvista.CellType.TRIANGLE in cell_types) and (pyvista.CellType.QUAD in cell_types):
+                    raise ValueError("[Error]: Mixed triangle and quadrilateral cells.")
+                
+                if pyvista.CellType.TRIANGLE in cell_types:
+                    return mesh.cells.reshape(-1, 4)[:, 1:]
+                elif pyvista.CellType.QUAD in cell_types:
+                    return mesh.cells.reshape(-1, 5)[:, 1:]
+                else:
+                    raise ValueError("[Error]: Invalid cell type.")
             else:
-                return mesh.cells.reshape(-1, 5)[:, 1:]
+                if (pyvista.CellType.TETRA in cell_types) and (pyvista.CellType.HEXAHEDRON in cell_types):
+                    raise ValueError("[Error]: Mixed tetrahedron and hexahedron cells.")
+                
+                if pyvista.CellType.TETRA in cell_types:
+                    return mesh.cells.reshape(-1, 5)[:, 1:]
+                elif pyvista.CellType.HEXAHEDRON in cell_types:
+                    return mesh.cells.reshape(-1, 9)[:, 1:]
+                else:
+                    raise ValueError("[Error]: Invalid cell type.")
+            
         elif isinstance(mesh, dolfinx.mesh.Mesh):
             con = []
             adjacency_list = mesh.topology.connectivity(mesh.topology.dim, 0)

@@ -101,14 +101,20 @@ class FluidSimulator(object):
     '''
     based on taylor-hood element
     '''
-    def __init__(self, name: str, mesh: MeshObj):
+    def __init__(
+        self, 
+        name: str, 
+        mesh: MeshObj,
+        velocity_degree: int = 2,
+        pressure_degree: int = 1,
+    ):
         self.name = name
         self.mesh = mesh
 
-        self.velocity_element = element("Lagrange", self.mesh.cell_types(), degree=2, shape=(self.mesh.tdim,))
+        self.velocity_element = element("Lagrange", self.mesh.cell_types(), degree=velocity_degree, shape=(self.mesh.tdim,))
         # can't use shape=(1, ), dolfinx will see it as vector of shape 1
         # self.pressure_element = element("Lagrange", self.mesh.cell_types(), degree=1, shape=(1,))  # error
-        self.pressure_element = element("Lagrange", self.mesh.cell_types(), degree=1)
+        self.pressure_element = element("Lagrange", self.mesh.cell_types(), degree=pressure_degree)
         self.mix_element = mixed_element([self.velocity_element, self.pressure_element])
         
         self.vector_element = element("CG", self.mesh.cell_types(), degree=1, shape=(self.mesh.tdim,))  # point vector
@@ -153,8 +159,8 @@ class StokeSimulator(FluidSimulator):
         "mat_mumps_icntl_24": 1
     }
 
-    def __init__(self, name: str, mesh: MeshObj):
-        super().__init__(name=name, mesh=mesh)
+    def __init__(self, name: str, mesh: MeshObj, velocity_degree: int = 2, pressure_degree: int = 1):
+        super().__init__(name=name, mesh=mesh, velocity_degree=velocity_degree, pressure_degree=pressure_degree)
         self.is_linear = True
         self.eqn_map: dict[str, Any] = {}
 
@@ -186,7 +192,7 @@ class StokeSimulator(FluidSimulator):
             'rhs_form': rhs_form,
             'lhs_form_dolfin': lhs_form_dolfin,
             'rhs_form_dolfin': rhs_form_dolfin,
-            'u': u, 'p': p, 'uh': dolfinx.fem.Function(self.W), 'nu': nu, 'f': f,
+            'u': u, 'p': p, 'uh': dolfinx.fem.Function(self.W, name='state'), 'nu': nu, 'f': f,
         })
 
     def define_boundary(self):
@@ -281,6 +287,7 @@ class StokeSimulator(FluidSimulator):
         
         self.mesh.record_point_value('velocity', vel_ref_np)
         self.mesh.record_point_value('pressure', p_ref.x.array)
+        # self.mesh.record_point_value('vel_mag', np.linalg.norm(vel_ref_np, axis=1))
 
         self.mesh.save_grid(file)
 
@@ -294,8 +301,8 @@ class NavierStokeSimulator(StokeSimulator):
     }
     snes_option = {}
 
-    def __init__(self, name: str, mesh: MeshObj):
-        super().__init__(name=name, mesh=mesh)
+    def __init__(self, name: str, mesh: MeshObj, velocity_degree: int = 2, pressure_degree: int = 1):
+        super().__init__(name=name, mesh=mesh, velocity_degree=velocity_degree, pressure_degree=pressure_degree)
         self.is_linear = False
         self.eqn_map: dict[str, Any] = {}
 

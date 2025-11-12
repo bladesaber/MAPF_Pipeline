@@ -15,6 +15,7 @@ from ufl.algorithms.analysis import extract_arguments
 import numpy as np
 from typing import Union, Callable, List, Optional, Any
 import numbers
+from line_profiler import profile
 
 
 class DolfinUtils(object):
@@ -24,8 +25,16 @@ class DolfinUtils(object):
     """
 
     @staticmethod
-    def ufl_to_dolfin(form: ufl.Form) -> dolfinx.fem.Form:
-        return dolfinx.fem.form(form)  # type: ignore
+    def ufl_to_dolfin(
+        form: ufl.Form, 
+        form_compiler_options: Optional[dict]=None,
+        jit_options: Optional[dict]=None
+    ) -> dolfinx.fem.Form:
+        return dolfinx.fem.form(
+            form, 
+            form_compiler_options=form_compiler_options,
+            jit_options=jit_options
+        )  # type: ignore
 
     @staticmethod
     def extract_arguments(form: ufl.Form) -> dict:
