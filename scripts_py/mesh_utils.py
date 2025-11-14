@@ -371,8 +371,8 @@ class MeshObj(object):
         self.num_points = self.domain.geometry.x.shape[0]
         self.num_cells = self.grid.n_cells
 
-        self.connectivity = MeshUtils.cell_connectivity(self.grid, self.tdim)
-        cell_counter: collections.Counter = collections.Counter(self.connectivity.flatten().tolist())
+        self.cells_to_points = MeshUtils.cell_connectivity(self.grid, self.tdim)
+        cell_counter: collections.Counter = collections.Counter(self.cells_to_points.flatten().tolist())
         self.occurrences = np.array([cell_counter[i] for i in range(self.num_points)])
         
         self.with_vol_check = True

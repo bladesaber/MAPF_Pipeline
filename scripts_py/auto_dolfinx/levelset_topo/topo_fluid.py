@@ -153,9 +153,9 @@ class TopoFluidOptimizer(FluidSimulator):
                     AutoFluidBoundary.inflow_velocity_exp,
                     velocity=np.array(bry_info.value),
                     tdim=self.mesh.tdim,
-                    face_center=bry_info.face_center,
-                    face_norm_vector=bry_info.face_norm_vector,
-                    face_radius=bry_info.face_radius
+                    face_center=bry_info.face_center, # type: ignore
+                    face_norm_vector=bry_info.face_norm_vector, # type: ignore
+                    face_radius=bry_info.face_radius, # type: ignore
                 )
                 
                 bc_value_fun = dolfinx.fem.Function(self.V)
@@ -212,8 +212,7 @@ class TopoFluidOptimizer(FluidSimulator):
 
     @staticmethod
     def alpha_fun(
-        rho: np.ndarray|dolfinx.fem.Function,
-        alpha_min=0.01, alpha_max=1000.0, p=3.0, pow_operator=ufl.elem_pow
+        rho: np.ndarray|dolfinx.fem.Function, alpha_min=0.01, alpha_max=1000.0, p=3.0, pow_operator=ufl.elem_pow
     ):
         return alpha_min + pow_operator(1.0 - rho, p) * (alpha_max - alpha_min)  # type: ignore
 
