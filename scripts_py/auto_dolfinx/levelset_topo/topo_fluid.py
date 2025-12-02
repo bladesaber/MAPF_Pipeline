@@ -412,7 +412,7 @@ class TopoFluidOptimizer(FluidSimulator):
                     
             if step > 1:
                 loss_dict = self.eval()
-                log = f"[step/{step} loss:{loss_current} last_step_length:{step_length_last:.3f}]"
+                log = f"[step/{step} loss:{loss_current:.5f} last_step_length:{step_length_last:.3f}]"
                 for name, cost_value in loss_dict.items():
                     log += f" {name}:{cost_value:.3f}"
                 print(log)

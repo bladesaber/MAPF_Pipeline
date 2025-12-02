@@ -8,12 +8,7 @@ import numpy as np
 from functools import partial
 
 from scripts_py.mesh_utils import MeshObj, MeshUtils
-from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import TopoFluidOptimizer
-from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import (
-    AutoFluidBoundary,
-    AutoFluidCost,
-    AutoFluidRegularization,
-)
+from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import AutoFluidBoundary
 
 
 def dist_pcd2center(pcd: np.ndarray, center_point: np.ndarray):
@@ -35,7 +30,7 @@ def location_func(
     return is_on_surface
 
 
-def generate_mesh(
+def generate_box_mesh(
     boundary_list: list[AutoFluidBoundary],
     left_bottom_corner: np.ndarray,
     right_top_corner: np.ndarray,
@@ -87,9 +82,7 @@ def generate_mesh(
         list(set(wall_indices.tolist()) - set(inout_tag_indices.tolist()))
     ).astype(np.int32)
 
-    mesh_tag_indices = np.concatenate([inout_tag_indices, wall_indices]).astype(
-        np.int32
-    )
+    mesh_tag_indices = np.concatenate([inout_tag_indices, wall_indices]).astype(np.int32)
     mesh_tag_values = np.concatenate(
         [inout_tag_values, np.full_like(wall_indices, wall_marker)]
     ).astype(np.int32)
@@ -112,42 +105,64 @@ def generate_mesh(
     return MeshObj(xdmf_file=xdmf_file)
 
 
-class TopoObstacleFluidOptimizer(TopoFluidOptimizer):
-    def __init__(
-        self,
-        name: str,
-        mesh: MeshObj,
-        fluid_type: Literal["stoke", "naiver_stoke", "rans"],
-        nut_init: float,
-        cost_item: AutoFluidCost,
-        regularization_item: AutoFluidRegularization,
-        topo_weight_init: float,
-        weight_filter_radius: float,
-        weight_filter_is_cell_field: bool,
-        result_dir: str,
-        obstacle_cost_weight: float,
-        alpha_fun_max: float = 1000.0,
-        alpha_fun_min: float = 0.01,
-        alpha_fun_p: float = 3.0,
-    ):
-        super().__init__(
-            name,
-            mesh,
-            fluid_type,
-            nut_init,
-            cost_item,
-            regularization_item,
-            topo_weight_init,
-            weight_filter_radius,
-            weight_filter_is_cell_field,
-            result_dir,
-            alpha_fun_max,
-            alpha_fun_min,
-            alpha_fun_p,
-        )
+debug_boundary_list = [
+    AutoFluidBoundary(
+        name='inlet_1',
+        boundary_type='velocity',
+        value=[1.0, 0.0, 0.0],
+        marker=1,
+        face_center=np.array([0.0, 0.2, 0.2]),
+        face_norm_vector=np.array([1.0, 0.0, 0.0]),
+        face_radius=0.15,
+    ),
+    AutoFluidBoundary(
+        name='outlet_1',
+        boundary_type='pressure',
+        value=0.0,
+        marker=2,
+        face_center=np.array([0.8, 1.0, 0.8]),
+        face_norm_vector=np.array([0.0, 1.0, 0.0]),
+        face_radius=0.15,
+    ),
+    AutoFluidBoundary(
+        name='inlet_2',
+        boundary_type='velocity',
+        value=[0.0, 1.0, 0.0],
+        marker=3,
+        face_center=np.array([0.5, 0.0, 0.2]),
+        face_norm_vector=np.array([0.0, 1.0, 0.0]),
+        face_radius=0.15,
+    ),
+    AutoFluidBoundary(
+        name='outlet_2',
+        boundary_type='pressure',
+        value=0.0,
+        marker=4,
+        face_center=np.array([0.8, 0.5, 1.0]),
+        face_norm_vector=np.array([0.0, 0.0, 1.0]),
+        face_radius=0.15,
+    ),
+    AutoFluidBoundary(
+        name='wall',
+        boundary_type='wall',
+        value=0.0,
+        marker=5,
+    )
+]
 
-        self.obstacle_cost_weight = obstacle_cost_weight
-        self.obstacle_source = dolfinx.fem.Function(
-            self.point_scalar_func_space, name="obstacle_source"
-        )
-        self.obstacle_source.x.array[:] = 0.0  # type: ignore
+
+def generate_debug_mesh():
+    mesh = generate_box_mesh(
+        boundary_list=debug_boundary_list,
+        left_bottom_corner=np.array([0.0, 0.0, 0.0]),
+        right_top_corner=np.array([1.0, 1.0, 1.0]),
+        num_cells=[20, 20, 20],
+        xdmf_file='/home/admin123456/Desktop/work/gmsh_test/t25/model.xdmf',
+        cell_type=dolfinx.mesh.CellType.tetrahedron,
+        comm=MPI.COMM_WORLD,
+    )
+    # print(np.unique(mesh.facet_tags.values))
+
+
+if __name__ == '__main__':
+    generate_debug_mesh()

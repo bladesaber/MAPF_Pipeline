@@ -206,9 +206,9 @@ class FluidTopologyOptimizer(FluidSimulator):
                     FluidBoundary.inflow_velocity_exp,
                     velocity=np.array(bry_info.value),
                     tdim=self.mesh.tdim,
-                    face_center=bry_info.face_center,
-                    face_norm_vector=bry_info.face_norm_vector,
-                    face_radius=bry_info.face_radius
+                    face_center=bry_info.face_center,  # type: ignore
+                    face_norm_vector=bry_info.face_norm_vector,  # type: ignore
+                    face_radius=bry_info.face_radius  # type: ignore
                 )
                 
                 bry_info.bry_cell = BoundaryCell.define_bry_cell(

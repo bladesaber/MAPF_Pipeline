@@ -52,6 +52,7 @@ class PetscUtils(object):
 
     @staticmethod
     def mat_to_scipy(x: PETSc.Mat) -> sparse.csr_matrix:
+        # TODO: i don't know why, values contain 0.0
         indptr, indices, values = x.getValuesCSR()
         mat = sparse.csr_matrix((values, indices, indptr), shape=x.getSize())
         return mat
@@ -78,6 +79,12 @@ class PetscUtils(object):
         assert file.endswith('.dat')
         viewer = PETSc.Viewer().createBinary(file, 'r')
         x.load(viewer)
+
+    @staticmethod
+    def clean_zeros(x: PETSc.Mat):
+        mat_scipy = PetscUtils.mat_to_scipy(x)
+        mat_scipy.eliminate_zeros()
+        return PetscUtils.convert_x_to_mat(mat_scipy)
 
 
 class ScipySparseUtils(object):

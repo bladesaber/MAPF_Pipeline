@@ -73,7 +73,12 @@ Ref: https://petsc.org/release/manualpages/SNES/SNESConvergedReason/
 
 class LinearProblemSolver(object):
     @staticmethod
-    def create_petsc_solver(comm=MPI.COMM_WORLD, solver_setting: dict|None = None, mat: PETSc.Mat|None = None):
+    def create_petsc_solver(
+        comm=MPI.COMM_WORLD, 
+        solver_setting: dict|None = None, 
+        mat: PETSc.Mat|None = None,
+        setup_pc: bool = False
+    ):
         """find more info from: https://petsc4py.readthedocs.io/en/stable/manual/ksp/"""
         solver: PETSc.KSP = PETSc.KSP().create(comm)
         if solver_setting is None:
@@ -96,6 +101,11 @@ class LinearProblemSolver(object):
         
         if mat is not None:
             solver.setOperators(mat)
+        
+        # TODO: I think we need setup, it is very important for static matrix
+        if setup_pc:
+            solver.getPC().setUp()
+        
         return solver
 
     @staticmethod
@@ -197,11 +207,19 @@ class LinearProblemSolver(object):
         if isinstance(l_form, ufl.Form):
             l_form = DolfinUtils.ufl_to_dolfin(l_form)
 
+        # import time
+        # start_time = time.time()
         a_mat = AssembleUtils.assemble_mat(a_form, bcs, method=mat_assemble_method)
+        # print(f"Assemble matrix time: {time.time() - start_time}")
 
+        # start_time = time.time()
         b_vec = AssembleUtils.assemble_vec(l_form)
         BoundaryUtils.apply_boundary_to_vec(b_vec, bcs, a_form, clean_vec=False, method=mat_assemble_method)
-
+        # print(f"Assemble vector time: {time.time() - start_time}")
+        
+        # PetscUtils.save_data(a_mat, '/home/admin123456/Desktop/work/gmsh_test/t23/a_mat.dat')
+        # PetscUtils.save_data(b_vec, '/home/admin123456/Desktop/work/gmsh_test/t23/b_vec.dat')
+        
         solver = LinearProblemSolver.create_petsc_solver(comm, ksp_option, a_mat)
         res_dict = LinearProblemSolver.solve_by_petsc(b_vec, a_mat, solver, setOperators=False, with_residual=with_residual)
 
