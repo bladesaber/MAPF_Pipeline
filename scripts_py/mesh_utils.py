@@ -46,8 +46,8 @@ class MeshUtils(object):
     @staticmethod
     def read_msh(msh_file: str, dim: int) -> (dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags, dolfinx.mesh.MeshTags):  # type: ignore
         assert msh_file.endswith(".msh")
-        doamin, cell_tags, facet_tags = gmshio.read_from_msh(msh_file, MPI.COMM_WORLD, gdim=dim)
-        return doamin, cell_tags, facet_tags
+        domain, cell_tags, facet_tags = gmshio.read_from_msh(msh_file, MPI.COMM_WORLD, gdim=dim)
+        return domain, cell_tags, facet_tags
 
     @staticmethod
     def msh_to_XDMF(msh_file: str, xdmf_file: str, dim: int, name="model"):

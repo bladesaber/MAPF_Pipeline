@@ -510,7 +510,9 @@ def debug_conflict():
     from scripts_py.auto_dolfinx.cbs_topo.utils import debug_boundary_list
     boundary_list = debug_boundary_list
     
-    mesh = SeqMeshObj(xdmf_file='/home/admin123456/Desktop/work/gmsh_test/t25/model.xdmf')
+    mesh = SeqMeshObj(
+        xdmf_file='/home/admin123456/Desktop/work/gmsh_test/t25/model.xdmf',
+    )
     mesh.create_neighbors_info()
     
     # # ------ visualize surface ------

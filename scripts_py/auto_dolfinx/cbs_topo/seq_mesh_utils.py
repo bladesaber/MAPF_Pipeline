@@ -112,7 +112,7 @@ def generate_mesh(
 class SeqMeshObj(MeshObj):
     def __init__(
         self,
-        xdmf_file: str| None = None,
+        xdmf_file: str| None,
         mesh_name="model",
         domain: dolfinx.mesh.Mesh | None = None,
         cell_tags: dolfinx.mesh.MeshTags | None = None,
@@ -303,7 +303,9 @@ def debug():
         [4.75, 2.5]
     ])
     
-    mesh = SeqMeshObj(xdmf_file="/home/admin123456/Desktop/work/gmsh_test/t8/test2.xdmf")
+    mesh = SeqMeshObj(
+        xdmf_file="/home/admin123456/Desktop/work/gmsh_test/t8/test2.xdmf",
+    )
     mesh.create_neighbors_info()
     mesh.create_seq_tag(source_points, np.ones((mesh.num_points,)))
     

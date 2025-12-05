@@ -97,8 +97,10 @@ class TopoFluidOptimizer(FluidSimulator):
         alpha_fun_max: float = 1000.0,
         alpha_fun_min: float = 0.01,
         alpha_fun_p: float = 3.0,
+        velocity_degree = 2,
+        pressure_degree = 1,
     ):
-        super().__init__(name, mesh)
+        super().__init__(name, mesh, velocity_degree=velocity_degree, pressure_degree=pressure_degree)
         
         self.domain = DolfinxMesh(self.mesh.domain)
         self.mesh.domain = self.domain
