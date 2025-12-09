@@ -11,7 +11,7 @@ from functools import partial
 
 from scripts_py.mesh_utils import MeshUtils, MeshObj
 from scripts_py.simulator.dolfin_simulator import FluidBoundary, FluidSimulator
-from scripts_py.vtu_recorder import VtuRecorder
+from scripts_py.vtu_recorder import VtuRecorder, TensorBoardRecorder
 
 from thirdparty.pyadjoint.pyadjoint import Tape, ReducedFunctional, Control, compute_gradient
 from thirdparty.pyadjoint.pyadjoint.tape import set_working_tape
@@ -99,8 +99,17 @@ class TopoFluidOptimizer(FluidSimulator):
         alpha_fun_p: float = 3.0,
         velocity_degree = 2,
         pressure_degree = 1,
+        velocity_space: Literal['CG', 'DG', 'Lagrange'] = 'Lagrange',
+        pressure_space: Literal['CG', 'DG', 'Lagrange'] = 'Lagrange',
     ):
-        super().__init__(name, mesh, velocity_degree=velocity_degree, pressure_degree=pressure_degree)
+        super().__init__(
+            name, 
+            mesh, 
+            velocity_degree=velocity_degree, 
+            pressure_degree=pressure_degree,
+            velocity_space=velocity_space, 
+            pressure_space=pressure_space,
+        )
         
         self.domain = DolfinxMesh(self.mesh.domain)
         self.mesh.domain = self.domain
@@ -396,13 +405,14 @@ class TopoFluidOptimizer(FluidSimulator):
         self,
         line_search_steps: list[float] = [0.1, 0.05, 0.01, 0.005, 0.001, 0.00025],
         max_iteration=200,
+        tensorboard_recorder: TensorBoardRecorder|None = None,
     ) -> dict:
         is_solved, step = False, 0
         loss_current, loss_last = 0.0, 0.0
         line_search_steps_np: np.ndarray = np.array(line_search_steps)
         step_length_last = line_search_steps_np[0]
         
-        topo_phi = DolfinxFunction(self.point_scalar_func_space, name=f'topo_phi')  # type: ignore
+        topo_phi = DolfinxFunction(self.topo_weight.function_space, name=f'topo_phi')  # type: ignore
         topo_phi.x.array[:] = self.topo_weight.x.array.copy()  # type: ignore
         
         loss_dict = self.eval()
@@ -414,10 +424,17 @@ class TopoFluidOptimizer(FluidSimulator):
                     
             if step > 1:
                 loss_dict = self.eval()
-                log = f"[step/{step} loss:{loss_current:.5f} last_step_length:{step_length_last:.3f}]"
+                log = f"[step/{step} loss:{loss_current:.5f} last_step_length:{step_length_last:.5f}]"
                 for name, cost_value in loss_dict.items():
-                    log += f" {name}:{cost_value:.3f}"
+                    log += f" {name}:{cost_value:.5f}"
                 print(log)
+                
+                if tensorboard_recorder is not None:
+                    tensorboard_recorder.write_scalars(
+                        tag=f'{self.name}/loss',
+                        scalar_dict=loss_dict,
+                        step=step
+                    )
                 
                 loss_residual = loss_current - loss_last
                 if np.abs(loss_residual) < 1e-6:

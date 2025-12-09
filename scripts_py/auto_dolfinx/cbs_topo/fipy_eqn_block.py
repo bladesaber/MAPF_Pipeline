@@ -1,6 +1,7 @@
 from typing import Union, Callable, Any, Literal
 
 import dolfinx
+from matplotlib import use
 import ufl
 from ufl.algorithms import expand_derivatives
 from ufl.algorithms.analysis import extract_arguments
@@ -32,16 +33,18 @@ from scripts_py.auto_dolfinx.types.type_function import DolfinxFunction
 from scripts_py.auto_dolfinx.blocks.block_solve import EquationSolveBlock
 from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import AutoFluidBoundary
 from scripts_py.auto_dolfinx.cbs_topo.seq_mesh_utils import SeqMeshObj
+from scripts_py.auto_dolfinx.cbs_topo.fipy_topo_simulator import FipyTopologySimulator
 
 
 def convert_result_to_dolfinx(
     domain: dolfinx.mesh.Mesh, 
     uh: dolfinx.fem.Function, 
-    uh_type: Literal['cell', 'point'],
     velocity: np.ndarray, 
     pressure: np.ndarray,
     V_to_W_dofs: np.ndarray,
-    Q_to_W_dofs: np.ndarray
+    Q_to_W_dofs: np.ndarray,
+    V_func_space: dolfinx.fem.FunctionSpace,
+    Q_func_space: dolfinx.fem.FunctionSpace,
 ):
     cell_vector_func_space = DolfinUtils.cell_vector_function_space(domain)
     velocity_fun = dolfinx.fem.Function(cell_vector_func_space)
@@ -51,40 +54,53 @@ def convert_result_to_dolfinx(
     pressure_fun = dolfinx.fem.Function(cell_scalar_func_space)
     pressure_fun.x.array[:] = pressure.reshape((-1,))  # type: ignore
     
-    if uh_type == 'cell':
-        uh.x.array[V_to_W_dofs] = velocity_fun.x.array.copy()  # type: ignore
-        uh.x.array[Q_to_W_dofs] = pressure_fun.x.array.copy()  # type: ignore
-    elif uh_type == 'point':
-        point_vector_func_space = DolfinUtils.point_vector_function_space(domain)
-        velocity_interpolate_fun = dolfinx.fem.Function(point_vector_func_space)
-        velocity_interpolate_fun.interpolate(velocity_fun)  # type: ignore
-        
-        point_scalar_func_space = DolfinUtils.point_scalar_function_space(domain)
-        pressure_interpolate_fun = dolfinx.fem.Function(point_scalar_func_space)
-        pressure_interpolate_fun.interpolate(pressure_fun)  # type: ignore
-        
-        uh.x.array[V_to_W_dofs] = velocity_interpolate_fun.x.array.copy()  # type: ignore
-        uh.x.array[Q_to_W_dofs] = pressure_interpolate_fun.x.array.copy()  # type: ignore
-    else:
-        raise ValueError(f"Invalid uh_type: {uh_type}")
+    # # ------ visualize result ------
+    # plotter = pyvista.Plotter()
+    # grid = MeshUtils.mesh_to_vtk(domain)
+    # grid.cell_data['velocity'] = velocity_fun.x.array.copy().reshape((-1, 3))  # type: ignore
+    # plotter.add_arrows(grid.cell_centers().points, grid.cell_data['velocity'], mag=0.3)
+    # plotter.show()
+    # # ------ visualize result ------
     
+    velocity_interpolate_fun = dolfinx.fem.Function(V_func_space)
+    velocity_interpolate_fun.interpolate(velocity_fun)  # type: ignore
+        
+    pressure_interpolate_fun = dolfinx.fem.Function(Q_func_space)
+    pressure_interpolate_fun.interpolate(pressure_fun)  # type: ignore
+                
+    uh.x.array[V_to_W_dofs] = velocity_interpolate_fun.x.array.copy()  # type: ignore
+    uh.x.array[Q_to_W_dofs] = pressure_interpolate_fun.x.array.copy()  # type: ignore
+
     return uh
 
 
 def equation_stokeEqn_solve(
+    # ------ simulator related ------
     boundaries: list[AutoFluidBoundary],
     msh_file: str,
     viscosity: float,
     velocityRelaxation: float,
     pressureRelaxation: float,
     structure_mesh: SeqMeshObj,
-    topo_weight_name: str,
     log_step: int,
     simulation_iterations: int,
-    uh_type: Literal['cell', 'point'],
+    convergence_threshold: float,
+    save_dir: str,
+    
+    # ------ result convert related ------
     V_to_W_dofs: np.ndarray,
     Q_to_W_dofs: np.ndarray,
+    V_func_space: dolfinx.fem.FunctionSpace,
+    Q_func_space: dolfinx.fem.FunctionSpace,
     
+    # ------ alpha related ------
+    topo_weight_name: str,
+    alpha_fun: Callable,
+    alpha_min: float,
+    alpha_max: float,
+    alpha_p: float,
+    
+    # ------ autdolfinx related ------
     F_form: ufl.Form,
     state: dolfinx.fem.Function,
     adjoint: dolfinx.fem.Function,
@@ -127,61 +143,84 @@ def equation_stokeEqn_solve(
         if not find_topo_weight:
             raise ValueError(f"Topo weight {topo_weight_name} not found in F_form.")
         
-        # TODO: Wrong, gradient of zone of topology weight larger than 0.5 will all disappear
-        structure_topo_position = structure_mesh.grid.cell_centers().points.copy()
-        structure_topo_weight = topo_weight.x.array.copy()
+        structure_alpha = alpha_fun(
+            rho=topo_weight.x.array.copy(),
+            alpha_min=alpha_min,
+            alpha_max=alpha_max,
+            p=alpha_p,
+            pow_operator=np.power
+        )
         
-        # # ------ visualize structure topo weight ------
-        # plotter = pyvista.Plotter()
-        # plotter.add_mesh(pyvista.PointSet(structure_topo_position), color='red', opacity=0.5)
-        # plotter.add_mesh(pyvista.PointSet(structure_topo_position[structure_topo_weight > 1e-2]), color='blue', opacity=0.5)
-        # plotter.show()
-        # # ------ visualize structure topo weight ------
-        
-        simulator = FipyTopoStokeSimulator.from_msh(
+        simulator = FipyTopologySimulator.from_msh(
             source_msh_file=msh_file,
             dim=structure_mesh.tdim,
+            structure_alpha=structure_alpha,
             viscosity=viscosity,
             velocityRelaxation=velocityRelaxation,
             pressureRelaxation=pressureRelaxation,
-            structure_mesh=structure_mesh,
-            structure_topo_weight=structure_topo_weight,
-            structure_topo_position=structure_topo_position,
-            topo_radius=-1.0,
+            structure_mesh=structure_mesh
         )
         for boundary in boundaries:
             simulator.add_boundary(boundary)
         simulator.define_boundary()
-        simulator.run(iterations=simulation_iterations, log_step=log_step, save_dir=None)
+        res_report = simulator.run(
+            iterations=simulation_iterations,
+            convergence_threshold=convergence_threshold,
+            log_step=log_step, 
+            save_dir=save_dir,
+            use_tqdm=False,
+            use_log=True
+        )
+        if not res_report['is_solve']:
+            print(f'[Error] x_residual: {res_report['x_residual']} \
+                y_residual: {res_report['y_residual']} \
+                z_residual: {res_report['z_residual']} \
+                p_residual: {res_report['p_residual']} \
+                continuity_residual: {res_report['continuity_residual']}')
+            raise Exception('Stop')
         
         velocity = simulator.get_velocity(map_to_structure=True)
         pressure = simulator.get_pressure(map_to_structure=True)
         state = convert_result_to_dolfinx(
             domain=structure_mesh.domain,
             uh=state,
-            uh_type=uh_type,
             velocity=velocity,
             pressure=pressure,
             V_to_W_dofs=V_to_W_dofs,
-            Q_to_W_dofs=Q_to_W_dofs
+            Q_to_W_dofs=Q_to_W_dofs,
+            V_func_space=V_func_space,
+            Q_func_space=Q_func_space,
         )
         output = state
     
     if with_annotate:
         block = StockEquationSolveBlock(
+            # ------ simulator related ------
             boundaries = boundaries,
             msh_file = msh_file,
             viscosity = viscosity,
             velocityRelaxation = velocityRelaxation,
             pressureRelaxation = pressureRelaxation,
             structure_mesh = structure_mesh,
-            topo_weight_name = topo_weight_name,
             log_step = log_step,
             simulation_iterations = simulation_iterations,
-            uh_type = uh_type,
+            convergence_threshold = convergence_threshold,
+            save_dir = save_dir,
+            
+            # ------ result convert related ------
             V_to_W_dofs = V_to_W_dofs,
             Q_to_W_dofs = Q_to_W_dofs,
+            V_func_space = V_func_space,
+            Q_func_space = Q_func_space,
             
+            # ------ alpha related ------
+            topo_weight_name = topo_weight_name,
+            alpha_fun = alpha_fun,
+            alpha_min = alpha_min,
+            alpha_max = alpha_max,
+            alpha_p = alpha_p,
+            
+            # ------ autdolfinx related ------
             F_form=F_form,
             state=state,
             adjoint=adjoint,
@@ -204,19 +243,32 @@ def equation_stokeEqn_solve(
 class StockEquationSolveBlock(EquationSolveBlock):
     def __init__(
         self,
+        # ------ simulator related ------
         boundaries: list[AutoFluidBoundary],
         msh_file: str,
         viscosity: float,
         velocityRelaxation: float,
         pressureRelaxation: float,
         structure_mesh: SeqMeshObj,
-        topo_weight_name: str,
         log_step: int,
         simulation_iterations: int,
-        uh_type: Literal['cell', 'point'],
+        convergence_threshold: float,
+        save_dir: str,
+        
+        # ------ alpha related ------
+        topo_weight_name: str,
+        alpha_fun: Callable,
+        alpha_min: float,
+        alpha_max: float,
+        alpha_p: float,
+        
+        # ------ result convert related ------
         V_to_W_dofs: np.ndarray,
         Q_to_W_dofs: np.ndarray,
+        V_func_space: dolfinx.fem.FunctionSpace,
+        Q_func_space: dolfinx.fem.FunctionSpace,
         
+        # ------ autdolfinx related ------
         F_form: ufl.Form,
         state: dolfinx.fem.Function,
         adjoint: dolfinx.fem.Function,
@@ -240,18 +292,30 @@ class StockEquationSolveBlock(EquationSolveBlock):
             forward_kwargs={},
         )
         
+        # ------ simulator related ------
         self.boundaries = boundaries
         self.msh_file = msh_file
         self.viscosity = viscosity
         self.velocityRelaxation = velocityRelaxation
         self.pressureRelaxation = pressureRelaxation
         self.structure_mesh = structure_mesh
-        self.topo_weight_name = topo_weight_name
         self.log_step = log_step
         self.simulation_iterations = simulation_iterations
-        self.uh_type: Literal['cell', 'point'] = uh_type
+        self.convergence_threshold = convergence_threshold
+        self.save_dir = save_dir
+        
+        # ------ alpha related ------
+        self.topo_weight_name = topo_weight_name
+        self.alpha_fun = alpha_fun
+        self.alpha_min = alpha_min
+        self.alpha_max = alpha_max
+        self.alpha_p = alpha_p
+        
+        # ------ result convert related ------
         self.V_to_W_dofs = V_to_W_dofs
         self.Q_to_W_dofs = Q_to_W_dofs
+        self.V_func_space = V_func_space
+        self.Q_func_space = Q_func_space
         
     def recompute_component(self, inputs, block_variable, idx, prepared: dict) -> dolfinx.fem.Function:
         F_recompute_form: ufl.Form = prepared['F_recompute_form']
@@ -267,34 +331,53 @@ class StockEquationSolveBlock(EquationSolveBlock):
         if not find_topo_weight:
             raise ValueError(f"Topo weight {self.topo_weight_name} not found in F_form.")
             
-        structure_topo_weight = topo_weight.x.array.copy()
-        structure_topo_position = self.structure_mesh.grid.cell_centers().points.copy()
-            
-        simulator = FipyTopoStokeSimulator.from_msh(
+        structure_alpha = self.alpha_fun(
+            rho=topo_weight.x.array.copy(),
+            alpha_min=self.alpha_min,
+            alpha_max=self.alpha_max,
+            p=self.alpha_p,
+            pow_operator=np.power
+        )
+                    
+        simulator = FipyTopologySimulator.from_msh(
             source_msh_file=self.msh_file,
             dim=self.structure_mesh.tdim,
+            structure_alpha=structure_alpha,
             viscosity=self.viscosity,
             velocityRelaxation=self.velocityRelaxation,
             pressureRelaxation=self.pressureRelaxation,
-            structure_mesh=self.structure_mesh,
-            structure_topo_weight=structure_topo_weight,
-            structure_topo_position=structure_topo_position,
-            topo_radius=-1.0,
+            structure_mesh=self.structure_mesh
         )
         for boundary in self.boundaries:
             simulator.add_boundary(boundary)
         simulator.define_boundary()
-        simulator.run(iterations=self.simulation_iterations, log_step=self.log_step, save_dir=None)
+        res_report = simulator.run(
+            iterations=self.simulation_iterations, 
+            convergence_threshold=self.convergence_threshold,
+            log_step=self.log_step, 
+            save_dir=self.save_dir,
+            use_tqdm=True,
+            use_log=True
+        )
+        if not res_report['is_solve']:
+            print(f'[Error] x_residual: {res_report['x_residual']} \
+                y_residual: {res_report['y_residual']} \
+                z_residual: {res_report['z_residual']} \
+                p_residual: {res_report['p_residual']} \
+                continuity_residual: {res_report['continuity_residual']}')
+            raise Exception('Stop')
             
         velocity = simulator.get_velocity(map_to_structure=True)
         pressure = simulator.get_pressure(map_to_structure=True)
         uh = convert_result_to_dolfinx(
             domain=self.domain,
             uh=uh,
-            uh_type=self.uh_type,
             velocity=velocity,
             pressure=pressure,
             V_to_W_dofs=self.V_to_W_dofs,
-            Q_to_W_dofs=self.Q_to_W_dofs
+            Q_to_W_dofs=self.Q_to_W_dofs,
+            V_func_space=self.V_func_space,
+            Q_func_space=self.Q_func_space,
         )
         return uh
+    

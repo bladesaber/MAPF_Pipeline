@@ -6,6 +6,7 @@ import subprocess
 import numpy as np
 import pyvista
 from sklearn.neighbors import KDTree
+from tqdm import tqdm
 
 from fipy import Gmsh3D, Gmsh2D
 from fipy import CellVariable, FaceVariable
@@ -53,9 +54,12 @@ class FipyStokeSimpleSimulator(object):
             self.zVelocity = CellVariable(mesh=self.mesh, name='Z velocity')
         self.face_velocity = FaceVariable(mesh=self.mesh, rank=1)
         
-        self.xVelocityEq = DiffusionTerm(coeff=viscosity) - self.pressure.grad.dot([1., 0., 0.])
-        self.yVelocityEq = DiffusionTerm(coeff=viscosity) - self.pressure.grad.dot([0., 1., 0.])
-        if self.tdim == 3:
+        if self.tdim == 2:
+            self.xVelocityEq = DiffusionTerm(coeff=viscosity) - self.pressure.grad.dot([1., 0.])
+            self.yVelocityEq = DiffusionTerm(coeff=viscosity) - self.pressure.grad.dot([0., 1.])
+        elif self.tdim == 3:
+            self.xVelocityEq = DiffusionTerm(coeff=viscosity) - self.pressure.grad.dot([1., 0., 0.])
+            self.yVelocityEq = DiffusionTerm(coeff=viscosity) - self.pressure.grad.dot([0., 1., 0.])
             self.zVelocityEq = DiffusionTerm(coeff=viscosity) - self.pressure.grad.dot([0., 0., 1.])
         
         # ------ define pressure correction equation ------
@@ -132,12 +136,24 @@ class FipyStokeSimpleSimulator(object):
                 if self.tdim == 3:
                     self.face_velocity[2, face_mask] = 0.
 
-    def run(self, iterations: int, log_step: int = 10, save_dir: str|None = None):
+    def run(
+        self, 
+        iterations: int, 
+        convergence_threshold: float = 1e-5,
+        hot_steps: int = 10,
+        log_step: int = 10, 
+        save_dir: str|None = None, 
+        use_tqdm: bool = False, 
+        use_log: bool = True
+    ) -> dict:
         if save_dir is not None:
             if os.path.exists(save_dir):
                 shutil.rmtree(save_dir)
             os.makedirs(save_dir)
-            
+        
+        if use_tqdm and use_log:
+            tqdm_bar = tqdm(total=iterations, desc='Fipy Simulator')
+        
         for iter_idx in range(iterations):
             
             '''
@@ -217,16 +233,40 @@ class FipyStokeSimpleSimulator(object):
             if self.tdim == 3:
                 self.zVelocity.setValue(self.zVelocity - self.pressureCorrection.grad[2] / self.ap * self.mesh.cellVolumes)
             
-            if log_step > 0:
+            if log_step > 0 and use_log:
                 if iter_idx % log_step == 0:
                     log = f'[Log: {iter_idx}]: x residual:{x_residual:.8f}, y residual:{y_residual:.8f}, '
                     if self.tdim == 3:
                         log += f'z residual:{z_residual:.8f},'
                     log += f' p residual:{p_residual:.8f}, continuity_residual:{np.max(np.abs(continuity_residual)):.8f}'
-                    print(log)
+                    if use_tqdm:
+                        tqdm_bar.update(log_step)
+                        tqdm_bar.set_description(log)
+                    else:
+                        print(log)
                     
                     if save_dir is not None:
                         self.record(save_file=os.path.join(save_dir, f'res_{iter_idx}.vtu'))
+            
+            if iter_idx > hot_steps and convergence_threshold > 0.0:
+                convergence_flag = x_residual < convergence_threshold and y_residual < convergence_threshold
+                if self.tdim == 3:
+                    convergence_flag = convergence_flag and z_residual < convergence_threshold
+                convergence_flag = convergence_flag and p_residual < convergence_threshold and np.max(np.abs(continuity_residual)) < convergence_threshold
+                if convergence_flag:
+                    break
+            
+        res_dict = {
+            'is_solve': True,
+            'x_residual': x_residual,
+            'y_residual': y_residual,
+            'p_residual': p_residual,
+            'continuity_residual': continuity_residual
+        }
+        if self.tdim == 3:
+            res_dict['z_residual'] = z_residual
+        return res_dict
+            
 
     def eval_point(self, points: np.ndarray):
         pressure = self.pressure(points)
@@ -240,7 +280,7 @@ class FipyStokeSimpleSimulator(object):
         return pressure, velocity
 
     def get_mesh_to_structure_mesh_mapping(self) -> tuple[np.ndarray, np.ndarray]:
-        cell_centers = self.structure_mesh.grid.cell_centers().points
+        cell_centers = self.structure_mesh.grid.cell_centers().points[: , :self.tdim]        
         tree = KDTree(self.mesh.cellCenters.value.T)
         dists_list, idxs_list = tree.query(cell_centers, k=1, return_distance=True)
         dists_list = np.concatenate(dists_list, axis=-1)
@@ -272,14 +312,18 @@ class FipyStokeSimpleSimulator(object):
     def record(self, save_file: str):
         velocity = self.get_velocity(map_to_structure=True)
         pressure = self.get_pressure(map_to_structure=True)
-        self.structure_mesh.grid.cell_data['pressure'] = pressure
-        self.structure_mesh.grid.cell_data['velocity'] = velocity
-        self.structure_mesh.grid.cell_data['velocity_mag'] = np.linalg.norm(velocity, axis=1)
+        self.structure_mesh.grid.cell_data['pressure_sim'] = pressure
+        if velocity.shape[1] == 2:
+            velocity = np.concatenate([velocity, np.zeros((velocity.shape[0], 1))], axis=1)
+        self.structure_mesh.grid.cell_data['velocity_sim'] = velocity
+        self.structure_mesh.grid.cell_data['velocity_mag_sim'] = np.linalg.norm(velocity, axis=1)
         self.structure_mesh.grid.save(save_file)
 
     @staticmethod
     def msh_version_convert(source_msh_file: str, target_msh_file: str, target_version: Literal['msh2', 'msh4']):
-        run_bash = f"gmsh {source_msh_file} -format {target_version} -o {target_msh_file} -save"
+        base_dir = os.path.dirname(target_msh_file)
+        log_file = os.path.join(base_dir, 'msh_version_convert.log')
+        run_bash = f"gmsh {source_msh_file} -format {target_version} -o {target_msh_file} -save > {log_file}"
         subprocess.run(run_bash, shell=True, check=True)
 
     @staticmethod
@@ -317,7 +361,7 @@ class FipyStokeSimpleSimulator(object):
         )
 
 
-def debug():
+def debug_3D():
     simulator = FipyStokeSimpleSimulator.from_msh(
         '/home/admin123456/Desktop/work/gmsh_test/t28/model.msh',
         dim=3,
@@ -353,8 +397,112 @@ def debug():
     simulator.add_boundary(wall_bry)
     simulator.define_boundary()
     
+    simulator.run(iterations=60, log_step=2, save_dir='/home/admin123456/Desktop/work/gmsh_test/t28/cache')
+
+
+def debug_global_processor():
+    # TODO: still wire problem need to fixed
+    from mpi4py import MPI
+    from petsc4py import PETSc
+    
+    def create_petsc_solver(
+        comm=MPI.COMM_WORLD, 
+        solver_setting: dict|None = None,
+    ):
+        solver: PETSc.KSP = PETSc.KSP().create(comm)  # type: ignore
+        if solver_setting is None:
+            return solver
+
+        opts = PETSc.Options()  # type: ignore
+        for key, value in solver_setting.items():
+            opts.setValue(key, value)
+        solver.setFromOptions()
+        
+        return solver
+
+    ''' when initializing the solver, it throw error:
+    Traceback (most recent call last):
+  File "/home/admin123456/Desktop/work/MAPF_Pipeline/scripts_py/simulator/fipy_simulator.py", line 396, in <module>
+    debug_global_processor()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/admin123456/Desktop/work/MAPF_Pipeline/scripts_py/simulator/fipy_simulator.py", line 391, in debug_global_processor
+    debug()
+    ~~~~~^^
+  File "/home/admin123456/Desktop/work/MAPF_Pipeline/scripts_py/simulator/fipy_simulator.py", line 356, in debug
     simulator.run(iterations=30, log_step=2, save_dir='/home/admin123456/Desktop/work/gmsh_test/t28/cache')
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/admin123456/Desktop/work/MAPF_Pipeline/scripts_py/simulator/fipy_simulator.py", line 161, in run
+    x_residual = self.xVelocityEq.sweep(var=self.xVelocity, underRelaxation=self.velocityRelaxation)
+  File "/home/admin123456/.conda/envs/dolfinx-env/lib/python3.13/site-packages/fipy/terms/term.py", line 261, in sweep
+    solver._solve()
+    ~~~~~~~~~~~~~^^
+  File "/home/admin123456/.conda/envs/dolfinx-env/lib/python3.13/site-packages/fipy/solvers/solver.py", line 196, in _solve
+    x = self._solve_(L, x, b)
+  File "/home/admin123456/.conda/envs/dolfinx-env/lib/python3.13/site-packages/fipy/solvers/petsc/petscKrylovSolver.py", line 217, in _solve_
+    ksp.solve(b, x)
+    ~~~~~~~~~^^^^^^
+  File "petsc4py/PETSc/KSP.pyx", line 1782, in petsc4py.PETSc.KSP.solve
+petsc4py.PETSc.Error: error code 83
+[0] KSPSolve() at /home/conda/feedstock_root/build_artifacts/bld/rattler-build_petsc_1754877033/work/src/ksp/ksp/interface/itfunc.c:1091
+[0] KSPSolve_Private() at /home/conda/feedstock_root/build_artifacts/bld/rattler-build_petsc_1754877033/work/src/ksp/ksp/interface/itfunc.c:914
+[0] KSPSolve_PREONLY() at /home/conda/feedstock_root/build_artifacts/bld/rattler-build_petsc_1754877033/work/src/ksp/ksp/impls/preonly/preonly.c:20
+[0] KSP of type preonly (application of preconditioner only) doesn't make sense with nonzero initial guess you probably want a KSP of type Richardson
+    '''
+    solver = create_petsc_solver(
+        solver_setting={
+            'ksp_type': 'preonly',
+            'pc_type': 'lu',
+            "pc_factor_mat_solver_type": "mumps",
+            "mat_mumps_icntl_24": 1
+        },
+    )
+    solver.view()
+    solver.destroy()
+    del solver
+    solver = None    
+    debug_3D()
+    
+
+def debug_2D():
+    simulator = FipyStokeSimpleSimulator.from_msh(
+        '/home/admin123456/Desktop/work/gmsh_test/t30/model.msh',
+        dim=2,
+        viscosity=1.0 / 400.0,
+        velocityRelaxation=0.5,
+        pressureRelaxation=0.8,
+    )
+    
+    inlet_bry = FluidBoundary(
+        name='inlet',
+        boundary_type='velocity',
+        value=[1.0, 0.0],
+        marker=22,
+        face_center=[-0.05, 0.2],
+        face_norm_vector=[1.0, 0.0],
+        face_radius=0.1
+    )
+    outlet_bry = FluidBoundary(
+        name='outlet',
+        boundary_type='pressure',
+        value=0.0,
+        marker=23
+    )
+    wall_bry = FluidBoundary(
+        name='wall',
+        boundary_type='wall',
+        value=0.0,
+        marker=24
+    )
+    
+    simulator.add_boundary(inlet_bry)
+    simulator.add_boundary(outlet_bry)
+    simulator.add_boundary(wall_bry)
+    simulator.define_boundary()
+    
+    simulator.run(iterations=60, log_step=2, save_dir='/home/admin123456/Desktop/work/gmsh_test/t30/cache')
 
 
 if __name__ == '__main__':
-    debug()
+    # debug_global_processor()
+    # debug_3D()
+    debug_2D()
