@@ -26,8 +26,6 @@ from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import (
 )
 from scripts_py.auto_dolfinx.cbs_topo.fipy_eqn_block import equation_stokeEqn_solve
 
-from scripts_py.auto_dolfinx.cbs_topo.fipy_topo_simulator import FipyTopologySimulator
-
 
 class TopoFluidOptimizerFipy(TopoFluidOptimizer):
     def __init__(
@@ -73,20 +71,19 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         self.msh_file = msh_file
         
         self.obstacle_cost_weight = obstacle_cost_weight
-        self.obstacle_source = DolfinxFunction(self.point_scalar_func_space, name="obstacle_source")
-        obstacle_source = np.zeros(self.mesh.num_points)
-        
+        obstacle_mask = np.zeros(self.mesh.num_cells)
         if obstacle_func is not None:
-            obstacle_dofs = obstacle_func(DolfinUtils.tabulate_dof_coordinates(self.point_scalar_func_space))
+            obstacle_dofs = obstacle_func(DolfinUtils.tabulate_dof_coordinates(self.cell_scalar_func_space))
             if obstacle_dofs.shape[0] > 0:
-                obstacle_source[obstacle_dofs] = 1.0
-        
-        self.obstacle_source.x.array[:] = obstacle_source  # type: ignore
+                obstacle_mask[obstacle_dofs] = 1.0
+        self.obs_cell_mask = obstacle_mask
+        self.obs_source: DolfinxFunction = None  # type: ignore
         
         self.topo_phi_input = DolfinxFunction(self.cell_scalar_func_space, name=f'topo_phi_input')
 
     def define_problem(
         self,
+        simulation_iterations: int = 100,
         tlm_ksp_option: dict = {
             'ksp_type': 'preonly',
             'pc_type': 'lu',
@@ -122,6 +119,8 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             
             self.topo_weight = DolfinxFunction(self.cell_scalar_func_space, name=f'topo_weight')  # type: ignore
             self.topo_weight.x.array[:] = self.topo_weight_init
+            if self.obs_cell_mask.sum() > 0:
+                self.topo_weight.x.array[self.obs_cell_mask > 0.0] = 0.0
             self.topo_phi_input.x.array[:] = self.topo_weight.x.array.copy()  # type: ignore
             
             alpha = self.alpha_fun(
@@ -143,8 +142,9 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                 velocityRelaxation=0.5,
                 pressureRelaxation=0.8,
                 structure_mesh=self.mesh,  # type: ignore
+                structure_obs_weight=None if self.obs_cell_mask.sum() == 0 else self.obs_cell_mask,
                 log_step=2,
-                simulation_iterations=100,
+                simulation_iterations=simulation_iterations,
                 convergence_threshold=1e-5,
                 save_dir=os.path.join(self.result_dir, 'progress'),
                 
@@ -181,36 +181,45 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             self.define_cost(self.cost_item, u, p, alpha, nut=nut)  # type: ignore
             # self.define_regularization(self.regularization_item)
             
+            J_form = self.cost_item.cost_form
+            
+            if self.obs_cell_mask.sum() > 0:
+                self.obs_source = DolfinxFunction(self.cell_scalar_func_space, name="obstacle_source")  # type: ignore
+                self.obs_source.x.array[:] = self.obs_cell_mask  # type: ignore
+                # we don't need these
+                # self.obstacle_cost_form = self.obstacle_cost_weight * inner(self.obs_source, self.topo_weight) * ufl.dx  # type: ignore                
+                # J_form += self.obstacle_cost_form
+            
+            form_cost = assemble_scalar(J_form, domain=self.domain, tape=self.tape)  # type: ignore
+            
             self.vol_ratio_form = self.topo_weight * ufl.dx            
-            volume = assemble_scalar(self.vol_ratio_form, domain=self.domain, tape=self.tape)
-            reg_cost = self.regularization_item.weight * (
-                self.regularization_item.kwargs['target_ratio'] * self.volume - volume
-            ) ** 2
+            topo_volume = assemble_scalar(self.vol_ratio_form, domain=self.domain, tape=self.tape)
+            volume_dif = self.regularization_item.kwargs['target_ratio'] * self.volume - topo_volume
             
-            # self.obstacle_cost_form = self.obstacle_cost_weight * inner(self.obstacle_source, self.topo_weight) * ufl.dx  # type: ignore
-            
-            J_form = (
-                self.cost_item.cost_form 
-                # + self.obstacle_cost_form
-            )
-            Jhat = assemble_scalar(J_form, domain=self.domain, tape=self.tape)  # type: ignore
-            Jhat = Jhat + reg_cost
-            
-            self.control_phi = Control(self.topo_weight)
-            self.opt_problem = ReducedFunctional(Jhat, [self.control_phi])
-        
-        print(self.eval())
+            with stop_annotating():
+                reg_cost_ratio = self.regularization_item.weight / self.cost_item.weight
+                if np.isclose(volume_dif, 0.0, atol=1e-8):
+                    raise ValueError(f'[Error] Volume difference is too small: {volume_dif}')
+                if not np.isclose(form_cost, 0.0, atol=1e-8):  # type: ignore
+                    self.regularization_item.weight = form_cost * reg_cost_ratio / (volume_dif ** 2)  # type: ignore
                 
+            reg_cost = self.regularization_item.weight * volume_dif ** 2
+            
+            fin_cost = form_cost + reg_cost
+            self.control_phi = Control(self.topo_weight)
+            self.opt_problem = ReducedFunctional(fin_cost, [self.control_phi])
+        
+        print('[Log]: Initial loss:', self.eval())
+
     def eval(self):
-        return {
+        loss_dict = {
             self.cost_item.name: self.cost_item.eval(),
-            # self.regularization_item.name: self.regularization_item.eval(),
             self.regularization_item.name: self.regularization_item.weight * (
                 self.regularization_item.kwargs['target_ratio'] * self.volume - AssembleUtils.assemble_scalar(self.vol_ratio_form)
             ) ** 2,
             'abs_volume': float(np.abs(AssembleUtils.assemble_scalar(self.vol_ratio_form) - self.regularization_item.kwargs['target_ratio'] * self.volume)) / self.volume,
-            # 'obstacle_cost': AssembleUtils.assemble_scalar(self.obstacle_cost_form),
         }
+        return loss_dict
     
     def record_Upw(self, step: int, **kwargs):
         vel_ref = dolfinx.fem.Function(self.point_vector_func_space, name='vel_ref')
@@ -225,13 +234,15 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         self.recorder.update_point_data('U_mag', np.linalg.norm(vel_ref_np, axis=1))
         self.recorder.update_point_data('p', p_ref.x.array.copy())
         self.recorder.update_cell_data('topo_weight', self.topo_weight.x.array.copy())  # type: ignore
-        self.recorder.update_point_data('obstacle_source', self.obstacle_source.x.array.copy())  # type: ignore
+        if self.obs_source is not None:
+            self.recorder.update_cell_data('obstacle_source', self.obs_source.x.array.copy())  # type: ignore
         if kwargs.get('gradient', None) is not None:
             self.recorder.update_cell_data('gradient', kwargs['gradient'])
         
         self.recorder.save(step)
 
     def corase_step_run(self, step: float, iter: int = -1):
+        # TODO: adjust 
         gradient_np = self.compute_gradient(adj_input=1.0, with_filter=True, with_norm=True)
         # direction_np = np.sign(gradient_np)  # TODO: still unstable
         direction_np = gradient_np
@@ -277,9 +288,10 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         return detail_loss
 
 
-def debug_2D():
-    msh_file = '/home/admin123456/Desktop/work/gmsh_test/t30/t30_model.msh'
-    xdmf_file = '/home/admin123456/Desktop/work/gmsh_test/t30/t30_model.xdmf'
+def debug_2D_without_obstacle():
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t30/'
+    msh_file = os.path.join(base_dir, 't30_model.msh')
+    xdmf_file = os.path.join(base_dir, 't30_model.xdmf')
     MeshUtils.msh_to_XDMF(msh_file, xdmf_file, dim=2)
     
     # --- 1. define mesh ---
@@ -293,12 +305,12 @@ def debug_2D():
     regularization_item = AutoFluidRegularization(
         name='reg_weight',
         style='Volume',
-        weight=10.0,
+        weight=2.0,
         target_ratio=0.2
     )
         
     optim = TopoFluidOptimizerFipy(
-        name='topo_fluid_29',
+        name='topo_fluid_30',
         mesh=mesh,
         msh_file=msh_file,
         nut_init=1.0 / 400.,
@@ -310,7 +322,7 @@ def debug_2D():
         obstacle_func=None,
         obstacle_cost_weight=100.0,
         weight_filter_radius=0.1,
-        result_dir='/home/admin123456/Desktop/work/gmsh_test/t30/topo_opt_cache',
+        result_dir=os.path.join(base_dir, 'topo_opt_cache'),
         velocity_degree=1,  # TODO: can it be 1?
         pressure_degree=1,
     )
@@ -356,44 +368,42 @@ def debug_2D():
         }
     )
     
-    recorder = TensorBoardRecorder(log_dir='/home/admin123456/Desktop/work/gmsh_test/t29/cache/tensorboardx_record')
+    recorder = TensorBoardRecorder(log_dir=os.path.join(base_dir, 'topo_opt_cache', 'tensorboardx_record'))
     optim.run(
+        line_search_steps=[0.2, 0.1, 0.05, 0.01, 0.005],
         tensorboard_recorder=recorder
     )
 
 
-def debug_3D():
-    xdmf_file = '/home/admin123456/Desktop/work/gmsh_test/t29/t29_model.xdmf'
-    msh_file = '/home/admin123456/Desktop/work/gmsh_test/t29/t29_model.msh'
-    MeshUtils.msh_to_XDMF(
-        msh_file=msh_file,
-        xdmf_file=xdmf_file,
-        dim=3,
-    )
-
+def debug_2D_with_obstacle():
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t30/'
+    msh_file = os.path.join(base_dir, 't30_model.msh')
+    xdmf_file = os.path.join(base_dir, 't30_model.xdmf')
+    MeshUtils.msh_to_XDMF(msh_file, xdmf_file, dim=2)
+    
     # --- 1. define mesh ---
     mesh = SeqMeshObj(xdmf_file=xdmf_file)
     
     cost_item = AutoFluidCost(
         name='obj_cost',
         style='MinDissipation',
-        weight=100.0,
+        weight=1.0,
     )
     regularization_item = AutoFluidRegularization(
         name='reg_weight',
         style='Volume',
-        weight=1000.0,
+        weight=2.0,
         target_ratio=0.2
     )
     
-    # def define_obstacle_func(xyzs: np.ndarray):
-    #     obstacle_center = np.array([0.5, 0.5, 0.25])
-    #     cell2obs_dist = np.linalg.norm(xyzs[:, :2] - obstacle_center[:2], axis=1)
-    #     obs_dofs = np.where(cell2obs_dist < 0.1)[0]
-    #     return obs_dofs
-    
+    def define_obstacle_func(cell_centers: np.ndarray):
+        obstacle_center = np.array([0.5, 0.5])
+        cell2obs_dist = np.linalg.norm(cell_centers[:, :2] - obstacle_center[:2], axis=1)
+        obs_dofs = np.where(cell2obs_dist < 0.15)[0]
+        return obs_dofs
+        
     optim = TopoFluidOptimizerFipy(
-        name='topo_fluid_29',
+        name='topo_fluid_30',
         mesh=mesh,
         msh_file=msh_file,
         nut_init=1.0 / 400.,
@@ -401,12 +411,11 @@ def debug_3D():
         regularization_item=regularization_item,
         # topo_weight_init=regularization_item.kwargs['target_ratio'] * 1.05,
         topo_weight_init=0.5,  # TODO: it seems source term cause result wrong
-        # obstacle_func=define_obstacle_func,
-        obstacle_func=None,
+        obstacle_func=define_obstacle_func,
         obstacle_cost_weight=100.0,
         weight_filter_radius=0.1,
-        result_dir='/home/admin123456/Desktop/work/gmsh_test/t29/topo_opt_cache',
-        velocity_degree=1,  # TODO: can it be 1?
+        result_dir=os.path.join(base_dir, 'topo_opt_withobs_cache'),
+        velocity_degree=1,
         pressure_degree=1,
     )
     
@@ -416,30 +425,30 @@ def debug_3D():
     inlet_bry = AutoFluidBoundary(
         name='inlet',
         boundary_type='velocity',
-        value=[1.0, 0.0, 0.0],
-        marker=20,
-        face_center=[-0.05, 0.15, 0.15],
-        face_norm_vector=[1.0, 0.0, 0.0],
+        value=[1.0, 0.0],
+        marker=22,
+        face_center=[-0.05, 0.2],
+        face_norm_vector=[1.0, 0.0],
         face_radius=0.1
     )
     outlet_bry = AutoFluidBoundary(
         name='outlet',
         boundary_type='pressure',
         value=0.0,
-        marker=21
+        marker=23
     )
     wall_bry = AutoFluidBoundary(
         name='wall',
         boundary_type='wall',
         value=0.0,
-        marker=22
+        marker=24
     )
 
     optim.add_boundary(inlet_bry)
     optim.add_boundary(outlet_bry)
     optim.add_boundary(wall_bry)
     optim.define_problem(
-        # TODO: i don't know why, but if i use my ksp in the code, i need to change ksp option in richardson
+        simulation_iterations=66,
         adj_ksp_option={
             'ksp_type': 'richardson',
             'ksp_max_it': 1,                  # 只迭代一次 = 相当于 preonly
@@ -451,17 +460,17 @@ def debug_3D():
         }
     )
     
-    recorder = TensorBoardRecorder(log_dir='/home/admin123456/Desktop/work/gmsh_test/t29/topo_opt_cache/tensorboardx_record')
+    recorder = TensorBoardRecorder(log_dir=os.path.join(base_dir, 'topo_opt_withobs_cache', 'tensorboardx_record'))
     optim.run(
-        line_search_steps=[0.2, 0.1, 0.05, 0.01],
+        line_search_steps=[0.2, 0.1, 0.05, 0.01, 0.005],
         tensorboard_recorder=recorder
     )
 
 
-def debug_3D_2():
-    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t31'
-    xdmf_file = os.path.join(base_dir, 'model.xdmf')
-    msh_file = os.path.join(base_dir, 'model.msh')
+def debug_3D_without_obstacle():
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t29/'
+    xdmf_file = os.path.join(base_dir, 't29_model.xdmf')
+    msh_file = os.path.join(base_dir, 't29_model.msh')
     MeshUtils.msh_to_XDMF(
         msh_file=msh_file,
         xdmf_file=xdmf_file,
@@ -474,23 +483,17 @@ def debug_3D_2():
     cost_item = AutoFluidCost(
         name='obj_cost',
         style='MinDissipation',
-        weight=10.0,
+        weight=1.0,
     )
     regularization_item = AutoFluidRegularization(
         name='reg_weight',
         style='Volume',
-        weight=100.0,
+        weight=3.0,
         target_ratio=0.2
     )
     
-    # def define_obstacle_func(xyzs: np.ndarray):
-    #     obstacle_center = np.array([0.5, 0.5, 0.25])
-    #     cell2obs_dist = np.linalg.norm(xyzs[:, :2] - obstacle_center[:2], axis=1)
-    #     obs_dofs = np.where(cell2obs_dist < 0.1)[0]
-    #     return obs_dofs
-    
     optim = TopoFluidOptimizerFipy(
-        name='topo_fluid_31',
+        name='topo_fluid_29',
         mesh=mesh,
         msh_file=msh_file,
         nut_init=1.0 / 400.,
@@ -550,14 +553,202 @@ def debug_3D_2():
     
     recorder = TensorBoardRecorder(log_dir=os.path.join(base_dir, 'topo_opt_cache', 'tensorboardx_record'))
     optim.run(
-        line_search_steps=[0.2, 0.1, 0.05, 0.01],
+        line_search_steps=[0.2, 0.1, 0.05, 0.01, 0.005],
+        tensorboard_recorder=recorder
+    )
+
+
+def debug_3D_with_obstacle():
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t33/'
+    xdmf_file = os.path.join(base_dir, 't33_model.xdmf')
+    msh_file = os.path.join(base_dir, 't33_model.msh')
+    MeshUtils.msh_to_XDMF(
+        msh_file=msh_file,
+        xdmf_file=xdmf_file,
+        dim=3,
+    )
+
+    # --- 1. define mesh ---
+    mesh = SeqMeshObj(xdmf_file=xdmf_file)
+    
+    cost_item = AutoFluidCost(
+        name='obj_cost',
+        style='MinDissipation',
+        weight=1.0,
+    )
+    regularization_item = AutoFluidRegularization(
+        name='reg_weight',
+        style='Volume',
+        weight=3.0,
+        target_ratio=0.2
+    )
+    
+    def define_obstacle_func(cell_centers: np.ndarray):
+        obstacle_center = np.array([0.5, 0.5, 0.15])
+        cell2obs_dist = np.linalg.norm(cell_centers[:, :2] - obstacle_center[:2], axis=1)
+        obs_dofs = np.where(cell2obs_dist < 0.05)[0]
+        return obs_dofs
+    
+    optim = TopoFluidOptimizerFipy(
+        name='topo_fluid_33',
+        mesh=mesh,
+        msh_file=msh_file,
+        nut_init=1.0 / 400.,
+        cost_item=cost_item,
+        regularization_item=regularization_item,
+        # topo_weight_init=regularization_item.kwargs['target_ratio'] * 1.05,
+        topo_weight_init=0.5,  # TODO: it seems source term cause result wrong
+        obstacle_func=define_obstacle_func,
+        obstacle_cost_weight=100.0,
+        weight_filter_radius=0.1,
+        result_dir=os.path.join(base_dir, 'topo_opt_withobs_cache'),
+        velocity_degree=1,  # TODO: can it be 1?
+        pressure_degree=1,
+    )
+    
+    tape = Tape()
+    optim.setup_tape(tape)
+    
+    inlet_bry = AutoFluidBoundary(
+        name='inlet',
+        boundary_type='velocity',
+        value=[1.0, 0.0, 0.0],
+        marker=20,
+        face_center=[-0.05, 0.15, 0.15],
+        face_norm_vector=[1.0, 0.0, 0.0],
+        face_radius=0.1
+    )
+    outlet_bry = AutoFluidBoundary(
+        name='outlet',
+        boundary_type='pressure',
+        value=0.0,
+        marker=21
+    )
+    wall_bry = AutoFluidBoundary(
+        name='wall',
+        boundary_type='wall',
+        value=0.0,
+        marker=22
+    )
+
+    optim.add_boundary(inlet_bry)
+    optim.add_boundary(outlet_bry)
+    optim.add_boundary(wall_bry)
+    optim.define_problem(
+        simulation_iterations=60,
+        adj_ksp_option={
+            'ksp_type': 'richardson',
+            'ksp_max_it': 1,                  # 只迭代一次 = 相当于 preonly
+            'pc_type': 'lu',
+            'pc_factor_mat_solver_type': 'mumps',
+            'mat_mumps_icntl_24': 1,          # 检测奇异矩阵
+            'mat_mumps_icntl_25': 0,          # 可选：缺陷矩阵处理
+        }
+    )
+    
+    recorder = TensorBoardRecorder(log_dir=os.path.join(base_dir, 'topo_opt_cache', 'tensorboardx_record'))
+    optim.run(
+        line_search_steps=[0.2, 0.1, 0.05, 0.01, 0.005],
+        tensorboard_recorder=recorder
+    )
+
+
+def debug_3D_2_without_obstacle():
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t31'
+    xdmf_file = os.path.join(base_dir, 'model.xdmf')
+    msh_file = os.path.join(base_dir, 'model.msh')
+    MeshUtils.msh_to_XDMF(
+        msh_file=msh_file,
+        xdmf_file=xdmf_file,
+        dim=3,
+    )
+
+    # --- 1. define mesh ---
+    mesh = SeqMeshObj(xdmf_file=xdmf_file)
+    
+    cost_item = AutoFluidCost(
+        name='obj_cost',
+        style='MinDissipation',
+        weight=1.0,
+    )
+    regularization_item = AutoFluidRegularization(
+        name='reg_weight',
+        style='Volume',
+        weight=3.0,
+        target_ratio=0.2
+    )
+    
+    optim = TopoFluidOptimizerFipy(
+        name='topo_fluid_31',
+        mesh=mesh,
+        msh_file=msh_file,
+        nut_init=1.0 / 400.,
+        cost_item=cost_item,
+        regularization_item=regularization_item,
+        # topo_weight_init=regularization_item.kwargs['target_ratio'] * 1.05,
+        topo_weight_init=0.5,  # TODO: it seems source term cause result wrong
+        # obstacle_func=define_obstacle_func,
+        obstacle_func=None,
+        obstacle_cost_weight=100.0,
+        weight_filter_radius=0.1,
+        result_dir=os.path.join(base_dir, 'topo_opt_cache'),
+        velocity_degree=1,
+        pressure_degree=1,
+    )
+    
+    tape = Tape()
+    optim.setup_tape(tape)
+    
+    inlet_bry = AutoFluidBoundary(
+        name='inlet',
+        boundary_type='velocity',
+        value=[1.0, 0.0, 0.0],
+        marker=20,
+        face_center=[-0.05, 0.15, 0.15],
+        face_norm_vector=[1.0, 0.0, 0.0],
+        face_radius=0.1
+    )
+    outlet_bry = AutoFluidBoundary(
+        name='outlet',
+        boundary_type='pressure',
+        value=0.0,
+        marker=21
+    )
+    wall_bry = AutoFluidBoundary(
+        name='wall',
+        boundary_type='wall',
+        value=0.0,
+        marker=22
+    )
+
+    optim.add_boundary(inlet_bry)
+    optim.add_boundary(outlet_bry)
+    optim.add_boundary(wall_bry)
+    optim.define_problem(
+        # TODO: i don't know why, but if i use my ksp in the code, i need to change ksp option in richardson
+        adj_ksp_option={
+            'ksp_type': 'richardson',
+            'ksp_max_it': 1,                  # 只迭代一次 = 相当于 preonly
+            'pc_type': 'lu',
+            'pc_factor_mat_solver_type': 'mumps',
+            # 可选：提高 MUMPS 容错性
+            'mat_mumps_icntl_24': 1,          # 检测奇异矩阵
+            'mat_mumps_icntl_25': 0,          # 可选：缺陷矩阵处理
+        }
+    )
+    
+    recorder = TensorBoardRecorder(log_dir=os.path.join(base_dir, 'topo_opt_cache', 'tensorboardx_record'))
+    optim.run(
+        line_search_steps=[0.2, 0.1, 0.05, 0.01, 0.05],
         tensorboard_recorder=recorder
     )
 
 
 if __name__ == '__main__':
-    debug_3D()
-    # debug_2D()
-    # debug_3D_2()
+    # debug_2D_without_obstacle()
+    # debug_2D_with_obstacle()
+    # debug_3D_without_obstacle()
+    # debug_3D_with_obstacle()
+    debug_3D_2_without_obstacle()
     
   

@@ -33,7 +33,7 @@ from scripts_py.auto_dolfinx.types.type_function import DolfinxFunction
 from scripts_py.auto_dolfinx.blocks.block_solve import EquationSolveBlock
 from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import AutoFluidBoundary
 from scripts_py.auto_dolfinx.cbs_topo.seq_mesh_utils import SeqMeshObj
-from scripts_py.auto_dolfinx.cbs_topo.fipy_topo_simulator import FipyTopologySimulator
+from scripts_py.auto_dolfinx.cbs_topo.fipy_obstacle_simulator import FipyObstacleTopologySimulator
 
 
 def convert_result_to_dolfinx(
@@ -82,6 +82,7 @@ def equation_stokeEqn_solve(
     velocityRelaxation: float,
     pressureRelaxation: float,
     structure_mesh: SeqMeshObj,
+    structure_obs_weight: np.ndarray|None,
     log_step: int,
     simulation_iterations: int,
     convergence_threshold: float,
@@ -151,14 +152,15 @@ def equation_stokeEqn_solve(
             pow_operator=np.power
         )
         
-        simulator = FipyTopologySimulator.from_msh(
+        simulator = FipyObstacleTopologySimulator.from_msh(
             source_msh_file=msh_file,
             dim=structure_mesh.tdim,
-            structure_alpha=structure_alpha,
             viscosity=viscosity,
             velocityRelaxation=velocityRelaxation,
             pressureRelaxation=pressureRelaxation,
-            structure_mesh=structure_mesh
+            structure_mesh=structure_mesh,
+            structure_alpha=structure_alpha,
+            structure_obs_weight=structure_obs_weight,
         )
         for boundary in boundaries:
             simulator.add_boundary(boundary)
@@ -202,6 +204,7 @@ def equation_stokeEqn_solve(
             velocityRelaxation = velocityRelaxation,
             pressureRelaxation = pressureRelaxation,
             structure_mesh = structure_mesh,
+            structure_obs_weight = structure_obs_weight,
             log_step = log_step,
             simulation_iterations = simulation_iterations,
             convergence_threshold = convergence_threshold,
@@ -250,6 +253,7 @@ class StockEquationSolveBlock(EquationSolveBlock):
         velocityRelaxation: float,
         pressureRelaxation: float,
         structure_mesh: SeqMeshObj,
+        structure_obs_weight: np.ndarray|None,
         log_step: int,
         simulation_iterations: int,
         convergence_threshold: float,
@@ -299,6 +303,7 @@ class StockEquationSolveBlock(EquationSolveBlock):
         self.velocityRelaxation = velocityRelaxation
         self.pressureRelaxation = pressureRelaxation
         self.structure_mesh = structure_mesh
+        self.structure_obs_weight = structure_obs_weight
         self.log_step = log_step
         self.simulation_iterations = simulation_iterations
         self.convergence_threshold = convergence_threshold
@@ -339,10 +344,11 @@ class StockEquationSolveBlock(EquationSolveBlock):
             pow_operator=np.power
         )
                     
-        simulator = FipyTopologySimulator.from_msh(
+        simulator = FipyObstacleTopologySimulator.from_msh(
             source_msh_file=self.msh_file,
             dim=self.structure_mesh.tdim,
             structure_alpha=structure_alpha,
+            structure_obs_weight=self.structure_obs_weight,
             viscosity=self.viscosity,
             velocityRelaxation=self.velocityRelaxation,
             pressureRelaxation=self.pressureRelaxation,
