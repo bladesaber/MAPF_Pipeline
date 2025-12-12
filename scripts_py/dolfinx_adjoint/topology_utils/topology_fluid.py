@@ -504,7 +504,7 @@ class FluidTopologyOptimizer(FluidSimulator):
             topo_weight_origin: np.array = self.topo_weight.x.array.copy()  # type: ignore
                         
             last_step_index = np.where(line_search_steps_np == step_length_last)[0][0]
-            line_search_start_index = np.max(last_step_index - 1, 0)
+            line_search_start_index = np.maximum(last_step_index - 1, 0)
             for i in range(line_search_start_index, line_search_steps_np.shape[0]):
                 step_length = line_search_steps_np[i]
                 

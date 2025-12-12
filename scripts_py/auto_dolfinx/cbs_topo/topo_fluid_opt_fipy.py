@@ -27,6 +27,14 @@ from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import (
 from scripts_py.auto_dolfinx.cbs_topo.fipy_eqn_block import equation_stokeEqn_solve
 
 
+"""
+TODO: Critical problems:
+1. 拓扑优化精度不够, 收敛缓慢, 接近头部很大, 原因不明, 需要更好的参考与方法(openPisco)
+2. obstacle过于零碎, 碎片化的obstacle导致优化不好
+3. 拓扑优化结果需要一个更好的映射方法,转换为形状
+"""
+
+
 class TopoFluidOptimizerFipy(TopoFluidOptimizer):
     def __init__(
         self, 
@@ -84,6 +92,8 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
     def define_problem(
         self,
         simulation_iterations: int = 100,
+        velocityRelaxation: float = 0.5,
+        pressureRelaxation: float = 0.8,
         tlm_ksp_option: dict = {
             'ksp_type': 'preonly',
             'pc_type': 'lu',
@@ -139,8 +149,8 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                 boundaries=[bry_info for bry_info in self.boundaries.values()],
                 msh_file=self.msh_file,
                 viscosity=self.nut_init,
-                velocityRelaxation=0.5,
-                pressureRelaxation=0.8,
+                velocityRelaxation=velocityRelaxation,
+                pressureRelaxation=pressureRelaxation,
                 structure_mesh=self.mesh,  # type: ignore
                 structure_obs_weight=None if self.obs_cell_mask.sum() == 0 else self.obs_cell_mask,
                 log_step=2,
@@ -303,7 +313,7 @@ def debug_2D_without_obstacle():
         weight=1.0,
     )
     regularization_item = AutoFluidRegularization(
-        name='reg_weight',
+        name='reg_cost',
         style='Volume',
         weight=2.0,
         target_ratio=0.2
@@ -318,10 +328,9 @@ def debug_2D_without_obstacle():
         regularization_item=regularization_item,
         # topo_weight_init=regularization_item.kwargs['target_ratio'] * 1.05,
         topo_weight_init=0.5,  # TODO: it seems source term cause result wrong
-        # obstacle_func=define_obstacle_func,
         obstacle_func=None,
         obstacle_cost_weight=100.0,
-        weight_filter_radius=0.1,
+        weight_filter_radius=0.06,
         result_dir=os.path.join(base_dir, 'topo_opt_cache'),
         velocity_degree=1,  # TODO: can it be 1?
         pressure_degree=1,
@@ -390,7 +399,7 @@ def debug_2D_with_obstacle():
         weight=1.0,
     )
     regularization_item = AutoFluidRegularization(
-        name='reg_weight',
+        name='reg_cost',
         style='Volume',
         weight=2.0,
         target_ratio=0.2
@@ -413,7 +422,7 @@ def debug_2D_with_obstacle():
         topo_weight_init=0.5,  # TODO: it seems source term cause result wrong
         obstacle_func=define_obstacle_func,
         obstacle_cost_weight=100.0,
-        weight_filter_radius=0.1,
+        weight_filter_radius=0.06,
         result_dir=os.path.join(base_dir, 'topo_opt_withobs_cache'),
         velocity_degree=1,
         pressure_degree=1,
@@ -471,11 +480,7 @@ def debug_3D_without_obstacle():
     base_dir = '/home/admin123456/Desktop/work/gmsh_test/t29/'
     xdmf_file = os.path.join(base_dir, 't29_model.xdmf')
     msh_file = os.path.join(base_dir, 't29_model.msh')
-    MeshUtils.msh_to_XDMF(
-        msh_file=msh_file,
-        xdmf_file=xdmf_file,
-        dim=3,
-    )
+    MeshUtils.msh_to_XDMF(msh_file=msh_file, xdmf_file=xdmf_file, dim=3)
 
     # --- 1. define mesh ---
     mesh = SeqMeshObj(xdmf_file=xdmf_file)
@@ -486,9 +491,9 @@ def debug_3D_without_obstacle():
         weight=1.0,
     )
     regularization_item = AutoFluidRegularization(
-        name='reg_weight',
+        name='reg_cost',
         style='Volume',
-        weight=3.0,
+        weight=10.0,
         target_ratio=0.2
     )
     
@@ -501,12 +506,11 @@ def debug_3D_without_obstacle():
         regularization_item=regularization_item,
         # topo_weight_init=regularization_item.kwargs['target_ratio'] * 1.05,
         topo_weight_init=0.5,  # TODO: it seems source term cause result wrong
-        # obstacle_func=define_obstacle_func,
         obstacle_func=None,
         obstacle_cost_weight=100.0,
-        weight_filter_radius=0.1,
+        weight_filter_radius=0.06,
         result_dir=os.path.join(base_dir, 'topo_opt_cache'),
-        velocity_degree=1,  # TODO: can it be 1?
+        velocity_degree=1,
         pressure_degree=1,
     )
     
@@ -545,7 +549,6 @@ def debug_3D_without_obstacle():
             'ksp_max_it': 1,                  # 只迭代一次 = 相当于 preonly
             'pc_type': 'lu',
             'pc_factor_mat_solver_type': 'mumps',
-            # 可选：提高 MUMPS 容错性
             'mat_mumps_icntl_24': 1,          # 检测奇异矩阵
             'mat_mumps_icntl_25': 0,          # 可选：缺陷矩阵处理
         }
@@ -562,11 +565,7 @@ def debug_3D_with_obstacle():
     base_dir = '/home/admin123456/Desktop/work/gmsh_test/t33/'
     xdmf_file = os.path.join(base_dir, 't33_model.xdmf')
     msh_file = os.path.join(base_dir, 't33_model.msh')
-    MeshUtils.msh_to_XDMF(
-        msh_file=msh_file,
-        xdmf_file=xdmf_file,
-        dim=3,
-    )
+    MeshUtils.msh_to_XDMF(msh_file=msh_file, xdmf_file=xdmf_file, dim=3)
 
     # --- 1. define mesh ---
     mesh = SeqMeshObj(xdmf_file=xdmf_file)
@@ -577,9 +576,9 @@ def debug_3D_with_obstacle():
         weight=1.0,
     )
     regularization_item = AutoFluidRegularization(
-        name='reg_weight',
+        name='reg_cost',
         style='Volume',
-        weight=3.0,
+        weight=10.0,
         target_ratio=0.2
     )
     
@@ -600,7 +599,7 @@ def debug_3D_with_obstacle():
         topo_weight_init=0.5,  # TODO: it seems source term cause result wrong
         obstacle_func=define_obstacle_func,
         obstacle_cost_weight=100.0,
-        weight_filter_radius=0.1,
+        weight_filter_radius=0.06,
         result_dir=os.path.join(base_dir, 'topo_opt_withobs_cache'),
         velocity_degree=1,  # TODO: can it be 1?
         pressure_degree=1,
@@ -635,7 +634,7 @@ def debug_3D_with_obstacle():
     optim.add_boundary(outlet_bry)
     optim.add_boundary(wall_bry)
     optim.define_problem(
-        simulation_iterations=60,
+        simulation_iterations=70,
         adj_ksp_option={
             'ksp_type': 'richardson',
             'ksp_max_it': 1,                  # 只迭代一次 = 相当于 preonly
@@ -646,7 +645,7 @@ def debug_3D_with_obstacle():
         }
     )
     
-    recorder = TensorBoardRecorder(log_dir=os.path.join(base_dir, 'topo_opt_cache', 'tensorboardx_record'))
+    recorder = TensorBoardRecorder(log_dir=os.path.join(base_dir, 'topo_opt_withobs_cache', 'tensorboardx_record'))
     optim.run(
         line_search_steps=[0.2, 0.1, 0.05, 0.01, 0.005],
         tensorboard_recorder=recorder
@@ -657,11 +656,7 @@ def debug_3D_2_without_obstacle():
     base_dir = '/home/admin123456/Desktop/work/gmsh_test/t31'
     xdmf_file = os.path.join(base_dir, 'model.xdmf')
     msh_file = os.path.join(base_dir, 'model.msh')
-    MeshUtils.msh_to_XDMF(
-        msh_file=msh_file,
-        xdmf_file=xdmf_file,
-        dim=3,
-    )
+    MeshUtils.msh_to_XDMF(msh_file=msh_file, xdmf_file=xdmf_file, dim=3)
 
     # --- 1. define mesh ---
     mesh = SeqMeshObj(xdmf_file=xdmf_file)
@@ -672,9 +667,9 @@ def debug_3D_2_without_obstacle():
         weight=1.0,
     )
     regularization_item = AutoFluidRegularization(
-        name='reg_weight',
+        name='reg_cost',
         style='Volume',
-        weight=3.0,
+        weight=10.0,
         target_ratio=0.2
     )
     
@@ -687,10 +682,9 @@ def debug_3D_2_without_obstacle():
         regularization_item=regularization_item,
         # topo_weight_init=regularization_item.kwargs['target_ratio'] * 1.05,
         topo_weight_init=0.5,  # TODO: it seems source term cause result wrong
-        # obstacle_func=define_obstacle_func,
         obstacle_func=None,
         obstacle_cost_weight=100.0,
-        weight_filter_radius=0.1,
+        weight_filter_radius=0.06,
         result_dir=os.path.join(base_dir, 'topo_opt_cache'),
         velocity_degree=1,
         pressure_degree=1,
@@ -739,7 +733,98 @@ def debug_3D_2_without_obstacle():
     
     recorder = TensorBoardRecorder(log_dir=os.path.join(base_dir, 'topo_opt_cache', 'tensorboardx_record'))
     optim.run(
-        line_search_steps=[0.2, 0.1, 0.05, 0.01, 0.05],
+        line_search_steps=[0.2, 0.1, 0.05, 0.01, 0.005],
+        tensorboard_recorder=recorder
+    )
+
+
+def debug_3D_2_with_obstacle():
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t34'
+    xdmf_file = os.path.join(base_dir, 'model.xdmf')
+    msh_file = os.path.join(base_dir, 'model.msh')
+    MeshUtils.msh_to_XDMF(msh_file=msh_file, xdmf_file=xdmf_file, dim=3)
+
+    # --- 1. define mesh ---
+    mesh = SeqMeshObj(xdmf_file=xdmf_file)
+    
+    cost_item = AutoFluidCost(
+        name='obj_cost',
+        style='MinDissipation',
+        weight=1.0,
+    )
+    regularization_item = AutoFluidRegularization(
+        name='reg_cost',
+        style='Volume',
+        weight=10.0,
+        target_ratio=0.2
+    )
+    
+    def define_obstacle_func(cell_centers: np.ndarray):
+        obstacle_center = np.array([0.5, 0.5, 0.5])
+        cell2obs_dist = np.linalg.norm(cell_centers - obstacle_center, axis=1)
+        obs_dofs = np.where(cell2obs_dist < 0.1)[0]
+        return obs_dofs
+    
+    optim = TopoFluidOptimizerFipy(
+        name='topo_fluid_31',
+        mesh=mesh,
+        msh_file=msh_file,
+        nut_init=1.0 / 400.,
+        cost_item=cost_item,
+        regularization_item=regularization_item,
+        # topo_weight_init=regularization_item.kwargs['target_ratio'] * 1.05,
+        topo_weight_init=0.5,  # TODO: it seems source term cause result wrong
+        obstacle_func=define_obstacle_func,
+        obstacle_cost_weight=100.0,
+        weight_filter_radius=0.06,
+        result_dir=os.path.join(base_dir, 'topo_opt_cache'),
+        velocity_degree=1,
+        pressure_degree=1,
+    )
+    
+    tape = Tape()
+    optim.setup_tape(tape)
+    
+    inlet_bry = AutoFluidBoundary(
+        name='inlet',
+        boundary_type='velocity',
+        value=[1.0, 0.0, 0.0],
+        marker=20,
+        face_center=[-0.05, 0.15, 0.15],
+        face_norm_vector=[1.0, 0.0, 0.0],
+        face_radius=0.1
+    )
+    outlet_bry = AutoFluidBoundary(
+        name='outlet',
+        boundary_type='pressure',
+        value=0.0,
+        marker=21
+    )
+    wall_bry = AutoFluidBoundary(
+        name='wall',
+        boundary_type='wall',
+        value=0.0,
+        marker=22
+    )
+
+    optim.add_boundary(inlet_bry)
+    optim.add_boundary(outlet_bry)
+    optim.add_boundary(wall_bry)
+    optim.define_problem(
+        simulation_iterations=70,
+        adj_ksp_option={
+            'ksp_type': 'richardson',
+            'ksp_max_it': 1,
+            'pc_type': 'lu',
+            'pc_factor_mat_solver_type': 'mumps',
+            'mat_mumps_icntl_24': 1,
+            'mat_mumps_icntl_25': 0,
+        }
+    )
+    
+    recorder = TensorBoardRecorder(log_dir=os.path.join(base_dir, 'topo_opt_cache', 'tensorboardx_record'))
+    optim.run(
+        line_search_steps=[0.2, 0.1, 0.05, 0.01, 0.005],
         tensorboard_recorder=recorder
     )
 
@@ -749,6 +834,9 @@ if __name__ == '__main__':
     # debug_2D_with_obstacle()
     # debug_3D_without_obstacle()
     # debug_3D_with_obstacle()
-    debug_3D_2_without_obstacle()
+    # debug_3D_2_without_obstacle()
+    # debug_3D_2_with_obstacle()
+    
+    pass
     
   

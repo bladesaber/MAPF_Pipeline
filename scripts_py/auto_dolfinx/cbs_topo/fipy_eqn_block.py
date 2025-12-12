@@ -170,7 +170,7 @@ def equation_stokeEqn_solve(
             convergence_threshold=convergence_threshold,
             log_step=log_step, 
             save_dir=save_dir,
-            use_tqdm=False,
+            use_tqdm=True,
             use_log=True
         )
         if not res_report['is_solve']:

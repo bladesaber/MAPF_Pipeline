@@ -305,7 +305,7 @@ while True:
     topo_rho_origin: np.array = topo_rho.x.array.copy()  # type: ignore
             
     last_step_index = np.where(line_search_steps == step_length_last)[0][0]
-    line_search_start_index = np.max(last_step_index - 1, 0)
+    line_search_start_index = np.maximum(last_step_index - 1, 0)
     for i in range(line_search_start_index, line_search_steps.shape[0]):
         step_length = line_search_steps[i]
             

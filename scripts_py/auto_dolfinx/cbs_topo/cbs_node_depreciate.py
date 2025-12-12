@@ -18,7 +18,8 @@ from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import (
     AutoFluidCost,
     AutoFluidRegularization,
 )
-from scripts_py.auto_dolfinx.cbs_topo.topo_fluid_opt import TopoObstacleFluidOptimizer, Tape
+from thirdparty.pyadjoint.pyadjoint import Tape
+from scripts_py.auto_dolfinx.cbs_topo.topo_fluid_opt import TopoObstacleFluidOptimizer
 
 
 class TopoFluidNode(object):
