@@ -107,6 +107,86 @@ class MeshUtils(object):
             f.write_meshtags(facet_tags, domain.geometry)
 
     @staticmethod
+    def generate_msh22_file(
+        mesh: 'MeshObj', 
+        filename: str, 
+        face_tags: dict[str, int],
+        cell_tags: dict[str, int],
+    ):
+        element_type = {
+            'Line': [1, 2],
+            'Face': [2, 2],
+            'Cell': [4, 2]
+        }
+        
+        with open(filename, 'w') as f:
+            # MeshFormat
+            f.write('$MeshFormat\n')
+            f.write('2.2 0 8\n')  # Version 2.2, ASCII (0), double precision (8 bytes)
+            f.write('$EndMeshFormat\n')
+            
+            # PhysicalNames
+            num_physical_groups = len(face_tags) + len(cell_tags)
+            f.write('$PhysicalNames\n')
+            f.write(f'{num_physical_groups}\n')
+            for name, phys_id in face_tags.items():
+                if mesh.tdim == 2:
+                    f.write(f'1 {phys_id} "{name}"\n')
+                elif mesh.tdim == 3:
+                    f.write(f'2 {phys_id} "{name}"\n')
+            for name, phys_id in cell_tags.items():
+                if mesh.tdim == 2:
+                    f.write(f'2 {phys_id} "{name}"\n')
+                elif mesh.tdim == 3:
+                    f.write(f'3 {phys_id} "{name}"\n')
+            f.write('$EndPhysicalNames\n')
+            
+            # Nodes
+            f.write('$Nodes\n')
+            f.write(f'{mesh.num_points}\n')
+            for i in range(mesh.num_points):
+                x, y, z = mesh.points[i]
+                f.write(f'{i+1} {x:.8f} {y:.8f} {z:.8f}\n')
+            f.write('$EndNodes\n')
+            
+            # Elements
+            exterior_facet_conn = mesh.facets_to_points[mesh.exterior_facet_idxs]
+            cell_conn = mesh.cells_to_points
+            exterior_facet_phy_group = mesh.facet_tags.values
+            cell_phy_group = mesh.cell_tags.values
+            
+            total_elements = cell_conn.shape[0] + exterior_facet_conn.shape[0]
+            f.write('$Elements\n')
+            f.write(f'{total_elements}\n')
+            
+            elm_id = 1        
+            for i in range(exterior_facet_conn.shape[0]):
+                phys_idx = exterior_facet_phy_group[i]
+                conn = exterior_facet_conn[i]
+                if mesh.tdim == 2:
+                    elem_type = element_type['Line']
+                elif mesh.tdim == 3:
+                    elem_type = element_type['Face']
+                
+                nodes_str = ' '.join(str(n + 1) for n in conn)  # be careful add 1 to node index
+                f.write(f'{elm_id} {elem_type[0]} {elem_type[1]} {phys_idx} {phys_idx} {nodes_str}\n')
+                elm_id += 1
+            
+            for i in range(cell_conn.shape[0]):
+                phys_idx = cell_phy_group[i]
+                conn = cell_conn[i]
+                if mesh.tdim == 2:
+                    elem_type = element_type['Face']
+                elif mesh.tdim == 3:
+                    elem_type = element_type['Cell']
+                
+                nodes_str = ' '.join(str(n + 1) for n in conn)  # be careful add 1 to node index
+                f.write(f'{elm_id} {elem_type[0]} {elem_type[1]} {phys_idx} {phys_idx} {nodes_str}\n')
+                elm_id += 1
+            
+            f.write('$EndElements\n')
+
+    @staticmethod
     def convert_mesh_to_msh(
         points: np.ndarray, 
         cells_2d: np.ndarray, 
@@ -336,6 +416,15 @@ class MeshUtils(object):
             raise ValueError("[Error]: Non-valid Mesh Type.")
 
     @staticmethod
+    def facet_connectivity(mesh: dolfinx.mesh.Mesh) -> np.ndarray:
+        con = []
+        adjacency_list = mesh.topology.connectivity(mesh.topology.dim - 1, 0)
+        for i in range(adjacency_list.num_nodes):
+            con.append(adjacency_list.links(i))
+        con = np.array(con)
+        return con
+
+    @staticmethod
     def line_connectivity(mesh: Union[dolfinx.mesh.Mesh, pyvista.UnstructuredGrid]) -> np.ndarray:
         grid = MeshUtils.mesh_to_vtk(mesh) if isinstance(mesh, dolfinx.mesh.Mesh) else mesh
         return grid.extract_all_edges().lines.reshape((-1, 3))[:, 1:3]
@@ -374,6 +463,8 @@ class MeshObj(object):
         self.cells_to_points = MeshUtils.cell_connectivity(self.grid, self.tdim)
         cell_counter: collections.Counter = collections.Counter(self.cells_to_points.flatten().tolist())
         self.occurrences = np.array([cell_counter[i] for i in range(self.num_points)])
+        self.facets_to_points = MeshUtils.facet_connectivity(self.domain)
+        self.exterior_facet_idxs = MeshUtils.extract_entity_indices(self.domain, style='facet')
         
         self.with_vol_check = True
         self.vol_change = 0.2
@@ -548,17 +639,42 @@ class MeshObj(object):
         )
 
 
-def main():
-    msh_file = "/home/admin123456/Desktop/work/gmsh_test/test.msh"
-    xdmf_file = "/home/admin123456/Desktop/work/gmsh_test/test.xdmf"
-    # MeshUtils.msh_to_XDMF(msh_file=msh_file, xdmf_file=xdmf_file, dim=3)
+def debug_convert_msh22():
+    msh_file = "/home/admin123456/Desktop/work/gmsh_test/t36/model.msh"
+    xdmf_file = "/home/admin123456/Desktop/work/gmsh_test/t36/model.xdmf"
+    MeshUtils.msh_to_XDMF(msh_file=msh_file, xdmf_file=xdmf_file, dim=2)
+    mesh = MeshObj(xdmf_file=xdmf_file)
+    MeshUtils.generate_msh22_file(
+        mesh=mesh, 
+        filename="/home/admin123456/Desktop/work/gmsh_test/t36/model_v2.msh", 
+        face_tags={
+            "inlet": 22,
+            "outlet": 23,
+            "wall": 24,
+        }, 
+        cell_tags={
+            "volume": 21
+        }
+    )
 
-    mesh = MeshObj(xdmf_file=xdmf_file, mesh_name="model")
-    
-    # plotter = pyvista.Plotter()
-    # # plotter.add_mesh(mesh.grid)
-    # plotter.show()
+
+    MeshUtils.msh_to_XDMF(
+        msh_file="/home/admin123456/Desktop/work/gmsh_test/t36/model_v2.msh", 
+        xdmf_file="/home/admin123456/Desktop/work/gmsh_test/t36/model_v2.xdmf", 
+        dim=2
+    )
+    mesh_v2 = MeshObj(xdmf_file="/home/admin123456/Desktop/work/gmsh_test/t36/model_v2.xdmf")
+    inlet_indices = mesh_v2.extract_surface_indices(22)
+    outlet_indices = mesh_v2.extract_surface_indices(23)
+    wall_indices = mesh_v2.extract_surface_indices(24)
+
+    plotter = pyvista.Plotter()
+    plotter.add_mesh(mesh_v2.grid, style='wireframe')
+    plotter.add_mesh(pyvista.PointSet(mesh_v2.grid.points[inlet_indices]), color='red', style='points')
+    plotter.add_mesh(pyvista.PointSet(mesh_v2.grid.points[outlet_indices]), color='blue', style='points')
+    plotter.add_mesh(pyvista.PointSet(mesh_v2.grid.points[wall_indices]), color='green', style='points')
+    plotter.show()
 
 
 if __name__ == "__main__":
-    main()
+    debug_convert_msh22()

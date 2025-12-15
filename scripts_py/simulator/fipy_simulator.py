@@ -1,6 +1,8 @@
 import os, shutil
 from typing import Literal, Union
 
+import dolfinx
+
 from tempfile import TemporaryDirectory
 import subprocess
 import numpy as np
@@ -16,6 +18,7 @@ from fipy.tools import numerix
 
 from scripts_py.simulator.dolfin_simulator import FluidBoundary
 from scripts_py.mesh_utils import MeshUtils, MeshObj
+from scripts_py.dolfinx_utils import DolfinUtils
 
 
 class FipyStokeSimpleSimulator(object):
@@ -91,7 +94,7 @@ class FipyStokeSimpleSimulator(object):
                     face_norm_vector=bry_info.face_norm_vector, # type: ignore
                     face_radius=bry_info.face_radius, # type: ignore
                 )
-                                
+                                                
                 face_mask = self.mesh.physicalFaceMap == bry_info.marker
                 self.xVelocity.constrain(velocity_values[0, :], where=face_mask)
                 self.yVelocity.constrain(velocity_values[1, :], where=face_mask)
@@ -266,7 +269,6 @@ class FipyStokeSimpleSimulator(object):
         if self.tdim == 3:
             res_dict['z_residual'] = z_residual
         return res_dict
-            
 
     def eval_point(self, points: np.ndarray):
         pressure = self.pressure(points)
@@ -291,7 +293,7 @@ class FipyStokeSimpleSimulator(object):
         
         return mesh_to_structure_mesh_idxs, structure_mesh_to_mesh_idxs
 
-    def get_velocity(self, map_to_structure: bool) -> np.ndarray:
+    def get_velocity(self, map_to_structure: bool) -> np.ndarray:        
         velocity_list = [
             self.xVelocity.value.copy().reshape((-1, 1)),
             self.yVelocity.value.copy().reshape((-1, 1))
@@ -317,6 +319,34 @@ class FipyStokeSimpleSimulator(object):
             velocity = np.concatenate([velocity, np.zeros((velocity.shape[0], 1))], axis=1)
         self.structure_mesh.grid.cell_data['velocity_sim'] = velocity
         self.structure_mesh.grid.cell_data['velocity_mag_sim'] = np.linalg.norm(velocity, axis=1)
+        
+        # ------ debug record ------
+        cell_vector_space = DolfinUtils.cell_vector_function_space(self.structure_mesh.domain)
+        cell_vector_fun = dolfinx.fem.Function(cell_vector_space)        
+        cell_vector_fun.x.array[:] = velocity[:, :self.tdim].reshape(-1)  # type: ignore
+        
+        cell_scalar_space = DolfinUtils.cell_scalar_function_space(self.structure_mesh.domain)
+        cell_scalar_fun = dolfinx.fem.Function(cell_scalar_space)
+        cell_scalar_fun.x.array[:] = pressure.reshape(-1)  # type: ignore
+        
+        point_vector_space = DolfinUtils.point_vector_function_space(self.structure_mesh.domain)
+        point_vector_fun = dolfinx.fem.Function(point_vector_space)
+        point_vector_fun.interpolate(cell_vector_fun)  # type: ignore
+        
+        point_scalar_space = DolfinUtils.point_scalar_function_space(self.structure_mesh.domain)
+        point_scalar_fun = dolfinx.fem.Function(point_scalar_space)
+        point_scalar_fun.interpolate(cell_scalar_fun)  # type: ignore
+        
+        point_velocity = point_vector_fun.x.array.copy().reshape((-1, self.tdim))  # type: ignore
+        if point_velocity.shape[1] == 2:
+            point_velocity = np.concatenate([point_velocity, np.zeros((point_velocity.shape[0], 1))], axis=1)
+        
+        self.structure_mesh.grid.point_data['velocity_sim'] = point_velocity
+        self.structure_mesh.grid.point_data['pressure_sim'] = point_scalar_fun.x.array.copy()  # type: ignore
+        self.structure_mesh.grid.point_data['velocity_mag_sim'] = np.linalg.norm(point_velocity, axis=1)
+        
+        # ------ debug record ------
+        
         self.structure_mesh.grid.save(save_file)
 
     @staticmethod

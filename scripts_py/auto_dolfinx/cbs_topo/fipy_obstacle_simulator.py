@@ -282,48 +282,46 @@ def debug_3D():
     structure_obs_weight[obstacle_bool] = 1.0
     structure_obs_weight = convert_weight_to_ConvexHull(structure_mesh, structure_obs_weight, 1)
     structure_mesh.grid.cell_data['obstacle'] = structure_obs_weight
+        
+    simulator = FipyObstacleTopologySimulator.from_msh(
+        os.path.join(base_dir, 't33_model.msh'),
+        dim=3,
+        viscosity=1.0 / 400.0,
+        velocityRelaxation=0.5,
+        pressureRelaxation=0.8,
+        structure_mesh=structure_mesh,
+        structure_alpha=None,
+        structure_obs_weight=structure_obs_weight,
+    )
     
-    structure_mesh.grid.save('/home/admin123456/Desktop/work/gmsh_test/t33/test2.vtu')
+    inlet_bry = FluidBoundary(
+        name='inlet',
+        boundary_type='velocity',
+        value=[1.0, 0.0, 0.0],
+        marker=20,
+        face_center=[-0.05, 0.15, 0.15],
+        face_norm_vector=[1.0, 0.0, 0.0],
+        face_radius=0.1
+    )
+    outlet_bry = FluidBoundary(
+        name='outlet',
+        boundary_type='pressure',
+        value=0.0,
+        marker=21
+    )
+    wall_bry = FluidBoundary(
+        name='wall',
+        boundary_type='wall',
+        value=0.0,
+        marker=22
+    )
     
-    # simulator = FipyObstacleTopologySimulator.from_msh(
-    #     os.path.join(base_dir, 't33_model.msh'),
-    #     dim=3,
-    #     viscosity=1.0 / 400.0,
-    #     velocityRelaxation=0.5,
-    #     pressureRelaxation=0.8,
-    #     structure_mesh=structure_mesh,
-    #     structure_alpha=None,
-    #     structure_obs_weight=structure_obs_weight,
-    # )
+    simulator.add_boundary(inlet_bry)
+    simulator.add_boundary(outlet_bry)
+    simulator.add_boundary(wall_bry)
+    simulator.define_boundary()
     
-    # inlet_bry = FluidBoundary(
-    #     name='inlet',
-    #     boundary_type='velocity',
-    #     value=[1.0, 0.0, 0.0],
-    #     marker=20,
-    #     face_center=[-0.05, 0.15, 0.15],
-    #     face_norm_vector=[1.0, 0.0, 0.0],
-    #     face_radius=0.1
-    # )
-    # outlet_bry = FluidBoundary(
-    #     name='outlet',
-    #     boundary_type='pressure',
-    #     value=0.0,
-    #     marker=21
-    # )
-    # wall_bry = FluidBoundary(
-    #     name='wall',
-    #     boundary_type='wall',
-    #     value=0.0,
-    #     marker=22
-    # )
-    
-    # simulator.add_boundary(inlet_bry)
-    # simulator.add_boundary(outlet_bry)
-    # simulator.add_boundary(wall_bry)
-    # simulator.define_boundary()
-    
-    # simulator.run(iterations=60, log_step=2, save_dir=os.path.join(base_dir, 'cache'))
+    simulator.run(iterations=60, log_step=2, save_dir=os.path.join(base_dir, 'cache'))
 
 
 if __name__ == '__main__':

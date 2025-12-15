@@ -419,6 +419,8 @@ class TopoFluidOptimizer(FluidSimulator):
         loss_current = np.sum(list(loss_dict.values()))
         self.record_Upw(step)
         
+        last_direction_np: np.ndarray
+        
         while True:
             step += 1
                     
@@ -443,6 +445,11 @@ class TopoFluidOptimizer(FluidSimulator):
                 
             adj_input = np.minimum(np.maximum(loss_current * 0.1, 0.01), 1e2)
             direction_np = self.compute_gradient(adj_input=adj_input, with_filter=True, with_norm=True)
+            if step == 1:
+                last_direction_np = direction_np
+            else:
+                direction_np = direction_np * 0.2 + last_direction_np * 0.8
+                last_direction_np = direction_np
             
             find_best_step = False
             topo_phi_origin: np.array = topo_phi.x.array.copy()  # type: ignore

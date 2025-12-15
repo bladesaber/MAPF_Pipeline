@@ -206,12 +206,13 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             topo_volume = assemble_scalar(self.vol_ratio_form, domain=self.domain, tape=self.tape)
             volume_dif = self.regularization_item.kwargs['target_ratio'] * self.volume - topo_volume
             
-            with stop_annotating():
-                reg_cost_ratio = self.regularization_item.weight / self.cost_item.weight
-                if np.isclose(volume_dif, 0.0, atol=1e-8):
-                    raise ValueError(f'[Error] Volume difference is too small: {volume_dif}')
-                if not np.isclose(form_cost, 0.0, atol=1e-8):  # type: ignore
-                    self.regularization_item.weight = form_cost * reg_cost_ratio / (volume_dif ** 2)  # type: ignore
+            # TODO: not good, please improve it
+            # with stop_annotating():
+            #     reg_cost_ratio = self.regularization_item.weight / self.cost_item.weight
+            #     if np.isclose(volume_dif, 0.0, atol=1e-8):
+            #         raise ValueError(f'[Error] Volume difference is too small: {volume_dif}')
+            #     if not np.isclose(form_cost, 0.0, atol=1e-8):  # type: ignore
+            #         self.regularization_item.weight = form_cost * reg_cost_ratio / (volume_dif ** 2)  # type: ignore
                 
             reg_cost = self.regularization_item.weight * volume_dif ** 2
             
@@ -832,7 +833,7 @@ def debug_3D_2_with_obstacle():
 if __name__ == '__main__':
     # debug_2D_without_obstacle()
     # debug_2D_with_obstacle()
-    # debug_3D_without_obstacle()
+    debug_3D_without_obstacle()
     # debug_3D_with_obstacle()
     # debug_3D_2_without_obstacle()
     # debug_3D_2_with_obstacle()

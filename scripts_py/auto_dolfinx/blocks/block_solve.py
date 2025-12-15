@@ -415,10 +415,17 @@ class EquationSolveBlock(Block):
         solver = LinearProblemSolver.create_petsc_solver(self.domain.comm, self.adj_ksp_option, ajoint_mat)
         res_dict = LinearProblemSolver.solve_by_petsc(
             dJdu_vec, ajoint_mat, solver, 
-            setOperators=False, with_residual=self.adj_kwargs['with_residual']
+            setOperators=False, 
+            with_residual=self.adj_kwargs['with_residual']
         )
         if not res_dict['is_solved']:
-            raise ValueError(f"Failed to solve adjoint problem.")
+            # TODO: improve future
+            if self.adj_kwargs['with_residual'] and self.adj_kwargs['critical_method'] == 'residual':
+                residual_error = res_dict['max_residual']
+                if residual_error > 1e-8:
+                    raise ValueError(f"Failed to solve adjoint problem with residual error: {residual_error}")
+            else:
+                raise ValueError(f"Failed to solve adjoint problem.")
         
         return {'F_linear_form': F_linear_form, 'adj_solution': res_dict['res']}
 

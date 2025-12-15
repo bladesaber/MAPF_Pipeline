@@ -443,7 +443,7 @@ if __name__ == '__main__':
     # debug_fluid_node()
     # debug_cbs_node()
     # debug_detect_conflict()
-    debug_cbs_solver()
+    # debug_cbs_solver()
     # debug_run_all()
 
     pass

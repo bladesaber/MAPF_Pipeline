@@ -23,6 +23,7 @@ from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import (
 )
 from thirdparty.pyadjoint.pyadjoint import Tape
 from scripts_py.auto_dolfinx.cbs_topo.topo_fluid_opt_fipy import TopoFluidOptimizerFipy
+from scripts_py.auto_dolfinx.cbs_topo.fipy_obstacle_simulator import convert_weight_to_ConvexHull
 
 
 class CbsMeshObj(SeqMeshObj):
@@ -41,7 +42,16 @@ class CbsMeshObj(SeqMeshObj):
 
 
 class TopoFluidNode(object):
-    def __init__(self, mesh: CbsMeshObj, name: str, save_dir: str, node_idx: int):
+    def __init__(
+        self, 
+        mesh: CbsMeshObj, 
+        name: str, 
+        save_dir: str, 
+        node_idx: int,
+        weight_filter_radius: float = 0.06,
+        topo_weight_init: float = 1.0,
+        simulation_iterations: int = 400,
+    ):
         self.name = name
         self.node_idx = node_idx
         self.save_dir = save_dir
@@ -66,7 +76,11 @@ class TopoFluidNode(object):
         
         self.is_clear = True
         self.loss: float
-    
+        
+        self.weight_filter_radius = weight_filter_radius
+        self.topo_weight_init = topo_weight_init
+        self.simulation_iterations = simulation_iterations
+
     def bry_to_dict(self, bry: AutoFluidBoundary):
         cfg = {
             'name': bry.name,
@@ -112,10 +126,10 @@ class TopoFluidNode(object):
             nut_init=1.0 / 400.,
             cost_item=self.object_cost,
             regularization_item=self.regularization_cost,
-            topo_weight_init=0.5,  # TODO: please check
+            topo_weight_init=self.topo_weight_init,  # TODO: please check
             obstacle_func=define_obstacle_func,
             obstacle_cost_weight=100.0,
-            weight_filter_radius=0.04,  # TODO: please check
+            weight_filter_radius=self.weight_filter_radius,
             result_dir=os.path.join(record_dir, 'topo_opt'),  # TODO: please check
             velocity_degree=1,
             pressure_degree=1,
@@ -131,7 +145,7 @@ class TopoFluidNode(object):
         for _, wall_bry in self.wall_brys.items():
             optim.add_boundary(wall_bry)
         optim.define_problem(
-            simulation_iterations=50,
+            simulation_iterations=self.simulation_iterations,
             velocityRelaxation=0.6,
             pressureRelaxation=0.8,
             adj_ksp_option={
@@ -141,13 +155,18 @@ class TopoFluidNode(object):
                 'pc_factor_mat_solver_type': 'mumps',
                 'mat_mumps_icntl_24': 1,
                 'mat_mumps_icntl_25': 0,
+            },
+            adj_kwargs={
+                'mat_assemble_method': 'lift',
+                'with_residual': True,
+                'critical_method': 'residual'
             }
         )
         
         recorder = TensorBoardRecorder(log_dir=os.path.join(record_dir, 'log'))
         optim.run(
-            max_iteration=25,
-            line_search_steps=[0.2, 0.1, 0.05, 0.01],
+            max_iteration=50,
+            line_search_steps=[0.1, 0.05, 0.01, 0.005, 0.001],
             tensorboard_recorder=recorder
         )
         
@@ -155,8 +174,7 @@ class TopoFluidNode(object):
         self.loss = loss_dict[self.object_cost.name] + loss_dict[self.regularization_cost.name]
         
         topo_weight = optim.topo_weight.x.array.copy()
-        # TODO: is using 0.55 better?
-        self.body = (topo_weight > 0.55).astype(np.float32)  # cell body mask
+        self.body = (topo_weight > 0.5).astype(np.float32)  # cell body mask
         np.save(self.body_file, self.body)
 
     def save(self):
@@ -193,7 +211,10 @@ class TopoFluidNode(object):
                 'kwargs': self.regularization_cost.kwargs
             },
             'obstacle_radius': self.obstacle_radius,
-            'loss': self.loss
+            'loss': self.loss,
+            'weight_filter_radius': self.weight_filter_radius,
+            'topo_weight_init': self.topo_weight_init,
+            'simulation_iterations': self.simulation_iterations,
         }
         
         with open(os.path.join(self.fluid_dir, 'config.json'), 'w') as f:
@@ -252,6 +273,10 @@ class TopoFluidNode(object):
         
         self.is_clear = False
         self.loss = cfg['loss']
+        
+        self.weight_filter_radius = cfg['weight_filter_radius']
+        self.topo_weight_init = cfg['topo_weight_init']
+        self.simulation_iterations = cfg['simulation_iterations']
     
     def clear(self, force_clear=False):
         if not self.is_clear or force_clear:
@@ -443,6 +468,20 @@ class TopoCbsNode(object):
                 if conflict_idxs.shape[0] == 0:
                     continue
                 
+                # ------ TODO inflate to generate convex hull obstacle ------
+                # TODO: please improve here
+                # obs_cell_centers = self.mesh.cell_centers[conflict_idxs]
+                # tree = KDTree(self.mesh.cell_centers)
+                # idxs_list = tree.query_radius(obs_cell_centers, r=0.03, return_distance=False)  # TODO: r should be larger than min mesh size
+                # conflict_idxs = np.unique(np.concatenate(idxs_list, axis=-1))
+                
+                conflict_weight = np.zeros(self.mesh.num_cells)
+                conflict_weight[conflict_idxs] = 1.0
+                conflict_weight = convert_weight_to_ConvexHull(self.mesh, conflict_weight, inflate_times=3, corrosion_times=3)
+                
+                conflict_idxs = np.where(conflict_weight > 0.1)[0]
+                # ------ inflate to generate convex hull obstacle ------
+                
                 conflict_segs_idxs = self.mesh.extract_all_clusters(conflict_idxs)
                 for seg_idxs in conflict_segs_idxs:
                     min_tag_i = np.min(layer_tag_i[seg_idxs])
@@ -571,14 +610,57 @@ class TopoCbsSolver(object):
 
 
 def debug_conflict_point():
-    from scripts_py.auto_dolfinx.cbs_topo.utils import generate_debug_mesh
-    generate_debug_mesh()
+    """
+    from scripts_py.auto_dolfinx.cbs_topo.utils import generate_box_mesh
+    generate_box_mesh()
     
     from scripts_py.dolfinx_utils import DolfinUtils
     import dolfinx
     
-    from scripts_py.auto_dolfinx.cbs_topo.utils import debug_boundary_list
-    boundary_list = debug_boundary_list
+    boundary_list = [
+        AutoFluidBoundary(
+            name='inlet_1',
+            boundary_type='velocity',
+            value=[1.0, 0.0, 0.0],
+            marker=1,
+            face_center=np.array([0.0, 0.2, 0.2]),
+            face_norm_vector=np.array([1.0, 0.0, 0.0]),
+            face_radius=0.15,
+        ),
+        AutoFluidBoundary(
+            name='outlet_1',
+            boundary_type='pressure',
+            value=0.0,
+            marker=2,
+            face_center=np.array([0.8, 1.0, 0.8]),
+            face_norm_vector=np.array([0.0, 1.0, 0.0]),
+            face_radius=0.15,
+        ),
+        AutoFluidBoundary(
+            name='inlet_2',
+            boundary_type='velocity',
+            value=[0.0, 1.0, 0.0],
+            marker=3,
+            face_center=np.array([0.5, 0.0, 0.2]),
+            face_norm_vector=np.array([0.0, 1.0, 0.0]),
+            face_radius=0.15,
+        ),
+        AutoFluidBoundary(
+            name='outlet_2',
+            boundary_type='pressure',
+            value=0.0,
+            marker=4,
+            face_center=np.array([0.8, 0.5, 1.0]),
+            face_norm_vector=np.array([0.0, 0.0, 1.0]),
+            face_radius=0.15,
+        ),
+        AutoFluidBoundary(
+            name='wall',
+            boundary_type='wall',
+            value=0.0,
+            marker=5,
+        )
+    ]
     
     mesh = CbsMeshObj(
         msh_file='/home/admin123456/Desktop/work/gmsh_test/t25/model.msh',
@@ -696,6 +778,7 @@ def debug_conflict_point():
         layer_tags = mesh.seq_dense_tag[conflict_seg_idxs]
         print(f'[Body 2 Conflict {seg_idx}]: min:{np.min(layer_tags)} max:{np.max(layer_tags)}')
 
+    """
 
 if __name__ == '__main__':
     # debug_conflict()

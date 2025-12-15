@@ -1,233 +1,138 @@
 import os
 import shutil
-from typing import Literal, Union, Callable
+
+import dolfinx
 
 import numpy as np
-import pyvista
+from mpi4py import MPI
 
-from scripts_py.mesh_utils import MeshUtils, MeshObj
-from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils
+from scripts_py.mesh_utils import MeshObj, MeshUtils
+from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import AutoFluidBoundary, AutoFluidCost, AutoFluidRegularization
+from scripts_py.auto_dolfinx.cbs_topo.utils import generate_rectangle_mesh
+from scripts_py.simulator.fipy_simulator import FipyStokeSimpleSimulator
+from scripts_py.auto_dolfinx.cbs_topo.cbs_base import TopoFluidNode, CbsMeshObj
 
-from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import (
-    AutoFluidBoundary,
-    AutoFluidCost,
-    AutoFluidRegularization,
+"""
+TODO
+这里的失败表明我的优化路径设计并不合理, reg_cost与obj_cost的变化速度不一样, 需要调整优化路径.
+"""
+
+boundary_list = [
+    AutoFluidBoundary(
+        name='inlet',
+        boundary_type='velocity',
+        value=[10.0, 0.0],
+        marker=1,
+        face_center=np.array([0.0, 0.2]),
+        face_norm_vector=np.array([1.0, 0.0]),
+        face_radius=0.1,
+    ),
+    AutoFluidBoundary(
+        name='outlet',
+        boundary_type='pressure',
+        value=0.0,
+        marker=2,
+        face_center=np.array([0.8, 1.0]),
+        face_norm_vector=np.array([0.0, 1.0]),
+        face_radius=0.1,
+    ),
+    AutoFluidBoundary(
+        name='wall',
+        boundary_type='wall',
+        value=0.0,
+        marker=3,
+    ),
+]
+
+base_dir = '/home/admin123456/Desktop/work/gmsh_test/t36'
+xdmf_file = os.path.join(base_dir, 'model.xdmf')
+msh_v2_file = os.path.join(base_dir, 'model_v2.msh')
+msh_file = os.path.join(base_dir, 'model.msh')
+
+mesh = generate_rectangle_mesh(
+    boundary_list=boundary_list,
+    left_bottom_corner=np.array([0.0, 0.0]),
+    right_top_corner=np.array([1.5, 1.0]),
+    num_cells=[75, 50],
+    xdmf_file=xdmf_file,
+    cell_type=dolfinx.mesh.CellType.tetrahedron,
+    comm=MPI.COMM_WORLD,
 )
-from scripts_py.auto_dolfinx.cbs_topo.cbs_base import CbsMeshObj
-from scripts_py.auto_dolfinx.cbs_topo.cbs_base import TopoFluidNode, TopoCbsNode, TopoCbsSolver
 
+MeshUtils.generate_msh22_file(
+    mesh=mesh,
+    filename=msh_v2_file,
+    face_tags={
+        'inlet': 1,
+        'outlet': 2,
+        'wall': 3,
+    },
+    cell_tags={
+        'volume': 9,
+    },
+)
 
-base_dir = '/home/admin123456/Desktop/work/gmsh_test/t35/'
+FipyStokeSimpleSimulator.msh_version_convert(
+    source_msh_file=msh_v2_file,
+    target_msh_file=msh_file,
+    target_version='msh4',
+)
 
+# # ------ debug simulate ------
+# simulator = FipyStokeSimpleSimulator.from_msh(
+#     source_msh_file=msh_file,
+#     dim=2,
+#     viscosity=1.0 / 400.0,
+#     velocityRelaxation=0.5,
+#     pressureRelaxation=0.8,
+# )
 
-def prepare_nodes():
-    def define_boundary(cfg, boundary_type: Literal['velocity', 'pressure', 'wall']):
-        return AutoFluidBoundary(
-            name=cfg['name'],
-            boundary_type=boundary_type,
-            value=0.0 if boundary_type == 'wall' else cfg['value'],
-            marker=cfg['marker'],
-            face_center=None if boundary_type in ['wall', 'pressure'] else cfg['face_center'],
-            face_norm_vector=None if boundary_type in ['wall', 'pressure'] else cfg['face_norm_vector'],
-            face_radius=None if boundary_type in ['wall', 'pressure'] else cfg['face_radius'],
-        )
-    
-    boundary_cfgs = [
-        {
-            'name': 'inlet1',
-            'boundary_type': 'velocity',
-            'value': [1.0, 0.0, 0.0],
-            'marker': 32,
-            'face_center': np.array([-0.05, 0.4, 0.4]),
-            'face_norm_vector': np.array([1.0, 0.0, 0.0]),
-            'face_radius': 0.1,
-        },
-        {
-            'name': 'outlet1',
-            'boundary_type': 'pressure',
-            'value': 0.0,
-            'marker': 33
-        },
-        {
-            'name': 'inlet2',
-            'boundary_type': 'velocity',
-            'value': [0.0, 1.0, 0.0],
-            'marker': 34,
-            'face_center': np.array([0.4, -0.05, 0.4]),
-            'face_norm_vector': np.array([0.0, 1.0, 0.0]),
-            'face_radius': 0.1,
-        },
-        {
-            'name': 'outlet2',
-            'boundary_type': 'pressure',
-            'value': 0.0,
-            'marker': 35
-        },
-        {
-            'name': 'inlet3',
-            'boundary_type': 'velocity',
-            'value': [0.0, 0.0, 1.0],
-            'marker': 36,
-            'face_center': np.array([0.4, 0.4, -0.05]),
-            'face_norm_vector': np.array([0.0, 0.0, 1.0]),
-            'face_radius': 0.1,
-        },
-        {
-            'name': 'outlet3',
-            'boundary_type': 'pressure',
-            'value': 0.0,
-            'marker': 37
-        },
-        {
-            'name': 'wall',
-            'boundary_type': 'wall',
-            'value': 0.0,
-            'marker': 38,
-        }
-    ]
-    
-    MeshUtils.msh_to_XDMF(
-        msh_file=os.path.join(base_dir, 't35_model.msh'), xdmf_file=os.path.join(base_dir, 't35_model.xdmf'), dim=3
-    )
-    
-    fluid_node_dir = os.path.join(base_dir, 'fluid_node_dir')
-    if os.path.exists(fluid_node_dir):
-        shutil.rmtree(fluid_node_dir)
-    os.mkdir(fluid_node_dir)
-    
-    cbs_node_fir = os.path.join(base_dir, 'cbs_node_dir')
-    if os.path.exists(cbs_node_fir):
-        shutil.rmtree(cbs_node_fir)
-    os.mkdir(cbs_node_fir)
-    
-    mesh = CbsMeshObj(
-        cell_mode=True, msh_file=os.path.join(base_dir, 't35_model.msh'), xdmf_file=os.path.join(base_dir, 't35_model.xdmf')
-    )
-    mesh.create_neighbors_info()
-    
-    # ------ define fluid node 0
-    fluid_node_0 = TopoFluidNode(mesh=mesh, name='group_a', save_dir=fluid_node_dir, node_idx=0)
-    
-    v_bry = define_boundary(boundary_cfgs[0], boundary_type='velocity')
-    p_bry = define_boundary(boundary_cfgs[1], boundary_type='pressure')
-    fluid_node_0.inlet_brys[v_bry.name] = v_bry
-    fluid_node_0.outlet_brys[p_bry.name] = p_bry
-    
-    w_bry_1 = define_boundary(boundary_cfgs[2], boundary_type='wall')
-    w_bry_2 = define_boundary(boundary_cfgs[3], boundary_type='wall')
-    w_bry_3 = define_boundary(boundary_cfgs[4], boundary_type='wall')
-    w_bry_4 = define_boundary(boundary_cfgs[5], boundary_type='wall')
-    w_bry_5 = define_boundary(boundary_cfgs[6], boundary_type='wall')
-    fluid_node_0.wall_brys[w_bry_1.name] = w_bry_1
-    fluid_node_0.wall_brys[w_bry_2.name] = w_bry_2
-    fluid_node_0.wall_brys[w_bry_3.name] = w_bry_3
-    fluid_node_0.wall_brys[w_bry_4.name] = w_bry_4
-    fluid_node_0.wall_brys[w_bry_5.name] = w_bry_5
-    
-    fluid_node_0.object_cost = AutoFluidCost(name='obj_cost1', style='MinDissipation', weight=1.0)
-    fluid_node_0.regularization_cost = AutoFluidRegularization(
-        name='reg_cost1', style='Volume', weight=100.0, target_ratio=0.07
-    )
-    fluid_node_0.solve()
-    fluid_node_0.save()
-    
-    # ------ define fluid node 1
-    fluid_node_1 = TopoFluidNode(mesh=mesh, name='group_b', save_dir=fluid_node_dir, node_idx=1)
-    
-    v_bry = define_boundary(boundary_cfgs[2], boundary_type='velocity')
-    p_bry = define_boundary(boundary_cfgs[3], boundary_type='pressure')
-    fluid_node_1.inlet_brys[v_bry.name] = v_bry
-    fluid_node_1.outlet_brys[p_bry.name] = p_bry
-    
-    w_bry_1 = define_boundary(boundary_cfgs[0], boundary_type='wall')
-    w_bry_2 = define_boundary(boundary_cfgs[1], boundary_type='wall')
-    w_bry_3 = define_boundary(boundary_cfgs[4], boundary_type='wall')
-    w_bry_4 = define_boundary(boundary_cfgs[5], boundary_type='wall')
-    w_bry_5 = define_boundary(boundary_cfgs[6], boundary_type='wall')
-    fluid_node_1.wall_brys[w_bry_1.name] = w_bry_1
-    fluid_node_1.wall_brys[w_bry_2.name] = w_bry_2
-    fluid_node_1.wall_brys[w_bry_3.name] = w_bry_3
-    fluid_node_1.wall_brys[w_bry_4.name] = w_bry_4
-    fluid_node_1.wall_brys[w_bry_5.name] = w_bry_5
-    
-    fluid_node_1.object_cost = AutoFluidCost(name='obj_cost2', style='MinDissipation', weight=1.0)
-    fluid_node_1.regularization_cost = AutoFluidRegularization(
-        name='reg_cost2', style='Volume', weight=100.0, target_ratio=0.07
-    )
-    fluid_node_1.solve()
-    fluid_node_1.save()
+# for boundary in boundary_list:
+#     simulator.add_boundary(boundary)
+# simulator.define_boundary()
 
+# simulator.run(iterations=10000, log_step=2, save_dir=os.path.join(base_dir, 'cache'))
+# # ------ debug simulate ------
 
-def prepare_cbs_node():
-    fluid_node_dir = os.path.join(base_dir, 'fluid_node_dir')
-    cbs_node_fir = os.path.join(base_dir, 'cbs_node_dir')
-    
-    mesh = CbsMeshObj(
-        cell_mode=True, msh_file=os.path.join(base_dir, 't35_model.msh'), xdmf_file=os.path.join(base_dir, 't35_model.xdmf')
-    )
-    mesh.create_neighbors_info()
-    
-    fluid_node_0 = TopoFluidNode(mesh=mesh, name='group_a', save_dir=fluid_node_dir, node_idx=0)
-    fluid_node_0.load()
-    
-    fluid_node_1 = TopoFluidNode(mesh=mesh, name='group_b', save_dir=fluid_node_dir, node_idx=1)
-    fluid_node_1.load()
-    
-    # # ------ visualize fluid nodes body ------
-    # for fluid_node in [fluid_node_0, fluid_node_1]:
-    #     plotter = pyvista.Plotter()
-    #     plotter.add_mesh(pyvista.PointSet(mesh.cell_centers[fluid_node.body == 1.0]), color='red', point_size=5.0)
-    #     plotter.add_mesh(mesh.grid, style='wireframe')
-    #     plotter.show()
-    # # ------ visualize fluid nodes body ------
-    
-    cbs_node = TopoCbsNode(mesh=mesh, save_dir=cbs_node_fir, node_idx=0)
-    cbs_node.set_fluid_node(fluid_node_0)
-    cbs_node.set_fluid_node(fluid_node_1)
-    cbs_node.compute_sort_value()
-    cbs_node.detect_conflict()
-    cbs_node.save()
-    
-    # ------ visualize conflict items ------
-    for conflict_item in cbs_node.conflict_items:
-        node_i = cbs_node.fluid_nodes[conflict_item.name_i]
-        node_j = cbs_node.fluid_nodes[conflict_item.name_j]
-        conflict_item.visualize(mesh, node_i, node_j)
-    # ------ visualize conflict items ------
+fluid_node_dir = os.path.join(base_dir, 'fluid_node_dir')
+if os.path.exists(fluid_node_dir):
+    shutil.rmtree(fluid_node_dir)
+os.mkdir(fluid_node_dir)
 
+mesh = CbsMeshObj(
+    msh_file=msh_file,
+    cell_mode=True,
+    xdmf_file=xdmf_file,
+)
+fluid_node = TopoFluidNode(
+    mesh=mesh,
+    name='fluid_node',
+    save_dir=fluid_node_dir,
+    node_idx=0,
+)
 
-def run_cbs_solver():
-    fluid_node_dir = os.path.join(base_dir, 'fluid_node_dir')
-    cbs_node_fir = os.path.join(base_dir, 'cbs_node_dir')
-    
-    mesh = CbsMeshObj(
-        cell_mode=True, msh_file=os.path.join(base_dir, 't35_model.msh'), xdmf_file=os.path.join(base_dir, 't35_model.xdmf')
-    )
-    mesh.create_neighbors_info()
-    
-    fluid_node_0 = TopoFluidNode(mesh=mesh, name='group_a', save_dir=fluid_node_dir, node_idx=0)
-    fluid_node_0.load()
-    
-    fluid_node_1 = TopoFluidNode(mesh=mesh, name='group_b', save_dir=fluid_node_dir, node_idx=1)
-    fluid_node_1.load()
-    
-    cbs_node = TopoCbsNode(mesh=mesh, save_dir=cbs_node_fir, node_idx=0)
-    cbs_node.set_fluid_node(fluid_node_0)
-    cbs_node.set_fluid_node(fluid_node_1)
-    cbs_node.compute_sort_value()
-    cbs_node.detect_conflict()
-    cbs_node.save()
-    
-    cbs_solver = TopoCbsSolver()
-    cbs_solver.fluid_node_count = len(cbs_node.fluid_nodes)
-    cbs_solver.cbs_node_count = len(cbs_solver.cbs_nodes)
-    cbs_solver.cbs_nodes[cbs_node.name] = cbs_node
-    cbs_solver.solve()
+for boundary in boundary_list:
+    if boundary.boundary_type == 'velocity':
+        fluid_node.inlet_brys[boundary.name] = boundary
+    elif boundary.boundary_type == 'pressure':
+        fluid_node.outlet_brys[boundary.name] = boundary
+    elif boundary.boundary_type == 'wall':
+        fluid_node.wall_brys[boundary.name] = boundary
 
-
-if __name__ == '__main__':
-    # prepare_nodes()
-    # prepare_cbs_node()
-    run_cbs_solver()
-    
-    pass
+fluid_node.object_cost = AutoFluidCost(
+    name='obj_cost',
+    style='MinDissipation',
+    weight=1.0,
+)
+fluid_node.regularization_cost = AutoFluidRegularization(
+    name='reg_cost',
+    style='Volume',
+    weight=100.0,
+    target_ratio=0.1,
+)
+fluid_node.solve(
+    weight_filter_radius=0.02,
+    topo_weight_init=1.0,
+    simulation_iterations=400,
+)
+# fluid_node.save()
