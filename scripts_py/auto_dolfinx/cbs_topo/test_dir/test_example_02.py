@@ -109,6 +109,9 @@ fluid_node = TopoFluidNode(
     name='fluid_node',
     save_dir=fluid_node_dir,
     node_idx=0,
+    weight_filter_radius=0.02,
+    topo_weight_init=1.0,
+    simulation_iterations=400,
 )
 
 for boundary in boundary_list:
@@ -127,12 +130,8 @@ fluid_node.object_cost = AutoFluidCost(
 fluid_node.regularization_cost = AutoFluidRegularization(
     name='reg_cost',
     style='Volume',
-    weight=100.0,
+    weight=10.0,     # TODO: when it is 1.27, it fail, why?
     target_ratio=0.1,
 )
-fluid_node.solve(
-    weight_filter_radius=0.02,
-    topo_weight_init=1.0,
-    simulation_iterations=400,
-)
+fluid_node.solve()
 # fluid_node.save()

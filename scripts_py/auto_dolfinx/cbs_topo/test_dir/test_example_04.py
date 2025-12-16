@@ -138,17 +138,17 @@ def prepare_mesh():
     )
     mesh = MeshObj(xdmf_file=os.path.join(base_dir, 'model.xdmf'))
     
-    plotter = pyvista.Plotter()
-    plotter.add_mesh(mesh.grid, style='wireframe')
-    for boundary in boundary_list:
-        idxs = mesh.extract_surface_indices(boundary.marker)
-        if boundary.boundary_type == 'velocity':
-            plotter.add_mesh(pyvista.PointSet(mesh.grid.points[idxs]), color='red', style='points')
-        elif boundary.boundary_type == 'pressure':
-            plotter.add_mesh(pyvista.PointSet(mesh.grid.points[idxs]), color='blue', style='points')
-        elif boundary.boundary_type == 'wall':
-            plotter.add_mesh(pyvista.PointSet(mesh.grid.points[idxs]), color='green', style='points')
-    plotter.show()
+    # plotter = pyvista.Plotter()
+    # plotter.add_mesh(mesh.grid, style='wireframe')
+    # for boundary in boundary_list:
+    #     idxs = mesh.extract_surface_indices(boundary.marker)
+    #     if boundary.boundary_type == 'velocity':
+    #         plotter.add_mesh(pyvista.PointSet(mesh.grid.points[idxs]), color='red', style='points')
+    #     elif boundary.boundary_type == 'pressure':
+    #         plotter.add_mesh(pyvista.PointSet(mesh.grid.points[idxs]), color='blue', style='points')
+    #     elif boundary.boundary_type == 'wall':
+    #         plotter.add_mesh(pyvista.PointSet(mesh.grid.points[idxs]), color='green', style='points')
+    # plotter.show()
     
     return mesh
 

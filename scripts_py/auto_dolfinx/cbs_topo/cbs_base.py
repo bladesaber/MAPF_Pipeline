@@ -1,6 +1,7 @@
 import os, shutil
 from typing import Tuple, Literal
 from functools import partial
+from tqdm import tqdm
 
 import dolfinx
 
@@ -15,6 +16,7 @@ from scripts_py.dolfinx_utils import DolfinUtils
 from scripts_py.mesh_utils import MeshUtils
 from scripts_py.auto_dolfinx.cbs_topo.seq_mesh_utils import SeqMeshObj
 from scripts_py.vtu_recorder import TensorBoardRecorder
+from scripts_py.auto_dolfinx.cbs_topo.utils import extract_grid_info_from_standard_mesh
 
 from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import (
     AutoFluidBoundary,
@@ -36,9 +38,89 @@ class CbsMeshObj(SeqMeshObj):
         domain: dolfinx.mesh.Mesh | None = None, 
         cell_tags: dolfinx.mesh.MeshTags | None = None, 
         facet_tags: dolfinx.mesh.MeshTags | None = None,
+        is_standard_mesh: bool = True,
     ):
         super().__init__(xdmf_file, mesh_name, domain, cell_tags, facet_tags, cell_mode)
         self.msh_file = msh_file
+        self.is_standard_mesh = is_standard_mesh
+        
+        if self.is_standard_mesh:
+            self.standard_grid_size: float
+            self.standard_grid_coords: np.ndarray
+            self.standard_grid_coords_to_cells: np.ndarray
+            self.standard_grid_neighbors: list[np.ndarray]
+            self.create_standard_grid_info()
+    
+    def create_standard_grid_info(self):
+        self.standard_grid_coords, self.standard_grid_size = extract_grid_info_from_standard_mesh(self)
+        standard_grid_coords_to_cells = []
+        cell_centers = self.cell_centers[:, :self.tdim]
+        
+        # TODO: improve speed of this
+        for (left_bottom_corner, right_top_corner) in tqdm(self.standard_grid_coords, desc="Creating standard grid info"):
+            in_bool_1 = cell_centers >= left_bottom_corner.reshape((1, -1))
+            in_bool_2 = cell_centers <= right_top_corner.reshape((1, -1))
+            in_bool = np.all(in_bool_1 & in_bool_2, axis=1)
+            cell_idxs = np.arange(self.num_cells)[in_bool]
+            standard_grid_coords_to_cells.append(cell_idxs)
+        
+        try:
+            self.standard_grid_coords_to_cells = np.array(standard_grid_coords_to_cells)
+        except Exception as e:
+            raise ValueError(f'[Error]: Mesh is not standard. {e}')
+
+        grid_center = np.mean(self.standard_grid_coords, axis=1)
+        
+        # # ----- visualize grid info -----
+        # plotter = pyvista.Plotter()
+        # plotter.add_mesh(pyvista.PointSet(grid_center), color='red', style='points')
+        # plotter.add_mesh(self.grid, color='black', style='wireframe')
+        # plotter.show()
+        # # ----- visualize grid info -----
+        
+        tree = KDTree(grid_center)
+        
+        # # ------ visualize grid neighbors -----
+        # dists_list, idxs_list = tree.query(grid_center, k=10, return_distance=True, sort_results=True)
+        # for c_idx, (dists, idxs) in enumerate(zip(dists_list, idxs_list)):                
+        #     plotter = pyvista.Plotter()
+        #     plotter.add_mesh(self.grid, color='black', style='wireframe')
+        #     plotter.add_mesh(pyvista.Sphere(radius=0.01, center=grid_center[c_idx]), color='red')
+        #     for i in range(1, len(idxs)):
+        #         plotter.add_mesh(pyvista.Sphere(radius=0.01, center=grid_center[idxs[i]]), color='blue')
+        #     plotter.show()
+        # # ------ visualize grid neighbors -----
+        
+        idxs_list, dists_list = tree.query_radius(
+            grid_center, r=self.standard_grid_size * 1.35, return_distance=True, sort_results=True
+        )
+        self.standard_grid_neighbors = []
+        for dists, idxs in tqdm(zip(dists_list, idxs_list), desc="Creating standard grid neighbors"):
+            self.standard_grid_neighbors.append(idxs[1:])
+         
+    def to_standard_ConvexHull_cell(self, cell_weights: np.ndarray) -> np.ndarray:
+        """作为映射层"""
+        grid_cell_weights = cell_weights[self.standard_grid_coords_to_cells]
+        grid_pos_bool = np.sum(grid_cell_weights, axis=1) == self.standard_grid_coords_to_cells.shape[1]
+        
+        grid_pos_weight = np.zeros(shape=(grid_pos_bool.shape[0], ))
+        for c_idx, pos_tag in enumerate(grid_pos_bool):
+            if pos_tag:
+                grid_pos_weight[c_idx] = 1.0
+            else:
+                neighbour_idxs = self.standard_grid_neighbors[c_idx]
+                if self.tdim == 3:
+                    if grid_pos_bool[neighbour_idxs].sum() >= 5:
+                        grid_pos_weight[c_idx] = 1.0
+                else:
+                    if grid_pos_bool[neighbour_idxs].sum() >= 3:
+                        grid_pos_weight[c_idx] = 1.0
+        
+        pos_idxs = np.unique(self.standard_grid_coords_to_cells[grid_pos_weight == 1.0].reshape(-1))
+        new_cell_weights = np.zeros(self.num_cells)
+        new_cell_weights[pos_idxs] = 1.0
+        
+        return new_cell_weights
 
 
 class TopoFluidNode(object):
@@ -165,7 +247,7 @@ class TopoFluidNode(object):
         
         recorder = TensorBoardRecorder(log_dir=os.path.join(record_dir, 'log'))
         optim.run(
-            max_iteration=50,
+            max_iteration=200,
             line_search_steps=[0.1, 0.05, 0.01, 0.005, 0.001],
             tensorboard_recorder=recorder
         )
@@ -175,6 +257,10 @@ class TopoFluidNode(object):
         
         topo_weight = optim.topo_weight.x.array.copy()
         self.body = (topo_weight > 0.5).astype(np.float32)  # cell body mask
+        
+        self.body = convert_weight_to_ConvexHull(self.mesh, self.body, inflate_times=3, corrosion_times=3)
+        self.body = self.mesh.to_standard_ConvexHull_cell(self.body)  # TODO: please check this
+        
         np.save(self.body_file, self.body)
 
     def save(self):
@@ -468,19 +554,14 @@ class TopoCbsNode(object):
                 if conflict_idxs.shape[0] == 0:
                     continue
                 
-                # ------ TODO inflate to generate convex hull obstacle ------
-                # TODO: please improve here
-                # obs_cell_centers = self.mesh.cell_centers[conflict_idxs]
-                # tree = KDTree(self.mesh.cell_centers)
-                # idxs_list = tree.query_radius(obs_cell_centers, r=0.03, return_distance=False)  # TODO: r should be larger than min mesh size
-                # conflict_idxs = np.unique(np.concatenate(idxs_list, axis=-1))
-                
+                # ------ convert obstacle to standard convex hull shape ------
+                # TODO: please check validity of this method
                 conflict_weight = np.zeros(self.mesh.num_cells)
                 conflict_weight[conflict_idxs] = 1.0
                 conflict_weight = convert_weight_to_ConvexHull(self.mesh, conflict_weight, inflate_times=3, corrosion_times=3)
-                
+                conflict_weight = self.mesh.to_standard_ConvexHull_cell(conflict_weight)
                 conflict_idxs = np.where(conflict_weight > 0.1)[0]
-                # ------ inflate to generate convex hull obstacle ------
+                # ------ convert obstacle to standard convex hull shape ------
                 
                 conflict_segs_idxs = self.mesh.extract_all_clusters(conflict_idxs)
                 for seg_idxs in conflict_segs_idxs:
@@ -780,7 +861,20 @@ def debug_conflict_point():
 
     """
 
+
+def debug_cbs_mesh_obj():
+    mesh = CbsMeshObj(
+        msh_file='/home/admin123456/Desktop/work/gmsh_test/t25/model.msh',
+        cell_mode=False,
+        xdmf_file='/home/admin123456/Desktop/work/gmsh_test/t25/model.xdmf',
+    )
+    mesh.create_neighbors_info()
+    mesh.create_standard_grid_info()
+    pass
+
+
 if __name__ == '__main__':
     # debug_conflict()
+    debug_cbs_mesh_obj()
     pass
 

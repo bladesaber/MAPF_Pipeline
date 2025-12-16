@@ -130,4 +130,4 @@ fluid_node.regularization_cost = AutoFluidRegularization(
     target_ratio=0.1,
 )
 fluid_node.solve()
-# fluid_node.save()
+fluid_node.save()

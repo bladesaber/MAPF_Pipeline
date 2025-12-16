@@ -6,6 +6,7 @@ from mpi4py import MPI
 import numpy as np
 import pyvista
 from functools import partial
+from sklearn.neighbors import KDTree
 
 from scripts_py.mesh_utils import MeshUtils, MeshObj
 from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import AutoFluidBoundary
@@ -181,6 +182,41 @@ def generate_rectangle_mesh(
     return MeshObj(xdmf_file=xdmf_file)
 
 
+def extract_grid_info_from_standard_mesh(mesh: MeshObj) -> tuple[np.ndarray, float]:
+    mesh_points = mesh.points.copy()[:, :mesh.tdim]
+    
+    tree = KDTree(mesh_points)
+    dists_list, idxs_list = tree.query(mesh_points, k=2, sort_results=True, return_distance=True)
+    dists_list = np.concatenate(dists_list, axis=-1)
+    select_idxs = np.arange(1, idxs_list.shape[0], 2)
+    dists = dists_list[select_idxs]
+    assert np.isclose(np.max(dists) - np.min(dists), 0.0, atol=1e-8), "grid is not standard"
+    
+    grid_size = np.mean(dists)
+    bound_min = np.min(mesh_points, axis=0)
+    bound_max = np.max(mesh_points, axis=0)
+    
+    left_bottom_corner = mesh_points - np.array([grid_size] * mesh.tdim)
+    left_bottom_corner_bool = np.sum(left_bottom_corner >= bound_min.reshape((1, -1)), axis=1) == mesh.tdim
+    left_bottom_corner = left_bottom_corner[left_bottom_corner_bool]
+    right_top_corner = left_bottom_corner + np.array([grid_size] * mesh.tdim)
+    
+    # # ----- visualize grid info -----
+    # plotter = pyvista.Plotter()
+    # plotter.add_mesh(mesh.grid, color='red', style='wireframe')
+    # plotter.add_mesh(pyvista.PointSet(left_bottom_corner), color='blue', style='points')
+    # # plotter.add_mesh(pyvista.PointSet(right_top_corner), color='green', style='points')
+    # plotter.show()
+    # # ----- visualize grid info -----
+    
+    grid_info = np.concatenate([
+        left_bottom_corner[:, np.newaxis, :], 
+        right_top_corner[:, np.newaxis, :]
+    ], axis=1)
+    
+    return grid_info, float(grid_size)
+
+
 def debug_generate_box():
     debug_boundary_list = [
         AutoFluidBoundary(
@@ -289,8 +325,13 @@ def debug_generate_rectangle():
     plotter.show()
 
 
+def debug_extract_grid_info_from_standard_mesh():
+    mesh = MeshObj(xdmf_file='/home/admin123456/Desktop/work/gmsh_test/t25/model.xdmf')
+    extract_grid_info_from_standard_mesh(mesh)
+
+
 if __name__ == '__main__':
     # debug_generate_box()
-    debug_generate_rectangle()
-    
+    # debug_generate_rectangle()
+    debug_extract_grid_info_from_standard_mesh()
     pass

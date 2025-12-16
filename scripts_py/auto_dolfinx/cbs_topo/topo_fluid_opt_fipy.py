@@ -15,6 +15,9 @@ from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils
 from scripts_py.vtu_recorder import TensorBoardRecorder
 
 from thirdparty.pyadjoint.pyadjoint import Tape, ReducedFunctional, Control, stop_annotating
+from thirdparty.pyadjoint.pyadjoint.block import Block
+from thirdparty.pyadjoint.pyadjoint.block_variable import BlockVariable
+
 from scripts_py.auto_dolfinx.types.type_function import DolfinxFunction
 from scripts_py.auto_dolfinx.blocks.block_assemble import assemble_scalar
 from scripts_py.auto_dolfinx.tape_utils import start_annotation
@@ -32,6 +35,7 @@ TODO: Critical problems:
 1. 拓扑优化精度不够, 收敛缓慢, 接近头部很大, 原因不明, 需要更好的参考与方法(openPisco)
 2. obstacle过于零碎, 碎片化的obstacle导致优化不好
 3. 拓扑优化结果需要一个更好的映射方法,转换为形状
+4. 这里的失败表明我的优化路径设计并不合理, reg_cost与obj_cost的变化速度不一样, 需要调整优化路径. !!!!
 """
 
 
@@ -88,6 +92,12 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         self.obs_source: DolfinxFunction = None  # type: ignore
         
         self.topo_phi_input = DolfinxFunction(self.cell_scalar_func_space, name=f'topo_phi_input')
+        
+        """
+        self.reg_mul_block: Block = None # type: ignore
+        self.reg_mul_block_dep: BlockVariable = None # type: ignore
+        self.reg_ratio = 5.0
+        """
 
     def define_problem(
         self,
@@ -206,15 +216,31 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             topo_volume = assemble_scalar(self.vol_ratio_form, domain=self.domain, tape=self.tape)
             volume_dif = self.regularization_item.kwargs['target_ratio'] * self.volume - topo_volume
             
+            """
             # TODO: not good, please improve it
-            # with stop_annotating():
-            #     reg_cost_ratio = self.regularization_item.weight / self.cost_item.weight
-            #     if np.isclose(volume_dif, 0.0, atol=1e-8):
-            #         raise ValueError(f'[Error] Volume difference is too small: {volume_dif}')
-            #     if not np.isclose(form_cost, 0.0, atol=1e-8):  # type: ignore
-            #         self.regularization_item.weight = form_cost * reg_cost_ratio / (volume_dif ** 2)  # type: ignore
+            # ------ adjust regularization weight ------
+            with stop_annotating():
+                if np.isclose(volume_dif, 0.0, atol=1e-8):
+                    raise ValueError(f'[Error] Volume difference is too small: {volume_dif}')
                 
+                volume_cost_tmp = self.regularization_item.weight * volume_dif ** 2
+                limit_form_cost_tmp = form_cost * self.reg_ratio   # type: ignore
+                if volume_cost_tmp < limit_form_cost_tmp:
+                    self.regularization_item.weight = limit_form_cost_tmp / (volume_dif ** 2)
+            # ------ adjust regularization weight ------
+            """
+             
             reg_cost = self.regularization_item.weight * volume_dif ** 2
+            
+            """
+            # ------ extract reg_mul_block and reg_mul_block_dep ------
+            self.reg_mul_block = self.tape.get_blocks()[-1]
+            for dep in self.reg_mul_block.get_dependencies():
+                if dep.saved_output == self.regularization_item.weight:
+                    self.reg_mul_block_dep = dep
+                    self.reg_mul_block_dep.save_output()
+            # ------ extract reg_mul_block and reg_mul_block_dep ------
+            """
             
             fin_cost = form_cost + reg_cost
             self.control_phi = Control(self.topo_weight)
@@ -222,13 +248,42 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         
         print('[Log]: Initial loss:', self.eval())
 
+    """
+    def update_reg_mul_weight(self, loss_dict: dict):
+        form_cost = loss_dict[self.cost_item.name]
+        volume_cost = loss_dict[self.regularization_item.name]
+        if volume_cost < form_cost * self.reg_ratio:
+            weight = form_cost * self.reg_ratio / (volume_cost / self.reg_mul_block_dep.saved_output)
+            self.reg_mul_block_dep.checkpoint = weight
+            self.reg_mul_block_dep.saved_output
+    """
+
+    """
+    def eval(self):
+        loss_dict = {
+            self.cost_item.name: self.cost_item.eval(),
+            self.regularization_item.name: self.reg_mul_block_dep.saved_output * (
+                self.regularization_item.kwargs['target_ratio'] * self.volume - AssembleUtils.assemble_scalar(self.vol_ratio_form)
+            ) ** 2,
+            'abs_volume': float(np.abs(
+                AssembleUtils.assemble_scalar(self.vol_ratio_form) - 
+                self.regularization_item.kwargs['target_ratio'] * self.volume
+            )) / self.volume,
+            'reg_mul_weight': self.reg_mul_block_dep.saved_output,
+        }
+        return loss_dict
+    """
+    
     def eval(self):
         loss_dict = {
             self.cost_item.name: self.cost_item.eval(),
             self.regularization_item.name: self.regularization_item.weight * (
                 self.regularization_item.kwargs['target_ratio'] * self.volume - AssembleUtils.assemble_scalar(self.vol_ratio_form)
             ) ** 2,
-            'abs_volume': float(np.abs(AssembleUtils.assemble_scalar(self.vol_ratio_form) - self.regularization_item.kwargs['target_ratio'] * self.volume)) / self.volume,
+            'abs_volume': float(np.abs(
+                AssembleUtils.assemble_scalar(self.vol_ratio_form) - 
+                self.regularization_item.kwargs['target_ratio'] * self.volume
+            )) / self.volume,
         }
         return loss_dict
     
@@ -245,6 +300,13 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         self.recorder.update_point_data('U_mag', np.linalg.norm(vel_ref_np, axis=1))
         self.recorder.update_point_data('p', p_ref.x.array.copy())
         self.recorder.update_cell_data('topo_weight', self.topo_weight.x.array.copy())  # type: ignore
+        
+        cell_scalar_fun = dolfinx.fem.Function(self.cell_scalar_func_space)
+        cell_scalar_fun.x.array[:] = self.topo_weight.x.array.copy()  # type: ignore
+        point_scalar_fun = dolfinx.fem.Function(self.point_scalar_func_space)
+        point_scalar_fun.interpolate(cell_scalar_fun)  # type: ignore
+        self.recorder.update_point_data('topo_weight_pcd', point_scalar_fun.x.array.copy())  # type: ignore
+        
         if self.obs_source is not None:
             self.recorder.update_cell_data('obstacle_source', self.obs_source.x.array.copy())  # type: ignore
         if kwargs.get('gradient', None) is not None:
@@ -297,6 +359,76 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         detail_loss['total_loss'] = loss_new
         
         return detail_loss
+
+    """
+    def run(
+        self,
+        line_search_steps: list[float] = [0.1, 0.05, 0.01, 0.005, 0.001, 0.00025],
+        max_iteration=200,
+        tensorboard_recorder: TensorBoardRecorder|None = None,
+    ) -> dict:
+        is_solved, step = False, 0
+        loss_current, loss_last = 0.0, 0.0
+        line_search_steps_np: np.ndarray = np.array(line_search_steps)
+        step_length_last = line_search_steps_np[0]
+        
+        topo_phi = DolfinxFunction(self.topo_weight.function_space, name=f'topo_phi')  # type: ignore
+        topo_phi.x.array[:] = self.topo_weight.x.array.copy()  # type: ignore
+        
+        loss_dict = self.eval()
+        loss_current = np.sum(list(loss_dict.values()))
+        self.record_Upw(step)
+        
+        last_direction_np: np.ndarray
+        
+        while True:
+            step += 1
+                    
+            if step > 1:
+                loss_dict = self.eval()
+                log = f"[step/{step} loss:{loss_current:.5f} last_step_length:{step_length_last:.5f}]"
+                for name, cost_value in loss_dict.items():
+                    log += f" {name}:{cost_value:.5f}"
+                print(log)
+                
+                if tensorboard_recorder is not None:
+                    tensorboard_recorder.write_scalars(
+                        tag=f'{self.name}/loss',
+                        scalar_dict=loss_dict,
+                        step=step
+                    )
+                
+                loss_residual = loss_current - loss_last
+                if np.abs(loss_residual) < 1e-6:
+                    is_solved = True
+                    break
+            
+            # ------ update regularization weight ------
+            self.update_reg_mul_weight(loss_dict)  # FIXME: terrible
+            # ------ update regularization weight ------
+            
+            adj_input = np.minimum(np.maximum(loss_current * 0.1, 0.01), 1e2)
+            direction_np = self.compute_gradient(adj_input=adj_input, with_filter=True, with_norm=True)
+            if step == 1:
+                last_direction_np = direction_np
+            else:
+                direction_np = direction_np * 0.2 + last_direction_np * 0.8
+                last_direction_np = direction_np
+            
+            topo_phi_origin: np.array = topo_phi.x.array.copy()  # type: ignore
+            new_topo_phi = topo_phi_origin - direction_np * 0.05
+            new_topo_phi = np.maximum(np.minimum(new_topo_phi, 0.999), 0.001)
+            topo_phi.x.array[:] = new_topo_phi  # type: ignore
+            loss_current = self.opt_problem(values=[topo_phi])  # type: ignore
+            self.record_Upw(step, shape_gradient=direction_np)
+                
+            if step > max_iteration:
+                print(f"[Warning]: max iteration reached.")
+                is_solved = False
+                break
+        
+        return {'is_success': is_solved, 'topo_weight': self.topo_weight.x.array.copy()} 
+    """
 
 
 def debug_2D_without_obstacle():
@@ -832,8 +964,8 @@ def debug_3D_2_with_obstacle():
 
 if __name__ == '__main__':
     # debug_2D_without_obstacle()
-    # debug_2D_with_obstacle()
-    debug_3D_without_obstacle()
+    debug_2D_with_obstacle()
+    # debug_3D_without_obstacle()
     # debug_3D_with_obstacle()
     # debug_3D_2_without_obstacle()
     # debug_3D_2_with_obstacle()
