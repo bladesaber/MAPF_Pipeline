@@ -99,7 +99,10 @@ mesh = CbsMeshObj(
     msh_file=msh_file,
     cell_mode=True,
     xdmf_file=xdmf_file,
+    is_standard_mesh=False,
 )
+mesh.create_neighbors_info()
+
 fluid_node = TopoFluidNode(
     mesh=mesh,
     name='fluid_node',

@@ -25,7 +25,7 @@ from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import (
 )
 from thirdparty.pyadjoint.pyadjoint import Tape
 from scripts_py.auto_dolfinx.cbs_topo.topo_fluid_opt_fipy import TopoFluidOptimizerFipy
-from scripts_py.auto_dolfinx.cbs_topo.fipy_obstacle_simulator import convert_weight_to_ConvexHull
+from scripts_py.auto_dolfinx.cbs_topo.utils_shape import ShapeUtils
 
 
 class CbsMeshObj(SeqMeshObj):
@@ -47,13 +47,13 @@ class CbsMeshObj(SeqMeshObj):
         if self.is_standard_mesh:
             self.standard_grid_size: float
             self.standard_grid_coords: np.ndarray
-            self.standard_grid_coords_to_cells: np.ndarray
-            self.standard_grid_neighbors: list[np.ndarray]
+            self.standard_grid_to_cells: np.ndarray  # cell idxs contained in each grid
+            self.standard_grid_neighbors: list[np.ndarray]  # grid idxs of neighbors
             self.create_standard_grid_info()
     
     def create_standard_grid_info(self):
         self.standard_grid_coords, self.standard_grid_size = extract_grid_info_from_standard_mesh(self)
-        standard_grid_coords_to_cells = []
+        standard_grid_to_cells = []
         cell_centers = self.cell_centers[:, :self.tdim]
         
         # TODO: improve speed of this
@@ -62,10 +62,27 @@ class CbsMeshObj(SeqMeshObj):
             in_bool_2 = cell_centers <= right_top_corner.reshape((1, -1))
             in_bool = np.all(in_bool_1 & in_bool_2, axis=1)
             cell_idxs = np.arange(self.num_cells)[in_bool]
-            standard_grid_coords_to_cells.append(cell_idxs)
+            standard_grid_to_cells.append(cell_idxs)
+        
+        """
+        # ------ terrible for large mesh
+        # Precompute and broadcast
+        left_bottom = self.standard_grid_coords[:, 0, :]  # shape: (n_grids, 3)
+        right_top = self.standard_grid_coords[:, 1, :]    # shape: (n_grids, 3)
+
+        # Compare all grids against all cells at once
+        # shape: (n_grids, n_cells, 3)
+        in_bool_1 = cell_centers.T[None, :, :] >= left_bottom[:, None, :]
+        in_bool_2 = cell_centers.T[None, :, :] <= right_top[:, None, :]
+        in_bool = np.all(in_bool_1 & in_bool_2, axis=-1)  # shape: (n_grids, n_cells)
+
+        # Convert to indices
+        standard_grid_to_cells = [np.where(row)[0] for row in in_bool]
+        # ------
+        """
         
         try:
-            self.standard_grid_coords_to_cells = np.array(standard_grid_coords_to_cells)
+            self.standard_grid_to_cells = np.array(standard_grid_to_cells)
         except Exception as e:
             raise ValueError(f'[Error]: Mesh is not standard. {e}')
 
@@ -98,28 +115,19 @@ class CbsMeshObj(SeqMeshObj):
         for dists, idxs in tqdm(zip(dists_list, idxs_list), desc="Creating standard grid neighbors"):
             self.standard_grid_neighbors.append(idxs[1:])
          
-    def to_standard_ConvexHull_cell(self, cell_weights: np.ndarray) -> np.ndarray:
+    def to_standard_ConvexHull_cell(self, cell_weights: np.ndarray, mode: Literal['inflate', 'corrosion']) -> np.ndarray:
         """作为映射层"""
-        grid_cell_weights = cell_weights[self.standard_grid_coords_to_cells]
-        grid_pos_bool = np.sum(grid_cell_weights, axis=1) == self.standard_grid_coords_to_cells.shape[1]
-        
-        grid_pos_weight = np.zeros(shape=(grid_pos_bool.shape[0], ))
-        for c_idx, pos_tag in enumerate(grid_pos_bool):
-            if pos_tag:
-                grid_pos_weight[c_idx] = 1.0
-            else:
-                neighbour_idxs = self.standard_grid_neighbors[c_idx]
-                if self.tdim == 3:
-                    if grid_pos_bool[neighbour_idxs].sum() >= 5:
-                        grid_pos_weight[c_idx] = 1.0
-                else:
-                    if grid_pos_bool[neighbour_idxs].sum() >= 3:
-                        grid_pos_weight[c_idx] = 1.0
-        
-        pos_idxs = np.unique(self.standard_grid_coords_to_cells[grid_pos_weight == 1.0].reshape(-1))
-        new_cell_weights = np.zeros(self.num_cells)
-        new_cell_weights[pos_idxs] = 1.0
-        
+        new_cell_weights, grid_pos_weight = ShapeUtils.convert_weight_to_standard_grid(
+            standard_grid_to_cells=self.standard_grid_to_cells,
+            cell_weights=cell_weights,
+            mode='inflate'
+        )
+        new_cell_weights = ShapeUtils.inflate_standard_grid_weight(
+            mesh=self,
+            grid_pos_weight=grid_pos_weight,
+            standard_grid_neighbors=self.standard_grid_neighbors,
+            standard_grid_to_cells=self.standard_grid_to_cells,
+        )        
         return new_cell_weights
 
 
@@ -249,7 +257,8 @@ class TopoFluidNode(object):
         optim.run(
             max_iteration=200,
             line_search_steps=[0.1, 0.05, 0.01, 0.005, 0.001],
-            tensorboard_recorder=recorder
+            tensorboard_recorder=recorder,
+            hot_step=25
         )
         
         loss_dict = optim.eval()
@@ -258,8 +267,8 @@ class TopoFluidNode(object):
         topo_weight = optim.topo_weight.x.array.copy()
         self.body = (topo_weight > 0.5).astype(np.float32)  # cell body mask
         
-        self.body = convert_weight_to_ConvexHull(self.mesh, self.body, inflate_times=3, corrosion_times=3)
-        self.body = self.mesh.to_standard_ConvexHull_cell(self.body)  # TODO: please check this
+        self.body = ShapeUtils.convert_weight_to_ConvexHull(self.mesh, self.body, inflate_times=2, corrosion_times=2)
+        self.body = self.mesh.to_standard_ConvexHull_cell(self.body, mode='inflate')
         
         np.save(self.body_file, self.body)
 
@@ -558,8 +567,8 @@ class TopoCbsNode(object):
                 # TODO: please check validity of this method
                 conflict_weight = np.zeros(self.mesh.num_cells)
                 conflict_weight[conflict_idxs] = 1.0
-                conflict_weight = convert_weight_to_ConvexHull(self.mesh, conflict_weight, inflate_times=3, corrosion_times=3)
-                conflict_weight = self.mesh.to_standard_ConvexHull_cell(conflict_weight)
+                conflict_weight = ShapeUtils.convert_weight_to_ConvexHull(self.mesh, conflict_weight, inflate_times=3, corrosion_times=3)
+                conflict_weight = self.mesh.to_standard_ConvexHull_cell(conflict_weight, mode='inflate')
                 conflict_idxs = np.where(conflict_weight > 0.1)[0]
                 # ------ convert obstacle to standard convex hull shape ------
                 

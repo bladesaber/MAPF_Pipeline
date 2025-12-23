@@ -249,6 +249,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         print('[Log]: Initial loss:', self.eval())
 
     """
+    # TODO: please improve this
     def update_reg_mul_weight(self, loss_dict: dict):
         form_cost = loss_dict[self.cost_item.name]
         volume_cost = loss_dict[self.regularization_item.name]
@@ -361,6 +362,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         return detail_loss
 
     """
+    # TODO: please improve this
     def run(
         self,
         line_search_steps: list[float] = [0.1, 0.05, 0.01, 0.005, 0.001, 0.00025],

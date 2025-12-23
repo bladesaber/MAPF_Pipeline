@@ -406,6 +406,7 @@ class TopoFluidOptimizer(FluidSimulator):
         line_search_steps: list[float] = [0.1, 0.05, 0.01, 0.005, 0.001, 0.00025],
         max_iteration=200,
         tensorboard_recorder: TensorBoardRecorder|None = None,
+        hot_step: int = 20,
     ) -> dict:
         is_solved, step = False, 0
         loss_current, loss_last = 0.0, 0.0
@@ -445,11 +446,13 @@ class TopoFluidOptimizer(FluidSimulator):
                 
             adj_input = np.minimum(np.maximum(loss_current * 0.1, 0.01), 1e2)
             direction_np = self.compute_gradient(adj_input=adj_input, with_filter=True, with_norm=True)
-            if step == 1:
-                last_direction_np = direction_np
-            else:
-                direction_np = direction_np * 0.2 + last_direction_np * 0.8
-                last_direction_np = direction_np
+            
+            # TODO: please check later,it seem it will cause bias
+            # if step == 1:
+            #     last_direction_np = direction_np
+            # else:
+            #     direction_np = direction_np * 0.2 + last_direction_np * 0.8
+            #     last_direction_np = direction_np
             
             find_best_step = False
             topo_phi_origin: np.array = topo_phi.x.array.copy()  # type: ignore
@@ -460,18 +463,20 @@ class TopoFluidOptimizer(FluidSimulator):
                 step_length = line_search_steps_np[i]
                 
                 new_topo_phi = topo_phi_origin - direction_np * step_length
-                new_topo_phi = np.maximum(np.minimum(new_topo_phi, 0.999), 0.001)
+                new_topo_phi = np.maximum(np.minimum(new_topo_phi, 1.0 - 1e-16), 1e-16)
                 topo_phi.x.array[:] = new_topo_phi  # type: ignore
                 
                 loss_new = self.opt_problem(values=[topo_phi])  # type: ignore
-                if loss_new < loss_current:
+                if loss_new < loss_current or step < hot_step:
                     find_best_step = True
                     loss_last = loss_current
-                    loss_current = loss_new
+                    loss_current = loss_new                    
                     step_length_last = step_length
                     # self.topo_weight.x.array[:] = topo_phi.x.array  # type: ignore          
                     self.record_Upw(step, shape_gradient=direction_np)
                     break
+                else:
+                    print(f'[Log: step/{step} loss_new:{loss_new:.5f}]')
                 
             if not find_best_step:
                 print(f"[Warning]: line search fail.")

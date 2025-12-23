@@ -7,70 +7,19 @@ from sklearn.neighbors import KDTree
 import pyvista
 
 from fipy import Gmsh3D, Gmsh2D
-from fipy import CellVariable, FaceVariable
-from fipy.variables.faceGradVariable import _FaceGradVariable
-from fipy import DiffusionTerm, ConvectionTerm
-from fipy.tools import numerix
-from fipy import ImplicitSourceTerm
 
 from scripts_py.simulator.fipy_simulator import FipyStokeSimpleSimulator
 from scripts_py.auto_dolfinx.cbs_topo.fipy_topo_simulator import FipyTopologySimulator
 from scripts_py.simulator.dolfin_simulator import FluidBoundary
 from scripts_py.mesh_utils import MeshUtils, MeshObj
 from scripts_py.auto_dolfinx.cbs_topo.seq_mesh_utils import SeqMeshObj
+from scripts_py.auto_dolfinx.cbs_topo.utils_shape import ShapeUtils
 
 
 """
 TODO:
 1. 这里应该添加非密闭的检测与处理
 """
-
-def inflate_convex_hull(mesh: SeqMeshObj, cell_weights: np.ndarray):
-    """convert obs weight to convex hull shape, since """
-    new_cell_weights = cell_weights.copy()
-    for cell_idx, weight in enumerate(cell_weights):
-        cell_neighbors = mesh.cells_neighbors[cell_idx]
-        if mesh.tdim == 2:
-            if cell_weights[cell_neighbors].sum() >= 2 and weight == 0.0:
-                    new_cell_weights[cell_idx] = 1.0
-        else:
-            if cell_weights[cell_neighbors].sum() >= 3 and weight == 0.0:
-                new_cell_weights[cell_idx] = 1.0
-    return new_cell_weights
-
-
-def corrosion_convex_hull(mesh: SeqMeshObj, cell_weights: np.ndarray):
-    """convert obs weight to convex hull shape, since """
-    new_cell_weights = cell_weights.copy()
-    for cell_idx, weight in enumerate(cell_weights):
-        cell_neighbors = mesh.cells_neighbors[cell_idx]        
-        if mesh.tdim == 2:
-            if cell_weights[cell_neighbors].sum() <= 1 and weight == 1.0:
-                    new_cell_weights[cell_idx] = 0.0
-        else:
-            if cell_weights[cell_neighbors].sum() <= 1 and weight == 1.0:
-                new_cell_weights[cell_idx] = 0.0
-    return new_cell_weights
-
-
-def convert_weight_to_ConvexHull(
-    mesh: SeqMeshObj, cell_weights: np.ndarray, 
-    inflate_times: int = 10, corrosion_times: int = 10
-):
-    for _ in range(inflate_times):
-        new_cell_weights = inflate_convex_hull(mesh, cell_weights)
-        if new_cell_weights.sum() == cell_weights.sum():
-            break
-        cell_weights = new_cell_weights
-    
-    for _ in range(corrosion_times):
-        new_cell_weights = corrosion_convex_hull(mesh, cell_weights)
-        if new_cell_weights.sum() == cell_weights.sum():
-            break
-        cell_weights = new_cell_weights
-
-    return cell_weights
-
 
 class FipyObstacleTopologySimulator(FipyTopologySimulator):
     @staticmethod
@@ -200,7 +149,7 @@ class FipyObstacleTopologySimulator(FipyTopologySimulator):
                 self.face_velocity[2, self.obs_face_mask] = 0.
 
 
-def debug_2D():    
+def debug_2D():
     base_dir = '/home/admin123456/Desktop/work/gmsh_test/t32'
     msh_file = os.path.join(base_dir, 't30_model.msh')
     xdmf_file = os.path.join(base_dir, 't30_model.xdmf')
@@ -215,7 +164,7 @@ def debug_2D():
     structure_obs_weight = np.zeros(structure_obs_position.shape[0])
     obstacle_bool = np.linalg.norm(structure_obs_position[:, :2] - obstacle_center.reshape((1, -1))[:, :2], axis=1) < obstacle_radius
     structure_obs_weight[obstacle_bool] = 1.0
-    structure_obs_weight = convert_weight_to_ConvexHull(structure_mesh, structure_obs_weight)
+    structure_obs_weight = ShapeUtils.convert_weight_to_ConvexHull(structure_mesh, structure_obs_weight)
     structure_mesh.grid.cell_data['obstacle'] = structure_obs_weight
             
     simulator = FipyObstacleTopologySimulator.from_msh(
@@ -280,7 +229,7 @@ def debug_3D():
     structure_obs_weight = np.zeros(structure_obs_position.shape[0])
     obstacle_bool = np.linalg.norm(structure_obs_position[:, :2] - obstacle_center.reshape((1, -1))[:, :2], axis=1) < obstacle_radius
     structure_obs_weight[obstacle_bool] = 1.0
-    structure_obs_weight = convert_weight_to_ConvexHull(structure_mesh, structure_obs_weight, 1)
+    structure_obs_weight = ShapeUtils.convert_weight_to_ConvexHull(structure_mesh, structure_obs_weight, 1)
     structure_mesh.grid.cell_data['obstacle'] = structure_obs_weight
         
     simulator = FipyObstacleTopologySimulator.from_msh(
