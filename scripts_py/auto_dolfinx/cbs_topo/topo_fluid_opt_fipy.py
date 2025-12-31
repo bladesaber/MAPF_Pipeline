@@ -102,6 +102,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
     def define_problem(
         self,
         simulation_iterations: int = 100,
+        convergence_threshold: float = 1e-5,
         velocityRelaxation: float = 0.5,
         pressureRelaxation: float = 0.8,
         tlm_ksp_option: dict = {
@@ -123,7 +124,12 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         adj_kwargs: dict = {
             'mat_assemble_method': 'lift',
             'with_residual': False
-        }
+        },
+        log_step: int = 2,
+        hot_steps: int = 10,
+        parallel_num: int = 1,
+        use_tqdm: bool = True,
+        use_log: bool = True,
     ):
         with start_annotation():
             uh = DolfinxFunction(self.W, name=f"{self.name}_state")
@@ -163,10 +169,15 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                 pressureRelaxation=pressureRelaxation,
                 structure_mesh=self.mesh,  # type: ignore
                 structure_obs_weight=None if self.obs_cell_mask.sum() == 0 else self.obs_cell_mask,
-                log_step=2,
+                log_step=log_step,
+                hot_steps=hot_steps,
                 simulation_iterations=simulation_iterations,
-                convergence_threshold=1e-5,
-                save_dir=os.path.join(self.result_dir, 'progress'),
+                convergence_threshold=convergence_threshold,
+                save_dir=os.path.join(self.result_dir, 'simulation'),
+                parallel_num=parallel_num,
+                use_tqdm=use_tqdm,
+                use_log=use_log,
+                with_cache=True,
                 
                 # ------ result convert related ------
                 V_to_W_dofs=self.V_to_W_dofs,
@@ -214,7 +225,15 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             
             self.vol_ratio_form = self.topo_weight * ufl.dx            
             topo_volume = assemble_scalar(self.vol_ratio_form, domain=self.domain, tape=self.tape)
-            volume_dif = self.regularization_item.kwargs['target_ratio'] * self.volume - topo_volume
+            
+            # ------ TODO: check if it is better ------
+            # ----- method 1
+            # volume_dif = self.regularization_item.kwargs['target_ratio'] * self.volume - topo_volume
+            
+            # ----- method 2
+            target_volume = self.regularization_item.kwargs['target_ratio'] * self.volume
+            volume_dif = (target_volume - topo_volume) / target_volume
+            # ------ check if it is better ------
             
             """
             # TODO: not good, please improve it
@@ -276,11 +295,15 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
     """
     
     def eval(self):
+        target_volume = self.regularization_item.kwargs['target_ratio'] * self.volume
+        volume_dif = (target_volume - AssembleUtils.assemble_scalar(self.vol_ratio_form)) / target_volume
+        
         loss_dict = {
             self.cost_item.name: self.cost_item.eval(),
-            self.regularization_item.name: self.regularization_item.weight * (
-                self.regularization_item.kwargs['target_ratio'] * self.volume - AssembleUtils.assemble_scalar(self.vol_ratio_form)
-            ) ** 2,
+            # self.regularization_item.name: self.regularization_item.weight * (
+            #     self.regularization_item.kwargs['target_ratio'] * self.volume - AssembleUtils.assemble_scalar(self.vol_ratio_form)
+            # ) ** 2,
+            self.regularization_item.name: self.regularization_item.weight * volume_dif ** 2,
             'abs_volume': float(np.abs(
                 AssembleUtils.assemble_scalar(self.vol_ratio_form) - 
                 self.regularization_item.kwargs['target_ratio'] * self.volume
@@ -289,6 +312,8 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         return loss_dict
     
     def record_Upw(self, step: int, **kwargs):
+        self.recorder.clear(clear_point_data=True, clear_cell_data=True)
+        
         vel_ref = dolfinx.fem.Function(self.point_vector_func_space, name='vel_ref')
         vel_ref.interpolate(self.uh.sub(0).collapse())  # type: ignore
         p_ref = self.uh.sub(1).collapse()  # type: ignore
@@ -300,13 +325,13 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         self.recorder.update_point_data('U', vel_ref_np)
         self.recorder.update_point_data('U_mag', np.linalg.norm(vel_ref_np, axis=1))
         self.recorder.update_point_data('p', p_ref.x.array.copy())
-        self.recorder.update_cell_data('topo_weight', self.topo_weight.x.array.copy())  # type: ignore
         
+        self.recorder.update_cell_data('topo_weight', self.topo_weight.x.array.copy())  # type: ignore
         cell_scalar_fun = dolfinx.fem.Function(self.cell_scalar_func_space)
         cell_scalar_fun.x.array[:] = self.topo_weight.x.array.copy()  # type: ignore
         point_scalar_fun = dolfinx.fem.Function(self.point_scalar_func_space)
         point_scalar_fun.interpolate(cell_scalar_fun)  # type: ignore
-        self.recorder.update_point_data('topo_weight_pcd', point_scalar_fun.x.array.copy())  # type: ignore
+        self.recorder.update_point_data('topo_weight', point_scalar_fun.x.array.copy())  # type: ignore
         
         if self.obs_source is not None:
             self.recorder.update_cell_data('obstacle_source', self.obs_source.x.array.copy())  # type: ignore

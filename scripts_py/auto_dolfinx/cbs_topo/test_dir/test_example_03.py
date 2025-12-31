@@ -9,7 +9,7 @@ from mpi4py import MPI
 from scripts_py.mesh_utils import MeshObj, MeshUtils
 from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import AutoFluidBoundary, AutoFluidCost, AutoFluidRegularization
 from scripts_py.auto_dolfinx.cbs_topo.utils import generate_box_mesh
-from scripts_py.simulator.fipy_simulator import FipyStokeSimpleSimulator
+from scripts_py.simulator.fipy_simulator import FipyStokeSimulator
 from scripts_py.auto_dolfinx.cbs_topo.cbs_base import TopoFluidNode, CbsMeshObj
 
 
@@ -68,14 +68,14 @@ MeshUtils.generate_msh22_file(
     },
 )
 
-FipyStokeSimpleSimulator.msh_version_convert(
+FipyStokeSimulator.msh_version_convert(
     source_msh_file=msh_v2_file,
     target_msh_file=msh_file,
     target_version='msh4',
 )
 
 # # ------ debug simulate ------
-# simulator = FipyStokeSimpleSimulator.from_msh(
+# simulator = FipyStokeSimulator.from_msh(
 #     source_msh_file=msh_file,
 #     dim=3,
 #     viscosity=1.0 / 400.0,

@@ -44,13 +44,16 @@ use topology optimization generate fluid path rather than path search
 
 class MeshUtils(object):
     @staticmethod
-    def read_msh(msh_file: str, dim: int) -> (dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags, dolfinx.mesh.MeshTags):  # type: ignore
+    def read_msh(msh_file: str, dim: int, comm=MPI.COMM_WORLD) -> (dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags, dolfinx.mesh.MeshTags):  # type: ignore
+        """
+        if comm is MPI.COMM_SELF, the msh file will be read in serial mode, rather than parallel mode.
+        """
         assert msh_file.endswith(".msh")
-        domain, cell_tags, facet_tags = gmshio.read_from_msh(msh_file, MPI.COMM_WORLD, gdim=dim)
+        domain, cell_tags, facet_tags = gmshio.read_from_msh(msh_file, comm, gdim=dim)
         return domain, cell_tags, facet_tags
 
     @staticmethod
-    def msh_to_XDMF(msh_file: str, xdmf_file: str, dim: int, name="model"):
+    def msh_to_XDMF(msh_file: str, xdmf_file: str, dim: int, name="model", comm=MPI.COMM_WORLD):
         """
         msh_file: .msh, .gmsh2, .gmsh
         if operation fail, please check:
@@ -61,7 +64,7 @@ class MeshUtils(object):
             mesh_dim: dimension of mesh
         """
         assert xdmf_file.endswith(".xdmf")
-        doamin, cell_tags, facet_tags = MeshUtils.read_msh(msh_file, dim)
+        doamin, cell_tags, facet_tags = MeshUtils.read_msh(msh_file, dim, comm)
         doamin.name = name
         cell_tags.name = f"{doamin.name}_cells"
         facet_tags.name = f"{doamin.name}_facets"
@@ -72,16 +75,16 @@ class MeshUtils(object):
             f.write_meshtags(facet_tags, doamin.geometry)
 
     @staticmethod
-    def read_XDMF(xdmf_file: str, name="model") -> (dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags, dolfinx.mesh.MeshTags):  # type: ignore
+    def read_XDMF(xdmf_file: str, name="model", comm=MPI.COMM_WORLD) -> (dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags, dolfinx.mesh.MeshTags):  # type: ignore
         assert xdmf_file.endswith(".xdmf")
-        with XDMFFile(MPI.COMM_WORLD, xdmf_file, "r") as f:
+        with XDMFFile(comm, xdmf_file, "r") as f:
             domain = f.read_mesh(name=name)
             cell_tags = f.read_meshtags(domain, name=f"{name}_cells")
         domain.topology.create_connectivity(
             domain.topology.dim - 1, domain.topology.dim
         )
         # only after creating the connectivity, facet_tags can be extracted
-        with XDMFFile(MPI.COMM_WORLD, xdmf_file, "r") as f:
+        with XDMFFile(comm, xdmf_file, "r") as f:
             facet_tags = f.read_meshtags(domain, name=f"{name}_facets")
         return domain, cell_tags, facet_tags
 
@@ -442,10 +445,11 @@ class MeshObj(object):
         mesh_name="model",
         domain: dolfinx.mesh.Mesh | None = None,
         cell_tags: dolfinx.mesh.MeshTags | None = None,
-        facet_tags: dolfinx.mesh.MeshTags | None = None
+        facet_tags: dolfinx.mesh.MeshTags | None = None,
+        comm=MPI.COMM_WORLD,
     ):
         if xdmf_file is not None:
-            self.domain, self.cell_tags, self.facet_tags = MeshUtils.read_XDMF(xdmf_file, name=mesh_name)
+            self.domain, self.cell_tags, self.facet_tags = MeshUtils.read_XDMF(xdmf_file, name=mesh_name, comm=comm)
             self.mesh_file = xdmf_file
         else:
             assert domain is not None, 'domain is required.'

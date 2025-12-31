@@ -12,7 +12,7 @@ from scripts_py.mesh_utils import MeshUtils, MeshObj
 from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils
 
 from scripts_py.auto_dolfinx.cbs_topo.utils import generate_box_mesh
-from scripts_py.simulator.fipy_simulator import FipyStokeSimpleSimulator
+from scripts_py.simulator.fipy_simulator import FipyStokeSimulator
 
 from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import (
     AutoFluidBoundary,
@@ -44,7 +44,7 @@ boundary_cfgs = [
         'boundary_type': 'velocity',
         'value': [1.0, 0.0, 0.0],
         'marker': 1,
-        'face_center': np.array([0.0, 0.5, 0.4]),
+        'face_center': np.array([0.0, 0.5, 0.5]),
         'face_norm_vector': np.array([1.0, 0.0, 0.0]),
         'face_radius': 0.1,
     },
@@ -53,7 +53,7 @@ boundary_cfgs = [
         'boundary_type': 'pressure',
         'value': 0.0,
         'marker': 2,
-        'face_center': np.array([1.0, 0.5, 0.4]),
+        'face_center': np.array([1.0, 0.5, 0.5]),
         'face_norm_vector': np.array([1.0, 0.0, 0.0]),
         'face_radius': 0.1,
     },
@@ -62,7 +62,7 @@ boundary_cfgs = [
         'boundary_type': 'velocity',
         'value': [0.0, 1.0, 0.0],
         'marker': 3,
-        'face_center': np.array([0.5, 0.0, 0.4]),
+        'face_center': np.array([0.5, 0.0, 0.5]),
         'face_norm_vector': np.array([0.0, 1.0, 0.0]),
         'face_radius': 0.1,
     },
@@ -71,7 +71,7 @@ boundary_cfgs = [
         'boundary_type': 'pressure',
         'value': 0.0,
         'marker': 4,
-        'face_center': np.array([0.5, 1.0, 0.4]),
+        'face_center': np.array([0.5, 1.0, 0.5]),
         'face_norm_vector': np.array([0.0, 1.0, 0.0]),
         'face_radius': 0.1,
     },
@@ -79,19 +79,22 @@ boundary_cfgs = [
         'name': 'wall',
         'boundary_type': 'wall',
         'value': 0.0,
-        'marker': 38,
+        'marker': 5,
     }
 ]
 
 
 def prepare_mesh():
+    xdmf_file = os.path.join(base_dir, 'model.xdmf')
+    msh_file = os.path.join(base_dir, 'model.msh')
+    
     boundary_list = [define_boundary(bry_cfg, boundary_type=bry_cfg['boundary_type']) for bry_cfg in boundary_cfgs]
     mesh = generate_box_mesh(
         boundary_list=boundary_list, 
         left_bottom_corner=np.array([0.0, 0.0, 0.0]), 
-        right_top_corner=np.array([1.0, 1.0, 0.8]), 
-        num_cells=[30, 30, 25], 
-        xdmf_file=os.path.join(base_dir, 'model.xdmf'), 
+        right_top_corner=np.array([1.0, 1.0, 1.0]), 
+        num_cells=[30, 30, 30], 
+        xdmf_file=xdmf_file, 
         cell_type=dolfinx.mesh.CellType.tetrahedron, comm=MPI.COMM_WORLD
     )
     print('Mesh. Info:')
@@ -102,22 +105,13 @@ def prepare_mesh():
         face_tags[boundary.name] = boundary.marker
     
     MeshUtils.generate_msh22_file(
-        mesh=mesh,
-        filename=os.path.join(base_dir, 'model_v2.msh'),
-        face_tags=face_tags,
-        cell_tags={
-            "volume": 9,
-        }
+        mesh=mesh, filename=msh_file, face_tags=face_tags, cell_tags={"volume": 9}
     )
-    FipyStokeSimpleSimulator.msh_version_convert(
-        source_msh_file=os.path.join(base_dir, 'model_v2.msh'),
-        target_msh_file=os.path.join(base_dir, 'model.msh'),
-        target_version='msh4'
+    FipyStokeSimulator.msh_version_convert(
+        source_msh_file=msh_file, target_msh_file=msh_file, target_version='msh4'
     )
     
-    MeshUtils.msh_to_XDMF(
-        msh_file=os.path.join(base_dir, 'model.msh'), xdmf_file=os.path.join(base_dir, 'model.xdmf'), dim=mesh.tdim
-    )
+    MeshUtils.msh_to_XDMF(msh_file=msh_file, xdmf_file=xdmf_file, dim=mesh.tdim)
     mesh = MeshObj(xdmf_file=os.path.join(base_dir, 'model.xdmf'))
     
     plotter = pyvista.Plotter()
@@ -160,7 +154,16 @@ def prepare_nodes():
         node_idx=0,
         weight_filter_radius=0.06,
         topo_weight_init=1.0,
-        simulation_iterations=400,
+        viscosity=1.0 / 400.,
+        simulation_iterations=200,
+        convergence_threshold=1e-3,
+        velocityRelaxation=0.6,
+        pressureRelaxation=0.8,
+        log_step=2,
+        hot_steps=10,
+        parallel_num=4,
+        use_tqdm=True,
+        use_log=True,
     )
         
     inlet_idx, outlet_idx = 0, 1
@@ -183,8 +186,8 @@ def prepare_nodes():
     fluid_node_0.regularization_cost = AutoFluidRegularization(
         name='reg_cost', 
         style='Volume', 
-        weight=10.0, 
-        target_ratio=0.07
+        weight=1.0, 
+        target_ratio=0.1
     )
     fluid_node_0.solve()
     fluid_node_0.save()
@@ -197,7 +200,16 @@ def prepare_nodes():
         node_idx=1,
         weight_filter_radius=0.06,
         topo_weight_init=1.0,
-        simulation_iterations=400,
+        viscosity=1.0 / 400.,
+        simulation_iterations=200,
+        convergence_threshold=1e-3,
+        velocityRelaxation=0.6,
+        pressureRelaxation=0.8,
+        log_step=2,
+        hot_steps=10,
+        parallel_num=4,
+        use_tqdm=True,
+        use_log=True,
     )
     
     inlet_idx, outlet_idx = 2, 3
@@ -220,14 +232,15 @@ def prepare_nodes():
     fluid_node_1.regularization_cost = AutoFluidRegularization(
         name='reg_cost', 
         style='Volume', 
-        weight=10.0, 
-        target_ratio=0.07
+        weight=1.0, 
+        target_ratio=0.1
     )
     fluid_node_1.solve()
     fluid_node_1.save()
 
 
 def prepare_cbs_node():
+    # TODO: 由这里可以看出,topology optimization的标准grid化结果依然不足够好,表面光滑度不够,也不成凸集,可能需要更光滑的映射层
     fluid_node_dir = os.path.join(base_dir, 'fluid_node_dir')
     cbs_node_fir = os.path.join(base_dir, 'cbs_node_dir')
     
@@ -306,8 +319,8 @@ def run_cbs_solver():
 
 if __name__ == '__main__':
     # prepare_mesh()
-    # prepare_nodes()
+    prepare_nodes()
     # prepare_cbs_node()
-    run_cbs_solver()
+    # run_cbs_solver()
     
     pass

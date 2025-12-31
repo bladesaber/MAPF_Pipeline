@@ -12,7 +12,7 @@ from scripts_py.mesh_utils import MeshUtils, MeshObj
 from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils
 
 from scripts_py.auto_dolfinx.cbs_topo.utils import generate_box_mesh
-from scripts_py.simulator.fipy_simulator import FipyStokeSimpleSimulator
+from scripts_py.simulator.fipy_simulator import FipyStokeSimulator
 
 from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import (
     AutoFluidBoundary,
@@ -127,7 +127,7 @@ def prepare_mesh():
             "volume": 9,
         }
     )
-    FipyStokeSimpleSimulator.msh_version_convert(
+    FipyStokeSimulator.msh_version_convert(
         source_msh_file=os.path.join(base_dir, 'model_v2.msh'),
         target_msh_file=os.path.join(base_dir, 'model.msh'),
         target_version='msh4'

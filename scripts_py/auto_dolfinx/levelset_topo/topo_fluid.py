@@ -505,6 +505,7 @@ class TopoFluidOptimizer(FluidSimulator):
         if vel_ref_np.shape[1] == 2:
             vel_ref_np = np.concatenate([vel_ref_np, np.zeros((vel_ref_np.shape[0], 1))], axis=1)
 
+        self.recorder.clear(clear_point_data=True, clear_cell_data=True)
         self.recorder.update_point_data('U', vel_ref_np)
         self.recorder.update_point_data('p', p_ref.x.array.copy())
         self.recorder.update_point_data('topo_weight', self.topo_weight.x.array.copy())  # type: ignore        

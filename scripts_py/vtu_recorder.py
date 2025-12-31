@@ -38,6 +38,12 @@ class VtuRecorder(object):
 
     def save(self, step: int):
         self.mesh.grid.save(os.path.join(self.save_dir, f'{self.name}_{step:05d}.vtu'), binary=self.is_binary)
+    
+    def clear(self, clear_point_data=True, clear_cell_data=True):
+        if clear_point_data:
+            self.mesh.grid.point_data.clear()
+        if clear_cell_data:
+            self.mesh.grid.cell_data.clear()
 
 
 class TensorBoardRecorder(object):

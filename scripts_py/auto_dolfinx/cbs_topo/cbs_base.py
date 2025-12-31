@@ -140,7 +140,20 @@ class TopoFluidNode(object):
         node_idx: int,
         weight_filter_radius: float = 0.06,
         topo_weight_init: float = 1.0,
+        
+        # ------ simulator related ------
+        viscosity: float = 1.0 / 400.,
+        
+        # ------ computational related ------
         simulation_iterations: int = 400,
+        convergence_threshold: float = 1e-4,
+        velocityRelaxation: float = 0.6,
+        pressureRelaxation: float = 0.8,
+        log_step: int = 2,
+        hot_steps: int = 10,
+        parallel_num: int = 1,
+        use_tqdm: bool = True,
+        use_log: bool = True,
     ):
         self.name = name
         self.node_idx = node_idx
@@ -169,7 +182,20 @@ class TopoFluidNode(object):
         
         self.weight_filter_radius = weight_filter_radius
         self.topo_weight_init = topo_weight_init
+        
+        # ------ simulator related ------
+        self.viscosity = viscosity
+        
+        # ------ computational related ------
         self.simulation_iterations = simulation_iterations
+        self.convergence_threshold = convergence_threshold
+        self.velocityRelaxation = velocityRelaxation
+        self.pressureRelaxation = pressureRelaxation
+        self.log_step = log_step
+        self.hot_steps = hot_steps
+        self.parallel_num = parallel_num
+        self.use_tqdm = use_tqdm
+        self.use_log = use_log
 
     def bry_to_dict(self, bry: AutoFluidBoundary):
         cfg = {
@@ -204,23 +230,18 @@ class TopoFluidNode(object):
             obstacle_radius = self.obstacle_radius
         )
         
-        record_dir = os.path.join(self.fluid_dir, 'progress')
-        if os.path.exists(record_dir):
-            shutil.rmtree(record_dir)
-        os.mkdir(record_dir)
-        
         optim = TopoFluidOptimizerFipy(
             name=self.name,
             mesh=self.mesh,
             msh_file=self.mesh.msh_file,
-            nut_init=1.0 / 400.,
+            nut_init=self.viscosity,
             cost_item=self.object_cost,
             regularization_item=self.regularization_cost,
-            topo_weight_init=self.topo_weight_init,  # TODO: please check
+            topo_weight_init=self.topo_weight_init,
             obstacle_func=define_obstacle_func,
             obstacle_cost_weight=100.0,
             weight_filter_radius=self.weight_filter_radius,
-            result_dir=os.path.join(record_dir, 'topo_opt'),  # TODO: please check
+            result_dir=self.fluid_dir,
             velocity_degree=1,
             pressure_degree=1,
         )
@@ -236,8 +257,9 @@ class TopoFluidNode(object):
             optim.add_boundary(wall_bry)
         optim.define_problem(
             simulation_iterations=self.simulation_iterations,
-            velocityRelaxation=0.6,
-            pressureRelaxation=0.8,
+            convergence_threshold=self.convergence_threshold,
+            velocityRelaxation=self.velocityRelaxation,
+            pressureRelaxation=self.pressureRelaxation,
             adj_ksp_option={
                 'ksp_type': 'richardson',
                 'ksp_max_it': 1,
@@ -250,27 +272,39 @@ class TopoFluidNode(object):
                 'mat_assemble_method': 'lift',
                 'with_residual': True,
                 'critical_method': 'residual'
-            }
+            },
+            log_step=self.log_step,
+            hot_steps=self.hot_steps,
+            parallel_num=self.parallel_num,
+            use_tqdm=self.use_tqdm,
+            use_log=self.use_log,
         )
         
-        recorder = TensorBoardRecorder(log_dir=os.path.join(record_dir, 'log'))
+        recorder = TensorBoardRecorder(log_dir=os.path.join(self.fluid_dir, 'log'))
+        
+        # ------ TODO please improve this in the future ------
         optim.run(
             max_iteration=200,
             line_search_steps=[0.1, 0.05, 0.01, 0.005, 0.001],
             tensorboard_recorder=recorder,
             hot_step=25
         )
+        # ------ please improve this in the future ------
         
         loss_dict = optim.eval()
         self.loss = loss_dict[self.object_cost.name] + loss_dict[self.regularization_cost.name]
         
+        """
+        # ------ TODO please improve this ------
         topo_weight = optim.topo_weight.x.array.copy()
         self.body = (topo_weight > 0.5).astype(np.float32)  # cell body mask
         
         self.body = ShapeUtils.convert_weight_to_ConvexHull(self.mesh, self.body, inflate_times=2, corrosion_times=2)
         self.body = self.mesh.to_standard_ConvexHull_cell(self.body, mode='inflate')
+        # ------ please improve this ------
         
         np.save(self.body_file, self.body)
+        """
 
     def save(self):
         inlet_bry_dict = {}
@@ -309,16 +343,25 @@ class TopoFluidNode(object):
             'loss': self.loss,
             'weight_filter_radius': self.weight_filter_radius,
             'topo_weight_init': self.topo_weight_init,
+            'viscosity': self.viscosity,
             'simulation_iterations': self.simulation_iterations,
+            'convergence_threshold': self.convergence_threshold,
+            'velocityRelaxation': self.velocityRelaxation,
+            'pressureRelaxation': self.pressureRelaxation,
+            'log_step': self.log_step,
+            'hot_steps': self.hot_steps,
+            'parallel_num': self.parallel_num,
+            'use_tqdm': self.use_tqdm,
+            'use_log': self.use_log,
         }
         
-        with open(os.path.join(self.fluid_dir, 'config.json'), 'w') as f:
+        with open(os.path.join(self.fluid_dir, 'topo_node_cfg.json'), 'w') as f:
             json.dump(cfg, f, indent=4)
     
     def load(self):
         if not os.path.exists(self.fluid_dir):
             raise ValueError('[Error]: No Fluid dir.')
-        with open(os.path.join(self.fluid_dir, 'config.json'), 'r') as f:
+        with open(os.path.join(self.fluid_dir, 'topo_node_cfg.json'), 'r') as f:
             cfg = json.load(f)
         assert self.name == cfg['name']
         
@@ -371,7 +414,20 @@ class TopoFluidNode(object):
         
         self.weight_filter_radius = cfg['weight_filter_radius']
         self.topo_weight_init = cfg['topo_weight_init']
+        
+        # ------ simulator related ------
+        self.viscosity = cfg['viscosity']
+        
+        # ------ computational related ------
         self.simulation_iterations = cfg['simulation_iterations']
+        self.convergence_threshold = cfg['convergence_threshold']
+        self.velocityRelaxation = cfg['velocityRelaxation']
+        self.pressureRelaxation = cfg['pressureRelaxation']
+        self.log_step = cfg['log_step']
+        self.hot_steps = cfg['hot_steps']
+        self.parallel_num = cfg['parallel_num']
+        self.use_tqdm = cfg['use_tqdm']
+        self.use_log = cfg['use_log']
     
     def clear(self, force_clear=False):
         if not self.is_clear or force_clear:
@@ -879,7 +935,6 @@ def debug_cbs_mesh_obj():
     )
     mesh.create_neighbors_info()
     mesh.create_standard_grid_info()
-    pass
 
 
 if __name__ == '__main__':

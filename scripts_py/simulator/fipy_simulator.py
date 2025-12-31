@@ -19,9 +19,9 @@ from fipy.tools import numerix
 from scripts_py.simulator.dolfin_simulator import FluidBoundary
 from scripts_py.mesh_utils import MeshUtils, MeshObj
 from scripts_py.dolfinx_utils import DolfinUtils
+from scripts_py.simulator.eary_stoper import EarlyStopper
 
-
-class FipyStokeSimpleSimulator(object):
+class FipyStokeSimulator(object):
     '''
     Gmsh2D/Gmsh3D only accept .msh version 2
     '''
@@ -32,6 +32,10 @@ class FipyStokeSimpleSimulator(object):
         viscosity: float,
         velocityRelaxation: float,
         pressureRelaxation: float,
+        init_x_velocity: np.ndarray|None = None,
+        init_y_velocity: np.ndarray|None = None,
+        init_z_velocity: np.ndarray|None = None,
+        init_pressure: np.ndarray|None = None,
     ):
         self.velocityRelaxation = velocityRelaxation
         self.pressureRelaxation = pressureRelaxation
@@ -50,11 +54,11 @@ class FipyStokeSimpleSimulator(object):
         self.boundaries: dict[str, FluidBoundary] = {}
         
         # ------ define momentum equation ------
-        self.pressure = CellVariable(mesh=self.mesh, name='pressure')
-        self.xVelocity = CellVariable(mesh=self.mesh, name='X velocity')
-        self.yVelocity = CellVariable(mesh=self.mesh, name='Y velocity')
+        self.pressure = CellVariable(mesh=self.mesh, name='pressure', value=init_pressure if init_pressure is not None else 0.0) # type: ignore
+        self.xVelocity = CellVariable(mesh=self.mesh, name='X velocity', value=init_x_velocity if init_x_velocity is not None else 0.0) # type: ignore
+        self.yVelocity = CellVariable(mesh=self.mesh, name='Y velocity', value=init_y_velocity if init_y_velocity is not None else 0.0) # type: ignore
         if self.tdim == 3:
-            self.zVelocity = CellVariable(mesh=self.mesh, name='Z velocity')
+            self.zVelocity = CellVariable(mesh=self.mesh, name='Z velocity', value=init_z_velocity if init_z_velocity is not None else 0.0) # type: ignore
         self.face_velocity = FaceVariable(mesh=self.mesh, rank=1)
         
         if self.tdim == 2:
@@ -157,6 +161,14 @@ class FipyStokeSimpleSimulator(object):
         if use_tqdm and use_log:
             tqdm_bar = tqdm(total=iterations, desc='Fipy Simulator')
         
+        stoper = EarlyStopper(hot_step=hot_steps, window_size=30, shift_step=5, atol=1e-6, rtol=1e-3, atol_inv=1e-3)
+        stoper.define_var('x_residual', convergence_threshold)
+        stoper.define_var('y_residual', convergence_threshold)
+        if self.tdim == 3:
+            stoper.define_var('z_residual', convergence_threshold)
+        stoper.define_var('p_residual', convergence_threshold)
+        stoper.define_var('continuity_residual', convergence_threshold)
+        
         for iter_idx in range(iterations):
             
             '''
@@ -244,7 +256,7 @@ class FipyStokeSimpleSimulator(object):
                     log += f' p residual:{p_residual:.8f}, continuity_residual:{np.max(np.abs(continuity_residual)):.8f}'
                     if use_tqdm:
                         tqdm_bar.update(log_step)
-                        tqdm_bar.set_description(log)
+                        # tqdm_bar.set_description(log)
                     else:
                         print(log)
                     
@@ -252,10 +264,16 @@ class FipyStokeSimpleSimulator(object):
                         self.record(save_file=os.path.join(save_dir, f'res_{iter_idx}.vtu'))
             
             if iter_idx > hot_steps and convergence_threshold > 0.0:
-                convergence_flag = x_residual < convergence_threshold and y_residual < convergence_threshold
+                residual_dict = {
+                    'x_residual': x_residual,
+                    'y_residual': y_residual,
+                    'p_residual': p_residual,
+                    'continuity_residual': np.max(np.abs(continuity_residual)),
+                }
                 if self.tdim == 3:
-                    convergence_flag = convergence_flag and z_residual < convergence_threshold
-                convergence_flag = convergence_flag and p_residual < convergence_threshold and np.max(np.abs(continuity_residual)) < convergence_threshold
+                    residual_dict['z_residual'] = z_residual
+                stoper.add_var(residual_dict)
+                convergence_flag = stoper.is_converged()
                 if convergence_flag:
                     break
             
@@ -293,7 +311,7 @@ class FipyStokeSimpleSimulator(object):
         
         return mesh_to_structure_mesh_idxs, structure_mesh_to_mesh_idxs
 
-    def get_velocity(self, map_to_structure: bool) -> np.ndarray:        
+    def get_velocity(self, map_to_structure: bool) -> np.ndarray:
         velocity_list = [
             self.xVelocity.value.copy().reshape((-1, 1)),
             self.yVelocity.value.copy().reshape((-1, 1))
@@ -364,8 +382,11 @@ class FipyStokeSimpleSimulator(object):
         velocityRelaxation: float = 0.5,
         pressureRelaxation: float = 0.8,
         structure_mesh: MeshObj|None = None,
+        init_x_velocity: np.ndarray|None = None,
+        init_y_velocity: np.ndarray|None = None,
+        init_z_velocity: np.ndarray|None = None,
+        init_pressure: np.ndarray|None = None,
     ):
-        base_dir = os.path.dirname(source_msh_file)
         base_name = os.path.basename(source_msh_file).replace('.msh', '')
         
         if structure_mesh is None:
@@ -374,7 +395,7 @@ class FipyStokeSimpleSimulator(object):
         
         with TemporaryDirectory() as temp_dir:
             temp_msh_file = os.path.join(temp_dir, f"{base_name}.msh")
-            FipyStokeSimpleSimulator.msh_version_convert(source_msh_file, temp_msh_file, 'msh2')
+            FipyStokeSimulator.msh_version_convert(source_msh_file, temp_msh_file, 'msh2')
             if structure_mesh.tdim == 3:
                 mesh = Gmsh3D(temp_msh_file)
             elif structure_mesh.tdim == 2:
@@ -382,17 +403,21 @@ class FipyStokeSimpleSimulator(object):
             else:
                 raise ValueError(f"Invalid dimension: {structure_mesh.tdim}")
             
-        return FipyStokeSimpleSimulator(
+        return FipyStokeSimulator(
             mesh=mesh,
             structure_mesh=structure_mesh,
             viscosity=viscosity,
             velocityRelaxation=velocityRelaxation,
             pressureRelaxation=pressureRelaxation,
+            init_x_velocity=init_x_velocity,
+            init_y_velocity=init_y_velocity,
+            init_z_velocity=init_z_velocity,
+            init_pressure=init_pressure,
         )
 
 
 def debug_3D():
-    simulator = FipyStokeSimpleSimulator.from_msh(
+    simulator = FipyStokeSimulator.from_msh(
         '/home/admin123456/Desktop/work/gmsh_test/t28/model.msh',
         dim=3,
         viscosity=1.0 / 400.0,
@@ -494,8 +519,11 @@ petsc4py.PETSc.Error: error code 83
     
 
 def debug_2D():
-    simulator = FipyStokeSimpleSimulator.from_msh(
-        '/home/admin123456/Desktop/work/gmsh_test/t30/model.msh',
+    import time
+    
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t38'
+    simulator = FipyStokeSimulator.from_msh(
+        os.path.join(base_dir, 't38_model.msh'),
         dim=2,
         viscosity=1.0 / 400.0,
         velocityRelaxation=0.5,
@@ -529,10 +557,15 @@ def debug_2D():
     simulator.add_boundary(wall_bry)
     simulator.define_boundary()
     
-    simulator.run(iterations=60, log_step=2, save_dir='/home/admin123456/Desktop/work/gmsh_test/t30/cache')
+    print('start running')
+    start_time = time.time()
+    simulator.run(iterations=60, log_step=2, save_dir=os.path.join(base_dir, 'cache'), use_tqdm=True, use_log=True)
+    end_time = time.time()
+    print(f"Time taken: {end_time - start_time} seconds")
 
 
 if __name__ == '__main__':
     # debug_global_processor()
     # debug_3D()
     debug_2D()
+    pass

@@ -117,9 +117,10 @@ class SeqMeshObj(MeshObj):
         domain: dolfinx.mesh.Mesh | None = None,
         cell_tags: dolfinx.mesh.MeshTags | None = None,
         facet_tags: dolfinx.mesh.MeshTags | None = None,
-        cell_mode: bool = False
+        cell_mode: bool = False,
+        comm=MPI.COMM_WORLD,
     ):
-        super().__init__(xdmf_file, mesh_name, domain, cell_tags, facet_tags)
+        super().__init__(xdmf_file, mesh_name, domain, cell_tags, facet_tags, comm)
         assert MeshUtils.get_cell_type(self.domain) in [
             dolfinx.mesh.CellType.tetrahedron,  # type: ignore
             dolfinx.mesh.CellType.triangle,  # type: ignore

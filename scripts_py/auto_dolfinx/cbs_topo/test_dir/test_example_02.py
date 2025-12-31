@@ -9,7 +9,7 @@ from mpi4py import MPI
 from scripts_py.mesh_utils import MeshObj, MeshUtils
 from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import AutoFluidBoundary, AutoFluidCost, AutoFluidRegularization
 from scripts_py.auto_dolfinx.cbs_topo.utils import generate_rectangle_mesh
-from scripts_py.simulator.fipy_simulator import FipyStokeSimpleSimulator
+from scripts_py.simulator.fipy_simulator import FipyStokeSimulator
 from scripts_py.auto_dolfinx.cbs_topo.cbs_base import TopoFluidNode, CbsMeshObj
 
 """
@@ -46,40 +46,43 @@ boundary_list = [
 
 base_dir = '/home/admin123456/Desktop/work/gmsh_test/t36'
 xdmf_file = os.path.join(base_dir, 'model.xdmf')
-msh_v2_file = os.path.join(base_dir, 'model_v2.msh')
 msh_file = os.path.join(base_dir, 'model.msh')
 
-mesh = generate_rectangle_mesh(
-    boundary_list=boundary_list,
-    left_bottom_corner=np.array([0.0, 0.0]),
-    right_top_corner=np.array([1.5, 1.0]),
-    num_cells=[75, 50],
-    xdmf_file=xdmf_file,
-    cell_type=dolfinx.mesh.CellType.tetrahedron,
-    comm=MPI.COMM_WORLD,
-)
+def prepare_mesh():
+    mesh = generate_rectangle_mesh(
+        boundary_list=boundary_list,
+        left_bottom_corner=np.array([0.0, 0.0]),
+        right_top_corner=np.array([1.5, 1.0]),
+        num_cells=[75, 50],
+        xdmf_file=xdmf_file,
+        cell_type=dolfinx.mesh.CellType.tetrahedron,
+        comm=MPI.COMM_WORLD,
+    )
 
-MeshUtils.generate_msh22_file(
-    mesh=mesh,
-    filename=msh_v2_file,
-    face_tags={
-        'inlet': 1,
-        'outlet': 2,
-        'wall': 3,
-    },
-    cell_tags={
-        'volume': 9,
-    },
-)
+    MeshUtils.generate_msh22_file(
+        mesh=mesh,
+        filename=msh_file,
+        face_tags={
+            'inlet': 1,
+            'outlet': 2,
+            'wall': 3,
+        },
+        cell_tags={
+            'volume': 9,
+        },
+    )
 
-FipyStokeSimpleSimulator.msh_version_convert(
-    source_msh_file=msh_v2_file,
-    target_msh_file=msh_file,
-    target_version='msh4',
-)
+    FipyStokeSimulator.msh_version_convert(
+        source_msh_file=msh_file,
+        target_msh_file=msh_file,
+        target_version='msh4',
+    )
+
+# ------ step 1: prepare mesh ------
+# prepare_mesh()
 
 # # ------ debug simulate ------
-# simulator = FipyStokeSimpleSimulator.from_msh(
+# simulator = FipyStokeSimulator.from_msh(
 #     source_msh_file=msh_file,
 #     dim=2,
 #     viscosity=1.0 / 400.0,
@@ -91,19 +94,19 @@ FipyStokeSimpleSimulator.msh_version_convert(
 #     simulator.add_boundary(boundary)
 # simulator.define_boundary()
 
-# simulator.run(iterations=10000, log_step=2, save_dir=os.path.join(base_dir, 'cache'))
+# simulator.run(iterations=100, log_step=2, save_dir=os.path.join(base_dir, 'cache'))
 # # ------ debug simulate ------
+
 
 fluid_node_dir = os.path.join(base_dir, 'fluid_node_dir')
 if os.path.exists(fluid_node_dir):
     shutil.rmtree(fluid_node_dir)
 os.mkdir(fluid_node_dir)
 
-mesh = CbsMeshObj(
-    msh_file=msh_file,
-    cell_mode=True,
-    xdmf_file=xdmf_file,
-)
+mesh = CbsMeshObj(msh_file=msh_file, cell_mode=True, xdmf_file=xdmf_file,)
+mesh.create_neighbors_info()
+mesh.create_standard_grid_info()
+
 fluid_node = TopoFluidNode(
     mesh=mesh,
     name='fluid_node',
@@ -111,7 +114,20 @@ fluid_node = TopoFluidNode(
     node_idx=0,
     weight_filter_radius=0.02,
     topo_weight_init=1.0,
-    simulation_iterations=400,
+    
+    # ------ simulator related ------
+    viscosity=1.0 / 400.,
+    
+    # ------ computational related ------
+    simulation_iterations=200,
+    convergence_threshold=1e-3,
+    velocityRelaxation=0.6,
+    pressureRelaxation=0.8,
+    log_step=5,
+    hot_steps=10,
+    parallel_num=4,
+    use_tqdm=True,
+    use_log=True,
 )
 
 for boundary in boundary_list:
@@ -130,7 +146,7 @@ fluid_node.object_cost = AutoFluidCost(
 fluid_node.regularization_cost = AutoFluidRegularization(
     name='reg_cost',
     style='Volume',
-    weight=10.0,     # TODO: when it is 1.27, it fail, why?
+    weight=10.0,
     target_ratio=0.1,
 )
 fluid_node.solve()
