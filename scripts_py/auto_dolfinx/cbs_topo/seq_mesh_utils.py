@@ -117,7 +117,7 @@ class SeqMeshObj(MeshObj):
         domain: dolfinx.mesh.Mesh | None = None,
         cell_tags: dolfinx.mesh.MeshTags | None = None,
         facet_tags: dolfinx.mesh.MeshTags | None = None,
-        cell_mode: bool = False,
+        cell_mode: bool = True,
         comm=MPI.COMM_WORLD,
     ):
         super().__init__(xdmf_file, mesh_name, domain, cell_tags, facet_tags, comm)
@@ -134,10 +134,7 @@ class SeqMeshObj(MeshObj):
             self.seq_dense_tag = np.zeros((self.num_cells,))
         else:
             self.seq_dense_tag = np.zeros((self.num_points,))
-    
-    @property
-    def cell_centers(self):
-        return self.grid.cell_centers().points
+        self.create_neighbors_info()
     
     def create_neighbors_info(self):
         self.points_neighbors.clear()

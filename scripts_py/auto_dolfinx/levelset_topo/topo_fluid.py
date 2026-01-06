@@ -473,7 +473,7 @@ class TopoFluidOptimizer(FluidSimulator):
                     loss_current = loss_new                    
                     step_length_last = step_length
                     # self.topo_weight.x.array[:] = topo_phi.x.array  # type: ignore          
-                    self.record_Upw(step, shape_gradient=direction_np)
+                    self.record_Upw(step, gradient=direction_np)
                     break
                 else:
                     print(f'[Log: step/{step} loss_new:{loss_new:.5f}]')

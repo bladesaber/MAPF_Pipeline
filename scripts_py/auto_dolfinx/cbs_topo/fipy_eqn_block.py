@@ -24,9 +24,7 @@ from scripts_py.dolfinx_utils import DolfinUtils
 from scripts_py.auto_dolfinx.blocks.block_solve import EquationSolveBlock
 from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import AutoFluidBoundary
 from scripts_py.auto_dolfinx.cbs_topo.seq_mesh_utils import SeqMeshObj
-
-from scripts_py.auto_dolfinx.cbs_topo.fipy_obstacle_simulator import FipyStokeObsTopoSimulator
-from scripts_py.auto_dolfinx.cbs_topo.fipy_obstacle_simulator import FipyStokeParallelObsTopoSimulator
+from scripts_py.auto_dolfinx.cbs_topo.fipy_obs_simulator import FipyStokeObsTopoSimulator
 
 
 class CacheMemory(object):
@@ -81,82 +79,7 @@ def convert_result_to_dolfinx(
     return uh
 
 
-def run_single_simulator(
-    boundaries: list[AutoFluidBoundary],
-    msh_file: str,
-    viscosity: float,
-    velocityRelaxation: float,
-    pressureRelaxation: float,
-    structure_mesh: SeqMeshObj,
-    structure_obs_weight: np.ndarray|None,
-    structure_alpha: np.ndarray|None,
-    log_step: int,
-    hot_steps: int,
-    simulation_iterations: int,
-    convergence_threshold: float,
-    save_dir: str,
-    use_tqdm: bool,
-    use_log: bool,
-    init_x_velocity: np.ndarray|None = None,
-    init_y_velocity: np.ndarray|None = None,
-    init_z_velocity: np.ndarray|None = None,
-    init_pressure: np.ndarray|None = None,
-):
-    simulator = FipyStokeObsTopoSimulator.from_msh(
-        source_msh_file=msh_file,
-        dim=structure_mesh.tdim,
-        viscosity=viscosity,
-        velocityRelaxation=velocityRelaxation,
-        pressureRelaxation=pressureRelaxation,
-        structure_mesh=structure_mesh,
-        structure_alpha=structure_alpha,
-        structure_obs_weight=structure_obs_weight,
-        init_x_velocity=init_x_velocity,
-        init_y_velocity=init_y_velocity,
-        init_z_velocity=init_z_velocity,
-        init_pressure=init_pressure,
-    )
-    for boundary in boundaries:
-        simulator.add_boundary(boundary)
-    simulator.define_boundary()
-    res_report = simulator.run(
-        iterations=simulation_iterations,
-        convergence_threshold=convergence_threshold,
-        hot_steps=hot_steps,
-        log_step=log_step, 
-        save_dir=save_dir,
-        use_tqdm=use_tqdm,
-        use_log=use_log,
-    )
-    
-    if use_tqdm:
-        log = f'[Log] Single Simulation Finished: x_residual: {res_report['x_residual']} y_residual: {res_report['y_residual']} '
-        if 'z_residual' in res_report:
-            log += f'z_residual: {res_report['z_residual']} '
-        log += f'p_residual: {res_report['p_residual']} '
-        log += f'continuity_residual: {np.max(np.abs(res_report['continuity_residual']))}'
-        print(log)
-    
-    if not res_report['is_solve']:
-        raise Exception('Stop')
-            
-    cell_velocity = simulator.get_velocity(map_to_structure=True)
-    cell_pressure = simulator.get_pressure(map_to_structure=True)
-    
-    # ------ cache memory ------
-    orig_velocity = simulator.get_velocity(map_to_structure=False)
-    orig_pressure = simulator.get_pressure(map_to_structure=False)
-    cache_memory = CacheMemory()
-    cache_memory.update_cache('x_velocity', orig_velocity[:, 0])
-    cache_memory.update_cache('y_velocity', orig_velocity[:, 1])
-    if structure_mesh.tdim == 3:
-        cache_memory.update_cache('z_velocity', orig_velocity[:, 2])
-    cache_memory.update_cache('pressure', orig_pressure)
-    
-    return cell_velocity, cell_pressure, cache_memory
-
-
-def run_parallel_simulator(
+def run_fipy_simulation(
     boundaries: list[AutoFluidBoundary],
     msh_file: str,
     viscosity: float,
@@ -173,57 +96,34 @@ def run_parallel_simulator(
     use_tqdm: bool,
     use_log: bool,
     parallel_num: int,
-    init_x_velocity: np.ndarray|None = None,
-    init_y_velocity: np.ndarray|None = None,
-    init_z_velocity: np.ndarray|None = None,
-    init_pressure: np.ndarray|None = None,
+    force_msh_init: bool = False,
+    init_vtu: pyvista.UnstructuredGrid|None = None,
 ):
     assert save_dir is not None, "save_dir is not initialized"
     if os.path.exists(save_dir):
         shutil.rmtree(save_dir)
     os.makedirs(save_dir)
-            
-    if structure_alpha is not None:
-        structure_alpha_file = os.path.join(save_dir, 'structure_alpha.npy')
-        np.save(structure_alpha_file, structure_alpha)
-    else:
-        structure_alpha_file = None
-        
-    if structure_obs_weight is not None:
-        structure_obs_weight_file = os.path.join(save_dir, 'structure_obs_weight.npy')
-        np.save(structure_obs_weight_file, structure_obs_weight)
-    else:
-        structure_obs_weight_file = None
     
-    if init_x_velocity is not None:
-        init_x_velocity_file = os.path.join(save_dir, 'init_x_velocity.npy')
-        np.save(init_x_velocity_file, init_x_velocity)
-    else:
-        init_x_velocity_file = None
-        
-    if init_y_velocity is not None:
-        init_y_velocity_file = os.path.join(save_dir, 'init_y_velocity.npy')
-        np.save(init_y_velocity_file, init_y_velocity)
-    else:
-        init_y_velocity_file = None
-        
-    if init_z_velocity is not None:
-        init_z_velocity_file = os.path.join(save_dir, 'init_z_velocity.npy')
-        np.save(init_z_velocity_file, init_z_velocity)
-    else:
-        init_z_velocity_file = None
-        
-    if init_pressure is not None:
-        init_pressure_file = os.path.join(save_dir, 'init_pressure.npy')
-        np.save(init_pressure_file, init_pressure)
-    else:
-        init_pressure_file = None
-            
-    cfg_file = os.path.join(save_dir, 'parallel_cfg.json')
+    source_msh_file = os.path.join(save_dir, 'source_msh.msh')
+    shutil.copy(msh_file, source_msh_file)
+    
+    cfg_file = os.path.join(save_dir, 'fipy_simulation_cfg.json')
     result_dir = os.path.join(save_dir, 'cache')
-    FipyStokeParallelObsTopoSimulator.create_simulation_config(
+    
+    if init_vtu is None:
+        init_vtu = structure_mesh.grid.copy()
+    
+    if structure_alpha is not None:
+        init_vtu.cell_data['alpha'] = structure_alpha
+    if structure_obs_weight is not None:
+        init_vtu.cell_data['obstacle'] = structure_obs_weight
+    
+    init_vtu_file = os.path.join(save_dir, 'init.vtu')
+    init_vtu.save(init_vtu_file)
+    
+    FipyStokeObsTopoSimulator.create_simulation_config(
         cfg_file=cfg_file,
-        source_msh_file=msh_file,
+        source_msh_file=source_msh_file,
         dim=structure_mesh.tdim,
         viscosity=viscosity,
         velocityRelaxation=velocityRelaxation,
@@ -236,50 +136,43 @@ def run_parallel_simulator(
         save_dir=result_dir,
         use_tqdm=use_tqdm,
         use_log=use_log,
-        structure_alpha_file=structure_alpha_file,
-        structure_obs_weight_file=structure_obs_weight_file,
-        init_x_velocity_file=init_x_velocity_file,
-        init_y_velocity_file=init_y_velocity_file,
-        init_z_velocity_file=init_z_velocity_file,
-        init_pressure_file=init_pressure_file,
+        structure_init_vtu_file=init_vtu_file,
+        vtu_velocity_field='velocity',
+        vtu_pressure_field='pressure',
+        vtu_alpha_field='alpha',
+        vtu_obs_weight_field='obstacle',
     )
-            
-    cmd_str = f'mpirun -n {parallel_num} python scripts_py/auto_dolfinx/cbs_topo/fipy_obstacle_simulator.py --cfg_file {cfg_file}'
+    
+    if parallel_num > 1:
+        cmd_str = f'mpirun -n {parallel_num} python scripts_py/auto_dolfinx/cbs_topo/fipy_obs_simulator.py --cfg_file {cfg_file} --force_msh_init {force_msh_init}'
+    else:
+        cmd_str = f'python scripts_py/auto_dolfinx/cbs_topo/fipy_obs_simulator.py --cfg_file {cfg_file} --force_msh_init {force_msh_init}'
+    
     subprocess.run(cmd_str, shell=True, cwd='/home/admin123456/Desktop/work/MAPF_Pipeline')
-            
+    
     result_file = os.path.join(result_dir, 'result.vtu')
     residual_json = os.path.join(result_dir, 'residual.json')
-            
     assert os.path.exists(result_file), "[Error]: simulattion failed"
     assert os.path.exists(residual_json), "[Error]: simulattion failed"
-            
+    
     with open(residual_json, 'r') as f:
         res_report = json.load(f)
     
     if use_tqdm:
-        log = f'[Log] Parallel Simulation Finished: x_residual: {res_report['x_residual']} y_residual: {res_report['y_residual']} '
+        log = f'[Log]: {parallel_num} Simulator: x_residual: {res_report['x_residual']:.8f} y_residual: {res_report['y_residual']:.8f} '
         if 'z_residual' in res_report:
-            log += f'z_residual: {res_report['z_residual']} '
-        log += f'p_residual: {res_report['p_residual']} '
-        log += f'continuity_residual: {np.max(np.abs(res_report['continuity_residual']))}'
+            log += f'z_residual: {res_report['z_residual']:.8f} '
+        log += f'p_residual: {res_report['p_residual']:.8f} '
+        log += f'continuity_residual: {res_report['continuity_residual']:.8f}'
         print(log)
             
     res_vtu = pyvista.read(result_file)
-    cell_velocity = res_vtu.cell_data['velocity_sim'][:, :structure_mesh.tdim]
-    cell_pressure = res_vtu.cell_data['pressure_sim']
+    cell_velocity = res_vtu.cell_data['velocity'][:, :structure_mesh.tdim]
+    cell_pressure = res_vtu.cell_data['pressure']
     
-    # ------ load fipy result ------
-    velocity_file = os.path.join(result_dir, 'fipy_velocity.npy')
-    pressure_file = os.path.join(result_dir, 'fipy_pressure.npy')
-    orig_velocity = np.load(velocity_file, allow_pickle=True)
-    orig_pressure = np.load(pressure_file, allow_pickle=True)
-    
+    # ------ store fipy result ------
     cache_memory = CacheMemory()
-    cache_memory.update_cache('x_velocity', orig_velocity[:, 0])
-    cache_memory.update_cache('y_velocity', orig_velocity[:, 1])
-    if structure_mesh.tdim == 3:
-        cache_memory.update_cache('z_velocity', orig_velocity[:, 2])
-    cache_memory.update_cache('pressure', orig_pressure)
+    cache_memory.update_cache('init_vtu', res_vtu)
     
     return cell_velocity, cell_pressure, cache_memory
 
@@ -369,44 +262,26 @@ def equation_stokeEqn_solve(
             pow_operator=np.power
         )
         
-        if parallel_num == 1:
-            cell_velocity, cell_pressure, cache_memory = run_single_simulator(
-                boundaries=boundaries,
-                msh_file=msh_file,
-                viscosity=viscosity,
-                velocityRelaxation=velocityRelaxation,
-                pressureRelaxation=pressureRelaxation,
-                structure_mesh=structure_mesh,
-                structure_obs_weight=structure_obs_weight,
-                structure_alpha=structure_alpha,
-                log_step=log_step,
-                hot_steps=hot_steps,
-                simulation_iterations=simulation_iterations,
-                convergence_threshold=convergence_threshold,
-                save_dir=save_dir,
-                use_tqdm=use_tqdm,
-                use_log=use_log,
-            )
-        
-        else:
-            cell_velocity, cell_pressure, cache_memory = run_parallel_simulator(
-                boundaries=boundaries,
-                msh_file=msh_file,
-                viscosity=viscosity,
-                velocityRelaxation=velocityRelaxation,
-                pressureRelaxation=pressureRelaxation,
-                structure_mesh=structure_mesh,
-                structure_obs_weight=structure_obs_weight,
-                structure_alpha=structure_alpha,
-                log_step=log_step,
-                hot_steps=hot_steps,
-                simulation_iterations=simulation_iterations,
-                convergence_threshold=convergence_threshold,
-                save_dir=save_dir,
-                use_tqdm=use_tqdm,
-                use_log=use_log,
-                parallel_num=parallel_num,
-            )
+        cell_velocity, cell_pressure, cache_memory = run_fipy_simulation(
+            boundaries=boundaries,
+            msh_file=msh_file,
+            viscosity=viscosity,
+            velocityRelaxation=velocityRelaxation,
+            pressureRelaxation=pressureRelaxation,
+            structure_mesh=structure_mesh,
+            structure_obs_weight=structure_obs_weight,
+            structure_alpha=structure_alpha,
+            log_step=log_step,
+            hot_steps=hot_steps,
+            simulation_iterations=simulation_iterations,
+            convergence_threshold=convergence_threshold,
+            save_dir=save_dir,
+            use_tqdm=use_tqdm,
+            use_log=use_log,
+            parallel_num=parallel_num,
+            force_msh_init=True,
+            init_vtu=None,
+        )
                 
         state = convert_result_to_dolfinx(
             domain=structure_mesh.domain,
@@ -589,62 +464,30 @@ class StockEquationSolveBlock(EquationSolveBlock):
         )
         
         if self.cache_memory is not None:
-            init_x_velocity = self.cache_memory.get_cache('x_velocity')
-            init_y_velocity = self.cache_memory.get_cache('y_velocity')
-            init_z_velocity = self.cache_memory.get_cache('z_velocity') if self.structure_mesh.tdim == 3 else None
-            init_pressure = self.cache_memory.get_cache('pressure')
+            init_vtu = self.cache_memory.get_cache('init_vtu')
         else:
-            init_x_velocity = None
-            init_y_velocity = None
-            init_z_velocity = None
-            init_pressure = None
-        
-        if self.parallel_num == 1:
-            velocity, pressure, cache_memory = run_single_simulator(
-                boundaries=self.boundaries,
-                msh_file=self.msh_file,
-                viscosity=self.viscosity,
-                velocityRelaxation=self.velocityRelaxation,
-                pressureRelaxation=self.pressureRelaxation,
-                structure_mesh=self.structure_mesh,
-                structure_obs_weight=self.structure_obs_weight,
-                structure_alpha=structure_alpha,
-                log_step=self.log_step,
-                hot_steps=self.hot_steps,
-                simulation_iterations=self.simulation_iterations,
-                convergence_threshold=self.convergence_threshold,
-                save_dir=self.save_dir,
-                use_tqdm=self.use_tqdm,
-                use_log=self.use_log,
-                init_x_velocity=init_x_velocity,
-                init_y_velocity=init_y_velocity,
-                init_z_velocity=init_z_velocity,
-                init_pressure=init_pressure,
-            )
-        else:
-            velocity, pressure, cache_memory = run_parallel_simulator(
-                boundaries=self.boundaries,
-                msh_file=self.msh_file,
-                viscosity=self.viscosity,
-                velocityRelaxation=self.velocityRelaxation,
-                pressureRelaxation=self.pressureRelaxation,
-                structure_mesh=self.structure_mesh,
-                structure_obs_weight=self.structure_obs_weight,
-                structure_alpha=structure_alpha,
-                log_step=self.log_step,
-                hot_steps=self.hot_steps,
-                simulation_iterations=self.simulation_iterations,
-                convergence_threshold=self.convergence_threshold,
-                save_dir=self.save_dir,
-                use_tqdm=self.use_tqdm,
-                use_log=self.use_log,
-                parallel_num=self.parallel_num,
-                init_x_velocity=init_x_velocity,
-                init_y_velocity=init_y_velocity,
-                init_z_velocity=init_z_velocity,
-                init_pressure=init_pressure,
-            )
-        
+            init_vtu = None
+                
+        velocity, pressure, cache_memory = run_fipy_simulation(
+            boundaries=self.boundaries,
+            msh_file=self.msh_file,
+            viscosity=self.viscosity,
+            velocityRelaxation=self.velocityRelaxation,
+            pressureRelaxation=self.pressureRelaxation,
+            structure_mesh=self.structure_mesh,
+            structure_obs_weight=self.structure_obs_weight,
+            structure_alpha=structure_alpha,
+            log_step=self.log_step,
+            hot_steps=self.hot_steps,
+            simulation_iterations=self.simulation_iterations,
+            convergence_threshold=self.convergence_threshold,
+            save_dir=self.save_dir,
+            use_tqdm=self.use_tqdm,
+            use_log=self.use_log,
+            parallel_num=self.parallel_num,
+            force_msh_init=True,
+            init_vtu=init_vtu,
+        )
         if self.cache_memory is not None:
             self.cache_memory = cache_memory
         

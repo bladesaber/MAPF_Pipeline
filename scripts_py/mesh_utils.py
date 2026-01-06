@@ -44,11 +44,18 @@ use topology optimization generate fluid path rather than path search
 
 class MeshUtils(object):
     @staticmethod
-    def read_msh(msh_file: str, dim: int, comm=MPI.COMM_WORLD) -> (dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags, dolfinx.mesh.MeshTags):  # type: ignore
+    def read_msh(
+        msh_file: str, dim: int, comm=MPI.COMM_WORLD, verbose: bool = True
+    ) -> (dolfinx.mesh.Mesh, dolfinx.mesh.MeshTags, dolfinx.mesh.MeshTags):  # type: ignore
         """
         if comm is MPI.COMM_SELF, the msh file will be read in serial mode, rather than parallel mode.
         """
         assert msh_file.endswith(".msh")
+        
+        if not verbose:
+            gmsh.initialize()
+            gmsh.option.setNumber("General.Verbosity", 0)
+        
         domain, cell_tags, facet_tags = gmshio.read_from_msh(msh_file, comm, gdim=dim)
         return domain, cell_tags, facet_tags
 
@@ -479,6 +486,10 @@ class MeshObj(object):
     @property
     def points(self):
         return self.domain.geometry.x
+    
+    @property
+    def cell_centers(self):
+        return self.grid.cell_centers().points
     
     def cell_types(self) -> basix.CellType:
         return self.domain.basix_cell()  # type: ignore

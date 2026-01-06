@@ -61,7 +61,8 @@ class FluidBoundary(object):
         tdim: int, 
         face_center: np.ndarray, 
         face_norm_vector: np.ndarray,
-        face_radius: float
+        face_radius: float,
+        method: Literal['quadratic', 'circle', 'constant'] = 'constant'
     ):
         bry_values = np.zeros_like(pos.T)
         
@@ -72,11 +73,30 @@ class FluidBoundary(object):
         pos = pos.T[:, :tdim]
         dist2center = np.linalg.norm(pos - face_center, ord=2, axis=1)
         dist2plane = np.sum((pos - face_center) * face_norm_vector, axis=1)
+       
+        if method == 'quadratic':
+            # 使用二次函数平滑权重，使得权重在边界处逐渐减小
+            weight = np.maximum((face_radius - dist2center) / face_radius, 0.0)
+            weight[np.abs(dist2plane) > 1e-6] = 0.0
+            weight = -np.power(weight - 1.0, 2.0) + 1.0
         
-        weight = np.maximum((face_radius - dist2center) / face_radius, 0.0)
-        weight[np.abs(dist2plane) > 1e-6] = 0.0
-        weight = -np.power(weight - 1.0, 2.0) + 1.0
+        elif method == 'circle':
+            # 使用圆函数平滑
+            positive_bool = dist2center < face_radius
+            positive_bool[np.abs(dist2plane) > 1e-6] = False
+            
+            weight = np.zeros(shape=positive_bool.shape)
+            weight[positive_bool] = np.sqrt(1.0 ** 2 - (dist2center[positive_bool] / face_radius) ** 2)
+        
+        elif method == 'constant':
+            positive_bool = dist2center < face_radius
+            positive_bool[np.abs(dist2plane) > 1e-6] = False
 
+            weight = np.zeros(shape=positive_bool.shape)
+            weight[positive_bool] = 1.0
+        else:
+            raise ValueError(f'[Error]: Invalid method: {method}')
+                
         bry_values = bry_values * weight.reshape((-1, 1))
         bry_values = bry_values.T[:tdim, :]
 
@@ -291,8 +311,24 @@ class StokeSimulator(FluidSimulator):
         
         self.mesh.record_point_value('velocity', vel_ref_np)
         self.mesh.record_point_value('pressure', p_ref.x.array)
-        # self.mesh.record_point_value('vel_mag', np.linalg.norm(vel_ref_np, axis=1))
-
+        self.mesh.record_point_value('velocity_mag', np.linalg.norm(vel_ref_np, axis=1))
+        
+        cell_vector_func_space = DolfinUtils.cell_vector_function_space(self.mesh.domain)
+        vel_cell_func = dolfinx.fem.Function(cell_vector_func_space)
+        vel_cell_func.interpolate(vel_ref)  # type: ignore
+        
+        vel_cell = vel_cell_func.x.array.reshape((-1, self.mesh.tdim))  # type: ignore
+        if vel_cell.shape[1] == 2:
+            vel_cell = np.concatenate([vel_cell, np.zeros((vel_cell.shape[0], 1))], axis=1)
+        
+        cell_scalar_func_space = DolfinUtils.cell_scalar_function_space(self.mesh.domain)
+        p_cell_func = dolfinx.fem.Function(cell_scalar_func_space)
+        p_cell_func.interpolate(p_ref)  # type: ignore
+        
+        self.mesh.record_cell_value('velocity', vel_cell)
+        self.mesh.record_cell_value('pressure', p_cell_func.x.array)  # type: ignore
+        self.mesh.record_cell_value('velocity_mag', np.linalg.norm(vel_cell, axis=1))  # type: ignore
+        
         self.mesh.save_grid(file)
 
 

@@ -228,11 +228,11 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             
             # ------ TODO: check if it is better ------
             # ----- method 1
-            # volume_dif = self.regularization_item.kwargs['target_ratio'] * self.volume - topo_volume
+            volume_dif = self.regularization_item.kwargs['target_ratio'] * self.volume - topo_volume
             
-            # ----- method 2
-            target_volume = self.regularization_item.kwargs['target_ratio'] * self.volume
-            volume_dif = (target_volume - topo_volume) / target_volume
+            # ----- method 2: 振荡问题很严重
+            # target_volume = self.regularization_item.kwargs['target_ratio'] * self.volume
+            # volume_dif = (target_volume - topo_volume) / target_volume
             # ------ check if it is better ------
             
             """
@@ -266,33 +266,6 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             self.opt_problem = ReducedFunctional(fin_cost, [self.control_phi])
         
         print('[Log]: Initial loss:', self.eval())
-
-    """
-    # TODO: please improve this
-    def update_reg_mul_weight(self, loss_dict: dict):
-        form_cost = loss_dict[self.cost_item.name]
-        volume_cost = loss_dict[self.regularization_item.name]
-        if volume_cost < form_cost * self.reg_ratio:
-            weight = form_cost * self.reg_ratio / (volume_cost / self.reg_mul_block_dep.saved_output)
-            self.reg_mul_block_dep.checkpoint = weight
-            self.reg_mul_block_dep.saved_output
-    """
-
-    """
-    def eval(self):
-        loss_dict = {
-            self.cost_item.name: self.cost_item.eval(),
-            self.regularization_item.name: self.reg_mul_block_dep.saved_output * (
-                self.regularization_item.kwargs['target_ratio'] * self.volume - AssembleUtils.assemble_scalar(self.vol_ratio_form)
-            ) ** 2,
-            'abs_volume': float(np.abs(
-                AssembleUtils.assemble_scalar(self.vol_ratio_form) - 
-                self.regularization_item.kwargs['target_ratio'] * self.volume
-            )) / self.volume,
-            'reg_mul_weight': self.reg_mul_block_dep.saved_output,
-        }
-        return loss_dict
-    """
     
     def eval(self):
         target_volume = self.regularization_item.kwargs['target_ratio'] * self.volume
@@ -300,14 +273,14 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         
         loss_dict = {
             self.cost_item.name: self.cost_item.eval(),
-            # self.regularization_item.name: self.regularization_item.weight * (
-            #     self.regularization_item.kwargs['target_ratio'] * self.volume - AssembleUtils.assemble_scalar(self.vol_ratio_form)
-            # ) ** 2,
-            self.regularization_item.name: self.regularization_item.weight * volume_dif ** 2,
-            'abs_volume': float(np.abs(
-                AssembleUtils.assemble_scalar(self.vol_ratio_form) - 
-                self.regularization_item.kwargs['target_ratio'] * self.volume
-            )) / self.volume,
+            self.regularization_item.name: self.regularization_item.weight * (
+                self.regularization_item.kwargs['target_ratio'] * self.volume - AssembleUtils.assemble_scalar(self.vol_ratio_form)
+            ) ** 2,
+            # self.regularization_item.name: self.regularization_item.weight * volume_dif ** 2,
+            # 'abs_volume': float(np.abs(
+            #     AssembleUtils.assemble_scalar(self.vol_ratio_form) - 
+            #     self.regularization_item.kwargs['target_ratio'] * self.volume
+            # )) / self.volume,
         }
         return loss_dict
     
@@ -340,54 +313,31 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         
         self.recorder.save(step)
 
-    def corase_step_run(self, step: float, iter: int = -1):
-        # TODO: adjust 
-        gradient_np = self.compute_gradient(adj_input=1.0, with_filter=True, with_norm=True)
-        # direction_np = np.sign(gradient_np)  # TODO: still unstable
-        direction_np = gradient_np
-        
-        # # ------ visulize obstacle and gradient
-        # plotter = pyvista.Plotter()
-        # plotter.add_mesh(self.mesh.grid, color='black', style='wireframe')
-        
-        # # pcd_mesh = pyvista.PointSet(self.mesh.grid.cell_centers().points)
-        # # pcd_mesh.point_data['gradient'] = gradient_np
-        # # pcd_mesh.warp_by_scalar(scalars='gradient')
-        # # plotter.add_mesh(pcd_mesh, point_size=3)
-        
-        # # obs_pcd = self.mesh.points[self.obstacle_source.x.array > 0, :]  # type: ignore
-        # # if obs_pcd.shape[0] > 0:
-        # #     plotter.add_mesh(pyvista.PointSet(obs_pcd), color='black', point_size=3)
-            
-        # descend_pcd = self.mesh.grid.cell_centers().points[direction_np > 0.0, :]
-        # if descend_pcd.shape[0] > 0:
-        #     plotter.add_mesh(pyvista.PointSet(descend_pcd), color='blue', point_size=3)
-        # ascend_pcd = self.mesh.grid.cell_centers().points[direction_np < 0.0, :]
-        # if ascend_pcd.shape[0] > 0:
-        #     plotter.add_mesh(pyvista.PointSet(ascend_pcd), color='red', point_size=3)
-        # zero_pcd = self.mesh.grid.cell_centers().points[direction_np == 0.0, :]
-        # if zero_pcd.shape[0] > 0:
-        #     plotter.add_mesh(pyvista.PointSet(zero_pcd), color='green', point_size=3)
-            
-        # plotter.show()
-        # # ------ visulize obstacle and gradient
-        
-        topo_phi_origin: np.array = self.topo_phi_input.x.array.copy()  # type: ignore
-        new_topo_phi = topo_phi_origin - direction_np * step
-        new_topo_phi = np.maximum(np.minimum(new_topo_phi, 1.0 - 1e-16), 1e-16)
-        self.topo_phi_input.x.array[:] = new_topo_phi  # type: ignore
-        
-        loss_new = self.opt_problem(values=[self.topo_phi_input])  # type: ignore
-        if iter > 0:
-            self.record_Upw(step=iter, gradient=direction_np)
-        
-        detail_loss = self.eval()
-        detail_loss['total_loss'] = loss_new
-        
-        return detail_loss
-
     """
     # TODO: please improve this
+    
+    def update_reg_mul_weight(self, loss_dict: dict):
+        form_cost = loss_dict[self.cost_item.name]
+        volume_cost = loss_dict[self.regularization_item.name]
+        if volume_cost < form_cost * self.reg_ratio:
+            weight = form_cost * self.reg_ratio / (volume_cost / self.reg_mul_block_dep.saved_output)
+            self.reg_mul_block_dep.checkpoint = weight
+            self.reg_mul_block_dep.saved_output
+
+    def eval(self):
+        loss_dict = {
+            self.cost_item.name: self.cost_item.eval(),
+            self.regularization_item.name: self.reg_mul_block_dep.saved_output * (
+                self.regularization_item.kwargs['target_ratio'] * self.volume - AssembleUtils.assemble_scalar(self.vol_ratio_form)
+            ) ** 2,
+            'abs_volume': float(np.abs(
+                AssembleUtils.assemble_scalar(self.vol_ratio_form) - 
+                self.regularization_item.kwargs['target_ratio'] * self.volume
+            )) / self.volume,
+            'reg_mul_weight': self.reg_mul_block_dep.saved_output,
+        }
+        return loss_dict
+    
     def run(
         self,
         line_search_steps: list[float] = [0.1, 0.05, 0.01, 0.005, 0.001, 0.00025],

@@ -1,6 +1,7 @@
 import os
 import shutil
 from typing import Literal, Union, Callable
+import time
 
 import dolfinx
 from mpi4py import MPI
@@ -108,7 +109,7 @@ def prepare_mesh():
         mesh=mesh, filename=msh_file, face_tags=face_tags, cell_tags={"volume": 9}
     )
     FipyStokeSimulator.msh_version_convert(
-        source_msh_file=msh_file, target_msh_file=msh_file, target_version='msh4'
+        source_msh_file=msh_file, target_msh_file=msh_file, target_version='msh4', num_partitions=1
     )
     
     MeshUtils.msh_to_XDMF(msh_file=msh_file, xdmf_file=xdmf_file, dim=mesh.tdim)
@@ -147,6 +148,7 @@ def prepare_nodes():
     mesh.create_neighbors_info()
     
     # ------ define fluid node 0
+    start_time = time.time()
     fluid_node_0 = TopoFluidNode(
         mesh=mesh, 
         name='group_a', 
@@ -186,13 +188,16 @@ def prepare_nodes():
     fluid_node_0.regularization_cost = AutoFluidRegularization(
         name='reg_cost', 
         style='Volume', 
-        weight=1.0, 
+        weight=10.0, 
         target_ratio=0.1
     )
     fluid_node_0.solve()
     fluid_node_0.save()
+    end_time = time.time()
+    print(f'Time taken: {end_time - start_time} seconds')
     
     # ------ define fluid node 1
+    start_time = time.time()
     fluid_node_1 = TopoFluidNode(
         mesh=mesh, 
         name='group_b', 
@@ -232,11 +237,13 @@ def prepare_nodes():
     fluid_node_1.regularization_cost = AutoFluidRegularization(
         name='reg_cost', 
         style='Volume', 
-        weight=1.0, 
+        weight=10.0, 
         target_ratio=0.1
     )
     fluid_node_1.solve()
     fluid_node_1.save()
+    end_time = time.time()
+    print(f'Time taken: {end_time - start_time} seconds')
 
 
 def prepare_cbs_node():
@@ -318,8 +325,8 @@ def run_cbs_solver():
 
 
 if __name__ == '__main__':
-    # prepare_mesh()
-    prepare_nodes()
+    prepare_mesh()
+    # prepare_nodes()
     # prepare_cbs_node()
     # run_cbs_solver()
     
