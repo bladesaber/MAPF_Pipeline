@@ -46,7 +46,7 @@ boundary_cfgs = [
         'boundary_type': 'velocity',
         'value': [1.0, 0.0],
         'marker': 1,
-        'face_center': np.array([0.0, 0.5]),
+        'face_center': np.array([-0.05, 0.5]),
         'face_norm_vector': np.array([1.0, 0.0]),
         'face_radius': 0.1,
     },
@@ -55,7 +55,7 @@ boundary_cfgs = [
         'boundary_type': 'pressure',
         'value': 0.0,
         'marker': 2,
-        'face_center': np.array([1.0, 0.5]),
+        'face_center': np.array([1.05, 0.5]),
         'face_norm_vector': np.array([1.0, 0.0]),
         'face_radius': 0.1,
     },
@@ -77,7 +77,7 @@ def prepare_mesh():
         boundary_list=boundary_list, 
         left_bottom_corner=np.array([0.0, 0.0]), 
         right_top_corner=np.array([1.0, 1.0]), 
-        num_cells=[100, 100], 
+        num_cells=[60, 60], 
         xdmf_file=xdmf_file, 
         cell_type=dolfinx.mesh.CellType.triangle, comm=MPI.COMM_WORLD
     )
@@ -113,64 +113,6 @@ def prepare_mesh():
     return mesh
 
 
-def run_fipy_simulation(parallel_num: int = 1):
-    import subprocess
-    
-    simulation_dir = os.path.join(base_dir, 'simulation')
-    if os.path.exists(simulation_dir):
-        shutil.rmtree(simulation_dir)
-    os.makedirs(simulation_dir)
-    
-    source_msh_file = os.path.join(simulation_dir, 'model.msh')
-    shutil.copy(os.path.join(base_dir, 'model.msh'), source_msh_file)
-    
-    boundary_list = [define_boundary(bry_cfg, boundary_type=bry_cfg['boundary_type']) for bry_cfg in boundary_cfgs]
-    
-    cfg_file = os.path.join(simulation_dir, 'simulation.json')
-    FipyStokeSimulator.create_simulation_config(
-        cfg_file=cfg_file,
-        source_msh_file=source_msh_file,
-        dim=2,
-        viscosity=1.0 / 400.,
-        velocityRelaxation=0.6,
-        pressureRelaxation=0.8,
-        boundary_list=boundary_list, # type: ignore
-        iterations=500,
-        convergence_threshold=1e-4,
-        hot_steps=10,
-        log_step=2,
-        save_dir=os.path.join(simulation_dir, 'result'),
-        use_tqdm=False,
-        use_log=True,
-        structure_init_vtu_file=None,
-        vtu_velocity_field='velocity',
-        vtu_pressure_field='pressure',
-    )
-    
-    if parallel_num > 1:
-        cmd_str = f'mpirun -n {parallel_num} python scripts_py/simulator/fipy_simulator.py --cfg_file {cfg_file} --force_msh_init True'
-    else:
-        cmd_str = f'python scripts_py/simulator/fipy_simulator.py --cfg_file {cfg_file} --force_msh_init True'
-    
-    subprocess.run(cmd_str, shell=True, cwd='/home/admin123456/Desktop/work/MAPF_Pipeline')
-
-
-def run_dolfinx_simulation():
-    mesh_file = os.path.join(base_dir, 'model.msh')
-    domain, cell_tags, facet_tags = MeshUtils.read_msh(mesh_file, dim=2)
-    
-    mesh = MeshObj(xdmf_file=None, domain=domain, cell_tags=cell_tags, facet_tags=facet_tags)
-    simulator = StokeSimulator('stoke', mesh)
-    simulator.define_equation(nu_value=1.0 / 400.)
-    
-    boundary_list = [define_boundary(bry_cfg, boundary_type=bry_cfg['boundary_type']) for bry_cfg in boundary_cfgs]
-    for boundary in boundary_list:
-        simulator.add_boundary(boundary)
-    simulator.define_boundary()
-    simulator.run(with_residual=True)
-    simulator.save(os.path.join(base_dir, 'stoke_res.vtu'))
-
-
 def run_topo_opt():
     msh_file = os.path.join(base_dir, 'model.msh')
     
@@ -178,18 +120,18 @@ def run_topo_opt():
     domain, cell_tags, facet_tags = MeshUtils.read_msh(msh_file, dim=2)
     mesh = SeqMeshObj(xdmf_file=None, domain=domain, cell_tags=cell_tags, facet_tags=facet_tags)
     
-    cost_item = AutoFluidCost(name='obj_cost', style='MinDissipation', weight=1.0,)
-    regularization_item = AutoFluidRegularization(name='reg_cost', style='Volume', weight=1.0, target_ratio=0.1)
+    cost_item = AutoFluidCost(name='obj_cost', style='MinDissipation', weight=1.0)
+    regularization_item = AutoFluidRegularization(name='reg_cost', style='Volume', weight=0.5, target_ratio=0.05)
     
     result_dir = os.path.join(base_dir, 'topo_opt')
     optim = TopoFluidOptimizerFipy(
-        name='test_example_09',
+        name='test_example_42',
         mesh=mesh,
         msh_file=msh_file,
         nut_init=1.0 / 400.,
         cost_item=cost_item,
         regularization_item=regularization_item,
-        topo_weight_init=1.0,
+        topo_weight_init=0.1,
         obstacle_func=None,
         weight_filter_radius=0.06,
         result_dir=result_dir,
@@ -213,14 +155,14 @@ def run_topo_opt():
             'mat_mumps_icntl_24': 1,
             'mat_mumps_icntl_25': 0,
         },
-        simulation_iterations=100,
-        convergence_threshold=1e-3,
+        simulation_iterations=300,
+        convergence_threshold=1e-4,
         velocityRelaxation=0.6,
         pressureRelaxation=0.8,
         hot_steps=10,
         log_step=2,
-        parallel_num=1,
-        use_tqdm=False,
+        parallel_num=4,
+        use_tqdm=True,
         use_log=True,
     )
     
@@ -232,8 +174,5 @@ def run_topo_opt():
 
 
 if __name__ == '__main__':
-    prepare_mesh()
-    run_fipy_simulation(parallel_num=1)
-    # run_dolfinx_simulation()
-    # run_topo_opt()
-    pass
+    # prepare_mesh()
+    run_topo_opt()

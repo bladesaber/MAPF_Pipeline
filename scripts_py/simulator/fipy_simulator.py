@@ -343,7 +343,7 @@ class FipyStokeSimulator(object):
             if use_tqdm and use_log:
                 tqdm_bar = tqdm(total=iterations, desc='Fipy Simulator')
             
-            stoper = EarlyStopper(hot_step=hot_steps, window_size=30, shift_step=5, atol=1e-6, rtol=1e-3, atol_inv=1e-3)
+            stoper = EarlyStopper(hot_step=hot_steps, window_size=30, shift_step=5)
             stoper.define_var('x_residual', convergence_threshold)
             stoper.define_var('y_residual', convergence_threshold)
             if self.tdim == 3:

@@ -2,11 +2,12 @@ import os
 from typing import Literal, Union, Callable
 
 import dolfinx
-import pyvista
 import ufl
 from ufl import inner, grad, div
 
 import numpy as np
+import pyvista
+from sklearn.neighbors import KDTree
 
 from scripts_py.mesh_utils import MeshUtils
 from scripts_py.auto_dolfinx.cbs_topo.seq_mesh_utils import SeqMeshObj
@@ -30,10 +31,8 @@ from scripts_py.auto_dolfinx.cbs_topo.fipy_eqn_block import equation_stokeEqn_so
 
 """
 TODO: Critical problems:
-1. 拓扑优化精度不够, 收敛缓慢, 接近头部很大, 原因不明, 需要更好的参考与方法(openPisco)
 2. obstacle过于零碎, 碎片化的obstacle导致优化不好
 3. 拓扑优化结果需要一个更好的映射方法,转换为形状
-4. 这里的失败表明我的优化路径设计并不合理, reg_cost与obj_cost的变化速度不一样, 需要调整优化路径. !!!!
 """
 
 
@@ -46,7 +45,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         nut_init: float,
         cost_item: AutoFluidCost,
         regularization_item: AutoFluidRegularization,
-        topo_weight_init: float,
+        topo_weight_init: float|np.ndarray,
         obstacle_func: Callable|None,
         weight_filter_radius: float,
         result_dir: str,
@@ -59,6 +58,10 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         pressure_space: Literal['CG', 'DG', 'Lagrange'] = 'Lagrange',
         obstacle_cost_weight: float|None = None,
     ):
+        """1.topo_weight_init预设在相对小的数值通常优化路径更短
+        2.Topology优化的问题在于一旦形成初始结果就会陷入局部最优点,
+            因此分布优化效果更好,先使用小权重reg_cost热身优化,再使用大权重reg_cost进行收缩优化.
+        """
         super().__init__(
             name,
             mesh,
@@ -95,6 +98,45 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
     def alpha_fun(rho: np.ndarray|dolfinx.fem.Function, alpha_min=1e-12, alpha_max=1000.0, p=3.0, pow_operator=ufl.elem_pow):
         return alpha_min + pow_operator(1.0 - rho, p) * (alpha_max - alpha_min)  # type: ignore
 
+    def init_topo_weight(
+        self, 
+        init_value: float|np.ndarray, 
+        interpolate_shape: Literal['raw', 'circle', 'all'] = 'circle',
+    ) -> dolfinx.fem.Function:
+        """当整个场的topo_weight都很少时,速度与压力会汇聚在出口的边角区域,造成崩角的效果.
+        崩角效果会造成优化畸形(因为拓扑优化易于陷入局部最优点),因此构造一个球形区域,使出口区域比边缘更流畅,减缓崩角的影响.
+        当然也可以通过减少reg_cost的权重来减缓崩角的影响.
+        """
+        topo_weight = dolfinx.fem.Function(self.point_scalar_func_space)
+        if isinstance(init_value, np.ndarray):
+            topo_weight.x.array[:] = init_value  # type: ignore
+            
+        elif isinstance(init_value, float):
+            topo_weight_value = init_value * np.ones(shape=topo_weight.x.array.shape)  # type: ignore
+            for bry_info in self.boundaries.values():
+                if bry_info.boundary_type in ['velocity', 'pressure']:
+                    if interpolate_shape == 'raw':
+                        marker_indices = self.mesh.extract_surface_indices(bry_info.marker)
+                        topo_weight_value[marker_indices] = 1.0
+                    elif interpolate_shape == 'circle':
+                        dists = np.linalg.norm(
+                            self.mesh.grid.points[:, :self.mesh.tdim] - bry_info.face_center.reshape((1, -1)), axis=1  # type: ignore
+                        )
+                        topo_weight_value[dists < bry_info.face_radius] = 1.0
+                    elif interpolate_shape == 'all':
+                        pass
+                    else:
+                        raise ValueError(f"Invalid interpolate shape: {interpolate_shape}")
+                                    
+                elif bry_info.boundary_type == 'wall':
+                    marker_indices = self.mesh.extract_surface_indices(bry_info.marker)
+                    topo_weight_value[marker_indices] = 0.0
+            topo_weight.x.array[:] = topo_weight_value  # type: ignore
+            
+        else:
+            raise ValueError(f"Invalid init value type: {type(init_value)}")
+        return topo_weight # type: ignore
+
     def define_problem(
         self,
         simulation_iterations: int = 100,
@@ -108,10 +150,12 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             "mat_mumps_icntl_24": 1
         },
         adj_ksp_option: dict = {
-            'ksp_type': 'preonly',
+            'ksp_type': 'richardson',
+            'ksp_max_it': 1, # only one iteration = equivalent to preonly
             'pc_type': 'lu',
-            "pc_factor_mat_solver_type": "mumps",
-            "mat_mumps_icntl_24": 1
+            'pc_factor_mat_solver_type': 'mumps',
+            'mat_mumps_icntl_24': 1,
+            'mat_mumps_icntl_25': 0,
         },
         tlm_kwargs: dict = {
             'mat_assemble_method': 'lift',
@@ -140,7 +184,10 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             govern_form = self.define_govern_equation(u, p, v, q, f, nut)  # type: ignore
             
             self.topo_weight = DolfinxFunction(self.cell_scalar_func_space, name=f'topo_weight')  # type: ignore
-            self.topo_weight.x.array[:] = self.topo_weight_init
+            self.topo_weight.interpolate(
+                self.init_topo_weight(self.topo_weight_init, interpolate_shape='circle')
+            )
+            
             if self.obs_cell_mask.sum() > 0:
                 self.topo_weight.x.array[self.obs_cell_mask > 0.0] = 0.0
             self.topo_phi_input.x.array[:] = self.topo_weight.x.array.copy()  # type: ignore
@@ -173,7 +220,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                 parallel_num=parallel_num,
                 use_tqdm=use_tqdm,
                 use_log=use_log,
-                with_cache=True,  #  FIXME
+                with_cache=True,
                 
                 # ------ result convert related ------
                 V_to_W_dofs=self.V_to_W_dofs,
@@ -225,9 +272,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             target_volume = self.regularization_item.kwargs['target_ratio'] * self.volume
             
             self.vol_ratio_form = self.topo_weight * ufl.dx            
-            topo_volume = assemble_scalar(self.vol_ratio_form, domain=self.domain, tape=self.tape)
-            
-            # volume_dif = target_volume - topo_volume
+            topo_volume = assemble_scalar(self.vol_ratio_form, domain=self.domain, tape=self.tape)            
             volume_dif = (target_volume - topo_volume) / target_volume
             reg_cost = self.regularization_item.weight * (volume_dif ** 2)
             
@@ -244,9 +289,12 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         max_iteration=200,
         tensorboard_recorder: TensorBoardRecorder|None = None,
         hot_step: int = 20,
+        momentum_weight: float = 0.8,
     ) -> dict:
         is_solved, step = False, 0
         loss_current, loss_last = 0.0, 0.0
+        
+        with_line_search = len(line_search_steps) > 1
         line_search_steps_np: np.ndarray = np.array(line_search_steps)
         step_length_last = line_search_steps_np[0]
         
@@ -257,7 +305,9 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         loss_current = np.sum(list(loss_dict.values()))
         self.record_Upw(step)
         
-        # last_direction_np: np.ndarray
+        with_momentum = momentum_weight > 0.0
+        if with_momentum:
+            cum_direction_np = np.zeros_like(self.topo_weight.x.array)
         
         while True:
             step += 1
@@ -270,11 +320,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                 print(log)
                 
                 if tensorboard_recorder is not None:
-                    tensorboard_recorder.write_scalars(
-                        tag=f'{self.name}/loss',
-                        scalar_dict=loss_dict,
-                        step=step
-                    )
+                    tensorboard_recorder.write_scalars(tag=f'{self.name}/loss', scalar_dict=loss_dict, step=step)
                 
                 loss_residual = loss_current - loss_last
                 if np.abs(loss_residual) < 1e-6:
@@ -282,39 +328,47 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                     break
                 
             adj_input = np.minimum(np.maximum(loss_current * 0.1, 0.01), 1e2)
-            direction_np = self.compute_gradient(adj_input=adj_input, with_filter=True, with_norm=True)
-            
-            # TODO: please check later,it seem it will cause bias
-            # if step == 1:
-            #     last_direction_np = direction_np
-            # else:
-            #     direction_np = direction_np * 0.2 + last_direction_np * 0.8
-            #     last_direction_np = direction_np
+            if with_momentum:
+                current_direction_np = self.compute_gradient(adj_input=adj_input, with_filter=True, with_norm=True)
+                cum_direction_np = cum_direction_np * momentum_weight + current_direction_np * (1.0 - momentum_weight)
+                direction_np = cum_direction_np / np.max(np.abs(cum_direction_np))
+            else:
+                direction_np = self.compute_gradient(adj_input=adj_input, with_filter=True, with_norm=True)
             
             find_best_step = False
-            topo_phi_origin: np.array = topo_phi.x.array.copy()  # type: ignore
+            if with_line_search:
+                topo_phi_origin: np.array = topo_phi.x.array.copy()  # type: ignore
             
-            last_step_index = np.where(line_search_steps_np == step_length_last)[0][0]
-            line_search_start_index = np.maximum(last_step_index - 1, 0)
-            for i in range(line_search_start_index, line_search_steps_np.shape[0]):
-                step_length = line_search_steps_np[i]
-                
-                new_topo_phi = topo_phi_origin - direction_np * step_length
+                last_step_index = np.where(line_search_steps_np == step_length_last)[0][0]
+                line_search_start_index = np.maximum(last_step_index - 1, 0)
+                for i in range(line_search_start_index, line_search_steps_np.shape[0]):
+                    step_length = line_search_steps_np[i]
+                    
+                    new_topo_phi = topo_phi_origin - direction_np * step_length
+                    new_topo_phi = np.maximum(np.minimum(new_topo_phi, 1.0 - 1e-16), 1e-16)
+                    topo_phi.x.array[:] = new_topo_phi  # type: ignore
+                    
+                    loss_new = self.opt_problem(values=[topo_phi])  # type: ignore
+                    if loss_new < loss_current or step < hot_step:
+                        find_best_step = True
+                        loss_last = loss_current
+                        loss_current = loss_new                    
+                        step_length_last = step_length
+                        # self.topo_weight.x.array[:] = topo_phi.x.array  # type: ignore          
+                        self.record_Upw(step, gradient=direction_np)
+                        break
+
+            else:
+                new_topo_phi = topo_phi.x.array - direction_np * line_search_steps[0]  # type: ignore
                 new_topo_phi = np.maximum(np.minimum(new_topo_phi, 1.0 - 1e-16), 1e-16)
                 topo_phi.x.array[:] = new_topo_phi  # type: ignore
-                
                 loss_new = self.opt_problem(values=[topo_phi])  # type: ignore
                 if loss_new < loss_current or step < hot_step:
                     find_best_step = True
                     loss_last = loss_current
                     loss_current = loss_new                    
-                    step_length_last = step_length
-                    # self.topo_weight.x.array[:] = topo_phi.x.array  # type: ignore          
                     self.record_Upw(step, gradient=direction_np)
-                    break
-                else:
-                    print(f'[Log: step/{step} loss_new:{loss_new:.5f}]')
-                
+                    
             if not find_best_step:
                 print(f"[Warning]: line search fail.")
                 is_solved = False

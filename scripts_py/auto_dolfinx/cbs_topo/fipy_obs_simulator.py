@@ -218,7 +218,6 @@ class FipyStokeObsTopoSimulator(FipyStokeTopoSimulator):
         vtu_obs_weight_field: str = 'obstacle',
     ):
         assert cfg_file.endswith('.json'), "cfg_file must be a json file"
-        
         cfg_dict = {
             'source_msh_file': source_msh_file,
             'dim': dim,

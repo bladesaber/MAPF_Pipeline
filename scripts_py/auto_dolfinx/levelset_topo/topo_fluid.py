@@ -90,7 +90,7 @@ class TopoFluidOptimizer(FluidSimulator):
         nut_init: float,
         cost_item: AutoFluidCost,
         regularization_item: AutoFluidRegularization,
-        topo_weight_init: float,
+        topo_weight_init: float|np.ndarray,
         weight_filter_radius: float,
         weight_filter_is_cell_field: bool,
         result_dir: str,

@@ -5,14 +5,17 @@ class EarlyStopper(object):
     def __init__(
         self, 
         hot_step: int, window_size: int = 30, shift_step: int = 5, 
-        atol: float = 1e-6, rtol: float = 1e-3, atol_inv: float = 1e-3,
+        atol: float = 1e-6, rtol: float = 1e-4, atol_inv: float = 1e-3,
+        min_shift_weight: float = 0.3,
     ):
+        assert window_size > shift_step, "window_size must be greater than shift_step"
         self.hot_step = hot_step
         self.window_size = window_size
         self.shift_step = shift_step
         self.atol = atol
         self.rtol = rtol
         self.atol_inv = atol_inv
+        self.min_shift_weight = min_shift_weight
         
         self.record: dict[str, list] = {}
         self.convergence_threshold: dict[str, float] = {}
@@ -28,9 +31,16 @@ class EarlyStopper(object):
             self.record[name].append(value)
             if len(self.record[name]) > self.window_size:
                 self.record[name].pop(0)
+            
             if len(self.record[name]) > self.hot_step:
-                if value < self.record_min[name]:
+                if self.record_min[name] == np.inf:
                     self.record_min[name] = value
+                else:
+                    if value < self.record_min[name]:
+                        self.record_min[name] = (
+                            value * self.min_shift_weight 
+                            + self.record_min[name] * (1 - self.min_shift_weight)
+                        )
     
     def is_var_converged(self, name: str) -> bool:
         data = np.array(self.record[name])
@@ -41,9 +51,10 @@ class EarlyStopper(object):
         if data.shape[0] > self.shift_step:
             if np.abs(data[-1] - data[-self.shift_step]) < self.atol:
                 return True
-            
-            if np.abs(data[-1] - data[-self.shift_step]) / data[-1] < self.rtol:
-                return True
+        
+        # TODO: adjust it in the future
+        #     if np.abs(data[-1] - data[-self.shift_step]) / data[-1] < self.rtol:
+        #         return True
         
         return False
     

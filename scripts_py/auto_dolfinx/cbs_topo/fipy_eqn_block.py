@@ -158,7 +158,7 @@ def run_fipy_simulation(
     with open(residual_json, 'r') as f:
         res_report = json.load(f)
     
-    if use_tqdm:
+    if use_tqdm and use_log:
         log = f'[Log]: {parallel_num} Simulator: x_residual: {res_report['x_residual']:.8f} y_residual: {res_report['y_residual']:.8f} '
         if 'z_residual' in res_report:
             log += f'z_residual: {res_report['z_residual']:.8f} '

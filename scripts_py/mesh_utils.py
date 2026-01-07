@@ -366,7 +366,7 @@ class MeshUtils(object):
     @staticmethod
     def cell_indices_of_points(
         mesh: Union[dolfinx.mesh.Mesh, pyvista.UnstructuredGrid], pcd_xyz: np.ndarray
-    ) -> list[list[int]] | list[int]:
+    ) -> list[list[int]] | list[int] | np.ndarray:
         """
         find the cell indices of points in the mesh
         """
