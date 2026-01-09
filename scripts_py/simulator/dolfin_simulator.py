@@ -62,7 +62,7 @@ class FluidBoundary(object):
         face_center: np.ndarray, 
         face_norm_vector: np.ndarray,
         face_radius: float,
-        method: Literal['quadratic', 'circle', 'constant'] = 'quadratic'
+        method: Literal['quadratic', 'circle', 'constant'] = 'circle'
     ):
         bry_values = np.zeros_like(pos.T)
         

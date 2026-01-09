@@ -158,6 +158,8 @@ class TopoFluidOptimizer(FluidSimulator):
 
     def define_boundary(self):
         for name, bry_info in self.boundaries.items():
+            assert bry_info.boundary_type in ['velocity', 'pressure', 'wall'], 'Invalid boundary type'
+            
             if bry_info.boundary_type == 'velocity':
                 
                 inflow_velocity_exp = partial(
@@ -202,9 +204,10 @@ class TopoFluidOptimizer(FluidSimulator):
                     is_mixed_element=True
                 )
 
-            elif bry_info.boundary_type == 'wall':
+        # should set wall at last
+        for name, bry_info in self.boundaries.items():
+            if bry_info.boundary_type == 'wall':
                 wall_func = dolfinx.fem.Function(self.V, name=name)
-                
                 bry_info.bry_cell = DolfinxDirichletBC(
                     name=name,
                     bc_func_space=self.W0,
@@ -218,8 +221,6 @@ class TopoFluidOptimizer(FluidSimulator):
                     bc_value=wall_func,  # type: ignore
                     is_mixed_element=True
                 )
-            else:
-                raise ValueError('[Error]: Invalid Boundary Type.')
 
     @staticmethod
     def alpha_fun(
@@ -346,7 +347,10 @@ class TopoFluidOptimizer(FluidSimulator):
                     
             govern_form = self.define_govern_equation(u, p, v, q, f, nut)  # type: ignore
             
-            self.topo_weight = DolfinxFunction(self.point_scalar_func_space, name=f'topo_weight')  # type: ignore
+            if self.weight_filter_is_cell_field:
+                self.topo_weight = DolfinxFunction(self.cell_scalar_func_space, name=f'topo_weight')  # type: ignore
+            else:
+                self.topo_weight = DolfinxFunction(self.point_scalar_func_space, name=f'topo_weight')  # type: ignore
             self.topo_weight.x.array[:] = self.topo_weight_init
             
             alpha = self.alpha_fun(
@@ -504,13 +508,28 @@ class TopoFluidOptimizer(FluidSimulator):
         vel_ref_np = vel_ref.x.array.copy().reshape((-1, self.mesh.tdim))  # type: ignore
         if vel_ref_np.shape[1] == 2:
             vel_ref_np = np.concatenate([vel_ref_np, np.zeros((vel_ref_np.shape[0], 1))], axis=1)
-
+        
         self.recorder.clear(clear_point_data=True, clear_cell_data=True)
-        self.recorder.update_point_data('U', vel_ref_np)
+        self.recorder.update_point_data('vel', vel_ref_np)
+        self.recorder.update_point_data('vel_mag', np.linalg.norm(vel_ref_np, axis=1))
         self.recorder.update_point_data('p', p_ref.x.array.copy())
-        self.recorder.update_point_data('topo_weight', self.topo_weight.x.array.copy())  # type: ignore        
+        
+        if self.weight_filter_is_cell_field:
+            self.recorder.update_cell_data('topo_weight', self.topo_weight.x.array.copy())
+            point_scalar_fun = dolfinx.fem.Function(self.point_scalar_func_space)
+            point_scalar_fun.interpolate(self.topo_weight)  # type: ignore
+            self.recorder.update_point_data('topo_weight', point_scalar_fun.x.array.copy())  # type: ignore
+        else:
+            self.recorder.update_point_data('topo_weight', self.topo_weight.x.array.copy())  # type: ignore
+            cell_scalar_fun = dolfinx.fem.Function(self.cell_scalar_func_space)
+            cell_scalar_fun.interpolate(self.topo_weight)  # type: ignore
+            self.recorder.update_cell_data('topo_weight', cell_scalar_fun.x.array.copy())  # type: ignore
+        
         if kwargs.get('gradient', None) is not None:
-            self.recorder.update_point_data('gradient', kwargs['gradient'])
+            if self.weight_filter_is_cell_field:
+                self.recorder.update_cell_data('gradient', kwargs['gradient'])
+            else:
+                self.recorder.update_point_data('gradient', kwargs['gradient'])
         
         self.recorder.save(step)
     

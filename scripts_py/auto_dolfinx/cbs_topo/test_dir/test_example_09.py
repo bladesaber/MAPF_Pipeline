@@ -13,6 +13,7 @@ from scripts_py.vtu_recorder import TensorBoardRecorder
 
 from scripts_py.auto_dolfinx.cbs_topo.utils import generate_rectangle_mesh
 from scripts_py.auto_dolfinx.cbs_topo.topo_fluid_fipy_optimizer import TopoFluidOptimizerFipy
+
 from scripts_py.simulator.fipy_simulator import FipyStokeSimulator
 from scripts_py.simulator.dolfin_simulator import StokeSimulator
 
@@ -121,11 +122,11 @@ def run_topo_opt():
     mesh = SeqMeshObj(xdmf_file=None, domain=domain, cell_tags=cell_tags, facet_tags=facet_tags)
     
     cost_item = AutoFluidCost(name='obj_cost', style='MinDissipation', weight=1.0)
-    regularization_item = AutoFluidRegularization(name='reg_cost', style='Volume', weight=0.5, target_ratio=0.05)
+    regularization_item = AutoFluidRegularization(name='reg_cost', style='Volume', weight=1.0, target_ratio=0.2)
     
     result_dir = os.path.join(base_dir, 'topo_opt')
     optim = TopoFluidOptimizerFipy(
-        name='test_example_42',
+        name='test_example_09',
         mesh=mesh,
         msh_file=msh_file,
         nut_init=1.0 / 400.,
@@ -133,7 +134,8 @@ def run_topo_opt():
         regularization_item=regularization_item,
         topo_weight_init=0.1,
         obstacle_func=None,
-        weight_filter_radius=0.06,
+        weight_filter_radius=0.03,
+        weight_filter_is_cell_field=False,
         result_dir=result_dir,
         velocity_degree=1,
         pressure_degree=1,
@@ -155,7 +157,7 @@ def run_topo_opt():
             'mat_mumps_icntl_24': 1,
             'mat_mumps_icntl_25': 0,
         },
-        simulation_iterations=300,
+        simulation_iterations=200,
         convergence_threshold=1e-4,
         velocityRelaxation=0.6,
         pressureRelaxation=0.8,
@@ -164,15 +166,56 @@ def run_topo_opt():
         parallel_num=4,
         use_tqdm=True,
         use_log=True,
+        activate_init_method='boundary_radius',
+        wall_init_method='boundary_raw',
+        constraint_method='fix',
     )
-    
+            
     recorder = TensorBoardRecorder(log_dir=os.path.join(result_dir, 'log'))
     optim.run(
-        line_search_steps=[0.1, 0.05, 0.01],
-        tensorboard_recorder=recorder
+        tensorboard_recorder=recorder,
+        # line_search_steps=[0.1, 0.05, 0.01],
+        line_search_steps=[0.02],
+        full_run=True,
+        momentum_weight=0.8
     )
+
+
+def run_topo_dolfinx():
+    from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import TopoFluidOptimizer
+    
+    msh_file = os.path.join(base_dir, 'model.msh')
+    
+    domain, cell_tags, facet_tags = MeshUtils.read_msh(msh_file, dim=2)
+    mesh = MeshObj(domain=domain, cell_tags=cell_tags, facet_tags=facet_tags)
+    
+    cost_item = AutoFluidCost(name='obj_cost', style='MinDissipation', weight=1.0)
+    regularization_item = AutoFluidRegularization(name='reg_cost', style='Volume', weight=1.0, target_ratio=0.15)
+    
+    optim = TopoFluidOptimizer(
+        name='test_example_09',
+        mesh=mesh,
+        fluid_type='stoke',
+        nut_init=1.0 / 400.,
+        cost_item=cost_item,
+        regularization_item=regularization_item,
+        topo_weight_init=1.0,
+        weight_filter_radius=0.06,
+        weight_filter_is_cell_field=False,
+        result_dir=os.path.join(base_dir, 'topo_opt_dolfinx')
+    )
+    
+    tape = Tape()
+    optim.setup_tape(tape)
+    boundary_list = [define_boundary(bry_cfg, boundary_type=bry_cfg['boundary_type']) for bry_cfg in boundary_cfgs]
+    for boundary in boundary_list:
+        optim.add_boundary(boundary)
+    optim.define_problem()
+    result = optim.run()
 
 
 if __name__ == '__main__':
-    # prepare_mesh()
     run_topo_opt()
+    # run_topo_dolfinx()
+    
+    pass

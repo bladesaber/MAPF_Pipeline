@@ -10,18 +10,18 @@ import numpy as np
 import pyvista
 
 from scripts_py.mesh_utils import MeshUtils, MeshObj
-from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils
-
-from scripts_py.auto_dolfinx.cbs_topo.utils import generate_box_mesh
-from scripts_py.simulator.fipy_simulator import FipyStokeSimulator
-
 from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import (
     AutoFluidBoundary,
     AutoFluidCost,
     AutoFluidRegularization,
 )
-from scripts_py.auto_dolfinx.cbs_topo.cbs_base import CbsMeshObj
-from scripts_py.auto_dolfinx.cbs_topo.cbs_base import TopoFluidNode, TopoCbsNode, TopoCbsSolver
+from scripts_py.auto_dolfinx.cbs_topo.topo_fluid_node import TopoFluidNode, CbsMeshObj
+
+"""
+TODO:
+1. 结果还是有不符合我们想象的地方,进出口处可能由于崩角原因,速度会在进出口处变得很大,导致进出口体积大,中间体积小.
+2. 为什么结果存在崩塌,为什么崩塌后obj_cost反而更小
+"""
 
 
 base_dir = '/home/admin123456/Desktop/work/gmsh_test/t36/'
@@ -44,208 +44,108 @@ boundary_cfgs = [
         'name': 'inlet1',
         'boundary_type': 'velocity',
         'value': [1.0, 0.0, 0.0],
-        'marker': 1,
-        'face_center': np.array([0.0, 0.5, 0.5]),
+        'marker': 26,
+        'face_center': np.array([-0.05, 0.5, 0.5]),
         'face_norm_vector': np.array([1.0, 0.0, 0.0]),
         'face_radius': 0.1,
+        'group': 'group_a',
     },
     {
         'name': 'outlet1',
         'boundary_type': 'pressure',
         'value': 0.0,
-        'marker': 2,
-        'face_center': np.array([1.0, 0.5, 0.5]),
+        'marker': 27,
+        'face_center': np.array([1.05, 0.5, 0.5]),
         'face_norm_vector': np.array([1.0, 0.0, 0.0]),
         'face_radius': 0.1,
+        'group': 'group_a',
     },
     {
         'name': 'inlet2',
         'boundary_type': 'velocity',
         'value': [0.0, 1.0, 0.0],
-        'marker': 3,
-        'face_center': np.array([0.5, 0.0, 0.5]),
+        'marker': 28,
+        'face_center': np.array([0.5, -0.05, 0.5]),
         'face_norm_vector': np.array([0.0, 1.0, 0.0]),
         'face_radius': 0.1,
+        'group': 'group_b',
     },
     {
         'name': 'outlet2',
         'boundary_type': 'pressure',
         'value': 0.0,
-        'marker': 4,
-        'face_center': np.array([0.5, 1.0, 0.5]),
+        'marker': 29,
+        'face_center': np.array([0.5, 1.05, 0.5]),
         'face_norm_vector': np.array([0.0, 1.0, 0.0]),
         'face_radius': 0.1,
+        'group': 'group_b',
     },
     {
         'name': 'wall',
         'boundary_type': 'wall',
         'value': 0.0,
-        'marker': 5,
+        'marker': 30,
+        'group': 'all',
     }
 ]
 
 
-def prepare_mesh():
-    xdmf_file = os.path.join(base_dir, 'model.xdmf')
-    msh_file = os.path.join(base_dir, 'model.msh')
-    
-    boundary_list = [define_boundary(bry_cfg, boundary_type=bry_cfg['boundary_type']) for bry_cfg in boundary_cfgs]
-    mesh = generate_box_mesh(
-        boundary_list=boundary_list, 
-        left_bottom_corner=np.array([0.0, 0.0, 0.0]), 
-        right_top_corner=np.array([1.0, 1.0, 1.0]), 
-        num_cells=[30, 30, 30], 
-        xdmf_file=xdmf_file, 
-        cell_type=dolfinx.mesh.CellType.tetrahedron, comm=MPI.COMM_WORLD
-    )
-    print('Mesh. Info:')
-    print(mesh.grid)
-    
-    face_tags = {}
-    for boundary in boundary_list:
-        face_tags[boundary.name] = boundary.marker
-    
-    MeshUtils.generate_msh22_file(
-        mesh=mesh, filename=msh_file, face_tags=face_tags, cell_tags={"volume": 9}
-    )
-    FipyStokeSimulator.msh_version_convert(
-        source_msh_file=msh_file, target_msh_file=msh_file, target_version='msh4', num_partitions=1
-    )
-    
-    MeshUtils.msh_to_XDMF(msh_file=msh_file, xdmf_file=xdmf_file, dim=mesh.tdim)
-    mesh = MeshObj(xdmf_file=os.path.join(base_dir, 'model.xdmf'))
-    
-    plotter = pyvista.Plotter()
-    plotter.add_mesh(mesh.grid, style='wireframe')
-    for boundary in boundary_list:
-        idxs = mesh.extract_surface_indices(boundary.marker)
-        if boundary.boundary_type == 'velocity':
-            plotter.add_mesh(pyvista.PointSet(mesh.grid.points[idxs]), color='red', style='points')
-        elif boundary.boundary_type == 'pressure':
-            plotter.add_mesh(pyvista.PointSet(mesh.grid.points[idxs]), color='blue', style='points')
-        elif boundary.boundary_type == 'wall':
-            plotter.add_mesh(pyvista.PointSet(mesh.grid.points[idxs]), color='green', style='points')
-    plotter.show()
-    
-    return mesh
-
-
 def prepare_nodes():
-    # TODO: 优化路径依然存在问题,优化过程很奇怪,而且优化道路不笔直,体积很大,要试下更小的target_ratio
     fluid_node_dir = os.path.join(base_dir, 'fluid_node_dir')
     if os.path.exists(fluid_node_dir):
         shutil.rmtree(fluid_node_dir)
     os.mkdir(fluid_node_dir)
     
-    cbs_node_fir = os.path.join(base_dir, 'cbs_node_dir')
-    if os.path.exists(cbs_node_fir):
-        shutil.rmtree(cbs_node_fir)
-    os.mkdir(cbs_node_fir)
-    
     mesh = CbsMeshObj(
-        cell_mode=True, msh_file=os.path.join(base_dir, 'model.msh'), xdmf_file=os.path.join(base_dir, 'model.xdmf')
+        msh_file=os.path.join(base_dir, 'model.msh'), 
+        dim=3,
+        cell_mode=True, 
     )
-    mesh.create_neighbors_info()
     
-    # ------ define fluid node 0
-    start_time = time.time()
-    fluid_node_0 = TopoFluidNode(
-        mesh=mesh, 
-        name='group_a', 
-        save_dir=fluid_node_dir, 
-        node_idx=0,
-        weight_filter_radius=0.06,
-        topo_weight_init=1.0,
-        viscosity=1.0 / 400.,
-        simulation_iterations=200,
-        convergence_threshold=1e-3,
-        velocityRelaxation=0.6,
-        pressureRelaxation=0.8,
-        log_step=2,
-        hot_steps=10,
-        parallel_num=4,
-        use_tqdm=True,
-        use_log=True,
-    )
+    # ------ define fluid node
+    for node_idx, group_name in enumerate(['group_a', 'group_b']):        
+        node = TopoFluidNode(
+            mesh=mesh, 
+            name=group_name, 
+            save_dir=fluid_node_dir, 
+            node_idx=node_idx,
+            weight_filter_radius=0.075,
+            topo_weight_init=0.1,
+            viscosity=1.0 / 400.,
+            simulation_iterations=200,
+            convergence_threshold=1e-4,
+            velocityRelaxation=0.6,
+            pressureRelaxation=0.8,
+            log_step=2,
+            hot_steps=10,
+            parallel_num=8,
+            use_tqdm=True,
+            use_log=True,
+        )
         
-    inlet_idx, outlet_idx = 0, 1
-    v_bry = define_boundary(boundary_cfgs[inlet_idx], boundary_type='velocity')
-    p_bry = define_boundary(boundary_cfgs[outlet_idx], boundary_type='pressure')
-    fluid_node_0.inlet_brys[v_bry.name] = v_bry
-    fluid_node_0.outlet_brys[p_bry.name] = p_bry
-    
-    for idx, bry_cfg in enumerate(boundary_cfgs):
-        if idx == inlet_idx or idx == outlet_idx:
-            continue
-        w_bry = define_boundary(bry_cfg, boundary_type='wall')
-        fluid_node_0.wall_brys[w_bry.name] = w_bry
-    
-    fluid_node_0.object_cost = AutoFluidCost(
-        name='obj_cost', 
-        style='MinDissipation', 
-        weight=1.0
-    )
-    fluid_node_0.regularization_cost = AutoFluidRegularization(
-        name='reg_cost', 
-        style='Volume', 
-        weight=10.0, 
-        target_ratio=0.1
-    )
-    fluid_node_0.solve()
-    fluid_node_0.save()
-    end_time = time.time()
-    print(f'Time taken: {end_time - start_time} seconds')
-    
-    # ------ define fluid node 1
-    start_time = time.time()
-    fluid_node_1 = TopoFluidNode(
-        mesh=mesh, 
-        name='group_b', 
-        save_dir=fluid_node_dir, 
-        node_idx=1,
-        weight_filter_radius=0.06,
-        topo_weight_init=1.0,
-        viscosity=1.0 / 400.,
-        simulation_iterations=200,
-        convergence_threshold=1e-3,
-        velocityRelaxation=0.6,
-        pressureRelaxation=0.8,
-        log_step=2,
-        hot_steps=10,
-        parallel_num=4,
-        use_tqdm=True,
-        use_log=True,
-    )
-    
-    inlet_idx, outlet_idx = 2, 3
-    v_bry = define_boundary(boundary_cfgs[inlet_idx], boundary_type='velocity')
-    p_bry = define_boundary(boundary_cfgs[outlet_idx], boundary_type='pressure')
-    fluid_node_1.inlet_brys[v_bry.name] = v_bry
-    fluid_node_1.outlet_brys[p_bry.name] = p_bry
-    
-    for idx, bry_cfg in enumerate(boundary_cfgs):
-        if idx == inlet_idx or idx == outlet_idx:
-            continue
-        w_bry = define_boundary(bry_cfg, boundary_type='wall')
-        fluid_node_1.wall_brys[w_bry.name] = w_bry
+        for bry_cfg in boundary_cfgs:
+            if bry_cfg['group'] == group_name:
+                bry = define_boundary(bry_cfg, boundary_type=bry_cfg['boundary_type'])
+                if bry_cfg['boundary_type'] == 'velocity':
+                    node.inlet_brys[bry.name] = bry
+                elif bry_cfg['boundary_type'] == 'pressure':
+                    node.outlet_brys[bry.name] = bry
+            else:
+                bry = define_boundary(bry_cfg, boundary_type='wall')
+                node.wall_brys[bry.name] = bry
+        
+        node.object_cost = AutoFluidCost(name='obj_cost', style='MinDissipation', weight=1.0)
+        node.regularization_cost = AutoFluidRegularization(name='reg_cost', style='Volume', weight=1.0, target_ratio=0.2)
 
-    fluid_node_1.object_cost = AutoFluidCost(
-        name='obj_cost', 
-        style='MinDissipation', 
-        weight=1.0
-    )
-    fluid_node_1.regularization_cost = AutoFluidRegularization(
-        name='reg_cost', 
-        style='Volume', 
-        weight=10.0, 
-        target_ratio=0.1
-    )
-    fluid_node_1.solve()
-    fluid_node_1.save()
-    end_time = time.time()
-    print(f'Time taken: {end_time - start_time} seconds')
+        start_time = time.time()
+        node.solve()
+        end_time = time.time()
+        print(f'Time taken: {end_time - start_time} seconds')
+        node.save()
+        
+        break
 
-
+"""
 def prepare_cbs_node():
     # TODO: 由这里可以看出,topology optimization的标准grid化结果依然不足够好,表面光滑度不够,也不成凸集,可能需要更光滑的映射层
     fluid_node_dir = os.path.join(base_dir, 'fluid_node_dir')
@@ -322,11 +222,10 @@ def run_cbs_solver():
     cbs_solver.cbs_node_count = len(cbs_solver.cbs_nodes)
     cbs_solver.cbs_nodes[cbs_node.name] = cbs_node
     cbs_solver.solve()
+"""
 
-
-if __name__ == '__main__':
-    prepare_mesh()
-    # prepare_nodes()
+if __name__ == '__main__':    
+    prepare_nodes()
     # prepare_cbs_node()
     # run_cbs_solver()
     

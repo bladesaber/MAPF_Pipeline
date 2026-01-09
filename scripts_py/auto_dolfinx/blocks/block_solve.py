@@ -342,7 +342,7 @@ class EquationSolveBlock(Block):
         
         return res_dict['res'].array
 
-    def prepare_evaluate_adj(self, inputs, adj_inputs, relevant_dependencies):
+    def prepare_evaluate_adj(self, inputs, adj_inputs, relevant_dependencies):        
         '''
         reference: https://www.firedrakeproject.org/adjoint.html
         change from commit id: 7c836c546d2d21f05d5234fe7f7ea1538e8d866d
@@ -395,7 +395,7 @@ class EquationSolveBlock(Block):
                 value_type=c.bc_value
             )
             bcs.append(new_bc)
-        
+                
         # can't clean vec because dJdu_vec is adjoint input
         BoundaryUtils.apply_boundary_to_vec(
             dJdu_vec, bcs, DolfinUtils.ufl_to_dolfin(dFdu), 
@@ -413,14 +413,22 @@ class EquationSolveBlock(Block):
         
         # ------ solve adjoint variable ------
         solver = LinearProblemSolver.create_petsc_solver(self.domain.comm, self.adj_ksp_option, ajoint_mat)
+        
+        if 'critical_method' in self.adj_kwargs.keys():
+            with_residual = self.adj_kwargs['with_residual']
+            if self.adj_kwargs['critical_method'] == 'residual':
+                with_residual = True
+        else:
+            with_residual = self.adj_kwargs['with_residual']
+        
         res_dict = LinearProblemSolver.solve_by_petsc(
             dJdu_vec, ajoint_mat, solver, 
             setOperators=False, 
-            with_residual=self.adj_kwargs['with_residual']
+            with_residual=with_residual
         )
         if not res_dict['is_solved']:
             # TODO: improve future
-            if self.adj_kwargs['with_residual'] and self.adj_kwargs['critical_method'] == 'residual':
+            if self.adj_kwargs['critical_method'] == 'residual':
                 residual_error = res_dict['max_residual']
                 if residual_error > 1e-8:
                     raise ValueError(f"Failed to solve adjoint problem with residual error: {residual_error}")

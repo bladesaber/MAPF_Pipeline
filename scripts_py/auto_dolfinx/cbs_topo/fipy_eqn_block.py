@@ -79,6 +79,41 @@ def convert_result_to_dolfinx(
     return uh
 
 
+def convert_point_to_cell(point_field: np.ndarray, structure_mesh: SeqMeshObj, is_vector: bool):
+    if is_vector:
+        point_func_space = DolfinUtils.point_vector_function_space(structure_mesh.domain)
+        cell_func_space = DolfinUtils.cell_vector_function_space(structure_mesh.domain)
+    else:
+        point_func_space = DolfinUtils.point_scalar_function_space(structure_mesh.domain)
+        cell_func_space = DolfinUtils.cell_scalar_function_space(structure_mesh.domain)
+    
+    point_func = dolfinx.fem.Function(point_func_space)
+    cell_func = dolfinx.fem.Function(cell_func_space)
+    point_func.x.array[:] = point_field.reshape((-1,))  # type: ignore
+    cell_func.interpolate(point_func)  # type: ignore
+    if is_vector:
+        return cell_func.x.array.copy().reshape((-1, point_field.shape[1]))  # type: ignore
+    else:
+        return cell_func.x.array.copy()  # type: ignore
+
+
+def convert_cell_to_point(cell_field: np.ndarray, structure_mesh: SeqMeshObj, is_vector: bool):
+    if is_vector:
+        cell_func_space = DolfinUtils.cell_vector_function_space(structure_mesh.domain)
+        point_func_space = DolfinUtils.point_vector_function_space(structure_mesh.domain)
+    else:
+        cell_func_space = DolfinUtils.cell_scalar_function_space(structure_mesh.domain)
+        point_func_space = DolfinUtils.point_scalar_function_space(structure_mesh.domain)
+    cell_func = dolfinx.fem.Function(cell_func_space)
+    point_func = dolfinx.fem.Function(point_func_space)
+    cell_func.x.array[:] = cell_field.reshape((-1,))  # type: ignore
+    point_func.interpolate(cell_func)  # type: ignore
+    if is_vector:
+        return point_func.x.array.copy().reshape((-1, cell_field.shape[1]))  # type: ignore
+    else:
+        return point_func.x.array.copy()  # type: ignore
+
+
 def run_fipy_simulation(
     boundaries: list[AutoFluidBoundary],
     msh_file: str,
@@ -96,6 +131,8 @@ def run_fipy_simulation(
     use_tqdm: bool,
     use_log: bool,
     parallel_num: int,
+    is_cell_field: bool,
+    is_vector_field: bool,
     force_msh_init: bool = False,
     init_vtu: pyvista.UnstructuredGrid|None = None,
 ):
@@ -114,9 +151,19 @@ def run_fipy_simulation(
         init_vtu = structure_mesh.grid.copy()
     
     if structure_alpha is not None:
-        init_vtu.cell_data['alpha'] = structure_alpha
+        if is_cell_field:
+            init_vtu.cell_data['alpha'] = structure_alpha
+            # init_vtu.point_data['alpha'] = convert_cell_to_point(structure_alpha, structure_mesh, is_vector_field)
+        else:
+            # init_vtu.point_data['alpha'] = structure_alpha
+            init_vtu.cell_data['alpha'] = convert_point_to_cell(structure_alpha, structure_mesh, is_vector_field)
     if structure_obs_weight is not None:
-        init_vtu.cell_data['obstacle'] = structure_obs_weight
+        if is_cell_field:
+            init_vtu.cell_data['obstacle'] = structure_obs_weight
+            # init_vtu.point_data['obstacle'] = convert_cell_to_point(structure_obs_weight, structure_mesh, is_vector_field)
+        else:
+            # init_vtu.point_data['obstacle'] = structure_obs_weight
+            init_vtu.cell_data['obstacle'] = convert_point_to_cell(structure_obs_weight, structure_mesh, is_vector_field)
     
     init_vtu_file = os.path.join(save_dir, 'init.vtu')
     init_vtu.save(init_vtu_file)
@@ -195,6 +242,8 @@ def equation_stokeEqn_solve(
     use_tqdm: bool,
     use_log: bool,
     with_cache: bool,
+    is_cell_field: bool,
+    is_vector_field: bool,
     
     # ------ result convert related ------
     V_to_W_dofs: np.ndarray,
@@ -281,6 +330,8 @@ def equation_stokeEqn_solve(
             parallel_num=parallel_num,
             force_msh_init=True,
             init_vtu=None,
+            is_cell_field=is_cell_field,
+            is_vector_field=is_vector_field,
         )
                 
         state = convert_result_to_dolfinx(
@@ -318,6 +369,8 @@ def equation_stokeEqn_solve(
             use_tqdm = use_tqdm,
             use_log = use_log,
             cache_memory = cache_memory,
+            is_cell_field=is_cell_field,
+            is_vector_field=is_vector_field,
             
             # ------ result convert related ------
             V_to_W_dofs = V_to_W_dofs,
@@ -372,6 +425,8 @@ class StockEquationSolveBlock(EquationSolveBlock):
         use_tqdm: bool,
         use_log: bool,
         cache_memory: CacheMemory|None,
+        is_cell_field: bool,
+        is_vector_field: bool,
         
         # ------ alpha related ------
         topo_weight_name: str,
@@ -427,6 +482,8 @@ class StockEquationSolveBlock(EquationSolveBlock):
         self.use_tqdm = use_tqdm
         self.use_log = use_log
         self.cache_memory = cache_memory
+        self.is_cell_field = is_cell_field
+        self.is_vector_field = is_vector_field
         
         # ------ alpha related ------
         self.topo_weight_name = topo_weight_name
@@ -487,6 +544,8 @@ class StockEquationSolveBlock(EquationSolveBlock):
             parallel_num=self.parallel_num,
             force_msh_init=True,
             init_vtu=init_vtu,
+            is_cell_field=self.is_cell_field,
+            is_vector_field=self.is_vector_field,
         )
         if self.cache_memory is not None:
             self.cache_memory = cache_memory
