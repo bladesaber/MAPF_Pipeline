@@ -1,0 +1,761 @@
+from typing import Literal, Union
+import os
+
+import dolfinx
+import ufl
+from ufl import inner, grad, div
+import ufl.tensors
+import ufl.indexed
+
+import numpy as np
+from functools import partial
+
+from scripts_py.mesh_utils import MeshUtils, MeshObj
+from scripts_py.simulator.dolfin_simulator import FluidBoundary, FluidSimulator
+from scripts_py.vtu_recorder import VtuRecorder, TensorBoardRecorder
+
+from thirdparty.pyadjoint.pyadjoint import Tape, ReducedFunctional, Control, compute_gradient
+from thirdparty.pyadjoint.pyadjoint.tape import set_working_tape
+
+from scripts_py.mesh_utils import MeshUtils
+from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils
+from scripts_py.dolfinx_adjoint.topology_utils.topology_filter import DistanceBandFilter
+
+from scripts_py.auto_dolfinx.types.type_mesh import DolfinxMesh
+from scripts_py.auto_dolfinx.types.type_function import DolfinxFunction
+from scripts_py.auto_dolfinx.types.type_dirichletBC import DolfinxDirichletBC
+from scripts_py.auto_dolfinx.blocks.block_solve import equation_solve
+from scripts_py.auto_dolfinx.blocks.block_assemble import assemble_scalar
+from scripts_py.auto_dolfinx.tape_utils import start_annotation
+
+
+class AutoFluidBoundary(FluidBoundary):
+    def __init__(
+        self, 
+        name: str, 
+        boundary_type: Literal['velocity', 'pressure', 'wall'], 
+        value: Union[float, list[float], np.ndarray], 
+        marker: int, 
+        is_free: bool|None = None,
+        **kwargs
+    ):
+        super().__init__(name, boundary_type, value, marker, **kwargs)
+        self.bry_cell: DolfinxDirichletBC
+        self.is_free = is_free
+        # self.control_bry_cell: DolfinxDirichletBC
+
+
+class TopoFluidOptimizer(FluidSimulator):
+    def __init__(
+        self, 
+        name: str, 
+        mesh: MeshObj,
+        fluid_type: Literal['stoke', 'naiver_stoke', 'rans'],
+        viscosity_init: float|np.ndarray,
+        is_topo_cell: bool,
+        topo_weight_init: float|np.ndarray,
+        weight_filter_radius: float,
+        result_dir: str,
+        alpha_fun_max: float = 100.0,
+        alpha_fun_min: float = 1e-12,
+        alpha_fun_p: float = 3.0,
+        velocity_degree = 2,
+        pressure_degree = 1,
+        velocity_space: Literal['CG', 'DG', 'Lagrange'] = 'Lagrange',
+        pressure_space: Literal['CG', 'DG', 'Lagrange'] = 'Lagrange',
+    ):
+        super().__init__(
+            name, 
+            mesh, 
+            velocity_degree=velocity_degree, 
+            pressure_degree=pressure_degree,
+            velocity_space=velocity_space, 
+            pressure_space=pressure_space,
+        )
+        
+        self.domain = DolfinxMesh(self.mesh.domain)
+        self.mesh.domain = self.domain
+        
+        self.boundaries: dict[str, AutoFluidBoundary] = {}
+        
+        self.cell_scalar_func_space = DolfinUtils.cell_scalar_function_space(self.mesh.domain)
+        self.cell_vector_func_space = DolfinUtils.cell_vector_function_space(self.mesh.domain)
+        self.point_scalar_func_space = DolfinUtils.point_scalar_function_space(self.mesh.domain)
+        self.point_vector_func_space = DolfinUtils.point_vector_function_space(self.mesh.domain)
+        
+        self.surface_area: float = AssembleUtils.assemble_scalar(dolfinx.fem.form(
+            dolfinx.fem.Constant(self.mesh.domain, 1.0) * ufl.ds  # type: ignore
+        ))
+        self.volume: float = AssembleUtils.assemble_scalar(dolfinx.fem.form(  # type: ignore
+            dolfinx.fem.Constant(self.mesh.domain, 1.0) * ufl.dx  # type: ignore
+        ))
+        
+        self.fluid_type: Literal['stoke', 'naiver_stoke', 'rans'] = fluid_type
+        self.viscosity_init = viscosity_init
+        self.topo_weight_init = topo_weight_init
+        
+        self.alpha_fun_max = alpha_fun_max
+        self.alpha_fun_min = alpha_fun_min
+        self.alpha_fun_p = alpha_fun_p
+        
+        self.result_dir = result_dir
+        self.recorder = VtuRecorder(self.mesh, save_dir=self.result_dir, is_binary=True)
+        
+        self.weight_filter_radius = weight_filter_radius
+        self.is_topo_cell = is_topo_cell
+        self.weight_filter = DistanceBandFilter(self.mesh.grid, weight_filter_radius, is_topo_cell, True)
+        
+        self.control_phi: Control
+        self.opt_problem: ReducedFunctional
+        
+    def setup_tape(self, tape: Tape|None = None):
+        if tape is None:
+            self.tape = Tape()
+        else:
+            self.tape = tape
+        set_working_tape(self.tape)
+
+    def define_boundary(self):
+        for name, bry_info in self.boundaries.items():
+            assert bry_info.boundary_type in ['velocity', 'pressure', 'wall'], 'Invalid boundary type'
+            if bry_info.boundary_type == 'velocity':
+                inflow_velocity_exp = partial(
+                    AutoFluidBoundary.inflow_velocity_exp,
+                    velocity=np.array(bry_info.value),
+                    tdim=self.mesh.tdim,
+                    face_center=bry_info.face_center, # type: ignore
+                    face_norm_vector=bry_info.face_norm_vector, # type: ignore
+                    face_radius=bry_info.face_radius, # type: ignore
+                    method=bry_info.interpolate_method,
+                )
+                
+                bc_value_fun = dolfinx.fem.Function(self.V)
+                bc_value_fun.interpolate(inflow_velocity_exp)  # type: ignore
+                bry_info.bry_cell = DolfinxDirichletBC(
+                    name=name,
+                    bc_func_space=self.W0,
+                    value_func_space=self.V,
+                    dofs=MeshUtils.extract_entity_dofs(
+                        (self.W0, self.V), self.mesh.fdim,
+                        MeshUtils.extract_entity_indices(
+                            self.mesh.domain, style='facet', mesh_tags=self.mesh.facet_tags, marker=bry_info.marker
+                        )
+                    ),
+                    bc_value=bc_value_fun,  # type: ignore
+                    is_mixed_element=True
+                )
+
+            elif bry_info.boundary_type == 'pressure':
+                pressure_func = dolfinx.fem.Function(self.Q, name=name)
+                pressure_func.x.array[:] = bry_info.value  # type: ignore
+                bry_info.bry_cell = DolfinxDirichletBC(
+                    name=name,
+                    bc_func_space=self.W1,
+                    value_func_space=self.Q,
+                    dofs=MeshUtils.extract_entity_dofs(
+                        (self.W1, self.Q), self.mesh.fdim,
+                        MeshUtils.extract_entity_indices(
+                            self.mesh.domain, style='facet', mesh_tags=self.mesh.facet_tags, marker=bry_info.marker
+                        )
+                    ),
+                    bc_value=pressure_func,  # type: ignore
+                    is_mixed_element=True
+                )
+
+            elif bry_info.boundary_type == 'wall':
+                wall_func = dolfinx.fem.Function(self.V, name=name)
+                bry_info.bry_cell = DolfinxDirichletBC(
+                    name=name,
+                    bc_func_space=self.W0,
+                    value_func_space=self.V,
+                    dofs=MeshUtils.extract_entity_dofs(
+                        (self.W0, self.V), self.mesh.fdim,
+                        MeshUtils.extract_entity_indices(
+                            self.mesh.domain, style='facet', mesh_tags=self.mesh.facet_tags, marker=bry_info.marker
+                        )
+                    ),
+                    bc_value=wall_func,  # type: ignore
+                    is_mixed_element=True
+                )
+
+    def get_bcs(self):
+        """set wall boundary at last"""        
+        return [bry_info.bry_cell for bry_info in sorted(self.boundaries.values(), key=lambda x: x.priority)]
+
+    @staticmethod
+    def alpha_fun(rho: np.ndarray|dolfinx.fem.Function, alpha_min=1e-12, alpha_max=100.0, p=3.0, pow_operator=ufl.elem_pow):
+        return alpha_min + pow_operator(1.0 - rho, p) * (alpha_max - alpha_min)  # type: ignore
+
+    def define_govern_equation(
+        self, 
+        u: ufl.tensors.ListTensor, p: ufl.indexed.Indexed,
+        v: ufl.tensors.ListTensor, q: ufl.indexed.Indexed,
+        f: dolfinx.fem.Function,
+        nut: dolfinx.fem.Function,
+    ):
+        """Args:
+            U: velocity field
+            p: pressure field
+            V: velocity test function
+            q: pressure test function
+            f: body force
+            nut: viscosity
+        """
+        if self.fluid_type == 'stoke':
+            govern_form = (
+                nut * inner(grad(u), grad(v)) * ufl.dx  # type: ignore
+                - inner(p, div(v)) * ufl.dx 
+                + inner(div(u), q) * ufl.dx
+                - inner(f, v) * ufl.dx
+            )
+            
+        elif self.fluid_type in ['naiver_stoke', 'rans']:
+            govern_form = (
+                nut * inner(grad(u), grad(v)) * ufl.dx  # type: ignore
+                + inner(grad(u) * u, v) * ufl.dx  # type: ignore
+                - inner(div(v), p) * ufl.dx
+                + inner(q, div(u)) * ufl.dx
+                - inner(f, v) * ufl.dx
+            )
+        else:
+            raise ValueError(f'Invalid fluid type: {self.fluid_type}')
+        return govern_form
+
+    def prepare_cost_args(self, u: ufl.tensors.ListTensor, p: ufl.indexed.Indexed, obj_cost_args: dict, **kwargs):
+        cost_parse_dict = {}
+        
+        if obj_cost_args['style'] == 'MinDissipation':
+            with_viscosity = obj_cost_args['with_viscosity']
+            if with_viscosity:
+                min_dissipation_form = kwargs['viscosity'] * inner(grad(u), grad(u)) * ufl.dx
+            else:
+                min_dissipation_form = inner(grad(u), grad(u)) * ufl.dx
+            cost_parse_dict.update({
+                'min_dissipation_form': min_dissipation_form
+            })
+            
+        elif obj_cost_args['style'] == 'MinDissipation+BrinkmanPenalized':
+            with_viscosity = obj_cost_args['with_viscosity']
+            if with_viscosity:
+                min_dissipation_form = kwargs['viscosity'] * inner(grad(u), grad(u)) * ufl.dx
+            else:
+                min_dissipation_form = inner(grad(u), grad(u)) * ufl.dx
+            penalized_term = 0.5 * kwargs['alpha'] * inner(u, u) * ufl.dx
+            cost_parse_dict.update({
+                'min_dissipation_form': min_dissipation_form,
+                'penalized_term': penalized_term,
+            })
+            
+        elif obj_cost_args['style'] == 'MinPressure':
+            inlet_marker: int = obj_cost_args['inlet_marker']
+            face_area_form = dolfinx.fem.Constant(self.mesh.domain, 1.0) * self.ds(inlet_marker)  # type: ignore
+            face_area = AssembleUtils.assemble_scalar(face_area_form)
+            cost_parse_dict.update({
+                'face_area_form': face_area_form,
+                'face_area': face_area,
+                'pressure_form': (1.0 / face_area) * p * self.ds(inlet_marker)
+            })
+            
+        elif obj_cost_args['style'] == 'FixedFlux':
+            inlet_markers: list[int] = obj_cost_args['inlet_markers']
+            inlet_flux = 0.0
+            for marker in inlet_markers:
+                inlet_flux += AssembleUtils.assemble_scalar(ufl.dot(u, self.n_vec) * self.ds(marker))
+            inlet_flux = inlet_flux * -1.0  # TODO: should I multiply -1.0?
+            
+            outlet_markers: list[int] = obj_cost_args['outlet_markers']
+            assert len(outlet_markers) > 1, 'At least two outlet marker is required for FixedFlux cost'
+            outlet_marker_ratios = obj_cost_args['outlet_marker_ratios']
+            assert np.sum(outlet_marker_ratios) == 1.0, 'Outlet marker ratios must sum to 1.0'
+            outlet_marker_weights = obj_cost_args['outlet_marker_weights']
+            
+            outlet_cost_forms = {}
+            for marker, ratio, weight in zip(outlet_markers, outlet_marker_ratios, outlet_marker_weights):
+                target_flux = inlet_flux * ratio
+                outlet_flux_form = ufl.dot(u, self.n_vec) * self.ds(marker)
+                outlet_cost_forms[marker] = {
+                    'flux_form': outlet_flux_form,
+                    'target_flux': target_flux,
+                    'weight': weight,
+                }
+            cost_parse_dict.update({
+                'inlet_flux': inlet_flux,
+                'outlet_cost_forms': outlet_cost_forms,
+            })
+        
+        else:
+            raise ValueError(f'Invalid cost style: {obj_cost_args['style']}')
+
+        obj_cost_args.update(cost_parse_dict)
+        
+        return obj_cost_args
+
+    def prepare_reg_args(self, reg_cost_args: dict):
+        reg_parse_dict = {}
+
+        if reg_cost_args['style'] == 'Volume':
+            if 'target_ratio' in reg_cost_args.keys():
+                target_volume = self.volume * reg_cost_args['target_ratio']
+            else:
+                target_volume = reg_cost_args['target_volume']
+            
+            reg_parse_dict.update({
+                'target_volume': target_volume,
+                'vol_form': self.topo_weight * ufl.dx 
+            })
+        
+        reg_cost_args.update(reg_parse_dict)
+        return reg_cost_args
+
+    def define_problem(
+        self,
+        obj_cost_args: dict,
+        reg_cost_args: dict,
+        obstacle_cost_args: dict|None = None,
+        tlm_ksp_option: dict = {
+            'ksp_type': 'preonly',
+            'pc_type': 'lu',
+            "pc_factor_mat_solver_type": "mumps",
+            "mat_mumps_icntl_24": 1
+        },
+        adj_ksp_option: dict = {
+            'ksp_type': 'preonly',
+            'pc_type': 'lu',
+            "pc_factor_mat_solver_type": "mumps",
+            "mat_mumps_icntl_24": 1
+        },
+        forward_ksp_option: dict = {
+            'ksp_setting': {
+                'ksp_type': 'preonly',
+                'pc_type': 'lu',
+                "pc_factor_mat_solver_type": "mumps",
+                "mat_mumps_icntl_24": 1
+            },
+            'snes_setting': {}
+        },
+        tlm_kwargs: dict = {
+            'mat_assemble_method': 'lift',
+            'with_residual': False
+        },
+        adj_kwargs: dict = {
+            'mat_assemble_method': 'lift',
+            'with_residual': False
+        },
+        forward_kwargs: dict = {
+            'mat_assemble_method': 'lift',
+            'with_residual': False
+        }
+    ):
+        if obstacle_cost_args is not None:
+            obstacle_weight = np.zeros(self.mesh.num_points)
+            obstacle_dofs = obstacle_cost_args['obstacle_func'](DolfinUtils.tabulate_dof_coordinates(self.point_scalar_func_space))
+            if obstacle_dofs.shape[0] > 0:
+                obstacle_weight[obstacle_dofs] = 1.0
+                
+            obs_point_mask = DolfinxFunction(self.point_scalar_func_space, name="obstacle_source")
+            obs_point_mask.x.array[:] = obstacle_weight  # type: ignore
+            obstacle_cost_args['obs_point_mask'] = obs_point_mask
+            obstacle_cost_args['is_cell_field'] = False
+        self.obstacle_cost_args = obstacle_cost_args
+        
+        self.define_boundary()
+        with start_annotation():
+            uh = DolfinxFunction(self.W, name=f"{self.name}_state")
+            u, p = ufl.split(uh)  # type: ignore # please don't use up.split()
+            vq = DolfinxFunction(self.W, name=f"{self.name}_adjoint")
+            v, q = ufl.split(vq)  # type: ignore # please don't use up.split()
+            
+            f = dolfinx.fem.Constant(self.mesh.domain, np.zeros(self.mesh.tdim))
+            self.viscosity = DolfinxFunction(self.point_scalar_func_space, name=f"{self.name}_viscosity")
+            self.viscosity.x.array[:] = self.viscosity_init  # type: ignore
+                    
+            govern_form = self.define_govern_equation(u, p, v, q, f, self.viscosity)  # type: ignore
+            
+            if self.is_topo_cell:
+                self.topo_weight = DolfinxFunction(self.cell_scalar_func_space, name=f'topo_weight')  # type: ignore
+            else:
+                self.topo_weight = DolfinxFunction(self.point_scalar_func_space, name=f'topo_weight')  # type: ignore
+            self.topo_weight.x.array[:] = self.topo_weight_init  # type: ignore
+            
+            alpha = self.alpha_fun(
+                rho=self.topo_weight,  # type: ignore
+                alpha_min=self.alpha_fun_min, 
+                alpha_max=self.alpha_fun_max, 
+                p=self.alpha_fun_p, 
+                pow_operator=np.power
+            )
+            govern_form += alpha * inner(u, v) * ufl.dx
+            
+            uh = equation_solve(
+                domain=self.domain,
+                F_form=govern_form,
+                state=uh,  # type: ignore
+                adjoint=vq,  # type: ignore
+                bcs=self.get_bcs(),  # type: ignore
+                is_linear=True if self.fluid_type == 'stoke' else False,
+                tlm_ksp_option=tlm_ksp_option,
+                adj_ksp_option=adj_ksp_option,
+                forward_ksp_option=forward_ksp_option,
+                tlm_kwargs=tlm_kwargs,
+                adj_kwargs=adj_kwargs,
+                forward_kwargs=forward_kwargs,
+                tape=self.tape,
+            )
+            self.uh = uh  # type: ignore
+            self.f = f  # type: ignore
+            self.record_Upw(0)
+            u, p = ufl.split(self.uh)  # type: ignore
+            
+            # ------ define object cost ------
+            obj_cost_args = self.prepare_cost_args(
+                u=u, p=p, obj_cost_args=obj_cost_args,  # type: ignore
+                viscosity=self.viscosity, alpha=alpha,
+            )
+            if obj_cost_args['style'] == 'MinDissipation':
+                obj_cost = assemble_scalar(
+                    form=obj_cost_args['weight'] * obj_cost_args['min_dissipation_form'], 
+                    domain=self.domain, tape=self.tape
+                )
+            elif obj_cost_args['style'] == 'MinDissipation+BrinkmanPenalized':
+                obj_cost = assemble_scalar(
+                    form=(
+                        obj_cost_args['dissipation_weight'] * obj_cost_args['min_dissipation_form'] 
+                        + obj_cost_args['penalized_weight'] * obj_cost_args['penalized_term']
+                    ),
+                    domain=self.domain, tape=self.tape
+                )
+            elif obj_cost_args['style'] == 'MinPressure':
+                obj_cost = assemble_scalar(
+                    form=obj_cost_args['weight'] * obj_cost_args['pressure_form'],
+                    domain=self.domain, tape=self.tape
+                )
+            elif obj_cost_args['style'] == 'FixedFlux':
+                for i, (_, outlet_item) in enumerate(obj_cost_args['outlet_cost_forms'].items()):
+                    outlet_flux = assemble_scalar(
+                        form=outlet_item['flux_form'],
+                        domain=self.domain, tape=self.tape
+                    )
+                    target_flux = outlet_item['target_flux']
+                    weight = outlet_item['weight']
+                    if i == 0:
+                        obj_cost = weight * (outlet_flux - target_flux) ** 2
+                    else:
+                        obj_cost += weight * (outlet_flux - target_flux) ** 2
+            else:
+                raise ValueError(f'Invalid cost style: {obj_cost_args['style']}')
+            self.obj_cost_args = obj_cost_args
+            
+            # ------ define regularization cost ------
+            reg_cost_args = self.prepare_reg_args(reg_cost_args)  # type: ignore
+            if reg_cost_args['style'] == 'Volume':
+                target_volume = reg_cost_args['target_volume']
+                topo_volume = assemble_scalar(reg_cost_args['vol_form'], domain=self.domain, tape=self.tape)
+                volume_dif = target_volume - topo_volume
+                if reg_cost_args['reg_rescale']:
+                    volume_dif = volume_dif / target_volume
+                reg_cost = reg_cost_args['weight'] * (volume_dif ** 2)
+            else:
+                raise ValueError(f'Invalid regularization style: {reg_cost_args['style']}')
+            self.reg_cost_args = reg_cost_args
+            
+            loss_all = obj_cost + reg_cost
+            
+            # ------ define obstacle cost ------
+            if self.obstacle_cost_args is not None:
+                if self.obstacle_cost_args['is_cell_field']:
+                    obs_cost_form = inner(self.obstacle_cost_args['obs_cell_mask'], self.topo_weight) * ufl.dx
+                else:
+                    obs_cost_form = inner(self.obstacle_cost_args['obs_point_mask'], self.topo_weight) * ufl.dx
+                self.obj_cost_args['cost_form'] = obs_cost_form
+                
+                obs_cost = assemble_scalar(obs_cost_form, domain=self.domain, tape=self.tape)
+                obs_cost = obs_cost * self.obstacle_cost_args['weight']
+                
+                loss_all += obs_cost
+            
+            # ------ define optimization problem ------
+            self.control_phi = Control(self.topo_weight)  # type: ignore
+            self.opt_problem = ReducedFunctional(loss_all, [self.control_phi])
+    
+    def compute_gradient(self, adj_input: float, with_filter=True, with_norm=True) -> np.ndarray:
+        dJdm = self.opt_problem.derivative(adj_input=float(adj_input))[0]
+        if with_filter:
+            dJdm = dJdm.reshape((-1, 1))
+            dJdm = self.weight_filter.run(dJdm)
+            dJdm = np.asarray(dJdm).reshape((-1))
+        if with_norm:
+            norm = np.max(np.abs(dJdm))
+            dJdm = dJdm / norm
+        return dJdm
+
+    def run(
+        self,
+        line_search_steps: list[float] = [0.1, 0.05, 0.01],
+        max_iteration=200,
+        hot_step: int = 20,
+        momentum_weight: float = 0.8,
+        full_run: bool = False,
+        recorder: TensorBoardRecorder|None = None,
+    ) -> dict:
+        with_line_search = len(line_search_steps) > 1
+        line_search_steps_np: np.ndarray = np.array(line_search_steps)
+        step_length_last = line_search_steps_np[0]
+        if full_run:
+            assert not with_line_search, 'Full run and line search cannot be used together'
+        
+        is_solved, step = False, 0
+        loss_current, loss_last = 0.0, 0.0
+        
+        topo_phi = DolfinxFunction(self.topo_weight.function_space, name=f'topo_phi')  # type: ignore
+        topo_phi.x.array[:] = self.topo_weight.x.array.copy()  # type: ignore
+        
+        loss_dict, log_dict = self.eval()
+        loss_current = np.sum(list(loss_dict.values()))
+        self.record_Upw(step)
+        
+        with_momentum = momentum_weight > 0.0
+        if with_momentum:
+            cum_direction_np = np.zeros_like(self.topo_weight.x.array)  # type: ignore
+        
+        while True:
+            step += 1
+            if step > 1:
+                loss_dict, log_dict = self.eval()
+                log = f"[step/{step} loss:{loss_current:.5f} opt_length:{step_length_last:.5f}]"
+                for name, cost_value in loss_dict.items():
+                    log += f" {name}:{cost_value:.5f}"
+                print(log)
+                
+                if recorder is not None:
+                    for name, value in log_dict.items():
+                        if isinstance(value, dict):
+                            recorder.write_scalars(tag=name, scalar_dict=value, step=step)
+                        else:
+                            recorder.write_scalar(tag=name, scalar_value=value, step=step)
+                
+                if np.abs(loss_current - loss_last) < 1e-8 and (not full_run):
+                    is_solved = True
+                    break
+                
+            cur_direction_np = self.compute_gradient(
+                adj_input=np.minimum(np.maximum(loss_current * 0.1, 0.01), 1e2), 
+                with_filter=True, with_norm=True
+            )
+            if with_momentum:
+                cum_direction_np = cum_direction_np * momentum_weight + cur_direction_np * (1.0 - momentum_weight)
+                direction_np = cum_direction_np / np.max(np.abs(cum_direction_np))
+            else:
+                direction_np = cur_direction_np
+            
+            find_best_step = False
+            if with_line_search:
+                topo_phi_origin: np.ndarray = topo_phi.x.array.copy()  # type: ignore
+                last_step_index = np.where(line_search_steps_np == step_length_last)[0][0]
+                line_search_start_index = np.maximum(last_step_index - 1, 0)
+                for i in range(line_search_start_index, line_search_steps_np.shape[0]):
+                    step_length = line_search_steps_np[i]
+                    new_topo_phi = topo_phi_origin - direction_np * step_length
+                    new_topo_phi = np.maximum(np.minimum(new_topo_phi, 1.0 - 1e-16), 1e-16)
+                    topo_phi.x.array[:] = new_topo_phi  # type: ignore
+                    
+                    loss_new = self.opt_problem(values=[topo_phi])  # type: ignore
+                    if loss_new < loss_current or step < hot_step:
+                        find_best_step = True
+                        loss_last = loss_current
+                        loss_current = loss_new                    
+                        step_length_last = step_length
+                        # self.topo_weight.x.array[:] = topo_phi.x.array  # type: ignore          
+                        self.record_Upw(step, gradient=direction_np)
+                        break
+
+            else:
+                new_topo_phi = topo_phi.x.array - direction_np * step_length_last  # type: ignore
+                new_topo_phi = np.maximum(np.minimum(new_topo_phi, 1.0 - 1e-16), 1e-16)
+                topo_phi.x.array[:] = new_topo_phi  # type: ignore
+                loss_new = self.opt_problem(values=[topo_phi])  # type: ignore
+                if loss_new < loss_current or step < hot_step or full_run:
+                    find_best_step = True
+                    loss_last = loss_current
+                    loss_current = loss_new
+                    self.record_Upw(step, gradient=direction_np)
+                    
+            if not find_best_step:
+                print(f"[Warning]: line search fail.")
+                is_solved = False
+                break
+                
+            if step > max_iteration:
+                print(f"[Warning]: max iteration reached.")
+                is_solved = False
+                break
+        
+        return {'is_success': is_solved, 'topo_weight': self.topo_weight.x.array.copy()}  # type: ignore
+    
+    def eval(self):
+        eval_dict = {}
+        log_dict = {}
+        
+        # ------ compute object cost ------
+        if self.obj_cost_args['style'] == 'MinDissipation':
+            eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
+                form=self.obj_cost_args['weight'] * self.obj_cost_args['min_dissipation_form']
+            )
+            log_dict['obj_cost'] = eval_dict['obj_cost']
+            
+        elif self.obj_cost_args['style'] == 'MinDissipation+BrinkmanPenalized':
+            eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
+                form=(
+                    self.obj_cost_args['dissipation_weight'] * self.obj_cost_args['min_dissipation_form'] 
+                    + self.obj_cost_args['penalized_weight'] * self.obj_cost_args['penalized_term']
+                )
+            )
+            log_dict['obj_cost'] = eval_dict['obj_cost']
+            
+        elif self.obj_cost_args['style'] == 'MinPressure':
+            eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
+                form=self.obj_cost_args['weight'] * self.obj_cost_args['pressure_form']
+            )
+            log_dict['obj_cost'] = eval_dict['obj_cost']
+            
+        elif self.obj_cost_args['style'] == 'FixedFlux':
+            flux_dict = {}
+            for i, (_, outlet_item) in enumerate(self.obj_cost_args['outlet_cost_forms'].items()):
+                outlet_flux = AssembleUtils.assemble_scalar(form=outlet_item['flux_form'])
+                eval_dict[f'{i}_cost'] = outlet_item['weight'] * (outlet_flux - outlet_item['target_flux']) ** 2
+                flux_dict[f'{i}_flux'] = np.abs(outlet_flux)
+            log_dict['flux'] = flux_dict
+        else:
+            raise ValueError(f'Invalid cost style: {self.obj_cost_args['style']}')
+        
+        # ------ compute regularization cost ------
+        if self.reg_cost_args['style'] == 'Volume':
+            target_volume = self.reg_cost_args['target_volume']
+            topo_volume = AssembleUtils.assemble_scalar(self.reg_cost_args['vol_form'])
+            volume_dif = target_volume - topo_volume
+            if self.reg_cost_args['reg_rescale']:
+                volume_dif = volume_dif / target_volume
+            eval_dict['reg_cost'] = self.reg_cost_args['weight'] * (volume_dif ** 2)
+            
+            log_dict['reg_cost'] = eval_dict['reg_cost']
+            log_dict['volume'] = topo_volume
+            
+        else:
+            raise ValueError(f'Invalid regularization style: {self.reg_cost_args['style']}')
+        
+        # ------ compute obstacle cost ------
+        if self.obstacle_cost_args is not None:
+            eval_dict['obs_cost'] = AssembleUtils.assemble_scalar(self.obj_cost_args['cost_form']) * self.obstacle_cost_args['weight']
+            log_dict['obs_cost'] = eval_dict['obs_cost']
+        
+        log_dict['loss_all'] = np.sum(list(eval_dict.values()))
+                        
+        return eval_dict, log_dict
+    
+    def record_Upw(self, step: int, **kwargs):
+        vel_ref = dolfinx.fem.Function(self.point_vector_func_space, name='vel_ref')
+        vel_ref.interpolate(self.uh.sub(0).collapse())  # type: ignore
+        p_ref = self.uh.sub(1).collapse()  # type: ignore
+
+        vel_ref_np = vel_ref.x.array.copy().reshape((-1, self.mesh.tdim))  # type: ignore
+        if vel_ref_np.shape[1] == 2:
+            vel_ref_np = np.concatenate([vel_ref_np, np.zeros((vel_ref_np.shape[0], 1))], axis=1)
+        
+        self.recorder.clear(clear_point_data=True, clear_cell_data=True)
+        self.recorder.update_point_data('vel', vel_ref_np)
+        self.recorder.update_point_data('vel_mag', np.linalg.norm(vel_ref_np, axis=1))
+        self.recorder.update_point_data('p', p_ref.x.array.copy())
+        
+        if self.is_topo_cell:
+            self.recorder.update_cell_data('topo_weight', self.topo_weight.x.array)    # type: ignore
+            point_scalar_fun = dolfinx.fem.Function(self.point_scalar_func_space)
+            point_scalar_fun.interpolate(self.topo_weight)  # type: ignore
+            self.recorder.update_point_data('topo_weight', point_scalar_fun.x.array)  # type: ignore
+        else:
+            self.recorder.update_point_data('topo_weight', self.topo_weight.x.array)  # type: ignore
+            cell_scalar_fun = dolfinx.fem.Function(self.cell_scalar_func_space)
+            cell_scalar_fun.interpolate(self.topo_weight)  # type: ignore
+            self.recorder.update_cell_data('topo_weight', cell_scalar_fun.x.array)  # type: ignore
+        
+        if self.obstacle_cost_args is not None:
+            if self.obstacle_cost_args['is_cell_field']:
+                self.recorder.update_cell_data('obs_source', self.obstacle_cost_args['obs_cell_mask'].x.array.copy())  # type: ignore
+            else:
+                self.recorder.update_point_data('obs_source', self.obstacle_cost_args['obs_point_mask'].x.array.copy())  # type: ignore
+        
+        if kwargs.get('gradient', None) is not None:
+            if self.is_topo_cell:
+                self.recorder.update_cell_data('gradient', kwargs['gradient'])
+            else:
+                self.recorder.update_point_data('gradient', kwargs['gradient'])
+        
+        self.recorder.save(step)
+    
+
+def debug():
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t38'
+    msh_file = os.path.join(base_dir, 't38_model.msh')
+
+    domain, cell_tags, facet_tags = MeshUtils.read_msh(msh_file, dim=2)
+    mesh = MeshObj(xdmf_file=None, domain=domain, cell_tags=cell_tags, facet_tags=facet_tags)
+    
+    optim = TopoFluidOptimizer(
+        name='t38',
+        mesh=mesh,
+        fluid_type='stoke',
+        viscosity_init=1.0 / 100.,
+        is_topo_cell=False,
+        topo_weight_init=0.5,
+        weight_filter_radius=0.05,
+        result_dir=os.path.join(base_dir, 'dolfinx_topo')
+    )    
+    optim.setup_tape(Tape())
+    
+    inlet_bry = AutoFluidBoundary(
+        name='inlet',
+        boundary_type='velocity',
+        value=[1.0, 0.0],
+        marker=22,
+        face_center=[-0.05, 0.2],
+        face_norm_vector=[1.0, 0.0],
+        face_radius=0.1
+    )
+    outlet_bry = AutoFluidBoundary(
+        name='outlet',
+        boundary_type='pressure',
+        value=0.0,
+        marker=23
+    )
+    wall_bry = AutoFluidBoundary(
+        name='wall',
+        boundary_type='wall',
+        value=0.0,
+        marker=24
+    )
+    optim.add_boundary(inlet_bry)
+    optim.add_boundary(outlet_bry)
+    optim.add_boundary(wall_bry)
+    
+    optim.define_problem(
+        obj_cost_args={
+            'style': 'MinDissipation+BrinkmanPenalized',
+            'with_viscosity': True,
+            'dissipation_weight': 1.0,
+            'penalized_weight': 1.0,
+        },
+        reg_cost_args={
+            'style': 'Volume',
+            'weight': 1.0,
+            'target_ratio': 0.1,
+            'reg_rescale': True,
+        }
+    )
+    
+    recorder = TensorBoardRecorder(os.path.join(base_dir, 'dolfinx_topo', 'log'))
+    result = optim.run(
+        recorder=recorder,
+    )
+    print(result)
+
+
+if __name__ == '__main__':
+    debug()

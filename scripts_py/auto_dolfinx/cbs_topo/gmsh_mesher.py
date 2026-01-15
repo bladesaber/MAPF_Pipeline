@@ -64,6 +64,7 @@ class GmshUtils(object):
                 f.write(f'{GmshUtils.define_gmsh_point(p_idx, vertex[0], vertex[1], vertex[2])}\n')
             f.write('\n')
             
+            # TODO: how to extract line
             if dim == 2:
                 pass
             else:
@@ -282,7 +283,7 @@ class GridMesher(object):
         # surface2points = surface2points.reshape((-1, 8))
         # surface2points = np.unique(surface2points, axis=1)
         # ------ will destroy the order of the points
-                
+        
         surface2points = surface2points = np.concatenate([
             surface2points[:, 0, 0, np.newaxis],
             surface2points[:, 1, 0, np.newaxis],

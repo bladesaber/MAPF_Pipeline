@@ -21,7 +21,7 @@ from scripts_py.dolfinx_utils import BoundaryUtils
 from scripts_py.eqn_solver import LinearProblemSolver
 from scripts_py.mesh_utils import MeshObj
 
-from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import AutoFluidBoundary
+from scripts_py.auto_dolfinx.opt_solver.topo_fluid import AutoFluidBoundary
 
 
 def draw_shape_derivative(

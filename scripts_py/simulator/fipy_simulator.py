@@ -18,6 +18,7 @@ from fipy import CellVariable, FaceVariable
 from fipy.variables.faceGradVariable import _FaceGradVariable
 from fipy import DiffusionTerm, ConvectionTerm
 from fipy.tools import numerix
+from fipy import ImplicitSourceTerm
 
 from scripts_py.simulator.dolfin_simulator import FluidBoundary
 from scripts_py.mesh_utils import MeshUtils, MeshObj
@@ -27,17 +28,17 @@ from scripts_py.openmpi_utils import OpenMpiUtils
 
 
 class FipyStokeSimulator(object):
-    '''
-    Gmsh2D/Gmsh3D only accept .msh version 2
-    '''
+    '''Gmsh2D/Gmsh3D only accept .msh version 2'''
     def __init__(
         self,
-        mesh: Gmsh2D|Gmsh3D,
-        structure_mesh: MeshObj|None,
-        viscosity: float|np.ndarray,
         velocityRelaxation: float,
         pressureRelaxation: float,
         parallel_num: int,
+        mesh: Gmsh2D|Gmsh3D,
+        structure_mesh: MeshObj|None,
+        structure_viscosity: float|np.ndarray|list[float],
+        structure_source_term: float|np.ndarray|list[float]|None = None,
+        structure_obs_weight: np.ndarray|None = None,
         structure_init_x_velocity: np.ndarray|None = None,
         structure_init_y_velocity: np.ndarray|None = None,
         structure_init_z_velocity: np.ndarray|None = None,
@@ -98,21 +99,48 @@ class FipyStokeSimulator(object):
         
         self.face_velocity = FaceVariable(mesh=self.mesh, rank=1)
         
-        if isinstance(viscosity, (np.ndarray, list)):
-            if isinstance(viscosity, list):
-                viscosity = np.array(viscosity)
-            viscosity = viscosity[self.structure_mesh_to_mesh_idxs].reshape(-1)
-            init_viscosity = CellVariable(mesh=self.mesh, name='viscosity', value=viscosity) # type: ignore
+        if isinstance(structure_viscosity, (np.ndarray, list)):
+            if isinstance(structure_viscosity, list):
+                structure_viscosity = np.array(structure_viscosity)
+            structure_viscosity = structure_viscosity[self.structure_mesh_to_mesh_idxs].reshape(-1)
+            init_viscosity = CellVariable(mesh=self.mesh, name='viscosity', value=structure_viscosity) # type: ignore
+        elif isinstance(structure_viscosity, (float, int)):
+            init_viscosity = float(structure_viscosity)
         else:
-            init_viscosity = viscosity
+            raise ValueError(f"Invalid viscosity type: {type(structure_viscosity)}")
         
-        if self.tdim == 2:
-            self.xVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([1., 0.])
-            self.yVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([0., 1.])
-        elif self.tdim == 3:
-            self.xVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([1., 0., 0.])
-            self.yVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([0., 1., 0.])
-            self.zVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([0., 0., 1.])
+        self.source_cell = None
+        if structure_source_term is not None:
+            if isinstance(structure_source_term, (np.ndarray, list)):
+                if isinstance(structure_source_term, list):
+                    structure_source_term = np.array(structure_source_term)
+                init_source = structure_source_term[self.structure_mesh_to_mesh_idxs].reshape(-1)
+            elif isinstance(structure_source_term, (float, int)):
+                init_source = float(structure_source_term)
+            else:
+                raise ValueError(f"Invalid source term type: {type(structure_source_term)}")
+            
+            self.source_cell = CellVariable(mesh=self.mesh, name='source', value=init_source)  # type: ignore
+            self.x_source = ImplicitSourceTerm(coeff=self.source_cell)  # type: ignore
+            self.y_source = ImplicitSourceTerm(coeff=self.source_cell)  # type: ignore
+            if self.tdim == 3:
+                self.z_source = ImplicitSourceTerm(coeff=self.source_cell)  # type: ignore
+            
+            if self.tdim == 2:
+                self.xVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([1., 0.]) - self.x_source
+                self.yVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([0., 1.]) - self.y_source
+            elif self.tdim == 3:
+                self.xVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([1., 0., 0.]) - self.x_source
+                self.yVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([0., 1., 0.]) - self.y_source
+                self.zVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([0., 0., 1.]) - self.z_source
+        else:
+            if self.tdim == 2:
+                self.xVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([1., 0.])
+                self.yVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([0., 1.])
+            elif self.tdim == 3:
+                self.xVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([1., 0., 0.])
+                self.yVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([0., 1., 0.])
+                self.zVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([0., 0., 1.])
         
         # ------ define pressure correction equation ------
         self.ap = CellVariable(mesh=self.mesh, value=1.)
@@ -129,15 +157,24 @@ class FipyStokeSimulator(object):
         self.cell_centers = self.mesh.cellCenters.value.T
         self.face_centers = self.mesh.faceCenters.value.T
         
+        # ------ define obstacle related ------
+        # TODO
+        self.structure_obs_weight = structure_obs_weight
+        self.obs_cell_mask = np.zeros(self.mesh.numberOfCells, dtype=bool)
+        self.obs_face_mask = np.zeros(self.mesh.numberOfFaces, dtype=bool)
+        self.define_obs_mask(structure_obs_weight)
+        
         # ------ wait for all processes to finish initialization ------
         if self.using_parallel:
             OpenMpiUtils.synchronize_all_ranks()
     
+    # ------ boundary related ------
     def add_boundary(self, boundary: FluidBoundary):
         self.boundaries[boundary.name] = boundary
     
     def define_boundary(self):
-        for name, bry_info in self.boundaries.items():
+        for _, bry_info in self.boundaries.items():
+            assert bry_info.boundary_type in ['velocity', 'pressure', 'wall'], 'Invalid boundary type' 
             if bry_info.boundary_type == 'velocity':
                 velocity_values = FluidBoundary.inflow_velocity_exp(
                     pos=self.mesh.faceCenters.value,
@@ -157,18 +194,24 @@ class FipyStokeSimulator(object):
             elif bry_info.boundary_type == 'pressure':
                 self.pressure.constrain(bry_info.value, where=self.mesh.physicalFaceMap == bry_info.marker)
                 self.pressureCorrection.constrain(0., where=self.mesh.physicalFaceMap == bry_info.marker)
-
-            elif bry_info.boundary_type == 'wall':
+        
+        # ------ set wall boundary at last ------
+        for _, bry_info in self.boundaries.items():
+            if bry_info.boundary_type == 'wall':
                 self.xVelocity.constrain(0., where=self.mesh.physicalFaceMap == bry_info.marker)
                 self.yVelocity.constrain(0., where=self.mesh.physicalFaceMap == bry_info.marker)
                 if self.tdim == 3:
                     self.zVelocity.constrain(0., where=self.mesh.physicalFaceMap == bry_info.marker)
-
-            else:
-                raise ValueError('[Error]: Invalid Boundary Type.')
+        
+        # ------ apply obstacle boundary to velocity ------
+        if self.obs_cell_mask.sum() > 0:
+            self.xVelocity.constrain(0., where=self.obs_cell_mask)
+            self.yVelocity.constrain(0., where=self.obs_cell_mask)
+            if self.tdim == 3:
+                self.zVelocity.constrain(0., where=self.obs_cell_mask)
 
     def apply_boundary_to_correction_velocity(self):
-        for name, bry_info in self.boundaries.items():
+        for _, bry_info in self.boundaries.items():
             if bry_info.boundary_type == 'velocity':
                 velocity_values = FluidBoundary.inflow_velocity_exp(
                     pos=self.mesh.faceCenters.value,
@@ -184,14 +227,79 @@ class FipyStokeSimulator(object):
                 self.face_velocity[1, face_mask] = velocity_values[1, face_mask]
                 if self.tdim == 3:
                     self.face_velocity[2, face_mask] = velocity_values[2, face_mask]
-            
-            elif bry_info.boundary_type == 'wall':
+        
+        # ------ set wall boundary at last ------
+        for _, bry_info in self.boundaries.items():
+            if bry_info.boundary_type == 'wall':
                 face_mask = self.mesh.physicalFaceMap == bry_info.marker
                 self.face_velocity[0, face_mask] = 0.
                 self.face_velocity[1, face_mask] = 0.
                 if self.tdim == 3:
                     self.face_velocity[2, face_mask] = 0.
+        
+        # ------ apply obstacle boundary to correction velocity ------
+        if self.obs_face_mask.sum() > 0:
+            self.face_velocity[0, self.obs_face_mask] = 0.
+            self.face_velocity[1, self.obs_face_mask] = 0.
+            if self.tdim == 3:
+                self.face_velocity[2, self.obs_face_mask] = 0.
 
+    # ------ obstacle related ------
+    def define_obs_mask(self, structure_cell_obs_weight: np.ndarray|None):
+        if (not self.using_parallel) or (self.using_parallel and OpenMpiUtils.is_master_rank()):
+            assert self.structure_mesh is not None, "structure_mesh is not initialized"
+                
+            data_dict = {'with_obs': False}
+            if structure_cell_obs_weight is not None:
+                structure_cell_mask_idxs = np.arange(0, self.structure_mesh.grid.n_cells)[structure_cell_obs_weight > 1e-2]
+                obs_cell_positions = self.structure_mesh.cell_centers[structure_cell_mask_idxs]  # type: ignore
+                                    
+                obs_face_positions = []
+                for cell_idx in structure_cell_mask_idxs:
+                    cell = self.structure_mesh.grid.get_cell(cell_idx)
+                    if self.structure_mesh.tdim == 2:
+                        for edge in cell.edges:
+                            face_center = np.array(edge.center)
+                            obs_face_positions.append(face_center)
+                    elif self.structure_mesh.tdim == 3:
+                        for face in cell.faces:
+                            face_center = np.array(face.center)
+                            obs_face_positions.append(face_center)
+                    else:
+                        raise ValueError(f'Invalid cell type: {cell.GetCellType()}')
+                    
+                data_dict = {
+                    'with_obs': len(obs_face_positions) > 0, 
+                    'obs_face_positions': np.array(obs_face_positions)[:, :self.structure_mesh.tdim],
+                    'obs_cell_positions': obs_cell_positions[:, :self.structure_mesh.tdim],
+                }
+        
+        if self.using_parallel:
+            if OpenMpiUtils.is_master_rank():
+                OpenMpiUtils.send_to_all(data_dict, tag=100)
+            else:
+                data_dict = OpenMpiUtils.recv(source=0, tag=100)
+                
+        if data_dict['with_obs']:
+            obs_face_positions = data_dict['obs_face_positions']           
+            tree = KDTree(self.face_centers)
+            dists_list, idxs_list = tree.query(obs_face_positions, k=1, return_distance=True)
+            dists_list = np.concatenate(dists_list, axis=-1)
+            idxs_list = np.concatenate(idxs_list, axis=-1)            
+            idxs_list = idxs_list[dists_list < 1e-6]
+            idxs_list = np.unique(idxs_list)
+            self.obs_face_mask[idxs_list] = True
+        
+            obs_cell_positions = data_dict['obs_cell_positions']
+            tree = KDTree(self.cell_centers)
+            dists_list, idxs_list = tree.query(obs_cell_positions, k=1, return_distance=True)
+            dists_list = np.concatenate(dists_list, axis=-1)
+            idxs_list = np.concatenate(idxs_list, axis=-1)
+            idxs_list = idxs_list[dists_list < 1e-6]
+            idxs_list = np.unique(idxs_list)
+            self.obs_cell_mask[idxs_list] = True
+
+    # ------ get related ------
     def get_mesh_to_structure_mesh_mapping(self):
         if self.using_parallel:
             global_fipy_cell_centers = self.mesh.cellCenters.globalValue
@@ -250,6 +358,20 @@ class FipyStokeSimulator(object):
             return pressure
         return None
 
+    def get_source_term(self, map_to_structure: bool) -> np.ndarray|None:
+        if self.source_cell is None:
+            return None
+        if self.using_parallel:
+            source_value = self.source_cell.globalValue
+        else:
+            source_value = self.source_cell.value.copy()
+        
+        if (not self.using_parallel) or (self.using_parallel and OpenMpiUtils.is_master_rank()):
+            if map_to_structure:
+                source_value = source_value[self.mesh_to_structure_mesh_idxs]
+            return source_value
+        return None
+
     def eval_point(self, points: np.ndarray):
         # FIXME: non-finished
         if not self.using_parallel:
@@ -264,6 +386,7 @@ class FipyStokeSimulator(object):
         else:
             raise NotImplementedError("Parallel evaluation is not implemented")
 
+    # ------ record related ------
     @staticmethod
     def msh_version_convert(
         source_msh_file: str, 
@@ -287,6 +410,7 @@ class FipyStokeSimulator(object):
     def record(self, save_file: str):
         velocity = self.get_velocity(map_to_structure=True)
         pressure = self.get_pressure(map_to_structure=True)
+        source_value = self.get_source_term(map_to_structure=True)
         
         if (not self.using_parallel) or (self.using_parallel and OpenMpiUtils.is_master_rank()):
             assert self.structure_mesh is not None, "structure_mesh is not initialized"
@@ -301,6 +425,11 @@ class FipyStokeSimulator(object):
                 velocity = np.concatenate([velocity, np.zeros((velocity.shape[0], 1))], axis=1)
             self.structure_mesh.grid.cell_data['velocity'] = velocity
             self.structure_mesh.grid.cell_data['velocity_mag'] = np.linalg.norm(velocity, axis=1)
+            
+            if source_value is not None:
+                self.structure_mesh.grid.cell_data['source_term'] = source_value
+            if self.structure_obs_weight is not None:
+                self.structure_mesh.grid.cell_data['obstacle'] = self.structure_obs_weight
             
             # ------ debug record ------
             cell_vector_space = DolfinUtils.cell_vector_function_space(self.structure_mesh.domain)
@@ -499,13 +628,15 @@ class FipyStokeSimulator(object):
     def from_msh(
         source_msh_file: str,
         dim: int,
-        viscosity: float|np.ndarray = 1.0 / 400.0,
-        velocityRelaxation: float = 0.5,
-        pressureRelaxation: float = 0.8,
+        structure_viscosity: float|np.ndarray|list[float],
+        structure_source_term: float|np.ndarray|list[float]|None,
+        structure_obs_weight: np.ndarray|None = None,
         structure_init_x_velocity: np.ndarray|None = None,
         structure_init_y_velocity: np.ndarray|None = None,
         structure_init_z_velocity: np.ndarray|None = None,
         structure_init_pressure: np.ndarray|None = None,
+        velocityRelaxation: float = 0.5,
+        pressureRelaxation: float = 0.8,
         force_msh_init: bool = False
     ):
         num_partitions = OpenMpiUtils.get_mpi_size()
@@ -537,12 +668,14 @@ class FipyStokeSimulator(object):
             raise ValueError(f"Invalid dimension: {dim}")
         
         return FipyStokeSimulator(
-            mesh=mesh,
-            structure_mesh=structure_mesh,
-            viscosity=viscosity,
             velocityRelaxation=velocityRelaxation,
             pressureRelaxation=pressureRelaxation,
             parallel_num=num_partitions,
+            mesh=mesh,
+            structure_mesh=structure_mesh,
+            structure_viscosity=structure_viscosity,
+            structure_source_term=structure_source_term,
+            structure_obs_weight=structure_obs_weight,
             structure_init_x_velocity=structure_init_x_velocity,
             structure_init_y_velocity=structure_init_y_velocity,
             structure_init_z_velocity=structure_init_z_velocity,
@@ -554,7 +687,6 @@ class FipyStokeSimulator(object):
         cfg_file: str, 
         source_msh_file: str,
         dim: int,
-        viscosity: float|np.ndarray,
         velocityRelaxation: float,
         pressureRelaxation: float,
         boundary_list: list[FluidBoundary],
@@ -565,22 +697,21 @@ class FipyStokeSimulator(object):
         save_dir: str,
         use_tqdm: bool,
         use_log: bool,
+        viscosity: float|None = None,
         structure_init_vtu_file: str|None = None,
         vtu_velocity_field: str = 'velocity',
         vtu_pressure_field: str = 'pressure',
         vtu_viscosity_field: str = 'viscosity',
+        vtu_source_term_field: str = 'source_term',
+        vtu_obs_weight_field: str = 'obstacle',
     ):
         assert cfg_file.endswith('.json'), "cfg_file must be a json file"
-        
-        is_viscosity_array = isinstance(viscosity, (np.ndarray, list))
-        if is_viscosity_array:
-            assert structure_init_vtu_file is not None, "structure_init_vtu_file is required when viscosity is an array"
+        assert (viscosity is not None) or (structure_init_vtu_file is not None), "viscosity or structure_init_vtu_file is required"
         
         cfg_dict = {
             'source_msh_file': source_msh_file,
             'dim': dim,
-            'viscosity': None if is_viscosity_array else viscosity,
-            'is_viscosity_array': is_viscosity_array,
+            'viscosity': viscosity,
             'velocityRelaxation': velocityRelaxation,
             'pressureRelaxation': pressureRelaxation,
             'iterations': iterations,
@@ -595,6 +726,8 @@ class FipyStokeSimulator(object):
             'vtu_velocity_field': vtu_velocity_field,
             'vtu_pressure_field': vtu_pressure_field,
             'vtu_viscosity_field': vtu_viscosity_field,
+            'vtu_source_term_field': vtu_source_term_field,
+            'vtu_obs_weight_field': vtu_obs_weight_field,
         }
         
         for bry in boundary_list:
@@ -632,16 +765,21 @@ class FipyStokeSimulator(object):
         with open(cfg_file, 'r') as f:
             cfg_dict = json.load(f)
         
-        if cfg_dict['is_viscosity_array']:
-            assert cfg_dict['structure_init_vtu_file'] is not None, "structure_init_vtu_file is required when viscosity is an array"
+        assert (cfg_dict['viscosity'] is not None) or (cfg_dict['structure_init_vtu_file'] is not None), "viscosity or structure_init_vtu_file is required"
         
         init_x_velocity = None
         init_y_velocity = None
         init_z_velocity = None
         init_pressure = None
-        init_viscosity = None
+        init_viscosity = cfg_dict['viscosity']
+        init_source_term = None
+        init_obs_weight = None
+        
         if cfg_dict['structure_init_vtu_file'] is not None:
             init_vtu = pyvista.read(cfg_dict['structure_init_vtu_file'])
+            
+            if cfg_dict['viscosity'] is None:
+                init_viscosity = init_vtu.cell_data[cfg_dict['vtu_viscosity_field']]
             
             if cfg_dict['vtu_velocity_field'] in init_vtu.cell_data.keys():
                 init_velocity = init_vtu.cell_data[cfg_dict['vtu_velocity_field']]
@@ -652,25 +790,27 @@ class FipyStokeSimulator(object):
             
             if cfg_dict['vtu_pressure_field'] in init_vtu.cell_data.keys():
                 init_pressure = init_vtu.cell_data[cfg_dict['vtu_pressure_field']]
-        
-            if cfg_dict['is_viscosity_array']:
-                assert cfg_dict['vtu_viscosity_field'] in init_vtu.cell_data.keys(), f"vtu_viscosity_field {cfg_dict['vtu_viscosity_field']} is not found in the structure_init_vtu_file"
-                init_viscosity = init_vtu.cell_data[cfg_dict['vtu_viscosity_field']]
             
-        if not cfg_dict['is_viscosity_array']:
-            assert cfg_dict['viscosity'] is not None, "viscosity is required when viscosity is not an array"
-            init_viscosity = cfg_dict['viscosity']
+            if cfg_dict['vtu_source_term_field'] in init_vtu.cell_data.keys():
+                init_source_term = init_vtu.cell_data[cfg_dict['vtu_source_term_field']]
+            
+            if cfg_dict['vtu_obs_weight_field'] in init_vtu.cell_data.keys():
+                init_obs_weight = init_vtu.cell_data[cfg_dict['vtu_obs_weight_field']]
+        
+        assert init_viscosity is not None, "viscosity is not initialized"
         
         simulator = FipyStokeSimulator.from_msh(
             source_msh_file=cfg_dict['source_msh_file'],
             dim=cfg_dict['dim'],
-            viscosity=init_viscosity,  # type: ignore
-            velocityRelaxation=cfg_dict['velocityRelaxation'],
-            pressureRelaxation=cfg_dict['pressureRelaxation'],
+            structure_viscosity=init_viscosity,
+            structure_source_term=init_source_term,
+            structure_obs_weight=init_obs_weight,
             structure_init_x_velocity=init_x_velocity,
             structure_init_y_velocity=init_y_velocity,
             structure_init_z_velocity=init_z_velocity,
             structure_init_pressure=init_pressure,
+            velocityRelaxation=cfg_dict['velocityRelaxation'],
+            pressureRelaxation=cfg_dict['pressureRelaxation'],
             force_msh_init=force_msh_init,
         )
         
@@ -732,13 +872,15 @@ def run_main():
     FipyStokeSimulator.run_from_config(cfg_file=args.cfg_file, force_msh_init=args.force_msh_init)
 
 
-def debug_2D():
+def create_2D_config():
     base_dir = '/home/admin123456/Desktop/work/gmsh_test/t38'
+    msh_file = os.path.join(base_dir, 't38_model.msh')
+    
+    # ------ create original config ------
     FipyStokeSimulator.create_simulation_config(
-        cfg_file=os.path.join(base_dir, 'config.json'),
-        source_msh_file=os.path.join(base_dir, 't38_model.msh'),
+        cfg_file=os.path.join(base_dir, 'original_config.json'),
+        source_msh_file=msh_file,
         dim=2,
-        viscosity=1.0 / 400.0,
         velocityRelaxation=0.6,
         pressureRelaxation=0.8,
         boundary_list=[
@@ -768,21 +910,133 @@ def debug_2D():
         convergence_threshold=1e-5,
         hot_steps=10,
         log_step=2,
-        save_dir=os.path.join(base_dir, 'cache'),
+        save_dir=os.path.join(base_dir, 'original_cache'),
         use_tqdm=False,
         use_log=True,
+        viscosity=1.0 / 400.0,
     )
     
-    # start_time = time.time()
-    # FipyStokeSimulator.run_from_config(
-    #     cfg_file=os.path.join(base_dir, 'config.json'),
-    #     force_msh_init=True,
-    # )
-    # end_time = time.time()
-    # print(f"Time taken: {end_time - start_time} seconds")
+    # ------ generate init vtu ------
+    def alpha_fun(rho: np.ndarray|dolfinx.fem.Function, alpha_min=1e-8, alpha_max=100.0, p=3.0, pow_operator=np.power):
+        return alpha_min + pow_operator(1.0 - rho, p) * (alpha_max - alpha_min)  # type: ignore
+
+    domain, cell_tags, facet_tags = MeshUtils.read_msh(msh_file, dim=2)
+    mesh = MeshObj(xdmf_file=None, domain=domain, cell_tags=cell_tags, facet_tags=facet_tags)
+    cell_centers = mesh.grid.cell_centers().points
+    
+    init_grid = mesh.grid.copy()
+    init_grid.cell_data.clear()
+    init_grid.point_data.clear()
+    init_vtu_file = os.path.join(base_dir, 'init.vtu')
+    
+    source_center = np.array([0.5, 0.5])
+    source_radius = 0.1
+    source_weight = np.ones(cell_centers.shape[0]) - 1e-12
+    source_weight[
+        np.linalg.norm(cell_centers[:, :mesh.tdim] - source_center.reshape((1, -1))[:, :2], axis=1) < source_radius
+    ] = 1e-12
+    structure_source_term = alpha_fun(rho=source_weight)
+    init_grid.cell_data['source_term'] = structure_source_term
+    
+    obs_center = np.array([0.5, 0.5])
+    obs_radius = 0.1
+    
+    obs_weight = np.zeros(cell_centers.shape[0])
+    obs_weight[
+        np.linalg.norm(cell_centers[:, :mesh.tdim] - obs_center.reshape((1, -1))[:, :2], axis=1) < obs_radius
+    ] = 1.0
+    init_grid.cell_data['obstacle'] = obs_weight
+    
+    init_grid.save(init_vtu_file)
+    
+    # ------ create source term config ------
+    FipyStokeSimulator.create_simulation_config(
+        cfg_file=os.path.join(base_dir, 'source_term_config.json'),
+        source_msh_file=msh_file,
+        dim=mesh.tdim,
+        velocityRelaxation=0.6,
+        pressureRelaxation=0.8,
+        boundary_list=[
+            FluidBoundary(
+                name='inlet',
+                boundary_type='velocity',
+                value=[1.0, 0.0],
+                marker=22,
+                face_center=[-0.05, 0.2],
+                face_norm_vector=[1.0, 0.0],
+                face_radius=0.1
+            ),
+            FluidBoundary(
+                name='outlet',
+                boundary_type='pressure',
+                value=0.0,
+                marker=23
+            ),
+            FluidBoundary(
+                name='wall',
+                boundary_type='wall',
+                value=0.0,
+                marker=24
+            )
+        ],
+        iterations=60,
+        convergence_threshold=1e-5,
+        hot_steps=10,
+        log_step=2,
+        save_dir=os.path.join(base_dir, 'source_term_cache'),
+        use_tqdm=False,
+        use_log=True,
+        viscosity=1.0 / 400.0,
+        structure_init_vtu_file=init_vtu_file,
+        vtu_source_term_field='source_term',
+        vtu_obs_weight_field='obstacle_test',
+    )
+    
+    # ------ create obstacle config ------
+    FipyStokeSimulator.create_simulation_config(
+        cfg_file=os.path.join(base_dir, 'obstacle_config.json'),
+        source_msh_file=msh_file,
+        dim=mesh.tdim,
+        velocityRelaxation=0.6,
+        pressureRelaxation=0.8,
+        boundary_list=[
+            FluidBoundary(
+                name='inlet',
+                boundary_type='velocity',
+                value=[1.0, 0.0],
+                marker=22,
+                face_center=[-0.05, 0.2],
+                face_norm_vector=[1.0, 0.0],
+                face_radius=0.1
+            ),
+            FluidBoundary(
+                name='outlet',
+                boundary_type='pressure',
+                value=0.0,
+                marker=23
+            ),
+            FluidBoundary(
+                name='wall',
+                boundary_type='wall',
+                value=0.0,
+                marker=24
+            )
+        ],
+        iterations=60,
+        convergence_threshold=1e-5,
+        hot_steps=10,
+        log_step=2,
+        save_dir=os.path.join(base_dir, 'obstacle_cache'),
+        use_tqdm=False,
+        use_log=True,
+        viscosity=1.0 / 400.0,
+        structure_init_vtu_file=init_vtu_file,
+        vtu_source_term_field='source_term_test',
+        vtu_obs_weight_field='obstacle',
+    )
 
 
-def debug_3D():
+def create_3D_config():
     base_dir = '/home/admin123456/Desktop/work/gmsh_test/t28'
     FipyStokeSimulator.create_simulation_config(
         cfg_file=os.path.join(base_dir, 'config.json'),
@@ -825,6 +1079,7 @@ def debug_3D():
 
 
 def debug_global_processor():
+    """
     # TODO: still wire problem need to fixed
     from mpi4py import MPI
     from petsc4py import PETSc
@@ -884,11 +1139,11 @@ petsc4py.PETSc.Error: error code 83
     solver.destroy()
     del solver
     solver = None    
-    debug_2D() 
+    """
     
 
 if __name__ == '__main__':
-    # debug_2D()
-    # debug_3D()
+    # create_2D_config()
+    # create_3D_config()
     run_main()
     

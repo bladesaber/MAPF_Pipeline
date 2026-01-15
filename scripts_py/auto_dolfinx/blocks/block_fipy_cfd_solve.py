@@ -22,9 +22,10 @@ from thirdparty.pyadjoint.pyadjoint.tape import (
 
 from scripts_py.dolfinx_utils import DolfinUtils
 from scripts_py.auto_dolfinx.blocks.block_solve import EquationSolveBlock
-from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import AutoFluidBoundary
+from scripts_py.auto_dolfinx.opt_solver.topo_fluid import AutoFluidBoundary
 from scripts_py.auto_dolfinx.cbs_topo.seq_mesh_utils import SeqMeshObj
-from scripts_py.auto_dolfinx.cbs_topo.fipy_obs_simulator import FipyStokeObsTopoSimulator
+from scripts_py.mesh_utils import MeshObj
+from scripts_py.simulator.fipy_simulator import FipyStokeSimulator
 
 
 class CacheMemory(object):
@@ -41,15 +42,50 @@ class CacheMemory(object):
         self.cache_memory.clear()
 
 
-def convert_result_to_dolfinx(
+def convert_point_to_cell(point_field: np.ndarray, structure_mesh: MeshObj, is_vector: bool):
+    if is_vector:
+        point_func_space = DolfinUtils.point_vector_function_space(structure_mesh.domain)
+        cell_func_space = DolfinUtils.cell_vector_function_space(structure_mesh.domain)
+    else:
+        point_func_space = DolfinUtils.point_scalar_function_space(structure_mesh.domain)
+        cell_func_space = DolfinUtils.cell_scalar_function_space(structure_mesh.domain)
+    
+    point_func = dolfinx.fem.Function(point_func_space)
+    cell_func = dolfinx.fem.Function(cell_func_space)
+    point_func.x.array[:] = point_field.reshape((-1,))  # type: ignore
+    cell_func.interpolate(point_func)  # type: ignore
+    if is_vector:
+        return cell_func.x.array.copy().reshape((-1, point_field.shape[1]))  # type: ignore
+    else:
+        return cell_func.x.array.copy()  # type: ignore
+
+
+def convert_cell_to_point(cell_field: np.ndarray, structure_mesh: MeshObj, is_vector: bool):
+    if is_vector:
+        cell_func_space = DolfinUtils.cell_vector_function_space(structure_mesh.domain)
+        point_func_space = DolfinUtils.point_vector_function_space(structure_mesh.domain)
+    else:
+        cell_func_space = DolfinUtils.cell_scalar_function_space(structure_mesh.domain)
+        point_func_space = DolfinUtils.point_scalar_function_space(structure_mesh.domain)
+    cell_func = dolfinx.fem.Function(cell_func_space)
+    point_func = dolfinx.fem.Function(point_func_space)
+    cell_func.x.array[:] = cell_field.reshape((-1,))  # type: ignore
+    point_func.interpolate(cell_func)  # type: ignore
+    if is_vector:
+        return point_func.x.array.copy().reshape((-1, cell_field.shape[1]))  # type: ignore
+    else:
+        return point_func.x.array.copy()  # type: ignore
+
+
+def convert_fluid_result_to_dolfinx(
     domain: dolfinx.mesh.Mesh, 
     uh: dolfinx.fem.Function, 
     velocity: np.ndarray, 
     pressure: np.ndarray,
-    V_to_W_dofs: np.ndarray,
-    Q_to_W_dofs: np.ndarray,
     V_func_space: dolfinx.fem.FunctionSpace,
     Q_func_space: dolfinx.fem.FunctionSpace,
+    V_to_W_dofs: np.ndarray,
+    Q_to_W_dofs: np.ndarray,
 ):
     cell_vector_func_space = DolfinUtils.cell_vector_function_space(domain)
     velocity_fun = dolfinx.fem.Function(cell_vector_func_space)
@@ -79,50 +115,11 @@ def convert_result_to_dolfinx(
     return uh
 
 
-def convert_point_to_cell(point_field: np.ndarray, structure_mesh: SeqMeshObj, is_vector: bool):
-    if is_vector:
-        point_func_space = DolfinUtils.point_vector_function_space(structure_mesh.domain)
-        cell_func_space = DolfinUtils.cell_vector_function_space(structure_mesh.domain)
-    else:
-        point_func_space = DolfinUtils.point_scalar_function_space(structure_mesh.domain)
-        cell_func_space = DolfinUtils.cell_scalar_function_space(structure_mesh.domain)
-    
-    point_func = dolfinx.fem.Function(point_func_space)
-    cell_func = dolfinx.fem.Function(cell_func_space)
-    point_func.x.array[:] = point_field.reshape((-1,))  # type: ignore
-    cell_func.interpolate(point_func)  # type: ignore
-    if is_vector:
-        return cell_func.x.array.copy().reshape((-1, point_field.shape[1]))  # type: ignore
-    else:
-        return cell_func.x.array.copy()  # type: ignore
-
-
-def convert_cell_to_point(cell_field: np.ndarray, structure_mesh: SeqMeshObj, is_vector: bool):
-    if is_vector:
-        cell_func_space = DolfinUtils.cell_vector_function_space(structure_mesh.domain)
-        point_func_space = DolfinUtils.point_vector_function_space(structure_mesh.domain)
-    else:
-        cell_func_space = DolfinUtils.cell_scalar_function_space(structure_mesh.domain)
-        point_func_space = DolfinUtils.point_scalar_function_space(structure_mesh.domain)
-    cell_func = dolfinx.fem.Function(cell_func_space)
-    point_func = dolfinx.fem.Function(point_func_space)
-    cell_func.x.array[:] = cell_field.reshape((-1,))  # type: ignore
-    point_func.interpolate(cell_func)  # type: ignore
-    if is_vector:
-        return point_func.x.array.copy().reshape((-1, cell_field.shape[1]))  # type: ignore
-    else:
-        return point_func.x.array.copy()  # type: ignore
-
-
-def run_fipy_simulation(
+def run_stoke_fluid_simulation(
     boundaries: list[AutoFluidBoundary],
     msh_file: str,
-    viscosity: float,
     velocityRelaxation: float,
     pressureRelaxation: float,
-    structure_mesh: SeqMeshObj,
-    structure_obs_weight: np.ndarray|None,
-    structure_alpha: np.ndarray|None,
     log_step: int,
     hot_steps: int,
     simulation_iterations: int,
@@ -131,8 +128,12 @@ def run_fipy_simulation(
     use_tqdm: bool,
     use_log: bool,
     parallel_num: int,
-    is_cell_field: bool,
-    is_vector_field: bool,
+    
+    structure_mesh: MeshObj,
+    structure_viscosity: float|np.ndarray|list,
+    structure_source_term: np.ndarray|None,
+    structure_obs_weight: np.ndarray|None,
+    
     force_msh_init: bool = False,
     init_vtu: pyvista.UnstructuredGrid|None = None,
 ):
@@ -149,30 +150,40 @@ def run_fipy_simulation(
     
     if init_vtu is None:
         init_vtu = structure_mesh.grid.copy()
+        init_vtu.cell_data.clear()
+        init_vtu.point_data.clear()
     
-    if structure_alpha is not None:
-        if is_cell_field:
-            init_vtu.cell_data['alpha'] = structure_alpha
-            # init_vtu.point_data['alpha'] = convert_cell_to_point(structure_alpha, structure_mesh, is_vector_field)
-        else:
-            # init_vtu.point_data['alpha'] = structure_alpha
-            init_vtu.cell_data['alpha'] = convert_point_to_cell(structure_alpha, structure_mesh, is_vector_field)
+    if structure_source_term is not None:
+        if structure_source_term.shape[0] == structure_mesh.num_points:
+            structure_source_term = convert_point_to_cell(structure_source_term, structure_mesh, False)
+        init_vtu.cell_data['source_term'] = structure_source_term
+        
     if structure_obs_weight is not None:
-        if is_cell_field:
-            init_vtu.cell_data['obstacle'] = structure_obs_weight
-            # init_vtu.point_data['obstacle'] = convert_cell_to_point(structure_obs_weight, structure_mesh, is_vector_field)
-        else:
-            # init_vtu.point_data['obstacle'] = structure_obs_weight
-            init_vtu.cell_data['obstacle'] = convert_point_to_cell(structure_obs_weight, structure_mesh, is_vector_field)
+        if structure_obs_weight.shape[0] == structure_mesh.num_points:
+            structure_obs_weight = convert_point_to_cell(structure_obs_weight, structure_mesh, False)
+        init_vtu.cell_data['obstacle'] = structure_obs_weight
+        
+    if isinstance(structure_viscosity, (np.ndarray, list)):
+        if isinstance(structure_viscosity, list):
+            structure_viscosity = np.array(structure_viscosity)
+        if structure_viscosity.shape[0] == structure_mesh.num_points:
+            structure_viscosity = convert_point_to_cell(structure_viscosity, structure_mesh, False)
+        init_vtu.cell_data['viscosity'] = structure_viscosity
+        viscosity = None
+    elif isinstance(structure_viscosity, float):
+        if 'viscosity' in init_vtu.cell_data:
+            init_vtu.cell_data.pop('viscosity')  # delete the viscosity field
+        viscosity = structure_viscosity
+    else:
+        raise ValueError(f"Invalid structure_viscosity type: {type(structure_viscosity)}")
     
     init_vtu_file = os.path.join(save_dir, 'init.vtu')
     init_vtu.save(init_vtu_file)
     
-    FipyStokeObsTopoSimulator.create_simulation_config(
+    FipyStokeSimulator.create_simulation_config(
         cfg_file=cfg_file,
         source_msh_file=source_msh_file,
         dim=structure_mesh.tdim,
-        viscosity=viscosity,
         velocityRelaxation=velocityRelaxation,
         pressureRelaxation=pressureRelaxation,
         boundary_list=boundaries,  # type: ignore
@@ -183,17 +194,14 @@ def run_fipy_simulation(
         save_dir=result_dir,
         use_tqdm=use_tqdm,
         use_log=use_log,
+        viscosity=viscosity,
         structure_init_vtu_file=init_vtu_file,
-        vtu_velocity_field='velocity',
-        vtu_pressure_field='pressure',
-        vtu_alpha_field='alpha',
-        vtu_obs_weight_field='obstacle',
     )
     
     if parallel_num > 1:
-        cmd_str = f'mpirun -n {parallel_num} python scripts_py/auto_dolfinx/cbs_topo/fipy_obs_simulator.py --cfg_file {cfg_file} --force_msh_init {force_msh_init}'
+        cmd_str = f'mpirun -n {parallel_num} python scripts_py/simulator/fipy_simulator.py --cfg_file {cfg_file} --force_msh_init {force_msh_init}'
     else:
-        cmd_str = f'python scripts_py/auto_dolfinx/cbs_topo/fipy_obs_simulator.py --cfg_file {cfg_file} --force_msh_init {force_msh_init}'
+        cmd_str = f'python scripts_py/simulator/fipy_simulator.py --cfg_file {cfg_file} --force_msh_init {force_msh_init}'
     
     subprocess.run(cmd_str, shell=True, cwd='/home/admin123456/Desktop/work/MAPF_Pipeline')
     
@@ -224,11 +232,12 @@ def run_fipy_simulation(
     return cell_velocity, cell_pressure, cache_memory
 
 
-def equation_stokeTopoEqn_solve(
+def equation_cfd_topoWeight_solve(
     # ------ simulator related ------
+    fluid_type: Literal['stoke', 'navier_stokes', 'rans'],
     boundaries: list[AutoFluidBoundary],
     msh_file: str,
-    viscosity: float,
+    viscosity: float|np.ndarray|list,
     velocityRelaxation: float,
     pressureRelaxation: float,
     structure_mesh: SeqMeshObj,
@@ -242,8 +251,6 @@ def equation_stokeTopoEqn_solve(
     use_tqdm: bool,
     use_log: bool,
     with_cache: bool,
-    is_cell_field: bool,
-    is_vector_field: bool,
     
     # ------ result convert related ------
     V_to_W_dofs: np.ndarray,
@@ -299,11 +306,10 @@ def equation_stokeTopoEqn_solve(
                 topo_weight = coeff
                 find_topo_weight = True
                 break
-        
         if not find_topo_weight:
             raise ValueError(f"Topo weight {topo_weight_name} not found in F_form.")
         
-        structure_alpha = alpha_fun(
+        structure_source_term = alpha_fun(
             rho=topo_weight.x.array.copy(),
             alpha_min=alpha_min,
             alpha_max=alpha_max,
@@ -311,30 +317,31 @@ def equation_stokeTopoEqn_solve(
             pow_operator=np.power
         )
         
-        cell_velocity, cell_pressure, cache_memory = run_fipy_simulation(
-            boundaries=boundaries,
-            msh_file=msh_file,
-            viscosity=viscosity,
-            velocityRelaxation=velocityRelaxation,
-            pressureRelaxation=pressureRelaxation,
-            structure_mesh=structure_mesh,
-            structure_obs_weight=structure_obs_weight,
-            structure_alpha=structure_alpha,
-            log_step=log_step,
-            hot_steps=hot_steps,
-            simulation_iterations=simulation_iterations,
-            convergence_threshold=convergence_threshold,
-            save_dir=save_dir,
-            use_tqdm=use_tqdm,
-            use_log=use_log,
-            parallel_num=parallel_num,
-            force_msh_init=True,
-            init_vtu=None,
-            is_cell_field=is_cell_field,
-            is_vector_field=is_vector_field,
-        )
+        if fluid_type == 'stoke':
+            cell_velocity, cell_pressure, cache_memory = run_stoke_fluid_simulation(
+                boundaries=boundaries,
+                msh_file=msh_file,
+                velocityRelaxation=velocityRelaxation,
+                pressureRelaxation=pressureRelaxation,
+                log_step=log_step,
+                hot_steps=hot_steps,
+                simulation_iterations=simulation_iterations,
+                convergence_threshold=convergence_threshold,
+                save_dir=save_dir,
+                use_tqdm=use_tqdm,
+                use_log=use_log,
+                parallel_num=parallel_num,
+                structure_mesh=structure_mesh,
+                structure_viscosity=viscosity,
+                structure_source_term=structure_source_term,
+                structure_obs_weight=structure_obs_weight,
+                force_msh_init=True,
+                init_vtu=None,
+            )
+        else:
+            raise ValueError(f"Invalid fluid type: {fluid_type}")
                 
-        state = convert_result_to_dolfinx(
+        state = convert_fluid_result_to_dolfinx(
             domain=structure_mesh.domain,
             uh=state,
             velocity=cell_velocity,
@@ -351,10 +358,11 @@ def equation_stokeTopoEqn_solve(
             cache_memory = None
     
     if with_annotate:
-        block = StockTopoEquationSolveBlock(
+        block = CfdTopoWeightEqnSolveBlock(
             # ------ simulator related ------
             boundaries = boundaries,
             msh_file = msh_file,
+            fluid_type = fluid_type,
             viscosity = viscosity,
             velocityRelaxation = velocityRelaxation,
             pressureRelaxation = pressureRelaxation,
@@ -369,8 +377,6 @@ def equation_stokeTopoEqn_solve(
             use_tqdm = use_tqdm,
             use_log = use_log,
             cache_memory = cache_memory,
-            is_cell_field=is_cell_field,
-            is_vector_field=is_vector_field,
             
             # ------ result convert related ------
             V_to_W_dofs = V_to_W_dofs,
@@ -405,13 +411,14 @@ def equation_stokeTopoEqn_solve(
     return output
 
 
-class StockTopoEquationSolveBlock(EquationSolveBlock):
+class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
     def __init__(
         self,
         # ------ simulator related ------
         boundaries: list[AutoFluidBoundary],
         msh_file: str,
-        viscosity: float,
+        fluid_type: Literal['stoke', 'navier_stokes'],
+        viscosity: float|np.ndarray|list,
         velocityRelaxation: float,
         pressureRelaxation: float,
         structure_mesh: SeqMeshObj,
@@ -425,8 +432,6 @@ class StockTopoEquationSolveBlock(EquationSolveBlock):
         use_tqdm: bool,
         use_log: bool,
         cache_memory: CacheMemory|None,
-        is_cell_field: bool,
-        is_vector_field: bool,
         
         # ------ alpha related ------
         topo_weight_name: str,
@@ -468,6 +473,7 @@ class StockTopoEquationSolveBlock(EquationSolveBlock):
         # ------ simulator related ------
         self.boundaries = boundaries
         self.msh_file = msh_file
+        self.fluid_type = fluid_type
         self.viscosity = viscosity
         self.velocityRelaxation = velocityRelaxation
         self.pressureRelaxation = pressureRelaxation
@@ -482,8 +488,6 @@ class StockTopoEquationSolveBlock(EquationSolveBlock):
         self.use_tqdm = use_tqdm
         self.use_log = use_log
         self.cache_memory = cache_memory
-        self.is_cell_field = is_cell_field
-        self.is_vector_field = is_vector_field
         
         # ------ alpha related ------
         self.topo_weight_name = topo_weight_name
@@ -508,11 +512,10 @@ class StockTopoEquationSolveBlock(EquationSolveBlock):
                 topo_weight = coeff
                 find_topo_weight = True
                 break
-    
         if not find_topo_weight:
             raise ValueError(f"Topo weight {self.topo_weight_name} not found in F_form.")
             
-        structure_alpha = self.alpha_fun(
+        structure_source_term = self.alpha_fun(
             rho=topo_weight.x.array.copy(),
             alpha_min=self.alpha_min,
             alpha_max=self.alpha_max,
@@ -524,33 +527,35 @@ class StockTopoEquationSolveBlock(EquationSolveBlock):
             init_vtu = self.cache_memory.get_cache('init_vtu')
         else:
             init_vtu = None
-                
-        velocity, pressure, cache_memory = run_fipy_simulation(
-            boundaries=self.boundaries,
-            msh_file=self.msh_file,
-            viscosity=self.viscosity,
-            velocityRelaxation=self.velocityRelaxation,
-            pressureRelaxation=self.pressureRelaxation,
-            structure_mesh=self.structure_mesh,
-            structure_obs_weight=self.structure_obs_weight,
-            structure_alpha=structure_alpha,
-            log_step=self.log_step,
-            hot_steps=self.hot_steps,
-            simulation_iterations=self.simulation_iterations,
-            convergence_threshold=self.convergence_threshold,
-            save_dir=self.save_dir,
-            use_tqdm=self.use_tqdm,
-            use_log=self.use_log,
-            parallel_num=self.parallel_num,
-            force_msh_init=True,
-            init_vtu=init_vtu,
-            is_cell_field=self.is_cell_field,
-            is_vector_field=self.is_vector_field,
-        )
+        
+        if self.fluid_type == 'stoke':
+            velocity, pressure, cache_memory = run_stoke_fluid_simulation(
+                boundaries=self.boundaries,
+                msh_file=self.msh_file,
+                velocityRelaxation=self.velocityRelaxation,
+                pressureRelaxation=self.pressureRelaxation,
+                log_step=self.log_step,
+                hot_steps=self.hot_steps,
+                simulation_iterations=self.simulation_iterations,
+                convergence_threshold=self.convergence_threshold,
+                save_dir=self.save_dir,
+                use_tqdm=self.use_tqdm,
+                use_log=self.use_log,
+                parallel_num=self.parallel_num,
+                structure_mesh=self.structure_mesh,
+                structure_viscosity=self.viscosity,
+                structure_source_term=structure_source_term,
+                structure_obs_weight=self.structure_obs_weight,
+                force_msh_init=True,
+                init_vtu=init_vtu,
+            )
+        else:
+            raise ValueError(f"Invalid fluid type: {self.fluid_type}")
+        
         if self.cache_memory is not None:
             self.cache_memory = cache_memory
         
-        uh = convert_result_to_dolfinx(
+        uh = convert_fluid_result_to_dolfinx(
             domain=self.domain,
             uh=uh,
             velocity=velocity,
@@ -561,4 +566,4 @@ class StockTopoEquationSolveBlock(EquationSolveBlock):
             Q_func_space=self.Q_func_space,
         )
         return uh
-    
+ 

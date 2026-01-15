@@ -22,8 +22,8 @@ from scripts_py.auto_dolfinx.blocks.block_deform import deform
 from scripts_py.auto_dolfinx.tape_utils import start_annotation
 
 from scripts_py.auto_dolfinx.derivative_regularization import NormalDerivativeRegularization
-from scripts_py.auto_dolfinx.levelset_topo.hjb_solver import HamiltonJacobiSolver
-from scripts_py.auto_dolfinx.levelset_topo.reinitialization_solver import ReinitializationSolver
+from scripts_py.auto_dolfinx.opt_solver.hjb_solver import HamiltonJacobiSolver
+from scripts_py.auto_dolfinx.opt_solver.reinitialization_solver import ReinitializationSolver
 from scripts_py.auto_dolfinx.derivative_regularization import draw_shape_derivative
 
 

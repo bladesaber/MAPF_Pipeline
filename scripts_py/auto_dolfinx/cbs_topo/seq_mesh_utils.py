@@ -10,7 +10,7 @@ from tqdm import tqdm
 import pyvista
 
 from scripts_py.mesh_utils import MeshObj, MeshUtils
-from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import AutoFluidBoundary
+from scripts_py.auto_dolfinx.opt_solver.topo_fluid import AutoFluidBoundary
 
 
 def dist_pcd2center(pcd: np.ndarray, center_point: np.ndarray):

@@ -1,4 +1,5 @@
 from typing import Literal, Union
+import os
 
 import dolfinx
 import ufl
@@ -12,7 +13,7 @@ import pyvista
 
 from scripts_py.mesh_utils import MeshUtils, MeshObj
 from scripts_py.simulator.dolfin_simulator import FluidSimulator
-from scripts_py.vtu_recorder import VtuRecorder
+from scripts_py.vtu_recorder import VtuRecorder, TensorBoardRecorder
 from scripts_py.eqn_solver import LinearProblemSolver
 
 from thirdparty.pyadjoint.pyadjoint import Tape, ReducedFunctional, Control
@@ -29,7 +30,7 @@ from scripts_py.auto_dolfinx.blocks.block_assemble import assemble_scalar
 from scripts_py.auto_dolfinx.blocks.block_deform import deform
 from scripts_py.auto_dolfinx.tape_utils import start_annotation
 
-from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import AutoFluidCost, AutoFluidRegularization, AutoFluidBoundary
+from scripts_py.auto_dolfinx.opt_solver.topo_fluid import AutoFluidBoundary
 from scripts_py.auto_dolfinx.derivative_regularization import draw_shape_derivative, draw_deform
 
 
@@ -39,9 +40,7 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
         name: str, 
         mesh: MeshObj,
         fluid_type: Literal['stoke', 'naiver_stoke', 'rans'],
-        nut_init: float,
-        cost_item: AutoFluidCost,
-        regularization_item: AutoFluidRegularization,
+        viscosity_init: float,
         result_dir: str,
         mu_max: float = 500.0,
         mu_min: float = 1.0,
@@ -69,12 +68,9 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
         ))
         
         self.fluid_type = fluid_type
-        self.nut_init = nut_init
+        self.viscosity_init = viscosity_init
         self.disp: DolfinxFunction = DolfinxFunction(self.deformation_space, name=f'disp_fun')  # type: ignore
         self.disp.x.array[:] = 0.0  # type: ignore
-        
-        self.cost_item = cost_item
-        self.regularization_item = regularization_item
         
         self.result_dir = result_dir
         self.recorder = VtuRecorder(self.mesh, save_dir=self.result_dir, is_binary=True)
@@ -108,8 +104,9 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
 
     def define_boundary(self):
         for name, bry_info in self.boundaries.items():
-            if bry_info.boundary_type == 'velocity':
-                
+            assert bry_info.boundary_type in ['velocity', 'pressure', 'wall'], 'Invalid boundary type'
+            
+            if bry_info.boundary_type == 'velocity': 
                 inflow_velocity_exp = partial(
                     AutoFluidBoundary.inflow_velocity_exp,
                     velocity=np.array(bry_info.value),
@@ -169,9 +166,6 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
                     is_mixed_element=True
                 )
             
-            else:
-                raise ValueError('[Error]: Invalid Boundary Type.')
-        
         # ------ define mu boundary condition ------
         for bry_info in self.boundaries.values():
             if bry_info.is_free:
@@ -255,29 +249,9 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
             raise ValueError(f'Invalid fluid type: {self.fluid_type}')
         return govern_form
 
-    def define_cost(
-        self, 
-        cost_item: AutoFluidCost, 
-        u: ufl.tensors.ListTensor, p: ufl.indexed.Indexed, 
-        **kwargs
-    ):
-        if cost_item.style == 'MinDissipation':
-            assert 'nut' in kwargs, 'Viscosity is required for MinDissipation cost'
-            cost_item.cost_form = cost_item.weight * kwargs['nut'] * inner(grad(u), grad(u)) * ufl.dx
-            
-        elif cost_item.style == 'MinPressure':
-            assert 'marker' in cost_item.kwargs, 'Marker is required for MinPressure cost'
-            area = AssembleUtils.assemble_scalar(
-                dolfinx.fem.Constant(self.mesh.domain, 1.0) * self.ds(cost_item.kwargs['marker'])  # type: ignore
-            )
-            cost_item.cost_form = cost_item.weight * (1.0 / area) * p * self.ds(cost_item.kwargs['marker'])
-            
-        elif cost_item.style == 'MaxFlux':
-            assert 'marker' in cost_item.kwargs, 'Marker is required for MaxFlux cost'
-            cost_item.cost_form = cost_item.weight * ufl.dot(u, self.n_vec) * self.ds(cost_item.kwargs['marker'])  # type: ignore
-            
-        else:
-            raise ValueError(f'Invalid cost style: {cost_item.style}')
+    def get_bcs(self):
+        """set wall boundary at last"""
+        return [bry_info.bry_cell for bry_info in sorted(self.boundaries.values(), key=lambda x: x.priority)]
 
     def smooth_deform(
         self, 
@@ -369,8 +343,84 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
         
         return displacement
 
+    def prepare_cost_args(self, u: ufl.tensors.ListTensor, p: ufl.indexed.Indexed, obj_cost_args: dict, **kwargs):
+        cost_parse_dict = {}
+        
+        if obj_cost_args['style'] == 'MinDissipation':
+            with_viscosity = obj_cost_args['with_viscosity']
+            if with_viscosity:
+                min_dissipation_form = kwargs['viscosity'] * inner(grad(u), grad(u)) * ufl.dx
+            else:
+                min_dissipation_form = inner(grad(u), grad(u)) * ufl.dx
+            cost_parse_dict.update({
+                'min_dissipation_form': min_dissipation_form
+            })
+            
+        elif obj_cost_args['style'] == 'MinPressure':
+            inlet_marker: int = obj_cost_args['inlet_marker']
+            face_area_form = dolfinx.fem.Constant(self.mesh.domain, 1.0) * self.ds(inlet_marker)  # type: ignore
+            face_area = AssembleUtils.assemble_scalar(face_area_form)
+            cost_parse_dict.update({
+                'face_area_form': face_area_form,
+                'face_area': face_area,
+                'pressure_form': (1.0 / face_area) * p * self.ds(inlet_marker)
+            })
+            
+        elif obj_cost_args['style'] == 'FixedFlux':
+            inlet_markers: list[int] = obj_cost_args['inlet_markers']
+            inlet_flux = 0.0
+            for marker in inlet_markers:
+                inlet_flux += AssembleUtils.assemble_scalar(ufl.dot(u, self.n_vec) * self.ds(marker))
+            inlet_flux = inlet_flux * -1.0  # TODO: should I multiply -1.0?
+            
+            outlet_markers: list[int] = obj_cost_args['outlet_markers']
+            assert len(outlet_markers) > 1, 'At least two outlet marker is required for FixedFlux cost'
+            outlet_marker_ratios = obj_cost_args['outlet_marker_ratios']
+            assert np.sum(outlet_marker_ratios) == 1.0, 'Outlet marker ratios must sum to 1.0'
+            outlet_marker_weights = obj_cost_args['outlet_marker_weights']
+            
+            outlet_cost_forms = {}
+            for marker, ratio, weight in zip(outlet_markers, outlet_marker_ratios, outlet_marker_weights):
+                target_flux = inlet_flux * ratio
+                outlet_flux_form = ufl.dot(u, self.n_vec) * self.ds(marker)
+                outlet_cost_forms[marker] = {
+                    'flux_form': outlet_flux_form,
+                    'target_flux': target_flux,
+                    'weight': weight,
+                }
+            cost_parse_dict.update({
+                'inlet_flux': inlet_flux,
+                'outlet_cost_forms': outlet_cost_forms,
+            })
+        
+        else:
+            raise ValueError(f'Invalid cost style: {obj_cost_args['style']}')
+
+        obj_cost_args.update(cost_parse_dict)
+        
+        return obj_cost_args
+
+    def prepare_reg_args(self, reg_cost_args: dict):
+        reg_parse_dict = {}
+
+        if reg_cost_args['style'] == 'Volume':
+            if 'target_ratio' in reg_cost_args.keys():
+                target_volume = self.volume * reg_cost_args['target_ratio']
+            else:
+                target_volume = reg_cost_args['target_volume']
+            
+            reg_parse_dict.update({
+                'target_volume': target_volume,
+                'vol_form': dolfinx.fem.Constant(self.domain, 1.0) * ufl.dx  # type: ignore
+            })
+        
+        reg_cost_args.update(reg_parse_dict)
+        return reg_cost_args
+
     def define_problem(
         self,
+        obj_cost_args: dict,
+        reg_cost_args: dict,
         displacement_ksp_option: dict = {
             'ksp_type': 'preonly',
             'pc_type': 'lu',
@@ -403,7 +453,7 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
             'with_residual': False
         },
         adj_kwargs: dict = {
-            'mat_assemble_method': 'lift',
+            'mat_assemble_method': 'lift',  # should i use identity_row here?
             'with_residual': False
         },
         forward_kwargs: dict = {
@@ -411,6 +461,7 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
             'with_residual': False
         }
     ):
+        self.define_boundary()
         with start_annotation():
             uh = DolfinxFunction(self.W, name=f"{self.name}_state")
             u, p = ufl.split(uh)  # type: ignore # please don't use up.split()
@@ -418,12 +469,10 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
             v, q = ufl.split(vq)  # type: ignore # please don't use up.split()
             
             f = dolfinx.fem.Constant(self.mesh.domain, np.zeros(self.mesh.tdim))
-            nut = DolfinxFunction(self.point_scalar_func_space, name=f"{self.name}_nut")
-            nut.x.array[:] = self.nut_init  # type: ignore
+            self.viscosity = DolfinxFunction(self.point_scalar_func_space, name=f"{self.name}_viscosity")
+            self.viscosity.x.array[:] = self.viscosity_init  # type: ignore
                     
-            govern_form = self.define_govern_equation(u, p, v, q, f, nut)  # type: ignore
-            
-            self.define_boundary()
+            govern_form = self.define_govern_equation(u, p, v, q, f, self.viscosity)  # type: ignore
             
             displacement = self.smooth_deform(self.disp, displacement_ksp_option)
             deform(self.domain, displacement, tape=self.tape)  # type: ignore
@@ -433,7 +482,7 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
                 F_form=govern_form,
                 state=uh,  # type: ignore
                 adjoint=vq,  # type: ignore
-                bcs=[bry_info.bry_cell for bry_info in self.boundaries.values()],
+                bcs=self.get_bcs(),  # type: ignore
                 is_linear=True if self.fluid_type == 'stoke' else False,
                 tlm_ksp_option=tlm_ksp_option,
                 adj_ksp_option=adj_ksp_option,
@@ -443,44 +492,108 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
                 forward_kwargs=forward_kwargs,
                 tape=self.tape,
             )
-            
             self.uh = uh  # type: ignore
             self.f = f  # type: ignore
-            self.nut = nut  # type: ignore
-            
             u, p = ufl.split(self.uh)  # type: ignore
-            self.define_cost(self.cost_item, u, p, nut=nut)  # type: ignore
-            object_cost_ = assemble_scalar(self.cost_item.cost_form, domain=self.domain, tape=self.tape)  # type: ignore
             
-            if self.regularization_item.style == 'Volume':
-                if 'target_ratio' in self.regularization_item.kwargs:
-                    target_volume = self.volume * self.regularization_item.kwargs['target_ratio']
-                else:
-                    assert 'target_volume' in self.regularization_item.kwargs, 'Target volume is required for Volume regularization'
-                    target_volume = self.regularization_item.kwargs['target_volume']
-                
-                phi = dolfinx.fem.Constant(self.domain, 1.0)  # type: ignore    
-                volume_ = assemble_scalar(phi * ufl.dx, self.domain, self.tape)
-                regularization_cost_ = self.regularization_item.weight * (volume_ - target_volume) ** 2
-                            
-                def eval():
-                    return self.regularization_item.weight * (AssembleUtils.assemble_scalar(phi * ufl.dx) - target_volume) ** 2
-
-                self.regularization_item.eval = eval
+            # ------ define object cost ------
+            obj_cost_args = self.prepare_cost_args(
+                u=u, p=p, obj_cost_args=obj_cost_args,  # type: ignore
+                viscosity=self.viscosity,
+            )
+            if obj_cost_args['style'] == 'MinDissipation':
+                obj_cost = assemble_scalar(
+                    form=obj_cost_args['weight'] * obj_cost_args['min_dissipation_form'], 
+                    domain=self.domain, tape=self.tape
+                )
+            elif obj_cost_args['style'] == 'MinPressure':
+                obj_cost = assemble_scalar(
+                    form=obj_cost_args['weight'] * obj_cost_args['pressure_form'],
+                    domain=self.domain, tape=self.tape
+                )
+            elif obj_cost_args['style'] == 'FixedFlux':
+                for i, (_, outlet_item) in enumerate(obj_cost_args['outlet_cost_forms'].items()):
+                    outlet_flux = assemble_scalar(
+                        form=outlet_item['flux_form'],
+                        domain=self.domain, tape=self.tape
+                    )
+                    target_flux = outlet_item['target_flux']
+                    weight = outlet_item['weight']
+                    if i == 0:
+                        obj_cost = weight * (outlet_flux - target_flux) ** 2
+                    else:
+                        obj_cost += weight * (outlet_flux - target_flux) ** 2
+            else:
+                raise ValueError(f'Invalid cost style: {obj_cost_args['style']}')
+            self.obj_cost_args = obj_cost_args
             
-            Jhat = object_cost_ + regularization_cost_
-                        
+            # ------ define regularization cost ------
+            reg_cost_args = self.prepare_reg_args(reg_cost_args)  # type: ignore
+            if reg_cost_args['style'] == 'Volume':
+                target_volume = reg_cost_args['target_volume']
+                topo_volume = assemble_scalar(reg_cost_args['vol_form'], domain=self.domain, tape=self.tape)
+                volume_dif = target_volume - topo_volume
+                if reg_cost_args['reg_rescale']:
+                    volume_dif = volume_dif / target_volume
+                reg_cost = reg_cost_args['weight'] * (volume_dif ** 2)
+            else:
+                raise ValueError(f'Invalid regularization style: {reg_cost_args['style']}')
+            self.reg_cost_args = reg_cost_args
+            
+            loss_all = obj_cost + reg_cost
+            
+            # ------ define optimization problem ------
             self.control_displacement = Control(
                 self.disp,
                 # riesz_map={'riesz_representation': 'L2', 'comm': self.domain.comm}
             )
-            self.opt_problem = ReducedFunctional(Jhat, [self.control_displacement])
+            self.opt_problem = ReducedFunctional(loss_all, [self.control_displacement])
     
     def eval(self):
-        return {
-            self.cost_item.name: self.cost_item.eval(),
-            self.regularization_item.name: self.regularization_item.eval(),
-        }
+        eval_dict = {}
+        log_dict = {}
+        
+        # ------ compute object cost ------
+        if self.obj_cost_args['style'] == 'MinDissipation':
+            eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
+                form=self.obj_cost_args['weight'] * self.obj_cost_args['min_dissipation_form']
+            )
+            log_dict['obj_cost'] = eval_dict['obj_cost']
+                        
+        elif self.obj_cost_args['style'] == 'MinPressure':
+            eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
+                form=self.obj_cost_args['weight'] * self.obj_cost_args['pressure_form']
+            )
+            log_dict['obj_cost'] = eval_dict['obj_cost']
+            
+        elif self.obj_cost_args['style'] == 'FixedFlux':
+            flux_dict = {}
+            for i, (_, outlet_item) in enumerate(self.obj_cost_args['outlet_cost_forms'].items()):
+                outlet_flux = AssembleUtils.assemble_scalar(form=outlet_item['flux_form'])
+                eval_dict[f'{i}_cost'] = outlet_item['weight'] * (outlet_flux - outlet_item['target_flux']) ** 2
+                flux_dict[f'{i}_flux'] = np.abs(outlet_flux)
+            log_dict['flux'] = flux_dict
+        else:
+            raise ValueError(f'Invalid cost style: {self.obj_cost_args['style']}')
+        
+        # ------ compute regularization cost ------
+        if self.reg_cost_args['style'] == 'Volume':
+            target_volume = self.reg_cost_args['target_volume']
+            topo_volume = AssembleUtils.assemble_scalar(self.reg_cost_args['vol_form'])
+            volume_dif = target_volume - topo_volume
+            if self.reg_cost_args['reg_rescale']:
+                volume_dif = volume_dif / target_volume
+            eval_dict['reg_cost'] = self.reg_cost_args['weight'] * (volume_dif ** 2)
+            
+            log_dict['reg_cost'] = eval_dict['reg_cost']
+            log_dict['volume'] = topo_volume
+            
+        else:
+            raise ValueError(f'Invalid regularization style: {self.reg_cost_args['style']}')
+        
+        log_dict['loss_all'] = np.sum(list(eval_dict.values()))
+                        
+        return eval_dict, log_dict
     
     def compute_gradient(self, adj_input: float, with_norm=True) -> np.ndarray:
         dJ_dmesh = self.opt_problem.derivative(adj_input=float(adj_input))[0]
@@ -492,60 +605,82 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
     
     def run(
         self,
-        line_search_steps: list[float] = [3.0, 1.5, 0.75],
+        line_search_steps: list[float] = [3.0, 1.5, 0.75],        
         max_iteration=200,
+        full_run: bool = False,
+        recorder: TensorBoardRecorder|None = None,
     ):
-        # TODO OPTIMIZE: adding remesh tool may be better  
+        with_line_search = len(line_search_steps) > 1
+        line_search_steps_np: np.ndarray = np.array(line_search_steps)
+        step_length_last = line_search_steps_np[0]
+        if full_run:
+            assert not with_line_search, 'Full run and line search cannot be used together'
         
         is_solved, step = False, 0
         loss_current, loss_last = 0.0, 0.0
-        line_search_steps_np: np.ndarray = np.array(line_search_steps)
-        step_length_last = line_search_steps_np[0]
         
         disp = DolfinxFunction(self.deformation_space, name=f'displacement')  # type: ignore
         
-        loss_dict = self.eval()
+        loss_dict, log_dict = self.eval()
         loss_current = np.sum(list(loss_dict.values()))
         self.record_Upw(step)
         print(f"step/{step} loss:{loss_current}.")
                         
         while True:
             step += 1
-            
             if step > 1:
-                loss_dict = self.eval()
-                log = f"[step/{step} loss:{loss_current} last_step_length:{step_length_last:.3f}]"
+                loss_dict, log_dict = self.eval()
+                log = f"[step/{step} loss:{loss_current:.5f} opt_length:{step_length_last:.5f}]"
                 for name, cost_value in loss_dict.items():
-                    log += f" {name}:{cost_value:.3f}"
+                    log += f" {name}:{cost_value:.5f}"
                 print(log)
                 
-                loss_residual = loss_current - loss_last
-                if np.abs(loss_residual) < 1e-6:
+                if recorder is not None:
+                    for name, value in log_dict.items():
+                        if isinstance(value, dict):
+                            recorder.write_scalars(tag=name, scalar_dict=value, step=step)
+                        else:
+                            recorder.write_scalar(tag=name, scalar_value=value, step=step)
+                
+                if np.abs(loss_current - loss_last) < 1e-8 and (not full_run):
                     is_solved = True
                     break
             
-            adj_input = np.minimum(np.maximum(loss_current * 0.1, 0.01), 1e2)
-            disp_dire_np = self.compute_gradient(adj_input=adj_input, with_norm=True)
+            disp_dire_np = self.compute_gradient(
+                adj_input=np.minimum(np.maximum(loss_current * 0.1, 0.01), 1e2), 
+                with_norm=True
+            )
             disp_dire_np = disp_dire_np.reshape(-1)
             
-            find_best_step = False            
-            last_step_index = np.where(line_search_steps_np == step_length_last)[0][0]
-            line_search_start_index = np.maximum(last_step_index - 1, 0)
-            for i in range(line_search_start_index, line_search_steps_np.shape[0]):
-                step_length = line_search_steps_np[i]
-                                
-                disp.x.array[:] = disp_dire_np * step_length * -1.0  # type: ignore
+            find_best_step = False
+            if with_line_search:
+                last_step_index = np.where(line_search_steps_np == step_length_last)[0][0]
+                line_search_start_index = np.maximum(last_step_index - 1, 0)
+                for i in range(line_search_start_index, line_search_steps_np.shape[0]):
+                    step_length = line_search_steps_np[i]
+           
+                    disp.x.array[:] = disp_dire_np * step_length * -1.0  # type: ignore
+                    loss_new = self.opt_problem(values=[disp])  # type: ignore
+                    if loss_new < loss_current:
+                        # NOTE: be careful to update dependency mesh of smooth_displacement_block
+                        self.update_smooth_displacement_block(self.mesh.grid.points.copy())
+                        
+                        find_best_step = True
+                        loss_last = loss_current
+                        loss_current = loss_new
+                        step_length_last = step_length
+                        self.record_Upw(step)
+                        break
+            else:
+                disp.x.array[:] = disp_dire_np * step_length_last * -1.0  # type: ignore
                 loss_new = self.opt_problem(values=[disp])  # type: ignore
-                if loss_new < loss_current:
-                    # NOTE: be careful to update dependency mesh of smooth_displacement_block
+                if loss_new < loss_current or full_run:
                     self.update_smooth_displacement_block(self.mesh.grid.points.copy())
                     
                     find_best_step = True
                     loss_last = loss_current
                     loss_current = loss_new
-                    step_length_last = step_length
                     self.record_Upw(step)
-                    break
             
             if not find_best_step:
                 print(f"[Warning]: line search fail.")
@@ -577,33 +712,20 @@ class SmoothShapeFluidOptimizer(FluidSimulator):
     
     
 def debug():
-    xdmf_file = "/home/admin123456/Desktop/work/gmsh_test/t13/optimal_pipe_03.xdmf"
-    mesh = MeshObj(xdmf_file=xdmf_file, mesh_name="model")
-    
-    cost_item = AutoFluidCost(
-        name='cost_1',
-        style='MinDissipation',
-        weight=1.0,
-    )
-    regularization_item = AutoFluidRegularization(
-        name='regularization_1',
-        style='Volume',
-        weight=1.0,
-        target_ratio=1.0
-    )
+    base_dir = "/home/admin123456/Desktop/work/gmsh_test/t8"
+    msh_file = os.path.join(base_dir, 'model.msh')
+
+    domain, cell_tags, facet_tags = MeshUtils.read_msh(msh_file, dim=2)
+    mesh = MeshObj(xdmf_file=None, domain=domain, cell_tags=cell_tags, facet_tags=facet_tags)
     
     optim = SmoothShapeFluidOptimizer(
         name='shape_fluid_13',
         mesh=mesh,
         fluid_type='stoke',
-        nut_init=1.0 / 400.0,
-        cost_item=cost_item,
-        regularization_item=regularization_item,
-        result_dir='/home/admin123456/Desktop/work/gmsh_test/t13/cache',
+        viscosity_init=1.0 / 400.0,
+        result_dir=os.path.join(base_dir, 'dolfinx_smooth_shape'),
     )
-    
-    tape = Tape()
-    optim.setup_tape(tape)
+    optim.setup_tape(Tape())
     
     inlet_bry = AutoFluidBoundary(
         name='inlet',
@@ -642,7 +764,19 @@ def debug():
     optim.add_boundary(wall_fix_bry)
     optim.add_boundary(wall_free_bry)
 
-    optim.define_problem()
+    optim.define_problem(
+        obj_cost_args={
+            'style': 'MinDissipation',
+            'with_viscosity': True,
+            'weight': 1.0,
+        },
+        reg_cost_args={
+            'style': 'Volume',
+            'weight': 1.0,
+            'target_ratio': 0.9,
+            'reg_rescale': False,
+        },
+    )
     
     # optim.compute_gradient(adj_input=1.0, with_norm=True)
     optim.run(max_iteration=200)

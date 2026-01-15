@@ -46,13 +46,21 @@ class FluidBoundary(object):
         self.marker = marker
         self.bry_cell: BoundaryCell
         
+        self.priority = -1
+        if boundary_type in ['velocity', 'pressure']:
+            self.priority = 1
+        elif boundary_type == 'wall':
+            self.priority = 2
+        
         if boundary_type == 'velocity':
             assert 'face_center' in kwargs, "[Error]: face_center is required for velocity boundary"
             assert 'face_norm_vector' in kwargs, "[Error]: face_norm_vector is required for velocity boundary"
             assert 'face_radius' in kwargs, "[Error]: face_radius is required for velocity boundary"
-        self.face_center = kwargs.get('face_center', None)
-        self.face_norm_vector = kwargs.get('face_norm_vector', None)
-        self.face_radius = kwargs.get('face_radius', None)
+        self.face_center = kwargs.pop('face_center', None)
+        self.face_norm_vector = kwargs.pop('face_norm_vector', None)
+        self.face_radius = kwargs.pop('face_radius', None)
+        self.interpolate_method = kwargs.pop('interpolate_method', 'circle')
+        self.kwargs = kwargs
     
     @staticmethod
     def inflow_velocity_exp(
@@ -230,6 +238,7 @@ class StokeSimulator(FluidSimulator):
                     face_center=bry_info.face_center, # type: ignore
                     face_norm_vector=bry_info.face_norm_vector, # type: ignore
                     face_radius=bry_info.face_radius, # type: ignore
+                    method=bry_info.interpolate_method,
                 )
                 
                 bry_info.bry_cell = BoundaryCell.define_bry_cell(
@@ -281,6 +290,10 @@ class StokeSimulator(FluidSimulator):
 
             else:
                 raise ValueError('[Error]: Invalid Boundary Type.')
+        
+    def get_bcs(self):
+        """set wall boundary at last"""        
+        return [bry_info.bry_cell.bc for bry_info in sorted(self.boundaries.values(), key=lambda x: x.priority)]
 
     def run(self, ksp_option=None, mat_assemble_method: Literal['lift', 'identity_row'] = 'lift', with_residual=False) -> dict:
         res_dict = LinearProblemSolver.solve_fea_petsc(
@@ -288,7 +301,7 @@ class StokeSimulator(FluidSimulator):
             uh=self.eqn_map['uh'],
             a_form=self.eqn_map['lhs_form_dolfin'],
             l_form=self.eqn_map['rhs_form_dolfin'],
-            bcs=[bry_info.bry_cell.bc for bry_info in self.boundaries.values()],
+            bcs=self.get_bcs(),
             mat_assemble_method=mat_assemble_method,
             ksp_option=ksp_option if (ksp_option is not None) else self.ksp_option,
             with_residual=with_residual
@@ -406,34 +419,34 @@ class NavierStokeSimulator(StokeSimulator):
 
 
 def debug_stoke():
-    mesh_file = '/home/admin123456/Desktop/work/gmsh_test/t8/test2.msh'
-    xdmf_file = '/home/admin123456/Desktop/work/gmsh_test/t8/test2.xdmf'
-    # MeshUtils.msh_to_XDMF(mesh_file, xdmf_file, dim=2)
+    mesh_file = '/home/admin123456/Desktop/work/gmsh_test/t8/model.msh'
+    xdmf_file = '/home/admin123456/Desktop/work/gmsh_test/t8/model.xdmf'
+    MeshUtils.msh_to_XDMF(mesh_file, xdmf_file, dim=2)
     
     mesh = MeshObj(xdmf_file=xdmf_file)
     simulator = StokeSimulator('stoke', mesh)
-    simulator.define_equation(nu_value=1e-5)
+    simulator.define_equation(nu_value=1e-4)
     
     inlet_bry = FluidBoundary(
         name='inlet',
         boundary_type='velocity',
-        value=[3.5, 0.],
-        marker=22,
-        face_center=[0.0, 0.25],
+        value=[3.0, 0.],
+        marker=1,
+        face_center=[-0.05, 0.2],
         face_norm_vector=[1.0, 0.0],
-        face_radius=0.25
+        face_radius=0.1
     )
     outlet_bry = FluidBoundary(
         name='outlet',
         boundary_type='pressure',
         value=0.0,
-        marker=23
+        marker=2
     )
     wall_bry = FluidBoundary(
         name='wall',
         boundary_type='wall',
         value=0.0,
-        marker=24
+        marker=3
     )
     
     simulator.add_boundary(inlet_bry)
