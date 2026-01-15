@@ -224,7 +224,7 @@ def run_fipy_simulation(
     return cell_velocity, cell_pressure, cache_memory
 
 
-def equation_stokeEqn_solve(
+def equation_stokeTopoEqn_solve(
     # ------ simulator related ------
     boundaries: list[AutoFluidBoundary],
     msh_file: str,
@@ -351,7 +351,7 @@ def equation_stokeEqn_solve(
             cache_memory = None
     
     if with_annotate:
-        block = StockEquationSolveBlock(
+        block = StockTopoEquationSolveBlock(
             # ------ simulator related ------
             boundaries = boundaries,
             msh_file = msh_file,
@@ -405,7 +405,7 @@ def equation_stokeEqn_solve(
     return output
 
 
-class StockEquationSolveBlock(EquationSolveBlock):
+class StockTopoEquationSolveBlock(EquationSolveBlock):
     def __init__(
         self,
         # ------ simulator related ------

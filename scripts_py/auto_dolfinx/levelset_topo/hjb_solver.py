@@ -81,7 +81,7 @@ class HamiltonJacobiSolver(object):
         snes_option: dict,
         mat_assemble_method: Literal['identity_row', 'lift'],
         only_solver: bool = False,
-    ) -> np.ndarray|PETSc.TS:  # type: ignore        
+    ) -> np.ndarray|PETSc.TS:  # type: ignore
         res_dict = TSProblemSolver.solve_implicit_by_petsc(
             comm=self.domain.comm,
             f_form=self.f_form,

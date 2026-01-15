@@ -34,7 +34,7 @@ class FipyStokeSimulator(object):
         self,
         mesh: Gmsh2D|Gmsh3D,
         structure_mesh: MeshObj|None,
-        viscosity: float,
+        viscosity: float|np.ndarray,
         velocityRelaxation: float,
         pressureRelaxation: float,
         parallel_num: int,
@@ -98,13 +98,21 @@ class FipyStokeSimulator(object):
         
         self.face_velocity = FaceVariable(mesh=self.mesh, rank=1)
         
+        if isinstance(viscosity, (np.ndarray, list)):
+            if isinstance(viscosity, list):
+                viscosity = np.array(viscosity)
+            viscosity = viscosity[self.structure_mesh_to_mesh_idxs].reshape(-1)
+            init_viscosity = CellVariable(mesh=self.mesh, name='viscosity', value=viscosity) # type: ignore
+        else:
+            init_viscosity = viscosity
+        
         if self.tdim == 2:
-            self.xVelocityEq = DiffusionTerm(coeff=viscosity) - self.pressure.grad.dot([1., 0.])
-            self.yVelocityEq = DiffusionTerm(coeff=viscosity) - self.pressure.grad.dot([0., 1.])
+            self.xVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([1., 0.])
+            self.yVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([0., 1.])
         elif self.tdim == 3:
-            self.xVelocityEq = DiffusionTerm(coeff=viscosity) - self.pressure.grad.dot([1., 0., 0.])
-            self.yVelocityEq = DiffusionTerm(coeff=viscosity) - self.pressure.grad.dot([0., 1., 0.])
-            self.zVelocityEq = DiffusionTerm(coeff=viscosity) - self.pressure.grad.dot([0., 0., 1.])
+            self.xVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([1., 0., 0.])
+            self.yVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([0., 1., 0.])
+            self.zVelocityEq = DiffusionTerm(coeff=init_viscosity) - self.pressure.grad.dot([0., 0., 1.])
         
         # ------ define pressure correction equation ------
         self.ap = CellVariable(mesh=self.mesh, value=1.)
@@ -491,7 +499,7 @@ class FipyStokeSimulator(object):
     def from_msh(
         source_msh_file: str,
         dim: int,
-        viscosity: float = 1.0 / 400.0,
+        viscosity: float|np.ndarray = 1.0 / 400.0,
         velocityRelaxation: float = 0.5,
         pressureRelaxation: float = 0.8,
         structure_init_x_velocity: np.ndarray|None = None,
@@ -546,7 +554,7 @@ class FipyStokeSimulator(object):
         cfg_file: str, 
         source_msh_file: str,
         dim: int,
-        viscosity: float,
+        viscosity: float|np.ndarray,
         velocityRelaxation: float,
         pressureRelaxation: float,
         boundary_list: list[FluidBoundary],
@@ -560,13 +568,19 @@ class FipyStokeSimulator(object):
         structure_init_vtu_file: str|None = None,
         vtu_velocity_field: str = 'velocity',
         vtu_pressure_field: str = 'pressure',
+        vtu_viscosity_field: str = 'viscosity',
     ):
         assert cfg_file.endswith('.json'), "cfg_file must be a json file"
+        
+        is_viscosity_array = isinstance(viscosity, (np.ndarray, list))
+        if is_viscosity_array:
+            assert structure_init_vtu_file is not None, "structure_init_vtu_file is required when viscosity is an array"
         
         cfg_dict = {
             'source_msh_file': source_msh_file,
             'dim': dim,
-            'viscosity': viscosity,
+            'viscosity': None if is_viscosity_array else viscosity,
+            'is_viscosity_array': is_viscosity_array,
             'velocityRelaxation': velocityRelaxation,
             'pressureRelaxation': pressureRelaxation,
             'iterations': iterations,
@@ -580,6 +594,7 @@ class FipyStokeSimulator(object):
             'structure_init_vtu_file': structure_init_vtu_file,
             'vtu_velocity_field': vtu_velocity_field,
             'vtu_pressure_field': vtu_pressure_field,
+            'vtu_viscosity_field': vtu_viscosity_field,
         }
         
         for bry in boundary_list:
@@ -617,10 +632,14 @@ class FipyStokeSimulator(object):
         with open(cfg_file, 'r') as f:
             cfg_dict = json.load(f)
         
+        if cfg_dict['is_viscosity_array']:
+            assert cfg_dict['structure_init_vtu_file'] is not None, "structure_init_vtu_file is required when viscosity is an array"
+        
         init_x_velocity = None
         init_y_velocity = None
         init_z_velocity = None
         init_pressure = None
+        init_viscosity = None
         if cfg_dict['structure_init_vtu_file'] is not None:
             init_vtu = pyvista.read(cfg_dict['structure_init_vtu_file'])
             
@@ -634,10 +653,18 @@ class FipyStokeSimulator(object):
             if cfg_dict['vtu_pressure_field'] in init_vtu.cell_data.keys():
                 init_pressure = init_vtu.cell_data[cfg_dict['vtu_pressure_field']]
         
+            if cfg_dict['is_viscosity_array']:
+                assert cfg_dict['vtu_viscosity_field'] in init_vtu.cell_data.keys(), f"vtu_viscosity_field {cfg_dict['vtu_viscosity_field']} is not found in the structure_init_vtu_file"
+                init_viscosity = init_vtu.cell_data[cfg_dict['vtu_viscosity_field']]
+            
+        if not cfg_dict['is_viscosity_array']:
+            assert cfg_dict['viscosity'] is not None, "viscosity is required when viscosity is not an array"
+            init_viscosity = cfg_dict['viscosity']
+        
         simulator = FipyStokeSimulator.from_msh(
             source_msh_file=cfg_dict['source_msh_file'],
             dim=cfg_dict['dim'],
-            viscosity=cfg_dict['viscosity'],
+            viscosity=init_viscosity,  # type: ignore
             velocityRelaxation=cfg_dict['velocityRelaxation'],
             pressureRelaxation=cfg_dict['pressureRelaxation'],
             structure_init_x_velocity=init_x_velocity,

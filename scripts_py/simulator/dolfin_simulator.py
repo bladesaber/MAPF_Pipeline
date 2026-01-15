@@ -188,7 +188,7 @@ class StokeSimulator(FluidSimulator):
         self.is_linear = True
         self.eqn_map: dict[str, Any] = {}
 
-    def define_equation(self, nu_value: float, body_force=(0., 0., 0.)):
+    def define_equation(self, nu_value: float|np.ndarray, body_force=(0., 0., 0.)):
         u, p = ufl.split(ufl.TrialFunction(self.W))  # type: ignore
         v, q = ufl.split(ufl.TestFunction(self.W))  # type: ignore
 

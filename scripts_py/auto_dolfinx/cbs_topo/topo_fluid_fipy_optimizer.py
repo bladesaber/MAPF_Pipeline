@@ -28,7 +28,7 @@ from scripts_py.auto_dolfinx.levelset_topo.topo_fluid import (
     AutoFluidCost,
     AutoFluidRegularization,
 )
-from scripts_py.auto_dolfinx.cbs_topo.fipy_eqn_block import equation_stokeEqn_solve
+from scripts_py.auto_dolfinx.cbs_topo.fipy_stoke_topo_eqn_block import equation_stokeTopoEqn_solve
 from scripts_py.auto_dolfinx.blocks.block_solve import equation_solve
 
 
@@ -158,7 +158,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         weight_filter_radius: float,
         weight_filter_is_cell_field: bool,
         result_dir: str,
-        alpha_fun_max: float = 1000.0,
+        alpha_fun_max: float = 10.0,
         alpha_fun_min: float = 1e-12,
         alpha_fun_p: float = 3.0,
         velocity_degree = 1,
@@ -169,6 +169,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         """1.topo_weight_init预设在相对小的数值通常优化路径更短
         2.Topology优化的问题在于一旦形成初始结果就会陷入局部最优点,
             因此分布优化效果更好,先使用小权重reg_cost热身优化,再使用大权重reg_cost进行收缩优化.
+        3.似乎alpha_fun_max更小时能减缓错误的仿真效果,所以alpha_fun_max不能太大,在1.0-10.0之间吗?
         """
         super().__init__(
             name,
@@ -302,6 +303,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         activate_init_method: str = 'boundary_radius',
         wall_init_method: str = 'boundary_raw',
         constraint_method: Literal['fix', 'none'] = 'fix',
+        reg_rescale=True
     ):
         self.define_boundary()
         if isinstance(self.topo_weight_init, (float, int)):
@@ -363,7 +365,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             )
             govern_form += alpha * inner(u, v) * ufl.dx
             
-            uh = equation_stokeEqn_solve(
+            uh = equation_stokeTopoEqn_solve(
                 # ------ simulator related ------
                 boundaries=[bry_info for bry_info in self.boundaries.values()],
                 msh_file=self.msh_file,
@@ -434,8 +436,11 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             target_volume = self.regularization_item.kwargs['target_ratio'] * self.volume
             
             self.vol_ratio_form = self.topo_weight * ufl.dx            
-            topo_volume = assemble_scalar(self.vol_ratio_form, domain=self.domain, tape=self.tape)            
-            volume_dif = (target_volume - topo_volume) / target_volume
+            topo_volume = assemble_scalar(self.vol_ratio_form, domain=self.domain, tape=self.tape)
+            if reg_rescale:         
+                volume_dif = (target_volume - topo_volume) / target_volume
+            else:
+                volume_dif = target_volume - topo_volume
             reg_cost = self.regularization_item.weight * (volume_dif ** 2)
             
             # ------ final cost related ------
@@ -486,7 +491,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                     tensorboard_recorder.write_scalars(tag=f'{self.name}/loss', scalar_dict=loss_dict, step=step)
                 
                 loss_residual = loss_current - loss_last
-                if np.abs(loss_residual) < 1e-6:
+                if np.abs(loss_residual) < 1e-6 and (not full_run):
                     is_solved = True
                     break
                 

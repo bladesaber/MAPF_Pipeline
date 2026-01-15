@@ -31,6 +31,12 @@ from scripts_py.auto_dolfinx.levelset_topo.reinitialization_solver import Reinit
 from scripts_py.auto_dolfinx.derivative_regularization import draw_shape_derivative
 
 
+"""
+实际上如果每次都提取level set并re-mesh,那我们并不需要使用"source term = heaviside_step_fun(phi, rho_max=1e4) * inner(u, v) * ufl.dx",
+这一项是用于level set内近似仿真
+"""
+
+
 tape = Tape()
 set_working_tape(tape)
 
