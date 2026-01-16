@@ -13,14 +13,13 @@ from scripts_py.auto_dolfinx.tape_utils import start_annotation
 from thirdparty.pyadjoint.pyadjoint import Tape, ReducedFunctional, Control, compute_gradient
 from scripts_py.vtu_recorder import TensorBoardRecorder
 from scripts_py.mesh_utils import MeshObj, MeshUtils
-from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils
+from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils, BoundaryUtils
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid import (
     TopoFluidOptimizer, 
     AutoFluidBoundary, 
     TopoWeightConstraintTerm
 )
 from scripts_py.auto_dolfinx.blocks.block_fipy_cfd_solve import equation_cfd_topoWeight_solve
-from scripts_py.eqn_solver import LinearProblemSolver
 
 
 class TopoFluidOptimizerFipy(TopoFluidOptimizer):
@@ -61,7 +60,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             pressure_space=pressure_space,
         )
         self.msh_file = msh_file
-
+    
     def get_bcs(self):
         """set wall boundary at last"""        
         return [bry_info for bry_info in sorted(self.boundaries.values(), key=lambda x: x.priority)]
@@ -292,15 +291,15 @@ def debug_1():
     
     optim = TopoFluidOptimizerFipy(
         name='t38',
-        mesh=mesh,
         msh_file=msh_file,
+        mesh=mesh,
         fluid_type='stoke',
-        init_topo_weight_method='filter',
         viscosity_init=1.0 / 400.,
         topo_weight_init=0.1,
+        init_topo_weight_method='filter',
         weight_filter_radius=0.06,
         result_dir=os.path.join(base_dir, 'fipy_topo'),
-        alpha_fun_max=10.0,
+        alpha_fun_max=100.0,
         alpha_fun_min=1e-12,
         alpha_fun_p=3.0,
     )    
@@ -334,6 +333,7 @@ def debug_1():
     optim.add_boundary(outlet_bry)
     optim.add_boundary(wall_bry)
     
+    # 似乎topo weight的约束cost应该占据主要地位
     optim.define_problem(
         obj_cost_args={
             'style': 'MinDissipation+BrinkmanPenalized',
@@ -347,8 +347,93 @@ def debug_1():
             'target_ratio': 0.1,
             'reg_rescale': True,
         },
-        simulation_iterations=60,
+        simulation_iterations=200,
         convergence_threshold=1e-4,
+        velocityRelaxation=0.6,
+        pressureRelaxation=0.8,
+        hot_steps=10,
+        log_step=2,
+        parallel_num=1,
+        use_tqdm=True,
+        use_log=True,
+    )
+    
+    # recorder = TensorBoardRecorder(os.path.join(base_dir, 'fipy_topo', 'log'))
+    # result = optim.run(
+    #     max_iteration=300,
+    #     line_search_steps=[0.05],
+    #     recorder=recorder,
+    #     full_run=False,
+    # )
+
+
+def debug_2():
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/compare_2d'
+    msh_file = os.path.join(base_dir, 'model.msh')
+
+    domain, cell_tags, facet_tags = MeshUtils.read_msh(msh_file, dim=2)
+    mesh = MeshObj(xdmf_file=None, domain=domain, cell_tags=cell_tags, facet_tags=facet_tags)
+    
+    optim = TopoFluidOptimizerFipy(
+        name='compare_2d',
+        msh_file=msh_file,
+        mesh=mesh,
+        fluid_type='stoke',
+        viscosity_init=1.0 / 400.,
+        init_topo_weight_method='filter',
+        topo_weight_init=1.0,
+        weight_filter_radius=0.075,
+        result_dir=os.path.join(base_dir, 'fipy_topo'),
+        alpha_fun_max=100.0,
+        alpha_fun_min=1e-12,
+        alpha_fun_p=3.0,
+    )    
+    optim.setup_tape(Tape())
+    
+    inlet_bry = AutoFluidBoundary(
+        name='inlet',
+        boundary_type='velocity',
+        value=[1.0, 0.0],
+        marker=1,
+        face_center=np.array([-0.05, 0.5]),
+        face_norm_vector=np.array([1.0, 0.0]),
+        face_radius=0.1
+    )
+    outlet_bry = AutoFluidBoundary(
+        name='outlet',
+        boundary_type='pressure',
+        value=0.0,
+        marker=2,
+        face_center=np.array([1.05, 0.5]),
+        face_norm_vector=np.array([1.0, 0.0]),
+        face_radius=0.1
+    )
+    wall_bry = AutoFluidBoundary(
+        name='wall',
+        boundary_type='wall',
+        value=0.0,
+        marker=3
+    )
+    optim.add_boundary(inlet_bry)
+    optim.add_boundary(outlet_bry)
+    optim.add_boundary(wall_bry)
+    
+    # 似乎topo weight的约束cost应该占据主要地位
+    optim.define_problem(
+        obj_cost_args={
+            'style': 'MinDissipation+BrinkmanPenalized',
+            'with_viscosity': True,
+            'dissipation_weight': 1.0,
+            'penalized_weight': 1.0,
+        },
+        reg_cost_args={
+            'style': 'Volume',
+            'weight': 1.0,
+            'target_ratio': 0.1,
+            'reg_rescale': True,
+        },
+        simulation_iterations=200,
+        convergence_threshold=1e-5,
         velocityRelaxation=0.6,
         pressureRelaxation=0.8,
         hot_steps=10,
@@ -360,11 +445,99 @@ def debug_1():
     
     recorder = TensorBoardRecorder(os.path.join(base_dir, 'fipy_topo', 'log'))
     result = optim.run(
-        max_iteration=200,
+        max_iteration=300,
+        line_search_steps=[0.05],
         recorder=recorder,
+        full_run=True,
     )
-    print(result)
+
+
+def debug_3():
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/compare'
+    msh_file = os.path.join(base_dir, 'model.msh')
+
+    domain, cell_tags, facet_tags = MeshUtils.read_msh(msh_file, dim=3)
+    mesh = MeshObj(xdmf_file=None, domain=domain, cell_tags=cell_tags, facet_tags=facet_tags)
+    
+    optim = TopoFluidOptimizerFipy(
+        name='compare',
+        msh_file=msh_file,
+        mesh=mesh,
+        fluid_type='stoke',
+        viscosity_init=1.0 / 400.,
+        init_topo_weight_method='filter',
+        topo_weight_init=0.1,
+        weight_filter_radius=0.075,
+        result_dir=os.path.join(base_dir, 'fipy_topo'),
+        alpha_fun_max=100.0,
+        alpha_fun_min=1e-12,
+        alpha_fun_p=3.0,
+    )    
+    optim.setup_tape(Tape())
+    
+    inlet_bry = AutoFluidBoundary(
+        name='inlet',
+        boundary_type='velocity',
+        value=[1.0, 0.0, 0.0],
+        marker=1,
+        face_center=np.array([-0.05, 0.5, 0.5]),
+        face_norm_vector=np.array([1.0, 0.0, 0.0]),
+        face_radius=0.1
+    )
+    outlet_bry = AutoFluidBoundary(
+        name='outlet',
+        boundary_type='pressure',
+        value=0.0,
+        marker=2,
+        face_center=np.array([1.05, 0.5, 0.5]),
+        face_norm_vector=np.array([1.0, 0.0, 0.0]),
+        face_radius=0.1
+    )
+    wall_bry = AutoFluidBoundary(
+        name='wall',
+        boundary_type='wall',
+        value=0.0,
+        marker=3
+    )
+    optim.add_boundary(inlet_bry)
+    optim.add_boundary(outlet_bry)
+    optim.add_boundary(wall_bry)
+    
+    # 似乎topo weight的约束cost应该占据主要地位
+    optim.define_problem(
+        obj_cost_args={
+            'style': 'MinDissipation+BrinkmanPenalized',
+            'with_viscosity': True,
+            'dissipation_weight': 1.0,
+            'penalized_weight': 1.0,
+        },
+        reg_cost_args={
+            'style': 'Volume',
+            'weight': 1.0,
+            'target_ratio': 0.05,
+            'reg_rescale': True,
+        },
+        simulation_iterations=200,
+        convergence_threshold=1e-5,
+        velocityRelaxation=0.6,
+        pressureRelaxation=0.8,
+        hot_steps=10,
+        log_step=2,
+        parallel_num=8,
+        use_tqdm=True,
+        use_log=True,
+    )
+    
+    recorder = TensorBoardRecorder(os.path.join(base_dir, 'fipy_topo', 'log'))
+    result = optim.run(
+        max_iteration=300,
+        line_search_steps=[0.05],
+        recorder=recorder,
+        full_run=True,
+    )
 
 
 if __name__ == '__main__':
-    debug_1()
+    # debug_1()
+    # debug_2()
+    debug_3()

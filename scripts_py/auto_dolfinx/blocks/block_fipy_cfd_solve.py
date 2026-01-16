@@ -20,13 +20,13 @@ from thirdparty.pyadjoint.pyadjoint.tape import (
     stop_annotating
 )
 
-from scripts_py.dolfinx_utils import DolfinUtils
+from scripts_py.dolfinx_utils import DolfinUtils, BoundaryUtils
 from scripts_py.auto_dolfinx.blocks.block_solve import EquationSolveBlock
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid import AutoFluidBoundary
 from scripts_py.auto_dolfinx.cbs_topo.seq_mesh_utils import SeqMeshObj
-from scripts_py.mesh_utils import MeshObj
+from scripts_py.mesh_utils import MeshObj, MeshUtils
 from scripts_py.simulator.fipy_simulator import FipyStokeSimulator
-
+from scripts_py.functionspae_utils import FunctionSpaceUtils
 
 class CacheMemory(object):
     def __init__(self) -> None:
@@ -42,73 +42,177 @@ class CacheMemory(object):
         self.cache_memory.clear()
 
 
-def convert_point_to_cell(point_field: np.ndarray, structure_mesh: MeshObj, is_vector: bool):
-    if is_vector:
-        point_func_space = DolfinUtils.point_vector_function_space(structure_mesh.domain)
-        cell_func_space = DolfinUtils.cell_vector_function_space(structure_mesh.domain)
-    else:
-        point_func_space = DolfinUtils.point_scalar_function_space(structure_mesh.domain)
-        cell_func_space = DolfinUtils.cell_scalar_function_space(structure_mesh.domain)
-    
-    point_func = dolfinx.fem.Function(point_func_space)
-    cell_func = dolfinx.fem.Function(cell_func_space)
-    point_func.x.array[:] = point_field.reshape((-1,))  # type: ignore
-    cell_func.interpolate(point_func)  # type: ignore
+def convert_point_to_cell(
+    point_field: np.ndarray, structure_mesh: MeshObj, is_vector: bool, 
+    method: Literal['interpolate', 'L2'] = 'interpolate', bcs: list[dolfinx.fem.DirichletBC] = []
+):
+    cell_func = FunctionSpaceUtils.convert_point_to_cell(
+        mesh = structure_mesh,
+        func_data = point_field,
+        is_vector = is_vector,
+        method = method,
+        bcs = bcs,
+        with_dolfinx_function = True,
+    )
     if is_vector:
         return cell_func.x.array.copy().reshape((-1, point_field.shape[1]))  # type: ignore
     else:
         return cell_func.x.array.copy()  # type: ignore
 
 
-def convert_cell_to_point(cell_field: np.ndarray, structure_mesh: MeshObj, is_vector: bool):
-    if is_vector:
-        cell_func_space = DolfinUtils.cell_vector_function_space(structure_mesh.domain)
-        point_func_space = DolfinUtils.point_vector_function_space(structure_mesh.domain)
-    else:
-        cell_func_space = DolfinUtils.cell_scalar_function_space(structure_mesh.domain)
-        point_func_space = DolfinUtils.point_scalar_function_space(structure_mesh.domain)
-    cell_func = dolfinx.fem.Function(cell_func_space)
-    point_func = dolfinx.fem.Function(point_func_space)
-    cell_func.x.array[:] = cell_field.reshape((-1,))  # type: ignore
-    point_func.interpolate(cell_func)  # type: ignore
+def convert_cell_to_point(
+    cell_field: np.ndarray, structure_mesh: MeshObj, is_vector: bool,
+    method: Literal['interpolate', 'L2'] = 'interpolate', bcs: list[dolfinx.fem.DirichletBC] = []
+):
+    point_func = FunctionSpaceUtils.convert_cell_to_point(
+        mesh = structure_mesh,
+        func_data = cell_field,
+        is_vector = is_vector,
+        method = method,
+        bcs = bcs,
+        with_dolfinx_function = True,
+    )
     if is_vector:
         return point_func.x.array.copy().reshape((-1, cell_field.shape[1]))  # type: ignore
     else:
         return point_func.x.array.copy()  # type: ignore
 
 
-def convert_fluid_result_to_dolfinx(
-    domain: dolfinx.mesh.Mesh, 
-    uh: dolfinx.fem.Function, 
-    velocity: np.ndarray, 
-    pressure: np.ndarray,
+def define_interpolation_bcs(
+    mesh: MeshObj,
+    boundaries: list[AutoFluidBoundary],
     V_func_space: dolfinx.fem.FunctionSpace,
     Q_func_space: dolfinx.fem.FunctionSpace,
+) -> tuple[list[dolfinx.fem.DirichletBC], list[dolfinx.fem.DirichletBC]]:
+    """function space transform is not consistent with strict boundary condition.
+        so i just fix the wall and pressure boundary.
+    """
+    velocity_L2_bcs = []
+    pressure_L2_bcs = []
+    for bry_info in boundaries:
+        if bry_info.boundary_type == 'velocity':
+            # inflow_velocity_exp = partial(
+            #     FluidBoundary.inflow_velocity_exp,
+            #     velocity=np.array(bry_info.value),
+            #     tdim=mesh.tdim,
+            #     face_center=bry_info.face_center, # type: ignore
+            #     face_norm_vector=bry_info.face_norm_vector, # type: ignore
+            #     face_radius=bry_info.face_radius, # type: ignore
+            #     method=bry_info.interpolate_method,
+            # )
+            # velocity_L2_bcs.append(
+            #     BoundaryUtils.define_dirichlet_bc(
+            #         bc_func_space=V_func_space, 
+            #         value_func_space=V_func_space, 
+            #         dofs=MeshUtils.extract_entity_dofs(
+            #             V_func_space, mesh.fdim,
+            #             MeshUtils.extract_entity_indices(
+            #                 mesh.domain, style='facet', mesh_tags=mesh.facet_tags, marker=bry_info.marker
+            #             )
+            #         ), 
+            #         bc_value=inflow_velocity_exp, 
+            #         is_mixed_element=False)
+            # )
+            pass   
+        elif bry_info.boundary_type == 'pressure':
+            pressure_L2_bcs.append(
+                BoundaryUtils.define_dirichlet_bc(
+                    bc_func_space=Q_func_space, 
+                    value_func_space=Q_func_space, 
+                    dofs=MeshUtils.extract_entity_dofs(
+                        Q_func_space, mesh.fdim,
+                        MeshUtils.extract_entity_indices(
+                            mesh.domain, style='facet', mesh_tags=mesh.facet_tags, marker=bry_info.marker
+                        )
+                    ), 
+                    bc_value=bry_info.value, 
+                    is_mixed_element=False)
+            )
+        elif bry_info.boundary_type == 'wall':
+            velocity_L2_bcs.append(
+                BoundaryUtils.define_dirichlet_bc(
+                    bc_func_space=V_func_space, 
+                    value_func_space=V_func_space, 
+                    dofs=MeshUtils.extract_entity_dofs(
+                        V_func_space, mesh.fdim,
+                        MeshUtils.extract_entity_indices(
+                            mesh.domain, style='facet', mesh_tags=mesh.facet_tags, marker=bry_info.marker
+                        )
+                    ), 
+                    bc_value=dolfinx.fem.Function(V_func_space), 
+                    is_mixed_element=False)
+            )
+    
+    return velocity_L2_bcs, pressure_L2_bcs
+
+
+def convert_fipy_result_to_dolfinx(
+    mesh: MeshObj,
+    cell_velocity: np.ndarray, 
+    cell_pressure: np.ndarray,
+    boundaries: list[AutoFluidBoundary],
+    V_func_space: dolfinx.fem.FunctionSpace,
+    Q_func_space: dolfinx.fem.FunctionSpace,
+    uh: dolfinx.fem.Function, 
     V_to_W_dofs: np.ndarray,
     Q_to_W_dofs: np.ndarray,
+    interpolation_ksp_option = {
+        'ksp_type': 'richardson',
+        'ksp_max_it': 1, # only one iteration = equivalent to preonly
+        'pc_type': 'lu',
+        'pc_factor_mat_solver_type': 'mumps',
+        'mat_mumps_icntl_24': 1,
+        'mat_mumps_icntl_25': 0,
+    },
 ):
-    cell_vector_func_space = DolfinUtils.cell_vector_function_space(domain)
-    velocity_fun = dolfinx.fem.Function(cell_vector_func_space)
-    velocity_fun.x.array[:] = velocity.reshape((-1,))  # type: ignore
+    velocity_L2_bcs, pressure_L2_bcs = define_interpolation_bcs(
+        mesh=mesh,
+        boundaries=boundaries,
+        V_func_space=V_func_space,
+        Q_func_space=Q_func_space,
+    )
     
-    cell_scalar_func_space = DolfinUtils.cell_scalar_function_space(domain)
-    pressure_fun = dolfinx.fem.Function(cell_scalar_func_space)
-    pressure_fun.x.array[:] = pressure.reshape((-1,))  # type: ignore
+    cell_vector_func_space = DolfinUtils.cell_vector_function_space(mesh.domain)
+    cell_velocity_fun = dolfinx.fem.Function(cell_vector_func_space)
+    cell_velocity_fun.x.array[:] = cell_velocity.reshape((-1,))  # type: ignore
+    # interpolate is not good enough
+    velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+        mesh=mesh,
+        original_func=cell_velocity_fun,  # type: ignore
+        target_func_space=V_func_space,
+        method='L2',
+        bcs=velocity_L2_bcs,
+        with_dolfinx_function=True,
+        ksp_option=interpolation_ksp_option,
+    )
+    # velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+    #     mesh=mesh,
+    #     original_func=cell_velocity_fun,  # type: ignore
+    #     target_func_space=V_func_space,
+    #     method='interpolate',
+    #     with_dolfinx_function=True,
+    # )
     
-    # # ------ visualize result ------
-    # plotter = pyvista.Plotter()
-    # grid = MeshUtils.mesh_to_vtk(domain)
-    # grid.cell_data['velocity'] = velocity_fun.x.array.copy().reshape((-1, 3))  # type: ignore
-    # plotter.add_arrows(grid.cell_centers().points, grid.cell_data['velocity'], mag=0.3)
-    # plotter.show()
-    # # ------ visualize result ------
-    
-    velocity_interpolate_fun = dolfinx.fem.Function(V_func_space)
-    velocity_interpolate_fun.interpolate(velocity_fun)  # type: ignore
-        
-    pressure_interpolate_fun = dolfinx.fem.Function(Q_func_space)
-    pressure_interpolate_fun.interpolate(pressure_fun)  # type: ignore
-                
+    cell_scalar_func_space = DolfinUtils.cell_scalar_function_space(mesh.domain)
+    cell_pressure_fun = dolfinx.fem.Function(cell_scalar_func_space)
+    cell_pressure_fun.x.array[:] = cell_pressure.reshape((-1,))  # type: ignore
+    pressure_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+        mesh=mesh,
+        original_func=cell_pressure_fun,  # type: ignore
+        target_func_space=Q_func_space,
+        method='L2',
+        bcs=pressure_L2_bcs,
+        with_dolfinx_function=True,
+        ksp_option=interpolation_ksp_option,
+    )
+    # pressure_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+    #     mesh=mesh,
+    #     original_func=cell_pressure_fun,  # type: ignore
+    #     target_func_space=Q_func_space,
+    #     method='interpolate',
+    #     with_dolfinx_function=True,
+    # )
+                    
     uh.x.array[V_to_W_dofs] = velocity_interpolate_fun.x.array.copy()  # type: ignore
     uh.x.array[Q_to_W_dofs] = pressure_interpolate_fun.x.array.copy()  # type: ignore
 
@@ -155,19 +259,25 @@ def run_stoke_fluid_simulation(
     
     if structure_source_term is not None:
         if structure_source_term.shape[0] == structure_mesh.num_points:
-            structure_source_term = convert_point_to_cell(structure_source_term, structure_mesh, False)
+            structure_source_term = convert_point_to_cell(
+                structure_source_term, structure_mesh, False, method='interpolate', bcs=[]
+            )
         init_vtu.cell_data['source_term'] = structure_source_term
         
     if structure_obs_weight is not None:
         if structure_obs_weight.shape[0] == structure_mesh.num_points:
-            structure_obs_weight = convert_point_to_cell(structure_obs_weight, structure_mesh, False)
+            structure_obs_weight = convert_point_to_cell(
+                structure_obs_weight, structure_mesh, False, method='interpolate', bcs=[]
+            )
         init_vtu.cell_data['obstacle'] = structure_obs_weight
         
     if isinstance(structure_viscosity, (np.ndarray, list)):
         if isinstance(structure_viscosity, list):
             structure_viscosity = np.array(structure_viscosity)
         if structure_viscosity.shape[0] == structure_mesh.num_points:
-            structure_viscosity = convert_point_to_cell(structure_viscosity, structure_mesh, False)
+            structure_viscosity = convert_point_to_cell(
+                structure_viscosity, structure_mesh, False, method='interpolate', bcs=[]
+            )
         init_vtu.cell_data['viscosity'] = structure_viscosity
         viscosity = None
     elif isinstance(structure_viscosity, float):
@@ -341,15 +451,16 @@ def equation_cfd_topoWeight_solve(
         else:
             raise ValueError(f"Invalid fluid type: {fluid_type}")
                 
-        state = convert_fluid_result_to_dolfinx(
-            domain=structure_mesh.domain,
-            uh=state,
-            velocity=cell_velocity,
-            pressure=cell_pressure,
-            V_to_W_dofs=V_to_W_dofs,
-            Q_to_W_dofs=Q_to_W_dofs,
+        state = convert_fipy_result_to_dolfinx(
+            mesh=structure_mesh,
+            cell_velocity=cell_velocity,
+            cell_pressure=cell_pressure,
+            boundaries=boundaries,
             V_func_space=V_func_space,
             Q_func_space=Q_func_space,
+            uh=state,
+            V_to_W_dofs=V_to_W_dofs,
+            Q_to_W_dofs=Q_to_W_dofs,
         )
         output = state
         
@@ -529,7 +640,7 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
             init_vtu = None
         
         if self.fluid_type == 'stoke':
-            velocity, pressure, cache_memory = run_stoke_fluid_simulation(
+            cell_velocity, cell_pressure, cache_memory = run_stoke_fluid_simulation(
                 boundaries=self.boundaries,
                 msh_file=self.msh_file,
                 velocityRelaxation=self.velocityRelaxation,
@@ -555,15 +666,16 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
         if self.cache_memory is not None:
             self.cache_memory = cache_memory
         
-        uh = convert_fluid_result_to_dolfinx(
-            domain=self.domain,
-            uh=uh,
-            velocity=velocity,
-            pressure=pressure,
-            V_to_W_dofs=self.V_to_W_dofs,
-            Q_to_W_dofs=self.Q_to_W_dofs,
+        uh = convert_fipy_result_to_dolfinx(
+            mesh=self.structure_mesh,
+            cell_velocity=cell_velocity,
+            cell_pressure=cell_pressure,
+            boundaries=self.boundaries,
             V_func_space=self.V_func_space,
             Q_func_space=self.Q_func_space,
+            uh=uh,
+            V_to_W_dofs=self.V_to_W_dofs,
+            Q_to_W_dofs=self.Q_to_W_dofs,
         )
         return uh
  

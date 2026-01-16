@@ -3,6 +3,7 @@ from typing import Literal, Union
 import argparse
 
 import dolfinx
+from mpi4py import MPI
 
 import subprocess
 import numpy as np
@@ -10,8 +11,8 @@ import pyvista
 from sklearn.neighbors import KDTree
 from tqdm import tqdm
 import json
-from mpi4py import MPI
 import time
+from functools import partial
 
 from fipy import Gmsh3D, Gmsh2D
 from fipy import CellVariable, FaceVariable
@@ -22,9 +23,10 @@ from fipy import ImplicitSourceTerm
 
 from scripts_py.simulator.dolfin_simulator import FluidBoundary
 from scripts_py.mesh_utils import MeshUtils, MeshObj
-from scripts_py.dolfinx_utils import DolfinUtils
+from scripts_py.dolfinx_utils import DolfinUtils, BoundaryUtils
 from scripts_py.simulator.eary_stoper import EarlyStopper
 from scripts_py.openmpi_utils import OpenMpiUtils
+from scripts_py.functionspae_utils import FunctionSpaceUtils
 
 
 class FipyStokeSimulator(object):
@@ -43,7 +45,35 @@ class FipyStokeSimulator(object):
         structure_init_y_velocity: np.ndarray|None = None,
         structure_init_z_velocity: np.ndarray|None = None,
         structure_init_pressure: np.ndarray|None = None,
+        interpolation_ksp_option = {
+            'ksp_type': 'richardson',
+            'ksp_max_it': 1, # only one iteration = equivalent to preonly
+            'pc_type': 'lu',
+            'pc_factor_mat_solver_type': 'mumps',
+            'mat_mumps_icntl_24': 1,
+            'mat_mumps_icntl_25': 0,
+        },
+        log_level: int = 2
     ):
+        """
+        log_level: int
+            1: save redsidual message and last result
+            2: save all progress report
+        interpolation_ksp_option must use {
+            'ksp_type': 'richardson',
+            'ksp_max_it': 1, # only one iteration = equivalent to preonly
+            'pc_type': 'lu',
+            'pc_factor_mat_solver_type': 'mumps',
+            'mat_mumps_icntl_24': 1,
+            'mat_mumps_icntl_25': 0,
+        }, if not, will raise "petsc4py.PETSc.Error: error code 83"
+        """
+        self.log_level = log_level
+        
+        self.dolfinx_interpolation_ksp_option = interpolation_ksp_option
+        self.dolfinx_velocity_bcs = []
+        self.dolfinx_pressure_bcs = []
+        
         self.parallel_num = parallel_num
         self.using_parallel = parallel_num > 1
         
@@ -158,7 +188,6 @@ class FipyStokeSimulator(object):
         self.face_centers = self.mesh.faceCenters.value.T
         
         # ------ define obstacle related ------
-        # TODO
         self.structure_obs_weight = structure_obs_weight
         self.obs_cell_mask = np.zeros(self.mesh.numberOfCells, dtype=bool)
         self.obs_face_mask = np.zeros(self.mesh.numberOfFaces, dtype=bool)
@@ -210,6 +239,80 @@ class FipyStokeSimulator(object):
             if self.tdim == 3:
                 self.zVelocity.constrain(0., where=self.obs_cell_mask)
 
+        """ FIXME: can not be use in mpirun parallel mode
+        if (not self.using_parallel) or (self.using_parallel and OpenMpiUtils.is_master_rank()):
+            self.define_dolfinx_boundary()
+        """
+
+    def define_dolfinx_boundary(self):
+        """
+        function space transform is not consistent with strict boundary condition.
+        so i just fix the wall and pressure boundary.
+        """
+        # ------ define dolfinx boundary for interpolation ------
+        assert self.structure_mesh is not None, "structure_mesh is not initialized"
+
+        self.dolfinx_velocity_bcs.clear()
+        self.dolfinx_pressure_bcs.clear()
+        point_vector_space = DolfinUtils.point_vector_function_space(self.structure_mesh.domain)
+        point_scalar_space = DolfinUtils.point_scalar_function_space(self.structure_mesh.domain)
+
+        for _, bry_info in self.boundaries.items():
+            if bry_info.boundary_type == 'velocity':
+                # inflow_velocity_exp = partial(
+                #     FluidBoundary.inflow_velocity_exp,
+                #     velocity=np.array(bry_info.value),
+                #     tdim=self.structure_mesh.tdim,
+                #     face_center=bry_info.face_center, # type: ignore
+                #     face_norm_vector=bry_info.face_norm_vector, # type: ignore
+                #     face_radius=bry_info.face_radius, # type: ignore
+                #     method=bry_info.interpolate_method,
+                # )
+                # self.dolfinx_velocity_bcs.append(
+                #     BoundaryUtils.define_dirichlet_bc(
+                #         bc_func_space=point_vector_space, 
+                #         value_func_space=point_vector_space, 
+                #         dofs=MeshUtils.extract_entity_dofs(
+                #             point_vector_space, self.structure_mesh.fdim,
+                #             MeshUtils.extract_entity_indices(
+                #                 self.structure_mesh.domain, style='facet', mesh_tags=self.structure_mesh.facet_tags, marker=bry_info.marker
+                #             )
+                #         ), 
+                #         bc_value=inflow_velocity_exp, 
+                #         is_mixed_element=False)
+                # )
+                pass
+                
+            elif bry_info.boundary_type == 'pressure':
+                self.dolfinx_pressure_bcs.append(
+                    BoundaryUtils.define_dirichlet_bc(
+                        bc_func_space=point_scalar_space, 
+                        value_func_space=point_scalar_space, 
+                        dofs=MeshUtils.extract_entity_dofs(
+                            point_scalar_space, self.structure_mesh.fdim,
+                            MeshUtils.extract_entity_indices(
+                                self.structure_mesh.domain, style='facet', mesh_tags=self.structure_mesh.facet_tags, marker=bry_info.marker
+                            )
+                        ), 
+                        bc_value=bry_info.value, 
+                        is_mixed_element=False)
+                )
+        
+            elif bry_info.boundary_type == 'wall':
+                self.dolfinx_velocity_bcs.append(
+                    BoundaryUtils.define_dirichlet_bc(
+                        bc_func_space=point_vector_space, 
+                        value_func_space=point_vector_space, 
+                        dofs=MeshUtils.extract_entity_dofs(
+                            point_vector_space, self.structure_mesh.fdim,
+                            MeshUtils.extract_entity_indices(
+                                self.structure_mesh.domain, style='facet', mesh_tags=self.structure_mesh.facet_tags, marker=bry_info.marker
+                            )
+                        ), 
+                        bc_value=dolfinx.fem.Function(point_vector_space), 
+                        is_mixed_element=False)
+                )
+     
     def apply_boundary_to_correction_velocity(self):
         for _, bry_info in self.boundaries.items():
             if bry_info.boundary_type == 'velocity':
@@ -372,16 +475,25 @@ class FipyStokeSimulator(object):
             return source_value
         return None
 
-    def eval_point(self, points: np.ndarray):
+    def eval_points(self, points: np.ndarray):
+        """
+        points: should be (dim, n_points)
+            if is 2D, points should be (2, n_points)
+            if is 3D, points should be (3, n_points)
+        """
         # FIXME: non-finished
         if not self.using_parallel:
-            pressure = self.pressure(points)
+            pressure = self.pressure(points.T)
             vel_list = []
             vel_list.append(self.xVelocity(points).reshape((-1, 1)))
             vel_list.append(self.yVelocity(points).reshape((-1, 1)))
             if self.tdim == 3:
                 vel_list.append(self.zVelocity(points).reshape((-1, 1)))
             velocity = np.concatenate(vel_list, axis=1)
+            
+            print(pressure)
+            print(vel_list)
+            
             return pressure, velocity
         else:
             raise NotImplementedError("Parallel evaluation is not implemented")
@@ -431,30 +543,41 @@ class FipyStokeSimulator(object):
             if self.structure_obs_weight is not None:
                 self.structure_mesh.grid.cell_data['obstacle'] = self.structure_obs_weight
             
-            # ------ debug record ------
+            """ FIXME: can not be use in mpirun parallel mode
             cell_vector_space = DolfinUtils.cell_vector_function_space(self.structure_mesh.domain)
-            cell_vector_fun = dolfinx.fem.Function(cell_vector_space)        
-            cell_vector_fun.x.array[:] = velocity[:, :self.tdim].reshape(-1)  # type: ignore
+            cell_velocity_fun = dolfinx.fem.Function(cell_vector_space)        
+            cell_velocity_fun.x.array[:] = velocity[:, :self.tdim].reshape(-1)  # type: ignore
+            point_velocity_fun = FunctionSpaceUtils.convert_cell_to_point(
+                mesh=self.structure_mesh,
+                func_data = cell_velocity_fun,  # type: ignore
+                is_vector = True,
+                method = 'L2',
+                bcs = self.dolfinx_velocity_bcs,  # TODO: sholud i use here?
+                with_dolfinx_function = True,
+                ksp_option=self.dolfinx_interpolation_ksp_option
+            )
             
             cell_scalar_space = DolfinUtils.cell_scalar_function_space(self.structure_mesh.domain)
-            cell_scalar_fun = dolfinx.fem.Function(cell_scalar_space)
-            cell_scalar_fun.x.array[:] = pressure.reshape(-1)  # type: ignore
+            cell_pressure_fun = dolfinx.fem.Function(cell_scalar_space)
+            cell_pressure_fun.x.array[:] = pressure.reshape(-1)  # type: ignore
+            point_pressure_fun = FunctionSpaceUtils.convert_cell_to_point(
+                mesh=self.structure_mesh,
+                func_data = cell_pressure_fun,  # type: ignore
+                is_vector = False,
+                method = 'L2',
+                bcs = self.dolfinx_pressure_bcs,  # TODO: sholud i use here?
+                with_dolfinx_function = True,
+                ksp_option=self.dolfinx_interpolation_ksp_option
+            )
             
-            point_vector_space = DolfinUtils.point_vector_function_space(self.structure_mesh.domain)
-            point_vector_fun = dolfinx.fem.Function(point_vector_space)
-            point_vector_fun.interpolate(cell_vector_fun)  # type: ignore
-            
-            point_scalar_space = DolfinUtils.point_scalar_function_space(self.structure_mesh.domain)
-            point_scalar_fun = dolfinx.fem.Function(point_scalar_space)
-            point_scalar_fun.interpolate(cell_scalar_fun)  # type: ignore
-            
-            point_velocity = point_vector_fun.x.array.copy().reshape((-1, self.tdim))  # type: ignore
+            point_velocity = point_velocity_fun.x.array.copy().reshape((-1, self.tdim))  # type: ignore
             if point_velocity.shape[1] == 2:
                 point_velocity = np.concatenate([point_velocity, np.zeros((point_velocity.shape[0], 1))], axis=1)
             
             self.structure_mesh.grid.point_data['velocity'] = point_velocity
-            self.structure_mesh.grid.point_data['pressure'] = point_scalar_fun.x.array.copy()  # type: ignore
+            self.structure_mesh.grid.point_data['pressure'] = point_pressure_fun.x.array.copy()  # type: ignore
             self.structure_mesh.grid.point_data['velocity_mag'] = np.linalg.norm(point_velocity, axis=1)
+            """
             
             # ------ debug record ------
             self.structure_mesh.grid.save(save_file)
@@ -583,7 +706,7 @@ class FipyStokeSimulator(object):
                         else:
                             print(log, flush=True)
                         
-                    if save_dir is not None:
+                    if save_dir is not None and self.log_level > 1:
                         self.record(save_file=os.path.join(save_dir, f'iter_{iter_idx}.vtu'))
             
             if iter_idx > hot_steps and convergence_threshold > 0.0:
@@ -637,7 +760,8 @@ class FipyStokeSimulator(object):
         structure_init_pressure: np.ndarray|None = None,
         velocityRelaxation: float = 0.5,
         pressureRelaxation: float = 0.8,
-        force_msh_init: bool = False
+        force_msh_init: bool = False,
+        log_level=2
     ):
         num_partitions = OpenMpiUtils.get_mpi_size()
         base_dir = os.path.dirname(source_msh_file)
@@ -680,6 +804,7 @@ class FipyStokeSimulator(object):
             structure_init_y_velocity=structure_init_y_velocity,
             structure_init_z_velocity=structure_init_z_velocity,
             structure_init_pressure=structure_init_pressure,
+            log_level=log_level
         )
 
     @staticmethod
@@ -704,6 +829,7 @@ class FipyStokeSimulator(object):
         vtu_viscosity_field: str = 'viscosity',
         vtu_source_term_field: str = 'source_term',
         vtu_obs_weight_field: str = 'obstacle',
+        log_level: int = 2,
     ):
         assert cfg_file.endswith('.json'), "cfg_file must be a json file"
         assert (viscosity is not None) or (structure_init_vtu_file is not None), "viscosity or structure_init_vtu_file is required"
@@ -728,6 +854,7 @@ class FipyStokeSimulator(object):
             'vtu_viscosity_field': vtu_viscosity_field,
             'vtu_source_term_field': vtu_source_term_field,
             'vtu_obs_weight_field': vtu_obs_weight_field,
+            'log_level': log_level,
         }
         
         for bry in boundary_list:
@@ -812,6 +939,7 @@ class FipyStokeSimulator(object):
             velocityRelaxation=cfg_dict['velocityRelaxation'],
             pressureRelaxation=cfg_dict['pressureRelaxation'],
             force_msh_init=force_msh_init,
+            log_level=cfg_dict['log_level'],
         )
         
         for bry_dict in cfg_dict['boundary_list']:

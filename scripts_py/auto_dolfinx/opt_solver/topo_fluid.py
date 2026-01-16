@@ -202,12 +202,10 @@ class TopoFluidOptimizer(FluidSimulator):
         
         sorted_terms = [term for term in sorted(self.topo_weight_constraint_terms.values(), key=lambda x: x.init_priority)]
         if method == 'filter':
-            # for _ in range(10):
-            #     for term in sorted_terms:
-            #         init_weight_value[term.set_idxs] = term.set_value
-            #     init_weight_value = np.asarray(self.weight_filter.run(init_weight_value.reshape((-1, 1)))).reshape((-1))
-            for term in sorted_terms:
-                init_weight_value[term.set_idxs] = term.set_value
+            for _ in range(10):
+                for term in sorted_terms:
+                    init_weight_value[term.set_idxs] = term.set_value
+                init_weight_value = np.asarray(self.weight_filter.run(init_weight_value.reshape((-1, 1)))).reshape((-1))
             init_weight.x.array[:] = init_weight_value  # type: ignore
             
         elif method == 'poisson':
@@ -664,6 +662,9 @@ class TopoFluidOptimizer(FluidSimulator):
             self.control_phi = Control(self.topo_weight)  # type: ignore
             self.opt_problem = ReducedFunctional(loss_all, [self.control_phi])
 
+        loss_dict, log_dict = self.eval()
+        print('[Log]: Initial loss:', loss_dict)
+
     def run(
         self,
         line_search_steps: list[float] = [0.1, 0.05, 0.01],
@@ -951,7 +952,7 @@ def debug_2():
         fluid_type='stoke',
         viscosity_init=1.0 / 400.,
         init_topo_weight_method='filter',
-        topo_weight_init=0.1,
+        topo_weight_init=1.0,
         weight_filter_radius=0.075,
         result_dir=os.path.join(base_dir, 'dolfinx_topo'),
         alpha_fun_max=1000.0,
@@ -1012,5 +1013,11 @@ def debug_2():
         full_run=True,
     )
 
+
+
+
+
 if __name__ == '__main__':
-    debug_2()
+    # debug_1()
+    # debug_2()
+    pass
