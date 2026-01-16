@@ -1,4 +1,4 @@
-from typing import Literal, Union
+from typing import Literal, Union, Callable
 import os
 
 import dolfinx
@@ -20,6 +20,7 @@ from thirdparty.pyadjoint.pyadjoint.tape import set_working_tape
 from scripts_py.mesh_utils import MeshUtils
 from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils
 from scripts_py.dolfinx_adjoint.topology_utils.topology_filter import DistanceBandFilter
+from scripts_py.eqn_solver import LinearProblemSolver
 
 from scripts_py.auto_dolfinx.types.type_mesh import DolfinxMesh
 from scripts_py.auto_dolfinx.types.type_function import DolfinxFunction
@@ -45,6 +46,87 @@ class AutoFluidBoundary(FluidBoundary):
         # self.control_bry_cell: DolfinxDirichletBC
 
 
+class TopoWeightConstraintTerm(object):
+    def __init__(
+        self,
+        name: str,
+        mesh: MeshObj,
+        init_method: Literal['boundary_raw', 'boundary_radius', 'obstacle'],
+        constraint_method: Literal['none', 'zero', 'fixed'] | None = None,
+        set_idxs: np.ndarray|None = None,
+        set_value: np.ndarray|None = None,
+        **kwargs
+    ):
+        self.name = name
+        self.init_priority: int
+        self.init_method = init_method
+        self.constraint_priority: int
+        self.constraint_method: str = constraint_method  # type: ignore
+        
+        self.set_idxs: np.ndarray|None = set_idxs
+        self.set_value: np.ndarray|None = set_value
+        self.define_init_weight(mesh, **kwargs)
+    
+    def define_init_weight(self, mesh: MeshObj, **kwargs):
+        if self.init_method == 'boundary_raw':
+            bry_info = kwargs['bry_info']
+            assert bry_info.boundary_type in ['velocity', 'pressure', 'wall']
+            self.set_idxs = mesh.extract_surface_indices(bry_info.marker)
+            if bry_info.boundary_type in ['velocity', 'pressure']:
+                self.set_value = np.ones(shape=self.set_idxs.shape[0])
+            elif bry_info.boundary_type == 'wall':
+                self.set_value = np.zeros(shape=self.set_idxs.shape[0])
+                
+            if bry_info.boundary_type in ['velocity', 'pressure']:
+                self.init_priority = 1
+            elif bry_info.boundary_type == 'wall':
+                self.init_priority = 2
+            
+            if bry_info.boundary_type in ['velocity', 'wall']:
+                self.constraint_method = 'zero'
+            elif bry_info.boundary_type == 'pressure':
+                self.constraint_method = 'none'
+        
+        elif self.init_method == 'boundary_radius':
+            bry_info = kwargs['bry_info']
+            assert bry_info.boundary_type in ['velocity', 'pressure']
+            assert bry_info.face_center is not None
+            assert bry_info.face_radius is not None
+            face_center = bry_info.face_center
+            points = mesh.points[:, :mesh.tdim]
+            face_radius = bry_info.face_radius
+            dists = np.linalg.norm(points - face_center.reshape((1, -1)), axis=1)
+            set_idxs = np.arange(0, dists.shape[0], 1)
+            # adding 1e-4 to guarantee the boundary is set to 1.0 and symmetry
+            self.set_idxs = set_idxs[dists < (face_radius + 1e-4)]
+            self.set_value = np.ones(shape=self.set_idxs.shape[0])  # type: ignore
+            self.init_priority = 1
+            if bry_info.boundary_type in ['velocity', 'wall']:
+                self.constraint_method = 'zero'
+            elif bry_info.boundary_type == 'pressure':
+                self.constraint_method = 'none'
+        
+        elif self.init_method == 'obstacle':
+            obs_func: Callable = kwargs['obstacle_func']
+            if obs_func is not None:
+                scalar_func_space = DolfinUtils.point_scalar_function_space(mesh.domain)
+                self.set_idxs = obs_func(DolfinUtils.tabulate_dof_coordinates(scalar_func_space))
+                if self.set_idxs.shape[0] > 0:  # type: ignore
+                    self.set_value = np.zeros(shape=self.set_idxs.shape[0])  # type: ignore
+            self.init_priority = 2
+            self.constraint_method = 'zero'
+        
+        else:
+            raise ValueError(f"Invalid init method: {self.init_method}")
+    
+    def apply_constraint_gradient(self, gradient_np: np.ndarray):
+        if self.constraint_method == 'fixed':
+            gradient_np[self.set_idxs] = self.set_value
+        elif self.constraint_method == 'zero':
+            gradient_np[self.set_idxs] = 0.0
+        return gradient_np
+
+
 class TopoFluidOptimizer(FluidSimulator):
     def __init__(
         self, 
@@ -52,8 +134,8 @@ class TopoFluidOptimizer(FluidSimulator):
         mesh: MeshObj,
         fluid_type: Literal['stoke', 'naiver_stoke', 'rans'],
         viscosity_init: float|np.ndarray,
-        is_topo_cell: bool,
         topo_weight_init: float|np.ndarray,
+        init_topo_weight_method: Literal['poisson', 'filter', 'none'],
         weight_filter_radius: float,
         result_dir: str,
         alpha_fun_max: float = 100.0,
@@ -75,7 +157,6 @@ class TopoFluidOptimizer(FluidSimulator):
         
         self.domain = DolfinxMesh(self.mesh.domain)
         self.mesh.domain = self.domain
-        
         self.boundaries: dict[str, AutoFluidBoundary] = {}
         
         self.cell_scalar_func_space = DolfinUtils.cell_scalar_function_space(self.mesh.domain)
@@ -92,22 +173,102 @@ class TopoFluidOptimizer(FluidSimulator):
         
         self.fluid_type: Literal['stoke', 'naiver_stoke', 'rans'] = fluid_type
         self.viscosity_init = viscosity_init
-        self.topo_weight_init = topo_weight_init
         
         self.alpha_fun_max = alpha_fun_max
         self.alpha_fun_min = alpha_fun_min
         self.alpha_fun_p = alpha_fun_p
         
+        self.topo_weight_init = topo_weight_init
+        self.init_topo_weight_method = init_topo_weight_method
+        self.topo_weight_constraint_terms: dict[str, TopoWeightConstraintTerm] = {}
+        
         self.result_dir = result_dir
         self.recorder = VtuRecorder(self.mesh, save_dir=self.result_dir, is_binary=True)
         
         self.weight_filter_radius = weight_filter_radius
-        self.is_topo_cell = is_topo_cell
-        self.weight_filter = DistanceBandFilter(self.mesh.grid, weight_filter_radius, is_topo_cell, True)
+        self.is_topo_cell = False
+        self.weight_filter = DistanceBandFilter(self.mesh.grid, weight_filter_radius, self.is_topo_cell, True)
         
         self.control_phi: Control
         self.opt_problem: ReducedFunctional
+    
+    def init_topo_weight(self, topo_weight_fun: DolfinxFunction, method: Literal['poisson', 'filter']):
+        """当整个场的topo_weight都很少时,速度与压力会汇聚在出口的边角区域,造成崩角的效果.
+        崩角效果会造成优化畸形(因为拓扑优化易于陷入局部最优点),因此构造一个球形区域,使出口区域比边缘更流畅,减缓崩角的影响.
+        当然也可以通过减少reg_cost的权重来减缓崩角的影响.
+        """
+        init_weight = dolfinx.fem.Function(self.point_scalar_func_space)
+        init_weight_value = topo_weight_fun.x.array.copy()  # type: ignore
         
+        sorted_terms = [term for term in sorted(self.topo_weight_constraint_terms.values(), key=lambda x: x.init_priority)]
+        if method == 'filter':
+            # for _ in range(10):
+            #     for term in sorted_terms:
+            #         init_weight_value[term.set_idxs] = term.set_value
+            #     init_weight_value = np.asarray(self.weight_filter.run(init_weight_value.reshape((-1, 1)))).reshape((-1))
+            for term in sorted_terms:
+                init_weight_value[term.set_idxs] = term.set_value
+            init_weight.x.array[:] = init_weight_value  # type: ignore
+            
+        elif method == 'poisson':
+            u = ufl.TrialFunction(self.point_scalar_func_space)
+            v = ufl.TestFunction(self.point_scalar_func_space)
+            f = dolfinx.fem.Function(self.point_scalar_func_space)
+            
+            a_form = ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx
+            L_form = f * v * ufl.dx  # type: ignore
+            
+            bcs = []
+            for _, term in self.topo_weight_constraint_terms.items():
+                if term.init_method == 'boundary_raw':
+                    bc_value = 1.0 if term.init_priority == 1 else 0.0
+                    bcs.append(dolfinx.fem.dirichletbc(float(bc_value), term.set_idxs, V=self.point_scalar_func_space))  # type: ignore
+            
+            res_dict = LinearProblemSolver.solve_fea_petsc(
+                comm=self.mesh.domain.comm,
+                uh=init_weight,  # type: ignore
+                a_form=a_form,
+                l_form=L_form,
+                bcs=bcs,
+                mat_assemble_method='lift',
+                ksp_option={
+                    'ksp_type': 'preonly',
+                    'pc_type': 'lu',
+                    "pc_factor_mat_solver_type": "mumps",
+                    "mat_mumps_icntl_24": 1
+                },
+                with_residual=False
+            )
+            if not res_dict['is_solved']:
+                raise ValueError(f"Failed to solve the Poisson equation for topo weight initialization.")
+    
+        else:
+            raise ValueError(f"Invalid init method: {method}")
+        
+        topo_weight_fun.interpolate(init_weight)
+        
+    def compute_gradient(self, adj_input: float, with_filter=True, with_norm=True) -> np.ndarray:
+        dJdm = self.opt_problem.derivative(adj_input=float(adj_input))[0]
+        if with_filter:
+            dJdm = dJdm.reshape((-1, 1))
+            dJdm = self.weight_filter.run(dJdm)
+            dJdm = np.asarray(dJdm).reshape((-1))
+        if with_norm:
+            norm = np.max(np.abs(dJdm))
+            dJdm = dJdm / norm
+        
+        if self.init_topo_weight_method != 'none':
+            # ------ apply constraint to gradient ------
+            for _, term in self.topo_weight_constraint_terms.items():
+                dJdm = term.apply_constraint_gradient(dJdm)
+            self.weight_filter.run(dJdm.reshape((-1, 1)))
+            dJdm = np.asarray(dJdm).reshape((-1))
+            for _, term in self.topo_weight_constraint_terms.items():
+                dJdm = term.apply_constraint_gradient(dJdm)
+            # ------ apply constraint to gradient ------
+        
+        return dJdm
+    
     def setup_tape(self, tape: Tape|None = None):
         if tape is None:
             self.tape = Tape()
@@ -225,6 +386,7 @@ class TopoFluidOptimizer(FluidSimulator):
         cost_parse_dict = {}
         
         if obj_cost_args['style'] == 'MinDissipation':
+            """TODO: Not suitable for topology optimization"""
             with_viscosity = obj_cost_args['with_viscosity']
             if with_viscosity:
                 min_dissipation_form = kwargs['viscosity'] * inner(grad(u), grad(u)) * ufl.dx
@@ -257,6 +419,7 @@ class TopoFluidOptimizer(FluidSimulator):
             })
             
         elif obj_cost_args['style'] == 'FixedFlux':
+            # TODO: 缺乏其他约束条件,这是个额外约束条件
             inlet_markers: list[int] = obj_cost_args['inlet_markers']
             inlet_flux = 0.0
             for marker in inlet_markers:
@@ -346,6 +509,20 @@ class TopoFluidOptimizer(FluidSimulator):
             'with_residual': False
         }
     ):
+        # ------ init topo weight boundary constraint terms ------
+        if self.init_topo_weight_method != 'none':
+            for name, bry_info in self.boundaries.items():
+                assert bry_info.boundary_type in ['velocity', 'pressure', 'wall']
+                if bry_info.boundary_type in ['velocity', 'pressure']:
+                    term = TopoWeightConstraintTerm(
+                        name=name, mesh=self.mesh, bry_info=bry_info,
+                        init_method='boundary_radius' if self.init_topo_weight_method == 'filter' else 'boundary_raw'
+                    )
+                elif bry_info.boundary_type == 'wall':
+                    term = TopoWeightConstraintTerm(name=name, mesh=self.mesh, init_method='boundary_raw', bry_info=bry_info)
+                self.topo_weight_constraint_terms[name] = term
+        
+        # ------ obstacle part ------
         if obstacle_cost_args is not None:
             obstacle_weight = np.zeros(self.mesh.num_points)
             obstacle_dofs = obstacle_cost_args['obstacle_func'](DolfinUtils.tabulate_dof_coordinates(self.point_scalar_func_space))
@@ -356,6 +533,14 @@ class TopoFluidOptimizer(FluidSimulator):
             obs_point_mask.x.array[:] = obstacle_weight  # type: ignore
             obstacle_cost_args['obs_point_mask'] = obs_point_mask
             obstacle_cost_args['is_cell_field'] = False
+            
+            if obstacle_dofs.shape[0] > 0 and self.init_topo_weight_method != 'none':
+                obs_term = TopoWeightConstraintTerm(
+                    name='obstacle', mesh=self.mesh, 
+                    init_method='obstacle', 
+                    obstacle_func=obstacle_cost_args['obstacle_func']
+                )
+                self.topo_weight_constraint_terms[obs_term.name] = obs_term 
         self.obstacle_cost_args = obstacle_cost_args
         
         self.define_boundary()
@@ -376,6 +561,8 @@ class TopoFluidOptimizer(FluidSimulator):
             else:
                 self.topo_weight = DolfinxFunction(self.point_scalar_func_space, name=f'topo_weight')  # type: ignore
             self.topo_weight.x.array[:] = self.topo_weight_init  # type: ignore
+            if self.init_topo_weight_method != 'none':
+                self.init_topo_weight(self.topo_weight, method=self.init_topo_weight_method)  # type: ignore
             
             alpha = self.alpha_fun(
                 rho=self.topo_weight,  # type: ignore
@@ -476,17 +663,6 @@ class TopoFluidOptimizer(FluidSimulator):
             # ------ define optimization problem ------
             self.control_phi = Control(self.topo_weight)  # type: ignore
             self.opt_problem = ReducedFunctional(loss_all, [self.control_phi])
-    
-    def compute_gradient(self, adj_input: float, with_filter=True, with_norm=True) -> np.ndarray:
-        dJdm = self.opt_problem.derivative(adj_input=float(adj_input))[0]
-        if with_filter:
-            dJdm = dJdm.reshape((-1, 1))
-            dJdm = self.weight_filter.run(dJdm)
-            dJdm = np.asarray(dJdm).reshape((-1))
-        if with_norm:
-            norm = np.max(np.abs(dJdm))
-            dJdm = dJdm / norm
-        return dJdm
 
     def run(
         self,
@@ -593,37 +769,33 @@ class TopoFluidOptimizer(FluidSimulator):
     
     def eval(self):
         eval_dict = {}
-        log_dict = {}
+        log_dict = {'cost': {}}
         
         # ------ compute object cost ------
         if self.obj_cost_args['style'] == 'MinDissipation':
             eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
                 form=self.obj_cost_args['weight'] * self.obj_cost_args['min_dissipation_form']
             )
-            log_dict['obj_cost'] = eval_dict['obj_cost']
+            log_dict['cost']['obj_cost'] = eval_dict['obj_cost']
             
         elif self.obj_cost_args['style'] == 'MinDissipation+BrinkmanPenalized':
-            eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
-                form=(
-                    self.obj_cost_args['dissipation_weight'] * self.obj_cost_args['min_dissipation_form'] 
-                    + self.obj_cost_args['penalized_weight'] * self.obj_cost_args['penalized_term']
-                )
-            )
-            log_dict['obj_cost'] = eval_dict['obj_cost']
+            min_dissipation_cost = self.obj_cost_args['dissipation_weight'] * AssembleUtils.assemble_scalar(self.obj_cost_args['min_dissipation_form'])
+            penalized_cost = self.obj_cost_args['penalized_weight'] * AssembleUtils.assemble_scalar(self.obj_cost_args['penalized_term'])
+            eval_dict['obj_cost'] = min_dissipation_cost + penalized_cost
+            log_dict['cost']['min_dissipation_cost'] = min_dissipation_cost
+            log_dict['cost']['penalized_cost'] = penalized_cost
             
         elif self.obj_cost_args['style'] == 'MinPressure':
             eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
                 form=self.obj_cost_args['weight'] * self.obj_cost_args['pressure_form']
             )
-            log_dict['obj_cost'] = eval_dict['obj_cost']
+            log_dict['cost']['obj_cost'] = eval_dict['obj_cost']
             
         elif self.obj_cost_args['style'] == 'FixedFlux':
-            flux_dict = {}
             for i, (_, outlet_item) in enumerate(self.obj_cost_args['outlet_cost_forms'].items()):
                 outlet_flux = AssembleUtils.assemble_scalar(form=outlet_item['flux_form'])
                 eval_dict[f'{i}_cost'] = outlet_item['weight'] * (outlet_flux - outlet_item['target_flux']) ** 2
-                flux_dict[f'{i}_flux'] = np.abs(outlet_flux)
-            log_dict['flux'] = flux_dict
+                log_dict['cost'][f'{i}_flux_cost'] = np.abs(outlet_flux)
         else:
             raise ValueError(f'Invalid cost style: {self.obj_cost_args['style']}')
         
@@ -636,7 +808,7 @@ class TopoFluidOptimizer(FluidSimulator):
                 volume_dif = volume_dif / target_volume
             eval_dict['reg_cost'] = self.reg_cost_args['weight'] * (volume_dif ** 2)
             
-            log_dict['reg_cost'] = eval_dict['reg_cost']
+            log_dict['cost']['reg_cost'] = eval_dict['reg_cost']
             log_dict['volume'] = topo_volume
             
         else:
@@ -645,7 +817,7 @@ class TopoFluidOptimizer(FluidSimulator):
         # ------ compute obstacle cost ------
         if self.obstacle_cost_args is not None:
             eval_dict['obs_cost'] = AssembleUtils.assemble_scalar(self.obj_cost_args['cost_form']) * self.obstacle_cost_args['weight']
-            log_dict['obs_cost'] = eval_dict['obs_cost']
+            log_dict['cost']['obs_cost'] = eval_dict['obs_cost']
         
         log_dict['loss_all'] = np.sum(list(eval_dict.values()))
                         
@@ -691,7 +863,7 @@ class TopoFluidOptimizer(FluidSimulator):
         self.recorder.save(step)
     
 
-def debug():
+def debug_1():
     base_dir = '/home/admin123456/Desktop/work/gmsh_test/t38'
     msh_file = os.path.join(base_dir, 't38_model.msh')
 
@@ -702,11 +874,14 @@ def debug():
         name='t38',
         mesh=mesh,
         fluid_type='stoke',
-        viscosity_init=1.0 / 100.,
-        is_topo_cell=False,
-        topo_weight_init=0.5,
-        weight_filter_radius=0.05,
-        result_dir=os.path.join(base_dir, 'dolfinx_topo')
+        viscosity_init=1.0 / 400.,
+        topo_weight_init=0.1,
+        init_topo_weight_method='filter',
+        weight_filter_radius=0.06,
+        result_dir=os.path.join(base_dir, 'dolfinx_topo'),
+        alpha_fun_max=100.0,
+        alpha_fun_min=1e-12,
+        alpha_fun_p=3.0,
     )    
     optim.setup_tape(Tape())
     
@@ -715,15 +890,18 @@ def debug():
         boundary_type='velocity',
         value=[1.0, 0.0],
         marker=22,
-        face_center=[-0.05, 0.2],
-        face_norm_vector=[1.0, 0.0],
+        face_center=np.array([-0.05, 0.2]),
+        face_norm_vector=np.array([1.0, 0.0]),
         face_radius=0.1
     )
     outlet_bry = AutoFluidBoundary(
         name='outlet',
         boundary_type='pressure',
         value=0.0,
-        marker=23
+        marker=23,
+        face_center=np.array([1.05, 0.8]),
+        face_norm_vector=np.array([1.0, 0.0]),
+        face_radius=0.1
     )
     wall_bry = AutoFluidBoundary(
         name='wall',
@@ -735,6 +913,7 @@ def debug():
     optim.add_boundary(outlet_bry)
     optim.add_boundary(wall_bry)
     
+    # 似乎topo weight的约束cost应该占据主要地位
     optim.define_problem(
         obj_cost_args={
             'style': 'MinDissipation+BrinkmanPenalized',
@@ -752,10 +931,86 @@ def debug():
     
     recorder = TensorBoardRecorder(os.path.join(base_dir, 'dolfinx_topo', 'log'))
     result = optim.run(
+        max_iteration=300,
+        line_search_steps=[0.05],
         recorder=recorder,
+        full_run=False,
     )
-    print(result)
 
+
+def debug_2():
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/compare_2d'
+    msh_file = os.path.join(base_dir, 'model.msh')
+
+    domain, cell_tags, facet_tags = MeshUtils.read_msh(msh_file, dim=2)
+    mesh = MeshObj(xdmf_file=None, domain=domain, cell_tags=cell_tags, facet_tags=facet_tags)
+    
+    optim = TopoFluidOptimizer(
+        name='compare_2d',
+        mesh=mesh,
+        fluid_type='stoke',
+        viscosity_init=1.0 / 400.,
+        init_topo_weight_method='filter',
+        topo_weight_init=0.1,
+        weight_filter_radius=0.075,
+        result_dir=os.path.join(base_dir, 'dolfinx_topo'),
+        alpha_fun_max=1000.0,
+        alpha_fun_min=1e-12,
+        alpha_fun_p=3.0,
+    )    
+    optim.setup_tape(Tape())
+    
+    inlet_bry = AutoFluidBoundary(
+        name='inlet',
+        boundary_type='velocity',
+        value=[1.0, 0.0],
+        marker=1,
+        face_center=np.array([-0.05, 0.5]),
+        face_norm_vector=np.array([1.0, 0.0]),
+        face_radius=0.1
+    )
+    outlet_bry = AutoFluidBoundary(
+        name='outlet',
+        boundary_type='pressure',
+        value=0.0,
+        marker=2,
+        face_center=np.array([1.05, 0.5]),
+        face_norm_vector=np.array([1.0, 0.0]),
+        face_radius=0.1
+    )
+    wall_bry = AutoFluidBoundary(
+        name='wall',
+        boundary_type='wall',
+        value=0.0,
+        marker=3
+    )
+    optim.add_boundary(inlet_bry)
+    optim.add_boundary(outlet_bry)
+    optim.add_boundary(wall_bry)
+    
+    # 似乎topo weight的约束cost应该占据主要地位
+    optim.define_problem(
+        obj_cost_args={
+            'style': 'MinDissipation+BrinkmanPenalized',
+            'with_viscosity': True,
+            'dissipation_weight': 1.0,
+            'penalized_weight': 1.0,
+        },
+        reg_cost_args={
+            'style': 'Volume',
+            'weight': 100.0,
+            'target_ratio': 0.1,
+            'reg_rescale': True,
+        }
+    )
+    
+    recorder = TensorBoardRecorder(os.path.join(base_dir, 'dolfinx_topo', 'log'))
+    result = optim.run(
+        max_iteration=300,
+        line_search_steps=[0.05],
+        recorder=recorder,
+        full_run=True,
+    )
 
 if __name__ == '__main__':
-    debug()
+    debug_2()
