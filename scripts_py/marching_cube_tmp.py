@@ -1,3 +1,7 @@
+"""
+Deprecated in the future, use field_mesh_utils instead
+"""
+
 import numpy as np
 import pyvista
 from sklearn.neighbors import KDTree

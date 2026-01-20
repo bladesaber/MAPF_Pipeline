@@ -29,12 +29,12 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         msh_file: str,
         mesh: MeshObj,
         fluid_type: Literal['stoke', 'naiver_stoke', 'rans'],
-        viscosity_init: float,
+        viscosity_init: float|np.ndarray,
         topo_weight_init: float|np.ndarray,
         init_topo_weight_method: Literal['poisson', 'filter', 'none'],
         weight_filter_radius: float,
         result_dir: str,
-        alpha_fun_max: float = 10.0,
+        alpha_fun_max: float = 100.0,
         alpha_fun_min: float = 1e-12,
         alpha_fun_p: float = 3.0,
         velocity_degree = 1,
@@ -204,7 +204,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                 alpha_max=self.alpha_fun_max,
                 alpha_p=self.alpha_fun_p,
                 
-                # ------ autdolfinx related ------
+                # ------ autodolfinx related ------
                 F_form=govern_form,
                 state=uh,  # type: ignore
                 adjoint=vq,  # type: ignore
@@ -503,7 +503,6 @@ def debug_3():
     optim.add_boundary(outlet_bry)
     optim.add_boundary(wall_bry)
     
-    # 似乎topo weight的约束cost应该占据主要地位
     optim.define_problem(
         obj_cost_args={
             'style': 'MinDissipation+BrinkmanPenalized',
@@ -513,12 +512,12 @@ def debug_3():
         },
         reg_cost_args={
             'style': 'Volume',
-            'weight': 1.0,
-            'target_ratio': 0.05,
+            'weight': 0.1,
+            'target_ratio': 0.02,
             'reg_rescale': True,
         },
         simulation_iterations=200,
-        convergence_threshold=1e-5,
+        convergence_threshold=1e-4,
         velocityRelaxation=0.6,
         pressureRelaxation=0.8,
         hot_steps=10,
@@ -530,7 +529,7 @@ def debug_3():
     
     recorder = TensorBoardRecorder(os.path.join(base_dir, 'fipy_topo', 'log'))
     result = optim.run(
-        max_iteration=300,
+        max_iteration=500,
         line_search_steps=[0.05],
         recorder=recorder,
         full_run=True,

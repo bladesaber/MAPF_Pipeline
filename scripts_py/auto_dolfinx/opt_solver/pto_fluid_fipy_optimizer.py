@@ -1,3 +1,8 @@
+"""
+Non-Finished:
+reference: Proportional topology optimization A new non-sensitivity method for solving stress constrained and minimum compliance problems and its implementation in MATLAB
+"""
+
 import os
 
 import numpy as np

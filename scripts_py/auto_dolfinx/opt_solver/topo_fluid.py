@@ -1,3 +1,4 @@
+import shutil
 from typing import Literal, Union, Callable
 import os
 
@@ -82,10 +83,11 @@ class TopoWeightConstraintTerm(object):
             elif bry_info.boundary_type == 'wall':
                 self.init_priority = 2
             
-            if bry_info.boundary_type in ['velocity', 'wall']:
-                self.constraint_method = 'zero'
-            elif bry_info.boundary_type == 'pressure':
-                self.constraint_method = 'none'
+            # if bry_info.boundary_type in ['velocity', 'wall']:
+            #     self.constraint_method = 'zero'
+            # elif bry_info.boundary_type == 'pressure':
+            #     self.constraint_method = 'none'
+            self.constraint_method = 'zero'  # TODO: should i use zero for all boundary?
         
         elif self.init_method == 'boundary_radius':
             bry_info = kwargs['bry_info']
@@ -101,10 +103,12 @@ class TopoWeightConstraintTerm(object):
             self.set_idxs = set_idxs[dists < (face_radius + 1e-4)]
             self.set_value = np.ones(shape=self.set_idxs.shape[0])  # type: ignore
             self.init_priority = 1
-            if bry_info.boundary_type in ['velocity', 'wall']:
-                self.constraint_method = 'zero'
-            elif bry_info.boundary_type == 'pressure':
-                self.constraint_method = 'none'
+            
+            # if bry_info.boundary_type in ['velocity', 'wall']:
+            #     self.constraint_method = 'zero'
+            # elif bry_info.boundary_type == 'pressure':
+            #     self.constraint_method = 'none'
+            self.constraint_method = 'zero'  # TODO: should i use zero for all boundary?
         
         elif self.init_method == 'obstacle':
             obs_func: Callable = kwargs['obstacle_func']
@@ -673,6 +677,7 @@ class TopoFluidOptimizer(FluidSimulator):
         momentum_weight: float = 0.8,
         full_run: bool = False,
         recorder: TensorBoardRecorder|None = None,
+        result_vtu_file: str|None = None
     ) -> dict:
         with_line_search = len(line_search_steps) > 1
         line_search_steps_np: np.ndarray = np.array(line_search_steps)
@@ -710,7 +715,7 @@ class TopoFluidOptimizer(FluidSimulator):
                         else:
                             recorder.write_scalar(tag=name, scalar_value=value, step=step)
                 
-                if np.abs(loss_current - loss_last) < 1e-8 and (not full_run):
+                if np.abs(loss_current - loss_last) < 1e-6 and (not full_run):
                     is_solved = True
                     break
                 
@@ -766,7 +771,12 @@ class TopoFluidOptimizer(FluidSimulator):
                 is_solved = False
                 break
         
-        return {'is_success': is_solved, 'topo_weight': self.topo_weight.x.array.copy()}  # type: ignore
+        if result_vtu_file is not None:
+            last_step_record_file = self.recorder.get_step_file_path(step)
+            if not os.path.exists(last_step_record_file):
+                last_step_record_file = self.recorder.get_step_file_path(step - 1)
+            shutil.copy(last_step_record_file, result_vtu_file)        
+        return {'is_success': is_solved}  # type: ignore
     
     def eval(self):
         eval_dict = {}
@@ -1000,7 +1010,7 @@ def debug_2():
         reg_cost_args={
             'style': 'Volume',
             'weight': 100.0,
-            'target_ratio': 0.1,
+            'target_ratio': 0.05,
             'reg_rescale': True,
         }
     )
@@ -1014,10 +1024,7 @@ def debug_2():
     )
 
 
-
-
-
 if __name__ == '__main__':
-    # debug_1()
+    debug_1()
     # debug_2()
     pass

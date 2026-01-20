@@ -45,6 +45,12 @@ class VtuRecorder(object):
         if clear_cell_data:
             self.mesh.grid.cell_data.clear()
 
+    def get_step_name(self, step: int):
+        return f'{self.name}_{step:05d}.vtu'
+
+    def get_step_file_path(self, step: int):
+        return os.path.join(self.save_dir, f'{self.name}_{step:05d}.vtu')
+
 
 class TensorBoardRecorder(object):
     def __init__(self, log_dir):
