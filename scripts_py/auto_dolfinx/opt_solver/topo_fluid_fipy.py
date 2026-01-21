@@ -93,6 +93,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             'with_residual': False
         },
         adj_kwargs: dict = {
+            'critical_method': 'residual',
             'mat_assemble_method': 'lift',
             'with_residual': False
         },

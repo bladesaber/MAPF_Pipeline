@@ -207,9 +207,9 @@ class TopoFluidOptimizer(FluidSimulator):
         sorted_terms = [term for term in sorted(self.topo_weight_constraint_terms.values(), key=lambda x: x.init_priority)]
         if method == 'filter':
             for _ in range(10):
+                init_weight_value = np.asarray(self.weight_filter.run(init_weight_value.reshape((-1, 1)))).reshape((-1))
                 for term in sorted_terms:
                     init_weight_value[term.set_idxs] = term.set_value
-                init_weight_value = np.asarray(self.weight_filter.run(init_weight_value.reshape((-1, 1)))).reshape((-1))
             init_weight.x.array[:] = init_weight_value  # type: ignore
             
         elif method == 'poisson':
@@ -388,7 +388,7 @@ class TopoFluidOptimizer(FluidSimulator):
         cost_parse_dict = {}
         
         if obj_cost_args['style'] == 'MinDissipation':
-            """TODO: Not suitable for topology optimization"""
+            """NOTE: Not suitable for topology optimization"""
             with_viscosity = obj_cost_args['with_viscosity']
             if with_viscosity:
                 min_dissipation_form = kwargs['viscosity'] * inner(grad(u), grad(u)) * ufl.dx
@@ -503,6 +503,7 @@ class TopoFluidOptimizer(FluidSimulator):
             'with_residual': False
         },
         adj_kwargs: dict = {
+            'critical_method': 'residual',
             'mat_assemble_method': 'lift',
             'with_residual': False
         },

@@ -19,12 +19,16 @@ import basix
 from basix.ufl import element
 
 import numpy as np
+import pandas as pd
 import pyvista
 from sklearn.neighbors import KDTree
 import collections
 import gmsh, meshio
+import subprocess
+from functools import partial
 
 from scripts_py.dolfinx_utils import DolfinUtils
+from scripts_py.gmsh_utils import GmshUtils
 
 
 '''
@@ -443,6 +447,89 @@ class MeshUtils(object):
     def move(domain: dolfinx.mesh.Mesh, coord_dif: np.ndarray):
         assert domain.geometry.x.shape == coord_dif.shape
         domain.geometry.x[:] += coord_dif
+
+    @staticmethod
+    def refine_msh_from_boundaries(
+        msh_file: str,
+        dim: int,
+        boundaries: list,
+        new_msh_file: str|None = None,
+    ):
+        base_dir = os.path.dirname(msh_file)
+        if new_msh_file is None:
+            new_msh_file = msh_file
+        
+        domain, cell_tags, facet_tags = MeshUtils.read_msh(msh_file, dim)
+        mesh = MeshObj(domain=domain, cell_tags=cell_tags, facet_tags=facet_tags)
+        
+        wall_marker = 9999999
+        for bry_cfg in boundaries:
+            if bry_cfg.boundary_type == 'wall':
+                wall_marker = bry_cfg.marker
+                break
+        
+        all_facet_indices = MeshUtils.extract_entity_indices(mesh.domain, style='facet', marker=None)
+        facet_df = pd.DataFrame({'indices': all_facet_indices})
+        facet_df['values'] = wall_marker
+        facet_df.set_index('indices', inplace=True)
+        
+        for bry_cfg in boundaries:
+            if bry_cfg.boundary_type == 'wall':
+                continue
+            location_func = partial(
+                MeshUtils.locate_circle_plane_indices,
+                tdim=dim,
+                face_center=bry_cfg.face_center,
+                face_norm_vector=bry_cfg.face_norm_vector,
+                face_radius=bry_cfg.face_radius,
+            )
+            mesh_tag = MeshUtils.define_meshTag(mesh.domain, bry_cfg.marker, mesh.fdim, location_func)
+            facet_indices = mesh_tag.indices
+            assert len(facet_indices) > 0, f'{bry_cfg.name} boundary not found'
+            facet_df.loc[facet_indices, 'values'] = bry_cfg.marker
+
+        facet_tags = dolfinx.mesh.meshtags(
+            mesh.domain, mesh.fdim, 
+            facet_df.index.values.astype(np.int32), 
+            facet_df['values'].values.astype(np.int32)
+        )
+        mesh.facet_tags = facet_tags
+        
+        # # ------ debug visualization ------
+        # plotter = pyvista.Plotter()
+        # plotter.add_mesh(pyvista.PointSet(mesh.points[mesh.extract_surface_indices(wall_marker)]), color='green', point_size=8)
+        # for _, bry_config in boundary_config.items():
+        #     if bry_config['boundary_type'] == 'wall':
+        #         continue
+        #     plotter.add_mesh(pyvista.PointSet(mesh.points[mesh.extract_surface_indices(bry_config['group_id'])]), color='blue', point_size=8)
+        # plotter.show()
+        # # ------ debug visualization ------
+                
+        cell_tag = np.unique(mesh.cell_tags.values)[0]
+        face_tags_dict = {"wall": wall_marker}
+        for bry_cfg in boundaries:
+            if bry_cfg.boundary_type == 'wall':
+                continue
+            face_tags_dict[bry_cfg.name] = bry_cfg.marker        
+        MeshUtils.generate_msh22_file(mesh, new_msh_file, face_tags=face_tags_dict, cell_tags={"volume": cell_tag})
+
+        log_file = os.path.join(base_dir, 'msh_version_convert.log')
+        run_bash = f"gmsh {new_msh_file} -format msh4 -o {new_msh_file} -save > {log_file}"
+        subprocess.run(run_bash, shell=True, check=True)
+            
+    @staticmethod
+    def locate_circle_plane_indices(
+        x: np.ndarray, tdim: int, face_center: np.ndarray, face_norm_vector: np.ndarray, face_radius: float, tol: float = 1e-6):
+        if x.shape[0] in [2, 3]:
+            pos = x.T[:, :tdim]
+        else:
+            pos = x[:, :tdim]
+        face_norm_vector = face_norm_vector / np.linalg.norm(face_norm_vector)
+        center2pos = pos - face_center
+        dist2plane = np.sum(center2pos * face_norm_vector, axis=1)
+        dist2center = np.linalg.norm(center2pos, ord=2, axis=1)
+        positive_bool = np.bitwise_and(dist2center <= face_radius, np.abs(dist2plane) <= tol)
+        return positive_bool        
 
 
 class MeshObj(object):

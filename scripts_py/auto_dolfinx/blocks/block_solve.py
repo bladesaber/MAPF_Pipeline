@@ -200,7 +200,7 @@ class EquationSolveBlock(Block):
             self.lhs_form: ufl.Form = ufl.lhs(F_bilinear_form)  # type: ignore
             self.rhs_form: ufl.Form = ufl.rhs(F_bilinear_form)  # type: ignore
             
-            # TODO: be careful, adjoint isn't dependent or output, state is output
+            # NOTE: be careful, adjoint isn't dependent or output, state is output
             for c in self.lhs_form.coefficients():  # type: ignore
                 self.add_dependency(c, no_duplicates=True)
             for c in self.rhs_form.coefficients():  # type: ignore
@@ -212,7 +212,7 @@ class EquationSolveBlock(Block):
             )
             self.rhs_form: ufl.Form = 0.0  # type: ignore
             
-            # TODO: be careful, adjoint isn't dependent or output, state is output and dependent
+            # NOTE: be careful, adjoint isn't dependent or output, state is output and dependent
             for c in self.lhs_form.coefficients():  # type: ignore
                 self.add_dependency(c, no_duplicates=True)
         
@@ -443,7 +443,7 @@ class EquationSolveBlock(Block):
         here only consider dF/dm, since dJ/dm is computed from other block in the computation graph
         '''
         if not self.is_linear and self.state == block_variable.output:
-            # TODO: be careful, we are not able to calculate derivatives wrt itself.
+            # NOTE: be careful, we are not able to calculate derivatives wrt itself.
             return None
         
         F_linear_form: ufl.Form = prepared["F_linear_form"]

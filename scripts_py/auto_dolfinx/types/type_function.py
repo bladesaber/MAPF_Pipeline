@@ -56,7 +56,7 @@ class DolfinxFunction(dolfinx.fem.Function, OverloadedType):
         return new_f
     
     def _ad_restore_at_checkpoint(self, checkpoint: dolfinx.fem.Function) -> dolfinx.fem.Function:
-        # return checkpoint  # TODO: check if this is correct
+        # return checkpoint
         self.x.array[:] = checkpoint.x.array.copy()
         return self
     

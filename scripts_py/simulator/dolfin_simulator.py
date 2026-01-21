@@ -127,6 +127,20 @@ class FluidBoundary(object):
         pl.add_arrows(pos_vis, bry_vis, color='blue', mag=0.1)
         pl.show()
 
+    @staticmethod
+    def locate_indices(
+        x: np.ndarray, tdim: int, face_center: np.ndarray, face_norm_vector: np.ndarray, face_radius: float, tol: float = 1e-6):
+        if x.shape[0] in [2, 3]:
+            pos = x.T[:, :tdim]
+        else:
+            pos = x[:, :tdim]
+        face_norm_vector = face_norm_vector / np.linalg.norm(face_norm_vector)
+        center2pos = pos - face_center
+        dist2plane = np.sum(center2pos * face_norm_vector, axis=1)
+        dist2center = np.linalg.norm(center2pos, ord=2, axis=1)
+        positive_bool = np.bitwise_and(dist2center <=face_radius, np.abs(dist2plane) > tol)
+        return positive_bool
+
 
 class FluidSimulator(object):
     '''

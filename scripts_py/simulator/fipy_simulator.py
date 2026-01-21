@@ -710,7 +710,7 @@ class FipyStokeSimulator(object):
                         self.record(save_file=os.path.join(save_dir, f'iter_{iter_idx}.vtu'))
             
             if iter_idx > hot_steps and convergence_threshold > 0.0:
-                if (not self.using_parallel) or (self.using_parallel and OpenMpiUtils.is_master_rank()):
+                if (not self.using_parallel) or (self.using_parallel and OpenMpiUtils.is_master_rank()):                    
                     residual_dict = {
                         'x_residual': global_x_residual,
                         'y_residual': global_y_residual,

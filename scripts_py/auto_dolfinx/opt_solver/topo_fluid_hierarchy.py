@@ -1,16 +1,18 @@
 import os
 import shutil
-from typing import Literal, Union
+from typing import Literal, Union, Callable
 
 import dolfinx
 
 import subprocess
 import numpy as np
 import pyvista
+from functools import partial
+import copy
 
 from scripts_py.dolfinx_utils import DolfinUtils
 from scripts_py.mesh_utils import MeshUtils, MeshObj
-from scripts_py.auto_dolfinx.opt_solver.gmsh_mesher import GridMesher
+from scripts_py.auto_dolfinx.opt_solver.grid_mesher import GridMesher
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid import TopoFluidOptimizer
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid_fipy import TopoFluidOptimizerFipy
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid import AutoFluidBoundary
@@ -28,7 +30,8 @@ class TopoFluidGridOptimizer(object):
         space_left_bottom_corner: np.ndarray,
         space_right_top_corner: np.ndarray,
         space_resolution: float,
-        mesh_size: float,
+        mesh_min_size: float,
+        mesh_max_size: float,
         boundary_list: list[AutoFluidBoundary],
         obj_cost_args: dict,
         reg_cost_args: dict,
@@ -62,6 +65,7 @@ class TopoFluidGridOptimizer(object):
             'momentum_weight': 0.8,
             'full_run': True,
         },
+        inout_pipe_length: float = 0.05
     ):
         self.name = name
         self.run_dir = run_dir
@@ -73,8 +77,7 @@ class TopoFluidGridOptimizer(object):
         self.geo_file_path = os.path.join(self.run_dir, 'design_space.geo')
         self.msh_file_path = os.path.join(self.run_dir, 'design_space.msh')
         self.result_opt_vtu = os.path.join(self.run_dir, 'opt.vtu')
-        
-        self.boundary_list = boundary_list
+                
         self.obj_cost_args = obj_cost_args
         self.reg_cost_args = reg_cost_args
         assert 'target_volume' in self.reg_cost_args.keys(), 'Target volume is required for Volume regularization'
@@ -88,14 +91,29 @@ class TopoFluidGridOptimizer(object):
         self.space_left_bottom_corner = space_left_bottom_corner
         self.space_right_top_corner = space_right_top_corner
         self.space_resolution = space_resolution
-        self.mesh_size = mesh_size
+        self.mesh_min_size = mesh_min_size
+        self.mesh_max_size = mesh_max_size
+        
+        self.inout_pipe_length = inout_pipe_length  
+        if self.inout_pipe_length > 0.0 and self.space_dim == 3:
+            # TODO: 这里默认了velocity是inlet,pressure是outlet,日后需要更改
+            self.boundary_list = []
+            for boundary in boundary_list:
+                boundary_copy = copy.deepcopy(boundary)
+                if boundary_copy.boundary_type == 'velocity':
+                    boundary_copy.face_center = boundary_copy.face_center - boundary_copy.face_norm_vector * self.inout_pipe_length
+                elif boundary_copy.boundary_type == 'pressure':
+                    boundary_copy.face_center = boundary_copy.face_center + boundary_copy.face_norm_vector * self.inout_pipe_length
+                self.boundary_list.append(boundary_copy)
+        else:
+            self.boundary_list = boundary_list
         
         # ------ optimizer related ------
         self.fluid_type: Literal['stoke', 'naiver_stoke', 'rans'] = fluid_type
         self.viscosity_init = viscosity_init
         self.topo_weight_init = topo_weight_init
         self.init_topo_weight_method: Literal['poisson', 'filter', 'none'] = init_topo_weight_method
-        self.weight_filter_radius = self.space_resolution * 2.5
+        self.weight_filter_radius = self.mesh_max_size * 2.5
         self.alpha_fun_max = alpha_fun_max
         self.alpha_fun_min = alpha_fun_min
         self.alpha_fun_p = alpha_fun_p
@@ -114,18 +132,9 @@ class TopoFluidGridOptimizer(object):
             left_bottom_corner=self.space_left_bottom_corner,
             right_top_corner=self.space_right_top_corner,
             resolution=self.space_resolution,
+            boundaries=self.boundary_list,  # type: ignore
+            inout_pipe_length=self.inout_pipe_length,
         )
-        for boundary in self.boundary_list:
-            if boundary.boundary_type == 'wall':
-                continue
-            grid_mesher.add_group_boundary(
-                face_center=boundary.face_center,
-                face_radius=boundary.face_radius,
-                face_normal=boundary.face_norm_vector,
-                group_name=boundary.name,
-                group_id=boundary.marker,
-                boundary_type=boundary.boundary_type,  # type: ignore
-            )
         
         if reference_optimizer is None:
             init_field_value = np.ones(shape=(grid_mesher.cell_num,))
@@ -144,7 +153,7 @@ class TopoFluidGridOptimizer(object):
                 pcd_xyz=grid_points[inside_ref_cell_bool],
                 cell_indices=point_to_ref_cell_idxs[inside_ref_cell_bool].tolist()
             ).reshape(-1)
-            point_field_value = (point_field_value >= 0.4).astype(float)
+            point_field_value = (point_field_value >= 0.3).astype(float)
             
             # # ----- debug visualization ------
             # plotter = pyvista.Plotter()
@@ -157,7 +166,11 @@ class TopoFluidGridOptimizer(object):
             # # ------ debug visualization ------
             
             inside_line_bool = np.sum(point_field_value[grid_mesher.line2points], axis=1) > 0.0
-            inside_cell_bool = np.sum(inside_line_bool[grid_mesher.surface2lines], axis=1) > 0.0
+            if self.space_dim == 2:
+                inside_cell_bool = np.sum(inside_line_bool[grid_mesher.surface2lines], axis=1) > 0.0
+            else:
+                inside_surface_bool = np.sum(inside_line_bool[grid_mesher.surface2lines], axis=1) > 0.0
+                inside_cell_bool = np.sum(inside_surface_bool[grid_mesher.volume2surfaces], axis=1) > 0.0
             init_field_value = np.zeros(shape=(grid_mesher.cell_num,))
             init_field_value[inside_cell_bool] = 1.0
             
@@ -187,13 +200,13 @@ class TopoFluidGridOptimizer(object):
             field_value=init_field_value,
             threshold=0.5,
             output_type='geo',
-            file_path=self.geo_file_path,
-            min_size=self.mesh_size,
-            max_size=self.mesh_size,
+            geo_file_path=self.geo_file_path,
+            min_size=self.mesh_min_size,
+            max_size=self.mesh_max_size,
+            dist_min=self.mesh_min_size * 1.0,
+            dist_max=self.mesh_max_size * 1.0,
+            msh_file_path=self.msh_file_path
         )
-
-        cmd_str = f'gmsh -{self.space_dim} {self.geo_file_path} -o {self.msh_file_path} > {self.run_dir}/gmsh.log'
-        subprocess.run(cmd_str, shell=True, cwd='/home/admin123456/Desktop/work/MAPF_Pipeline')
         assert os.path.exists(self.msh_file_path), "[Error]: gmsh failed"
         
         self.grid_mesher = grid_mesher
@@ -238,6 +251,8 @@ class TopoFluidGridOptimizer(object):
                 alpha_fun_max=self.alpha_fun_max,
                 alpha_fun_min=self.alpha_fun_min,
                 alpha_fun_p=self.alpha_fun_p,
+                velocity_degree=1,
+                pressure_degree=1
             )
             optim.setup_tape(Tape())
             for boundary in self.boundary_list:
@@ -257,7 +272,7 @@ class TopoFluidGridOptimizer(object):
                 use_tqdm=self.fipy_simulator_dict['use_tqdm'],
                 use_log=self.fipy_simulator_dict['use_log'],
             )
-            recorder = TensorBoardRecorder(os.path.join(self.opt_dir, 'fipy_topo', 'log'))
+            recorder = TensorBoardRecorder(os.path.join(self.opt_dir, 'log'))
             result = optim.run(
                 max_iteration=self.fipy_simulator_dict['max_iteration'],
                 line_search_steps=self.fipy_simulator_dict['line_search_steps'],
@@ -290,7 +305,7 @@ class TopoFluidGridOptimizer(object):
                 reg_cost_args=self.reg_cost_args,
                 obstacle_cost_args=self.obstacle_cost_args,
             )
-            recorder = TensorBoardRecorder(os.path.join(self.opt_dir, 'dolfinx_topo', 'log'))
+            recorder = TensorBoardRecorder(os.path.join(self.opt_dir, 'log'))
             result = optim.run(
                 max_iteration=self.dolfinx_simulator_dict['max_iteration'],
                 line_search_steps=self.dolfinx_simulator_dict['line_search_steps'],
@@ -312,7 +327,8 @@ class TopoFluidHierarchyOptimizer(object):
         space_left_bottom_corner: np.ndarray,
         space_right_top_corner: np.ndarray,
         space_resolutions: list[float],
-        mesh_sizes: list[float],
+        mesh_min_sizes: list[float],
+        mesh_max_sizes: list[float],
         boundary_list: list[AutoFluidBoundary],
         obj_cost_args: dict,
         reg_cost_args: dict,
@@ -367,7 +383,8 @@ class TopoFluidHierarchyOptimizer(object):
         self.space_left_bottom_corner = space_left_bottom_corner
         self.space_right_top_corner = space_right_top_corner
         self.space_resolutions = space_resolutions
-        self.mesh_sizes = mesh_sizes
+        self.mesh_min_sizes = mesh_min_sizes
+        self.mesh_max_sizes = mesh_max_sizes
         
         # ------ optimizer related ------
         self.fluid_type: Literal['stoke', 'naiver_stoke', 'rans'] = fluid_type
@@ -383,7 +400,7 @@ class TopoFluidHierarchyOptimizer(object):
     
     def optimize(self):
         self.grid_optimizers.clear()
-        for layer_id, (space_resolution, mesh_size) in enumerate(zip(self.space_resolutions, self.mesh_sizes)):
+        for layer_id, (space_resolution, mesh_min_size, mesh_max_size) in enumerate(zip(self.space_resolutions, self.mesh_min_sizes, self.mesh_max_sizes)):
             if len(self.grid_optimizers) > 0:
                 reference_optimizer = self.grid_optimizers[-1]
             else:
@@ -399,7 +416,8 @@ class TopoFluidHierarchyOptimizer(object):
                 space_left_bottom_corner=self.space_left_bottom_corner,
                 space_right_top_corner=self.space_right_top_corner,
                 space_resolution=space_resolution,
-                mesh_size=mesh_size,
+                mesh_min_size=mesh_min_size,
+                mesh_max_size=mesh_max_size,
                 boundary_list=self.boundary_list,
                 obj_cost_args=self.obj_cost_args,
                 reg_cost_args=self.reg_cost_args,
@@ -430,7 +448,8 @@ def debug_grid_optimizer():
         space_left_bottom_corner=np.array([0.0, 0.0]),
         space_right_top_corner=np.array([1.0, 1.0]),
         space_resolution=0.1,
-        mesh_size=0.04,
+        mesh_min_size=0.05,
+        mesh_max_size=0.025,
         boundary_list=[
             AutoFluidBoundary(
                 name='inlet',
@@ -507,8 +526,9 @@ def debug_hierarchy_optimizer_2d():
         space_dim=2,
         space_left_bottom_corner=np.array([0.0, 0.0]),
         space_right_top_corner=np.array([1.0, 1.0]),
-        space_resolutions=[0.2, 0.1, 0.075],
-        mesh_sizes=[0.05, 0.025, 0.01],
+        space_resolutions=[0.2, 0.1, 0.06],
+        mesh_min_sizes=[0.03, 0.02, 0.01],
+        mesh_max_sizes=[0.08, 0.05, 0.02],
         boundary_list=[
             AutoFluidBoundary(
                 name='inlet',
@@ -588,7 +608,8 @@ def debug_hierarchy_optimizer_3d():
         space_left_bottom_corner=np.array([0.0, 0.0, 0.0]),
         space_right_top_corner=np.array([1.0, 1.0, 1.0]),
         space_resolutions=[0.2, 0.1, 0.05],
-        mesh_sizes=[0.08, 0.03, 0.01],
+        mesh_min_sizes=[0.02, 0.01, 0.01],
+        mesh_max_sizes=[0.08, 0.03, 0.01],
         boundary_list=[
             AutoFluidBoundary(
                 name='inlet',
@@ -643,7 +664,7 @@ def debug_hierarchy_optimizer_3d():
             'parallel_num': 8,
             'use_tqdm': True,
             'use_log': True,
-            'max_iteration': 100,
+            'max_iteration': 300,
             'line_search_steps': [0.1, 0.05],
             'momentum_weight': 0.8,
             'full_run': False,
