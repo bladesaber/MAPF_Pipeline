@@ -33,7 +33,7 @@ class TopoFluidGridOptimizer(object):
         mesh_min_size: float,
         mesh_max_size: float,
         boundary_list: list[AutoFluidBoundary],
-        obj_cost_args: dict,
+        obj_cost_args_list: list[dict],
         reg_cost_args: dict,
         obstacle_cost_args: dict|None,
         fluid_type: Literal['stoke', 'naiver_stoke', 'rans'],
@@ -78,7 +78,7 @@ class TopoFluidGridOptimizer(object):
         self.msh_file_path = os.path.join(self.run_dir, 'design_space.msh')
         self.result_opt_vtu = os.path.join(self.run_dir, 'opt.vtu')
                 
-        self.obj_cost_args = obj_cost_args
+        self.obj_cost_args_list = obj_cost_args_list
         self.reg_cost_args = reg_cost_args
         assert 'target_volume' in self.reg_cost_args.keys(), 'Target volume is required for Volume regularization'
         self.obstacle_cost_args = obstacle_cost_args
@@ -259,7 +259,7 @@ class TopoFluidGridOptimizer(object):
                 optim.add_boundary(boundary)
             
             optim.define_problem(
-                obj_cost_args=self.obj_cost_args,
+                obj_cost_args_list=self.obj_cost_args_list,
                 reg_cost_args=self.reg_cost_args,
                 obstacle_cost_args=self.obstacle_cost_args,
                 simulation_iterations=self.fipy_simulator_dict['simulation_iterations'],
@@ -275,7 +275,7 @@ class TopoFluidGridOptimizer(object):
                     'critical_method': 'residual',
                     'mat_assemble_method': 'lift',
                     'with_residual': True,
-                    'residual_error_threshold': 1e-4
+                    'residual_error_threshold': 1e-4  #  TODO: why unstable?
                 },
             )
             recorder = TensorBoardRecorder(os.path.join(self.opt_dir, 'log'))
@@ -307,7 +307,7 @@ class TopoFluidGridOptimizer(object):
                 optim.add_boundary(boundary)
         
             optim.define_problem(
-                obj_cost_args=self.obj_cost_args,
+                obj_cost_args_list=self.obj_cost_args_list,
                 reg_cost_args=self.reg_cost_args,
                 obstacle_cost_args=self.obstacle_cost_args,
             )
@@ -336,7 +336,7 @@ class TopoFluidHierarchyOptimizer(object):
         mesh_min_sizes: list[float],
         mesh_max_sizes: list[float],
         boundary_list: list[AutoFluidBoundary],
-        obj_cost_args: dict,
+        obj_cost_args_list: list[dict],
         reg_cost_args: dict,
         obstacle_cost_args: dict|None,
         fluid_type: Literal['stoke', 'naiver_stoke', 'rans'],
@@ -376,7 +376,7 @@ class TopoFluidHierarchyOptimizer(object):
         os.makedirs(self.run_dir)
         
         self.boundary_list = boundary_list
-        self.obj_cost_args = obj_cost_args
+        self.obj_cost_args_list = obj_cost_args_list
         self.reg_cost_args = reg_cost_args
         assert 'target_volume' in self.reg_cost_args.keys(), 'Target volume is required for Volume regularization'
         self.obstacle_cost_args = obstacle_cost_args
@@ -425,7 +425,7 @@ class TopoFluidHierarchyOptimizer(object):
                 mesh_min_size=mesh_min_size,
                 mesh_max_size=mesh_max_size,
                 boundary_list=self.boundary_list,
-                obj_cost_args=self.obj_cost_args,
+                obj_cost_args_list=self.obj_cost_args_list,
                 reg_cost_args=self.reg_cost_args,
                 obstacle_cost_args=self.obstacle_cost_args,
                 fluid_type=self.fluid_type,
@@ -482,12 +482,12 @@ def debug_grid_optimizer():
                 marker=3
             )
         ],
-        obj_cost_args={
+        obj_cost_args_list=[{
             'style': 'MinDissipation+BrinkmanPenalized',
             'with_viscosity': True,
             'dissipation_weight': 1.0,
             'penalized_weight': 1.0,
-        },
+        }],
         reg_cost_args={
             'style': 'Volume',
             'weight': 1.0,
@@ -561,12 +561,12 @@ def debug_hierarchy_optimizer_2d():
                 marker=3
             )
         ],
-        obj_cost_args={
+        obj_cost_args_list=[{
             'style': 'MinDissipation+BrinkmanPenalized',
             'with_viscosity': True,
             'dissipation_weight': 1.0,
             'penalized_weight': 1.0,
-        },
+        }],
         reg_cost_args={
             'style': 'Volume',
             'weight': 1.0,
@@ -642,12 +642,12 @@ def debug_hierarchy_optimizer_3d():
                 marker=3
             )
         ],
-        obj_cost_args={
+        obj_cost_args_list=[{
             'style': 'MinDissipation+BrinkmanPenalized',
             'with_viscosity': True,
             'dissipation_weight': 1.0,
             'penalized_weight': 1.0,
-        },
+        }],
         reg_cost_args={
             'style': 'Volume',
             'weight': 0.1,

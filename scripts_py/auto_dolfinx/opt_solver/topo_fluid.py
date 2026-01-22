@@ -474,7 +474,7 @@ class TopoFluidOptimizer(FluidSimulator):
 
     def define_problem(
         self,
-        obj_cost_args: dict,
+        obj_cost_args_list: list[dict],
         reg_cost_args: dict,
         obstacle_cost_args: dict|None = None,
         tlm_ksp_option: dict = {
@@ -597,49 +597,54 @@ class TopoFluidOptimizer(FluidSimulator):
             u, p = ufl.split(self.uh)  # type: ignore
             
             # ------ define object cost ------
-            obj_cost_args = self.prepare_cost_args(
-                u=u, p=p, obj_cost_args=obj_cost_args,  # type: ignore
-                viscosity=self.viscosity, alpha=alpha,
-            )
-            if obj_cost_args['style'] == 'MinDissipation':
-                obj_cost = assemble_scalar(
-                    form=obj_cost_args['weight'] * obj_cost_args['min_dissipation_form'], 
-                    domain=self.domain, tape=self.tape
+            for obj_idx, obj_cost_args in enumerate(obj_cost_args_list):
+                obj_cost_args = self.prepare_cost_args(
+                    u=u, p=p, obj_cost_args=obj_cost_args,  # type: ignore
+                    viscosity=self.viscosity, alpha=alpha,
                 )
-            elif obj_cost_args['style'] == 'MinDissipation+BrinkmanPenalized':
-                obj_cost = assemble_scalar(
-                    form=(
-                        obj_cost_args['dissipation_weight'] * obj_cost_args['min_dissipation_form'] 
-                        + obj_cost_args['penalized_weight'] * obj_cost_args['penalized_term']
-                    ),
-                    domain=self.domain, tape=self.tape
-                )
-            elif obj_cost_args['style'] == 'MinPressure':
-                obj_cost = assemble_scalar(
-                    form=obj_cost_args['weight'] * obj_cost_args['pressure_form'],
-                    domain=self.domain, tape=self.tape
-                )
-            elif obj_cost_args['style'] == 'FixedFlux':
-                with_rescale = obj_cost_args['with_rescale']
-                for i, (_, outlet_item) in enumerate(obj_cost_args['outlet_cost_forms'].items()):
-                    outlet_flux = assemble_scalar(
-                        form=outlet_item['flux_form'],
+                if obj_cost_args['style'] == 'MinDissipation':
+                    obj_cost = assemble_scalar(
+                        form=obj_cost_args['weight'] * obj_cost_args['min_dissipation_form'], 
                         domain=self.domain, tape=self.tape
                     )
-                    target_flux = outlet_item['target_flux']
-                    weight = outlet_item['weight']
-                    
-                    flux_dif = outlet_flux - target_flux
-                    if with_rescale:
-                        flux_dif = flux_dif / target_flux
-                    if i == 0:
-                        obj_cost = weight * flux_dif ** 2
-                    else:
-                        obj_cost += weight * flux_dif ** 2
+                elif obj_cost_args['style'] == 'MinDissipation+BrinkmanPenalized':
+                    obj_cost = assemble_scalar(
+                        form=(
+                            obj_cost_args['dissipation_weight'] * obj_cost_args['min_dissipation_form'] 
+                            + obj_cost_args['penalized_weight'] * obj_cost_args['penalized_term']
+                        ),
+                        domain=self.domain, tape=self.tape
+                    )
+                elif obj_cost_args['style'] == 'MinPressure':
+                    obj_cost = assemble_scalar(
+                        form=obj_cost_args['weight'] * obj_cost_args['pressure_form'],
+                        domain=self.domain, tape=self.tape
+                    )
+                elif obj_cost_args['style'] == 'FixedFlux':
+                    with_rescale = obj_cost_args['with_rescale']
+                    for i, (_, outlet_item) in enumerate(obj_cost_args['outlet_cost_forms'].items()):
+                        outlet_flux = assemble_scalar(
+                            form=outlet_item['flux_form'],
+                            domain=self.domain, tape=self.tape
+                        )
+                        target_flux = outlet_item['target_flux']
+                        weight = outlet_item['weight']
                         
-            else:
-                raise ValueError(f'Invalid cost style: {obj_cost_args['style']}')
-            self.obj_cost_args = obj_cost_args
+                        flux_dif = outlet_flux - target_flux
+                        if with_rescale:
+                            flux_dif = flux_dif / target_flux
+                        if i == 0:
+                            obj_cost = weight * flux_dif ** 2
+                        else:
+                            obj_cost += weight * flux_dif ** 2           
+                else:
+                    raise ValueError(f'Invalid cost style: {obj_cost_args['style']}')
+                
+                if obj_idx == 0:
+                    all_obj_cost = obj_cost
+                else:
+                    all_obj_cost += obj_cost  # type: ignore
+            self.obj_cost_args_list = obj_cost_args_list
             
             # ------ define regularization cost ------
             reg_cost_args = self.prepare_reg_args(reg_cost_args)  # type: ignore
@@ -654,7 +659,7 @@ class TopoFluidOptimizer(FluidSimulator):
                 raise ValueError(f'Invalid regularization style: {reg_cost_args['style']}')
             self.reg_cost_args = reg_cost_args
             
-            loss_all = obj_cost + reg_cost
+            loss_all = all_obj_cost + reg_cost
             
             # ------ define obstacle cost ------
             if self.obstacle_cost_args is not None:
@@ -662,7 +667,7 @@ class TopoFluidOptimizer(FluidSimulator):
                     obs_cost_form = inner(self.obstacle_cost_args['obs_cell_mask'], self.topo_weight) * ufl.dx
                 else:
                     obs_cost_form = inner(self.obstacle_cost_args['obs_point_mask'], self.topo_weight) * ufl.dx
-                self.obj_cost_args['cost_form'] = obs_cost_form
+                self.obstacle_cost_args['cost_form'] = obs_cost_form
                 
                 obs_cost = assemble_scalar(obs_cost_form, domain=self.domain, tape=self.tape)
                 obs_cost = obs_cost * self.obstacle_cost_args['weight']
@@ -790,33 +795,37 @@ class TopoFluidOptimizer(FluidSimulator):
         log_dict = {'cost': {}}
         
         # ------ compute object cost ------
-        if self.obj_cost_args['style'] == 'MinDissipation':
-            eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
-                form=self.obj_cost_args['weight'] * self.obj_cost_args['min_dissipation_form']
-            )
-            log_dict['cost']['obj_cost'] = eval_dict['obj_cost']
+        for obj_cost_args in self.obj_cost_args_list:
+            if obj_cost_args['style'] == 'MinDissipation':
+                eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
+                    form=obj_cost_args['weight'] * obj_cost_args['min_dissipation_form']
+                )
+                log_dict['cost']['obj_cost'] = eval_dict['obj_cost']
+                
+            elif obj_cost_args['style'] == 'MinDissipation+BrinkmanPenalized':
+                min_dissipation_cost = obj_cost_args['dissipation_weight'] * AssembleUtils.assemble_scalar(obj_cost_args['min_dissipation_form'])
+                penalized_cost = obj_cost_args['penalized_weight'] * AssembleUtils.assemble_scalar(obj_cost_args['penalized_term'])
+                eval_dict['obj_cost'] = min_dissipation_cost + penalized_cost
+                log_dict['cost']['min_dissipation_cost'] = min_dissipation_cost
+                log_dict['cost']['penalized_cost'] = penalized_cost
+                
+            elif obj_cost_args['style'] == 'MinPressure':
+                eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
+                    form=obj_cost_args['weight'] * obj_cost_args['pressure_form']
+                )
+                log_dict['cost']['obj_cost'] = eval_dict['obj_cost']
+                
+            elif obj_cost_args['style'] == 'FixedFlux':
+                for (marker, outlet_item) in zip(obj_cost_args['outlet_markers'], obj_cost_args['outlet_cost_forms'].values()):
+                    outlet_flux = AssembleUtils.assemble_scalar(form=outlet_item['flux_form'])
+                    flux_dif = outlet_flux - outlet_item['target_flux']
+                    if obj_cost_args['with_rescale']:
+                        flux_dif = flux_dif / outlet_item['target_flux']
+                    eval_dict[f'{marker}_cost'] = outlet_item['weight'] * flux_dif ** 2
+                    log_dict['cost'][f'{marker}_flux_cost'] = np.abs(outlet_flux)
+            else:
+                raise ValueError(f'Invalid cost style: {obj_cost_args['style']}')
             
-        elif self.obj_cost_args['style'] == 'MinDissipation+BrinkmanPenalized':
-            min_dissipation_cost = self.obj_cost_args['dissipation_weight'] * AssembleUtils.assemble_scalar(self.obj_cost_args['min_dissipation_form'])
-            penalized_cost = self.obj_cost_args['penalized_weight'] * AssembleUtils.assemble_scalar(self.obj_cost_args['penalized_term'])
-            eval_dict['obj_cost'] = min_dissipation_cost + penalized_cost
-            log_dict['cost']['min_dissipation_cost'] = min_dissipation_cost
-            log_dict['cost']['penalized_cost'] = penalized_cost
-            
-        elif self.obj_cost_args['style'] == 'MinPressure':
-            eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
-                form=self.obj_cost_args['weight'] * self.obj_cost_args['pressure_form']
-            )
-            log_dict['cost']['obj_cost'] = eval_dict['obj_cost']
-            
-        elif self.obj_cost_args['style'] == 'FixedFlux':
-            for i, (_, outlet_item) in enumerate(self.obj_cost_args['outlet_cost_forms'].items()):
-                outlet_flux = AssembleUtils.assemble_scalar(form=outlet_item['flux_form'])
-                eval_dict[f'{i}_cost'] = outlet_item['weight'] * (outlet_flux - outlet_item['target_flux']) ** 2
-                log_dict['cost'][f'{i}_flux_cost'] = np.abs(outlet_flux)
-        else:
-            raise ValueError(f'Invalid cost style: {self.obj_cost_args['style']}')
-        
         # ------ compute regularization cost ------
         if self.reg_cost_args['style'] == 'Volume':
             target_volume = self.reg_cost_args['target_volume']
@@ -825,16 +834,16 @@ class TopoFluidOptimizer(FluidSimulator):
             if self.reg_cost_args['reg_rescale']:
                 volume_dif = volume_dif / target_volume
             eval_dict['reg_cost'] = self.reg_cost_args['weight'] * (volume_dif ** 2)
-            
+                
             log_dict['cost']['reg_cost'] = eval_dict['reg_cost']
             log_dict['volume'] = topo_volume
-            
+                
         else:
             raise ValueError(f'Invalid regularization style: {self.reg_cost_args['style']}')
         
         # ------ compute obstacle cost ------
         if self.obstacle_cost_args is not None:
-            eval_dict['obs_cost'] = AssembleUtils.assemble_scalar(self.obj_cost_args['cost_form']) * self.obstacle_cost_args['weight']
+            eval_dict['obs_cost'] = AssembleUtils.assemble_scalar(self.obstacle_cost_args['cost_form']) * self.obstacle_cost_args['weight']
             log_dict['cost']['obs_cost'] = eval_dict['obs_cost']
         
         log_dict['loss_all'] = np.sum(list(eval_dict.values()))
@@ -933,12 +942,12 @@ def debug_1():
     
     # 似乎topo weight的约束cost应该占据主要地位
     optim.define_problem(
-        obj_cost_args={
+        obj_cost_args_list=[{
             'style': 'MinDissipation+BrinkmanPenalized',
             'with_viscosity': True,
             'dissipation_weight': 1.0,
             'penalized_weight': 1.0,
-        },
+        }],
         reg_cost_args={
             'style': 'Volume',
             'weight': 1.0,
@@ -1008,12 +1017,12 @@ def debug_2():
     
     # 似乎topo weight的约束cost应该占据主要地位
     optim.define_problem(
-        obj_cost_args={
+        obj_cost_args_list=[{
             'style': 'MinDissipation+BrinkmanPenalized',
             'with_viscosity': True,
             'dissipation_weight': 1.0,
             'penalized_weight': 1.0,
-        },
+        }],
         reg_cost_args={
             'style': 'Volume',
             'weight': 100.0,
