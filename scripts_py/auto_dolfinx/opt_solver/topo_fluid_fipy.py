@@ -245,6 +245,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                     domain=self.domain, tape=self.tape
                 )
             elif obj_cost_args['style'] == 'FixedFlux':
+                with_rescale = obj_cost_args['with_rescale']
                 for i, (_, outlet_item) in enumerate(obj_cost_args['outlet_cost_forms'].items()):
                     outlet_flux = assemble_scalar(
                         form=outlet_item['flux_form'],
@@ -252,14 +253,18 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                     )
                     target_flux = outlet_item['target_flux']
                     weight = outlet_item['weight']
+                    
+                    flux_dif = outlet_flux - target_flux                    
+                    if with_rescale:
+                        flux_dif = flux_dif / target_flux
                     if i == 0:
-                        obj_cost = weight * (outlet_flux - target_flux) ** 2
+                        obj_cost = weight * flux_dif ** 2
                     else:
-                        obj_cost += weight * (outlet_flux - target_flux) ** 2
+                        obj_cost += weight * flux_dif ** 2
             else:
                 raise ValueError(f'Invalid cost style: {obj_cost_args['style']}')
             self.obj_cost_args = obj_cost_args
-            
+                        
             # ------ define regularization cost ------
             reg_cost_args = self.prepare_reg_args(reg_cost_args)  # type: ignore
             if reg_cost_args['style'] == 'Volume':

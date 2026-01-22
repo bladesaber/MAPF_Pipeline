@@ -23,6 +23,7 @@ from scripts_py.simulator.dolfin_simulator import FluidBoundary
 
 
 class GridMesher(object):
+    """依然不太稳定"""
     def __init__(
         self, 
         dim: int,

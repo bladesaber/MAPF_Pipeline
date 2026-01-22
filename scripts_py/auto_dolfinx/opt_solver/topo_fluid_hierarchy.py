@@ -202,9 +202,9 @@ class TopoFluidGridOptimizer(object):
             output_type='geo',
             geo_file_path=self.geo_file_path,
             min_size=self.mesh_min_size,
-            max_size=self.mesh_max_size,
-            dist_min=self.mesh_min_size * 1.0,
-            dist_max=self.mesh_max_size * 1.0,
+            max_size=max(self.mesh_max_size, self.mesh_min_size * 1.1),
+            dist_min=self.mesh_min_size,
+            dist_max=max(self.mesh_max_size, self.mesh_min_size * 2.0),
             msh_file_path=self.msh_file_path
         )
         assert os.path.exists(self.msh_file_path), "[Error]: gmsh failed"
@@ -271,6 +271,12 @@ class TopoFluidGridOptimizer(object):
                 parallel_num=self.fipy_simulator_dict['parallel_num'],
                 use_tqdm=self.fipy_simulator_dict['use_tqdm'],
                 use_log=self.fipy_simulator_dict['use_log'],
+                adj_kwargs={
+                    'critical_method': 'residual',
+                    'mat_assemble_method': 'lift',
+                    'with_residual': True,
+                    'residual_error_threshold': 1e-4
+                },
             )
             recorder = TensorBoardRecorder(os.path.join(self.opt_dir, 'log'))
             result = optim.run(
@@ -662,7 +668,7 @@ def debug_hierarchy_optimizer_3d():
             'hot_steps': 10,
             'log_step': 2,
             'parallel_num': 8,
-            'use_tqdm': True,
+            'use_tqdm': False,
             'use_log': True,
             'max_iteration': 300,
             'line_search_steps': [0.1, 0.05],

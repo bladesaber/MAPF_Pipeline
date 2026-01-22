@@ -430,7 +430,7 @@ class EquationSolveBlock(Block):
             # TODO: improve future
             if self.adj_kwargs['critical_method'] == 'residual':
                 residual_error = res_dict['max_residual']
-                if residual_error > 1e-8:
+                if residual_error > self.adj_kwargs.get('residual_error_threshold', 1e-8):
                     raise ValueError(f"Failed to solve adjoint problem with residual error: {residual_error}")
             else:
                 raise ValueError(f"Failed to solve adjoint problem.")
