@@ -4,11 +4,11 @@ from typing import Literal, Union, Callable
 
 import dolfinx
 
-import subprocess
 import numpy as np
 import pyvista
 from functools import partial
 import copy
+import json
 
 from scripts_py.dolfinx_utils import DolfinUtils
 from scripts_py.mesh_utils import MeshUtils, MeshObj
@@ -16,6 +16,8 @@ from scripts_py.auto_dolfinx.opt_solver.grid_mesher import GridMesher
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid import TopoFluidOptimizer
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid_fipy import TopoFluidOptimizerFipy
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid import AutoFluidBoundary
+from scripts_py.auto_dolfinx.opt_solver.topo_fluid_chain import TopoFluidChainOptimizer
+from scripts_py.dolfinx_adjoint.topology_utils.topology_filter import DistanceBandFilter
 
 from thirdparty.pyadjoint.pyadjoint import Tape
 from scripts_py.vtu_recorder import TensorBoardRecorder
@@ -126,7 +128,10 @@ class TopoFluidGridOptimizer(object):
         self.grid_mesher: GridMesher
         self.field_value: np.ndarray
             
-    def prepare_design_space(self, reference_optimizer: Union["TopoFluidGridOptimizer", None] = None):
+    def prepare_design_space(
+        self, reference_optimizer: Union["TopoFluidGridOptimizer", None] = None,
+        threshold: float = 0.4, diffusion_step = 0
+    ):
         grid_mesher = GridMesher(
             dim=self.space_dim,
             left_bottom_corner=self.space_left_bottom_corner,
@@ -149,11 +154,11 @@ class TopoFluidGridOptimizer(object):
             )  
             inside_ref_cell_bool = point_to_ref_cell_idxs >= 0
             point_field_value[inside_ref_cell_bool] = DolfinUtils.function_eval(
-                uh=reference_optimizer.prepare_topo_function(),
+                uh=reference_optimizer.prepare_topo_function(diffusion_step=diffusion_step),
                 pcd_xyz=grid_points[inside_ref_cell_bool],
                 cell_indices=point_to_ref_cell_idxs[inside_ref_cell_bool].tolist()
             ).reshape(-1)
-            point_field_value = (point_field_value >= 0.3).astype(float)
+            point_field_value = (point_field_value >= threshold).astype(float)
             
             # # ----- debug visualization ------
             # plotter = pyvista.Plotter()
@@ -225,14 +230,21 @@ class TopoFluidGridOptimizer(object):
         self.topo_vtu = pyvista.read(self.result_opt_vtu)  # type: ignore
         return self.topo_vtu
         
-    def prepare_topo_function(self):
+    def prepare_topo_function(self, diffusion_step=0):
         if self.topo_function is not None:
             return self.topo_function
         mesh = self.prepare_mesh()
         point_scalar_func_space = DolfinUtils.point_scalar_function_space(mesh.domain)
         topo_function = dolfinx.fem.Function(point_scalar_func_space)
         topo_vtu = self.prepare_topo_vtu()
-        topo_function.x.array[:] = topo_vtu.point_data['topo_weight']  # type: ignore
+        
+        topo_weight = topo_vtu.point_data['topo_weight']
+        if diffusion_step > 0:
+            weight_filter = DistanceBandFilter(topo_vtu, self.weight_filter_radius, False, True)
+            for _ in range(diffusion_step):
+                topo_weight = np.asarray(weight_filter.run(topo_weight.reshape((-1, 1)))).reshape(-1)
+        
+        topo_function.x.array[:] = topo_weight  # type: ignore
         self.topo_function = topo_function  # type: ignore
         return self.topo_function
 
@@ -275,7 +287,7 @@ class TopoFluidGridOptimizer(object):
                     'critical_method': 'residual',
                     'mat_assemble_method': 'lift',
                     'with_residual': True,
-                    'residual_error_threshold': 1e-4  #  TODO: why unstable?
+                    'residual_error_threshold': 1e-3  # NOTE: residual_error_threshold在momentum_weight作用下能允许较大的误差
                 },
             )
             recorder = TensorBoardRecorder(os.path.join(self.opt_dir, 'log'))
@@ -324,7 +336,7 @@ class TopoFluidGridOptimizer(object):
         return result
 
 
-class TopoFluidHierarchyOptimizer(object):
+class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
     def __init__(
         self,
         name: str,
@@ -335,10 +347,7 @@ class TopoFluidHierarchyOptimizer(object):
         space_resolutions: list[float],
         mesh_min_sizes: list[float],
         mesh_max_sizes: list[float],
-        boundary_list: list[AutoFluidBoundary],
-        obj_cost_args_list: list[dict],
-        reg_cost_args: dict,
-        obstacle_cost_args: dict|None,
+        boundary_list: list[AutoFluidBoundary],        
         fluid_type: Literal['stoke', 'naiver_stoke', 'rans'],
         viscosity_init: float|np.ndarray,
         topo_weight_init: float|np.ndarray,
@@ -347,44 +356,25 @@ class TopoFluidHierarchyOptimizer(object):
         alpha_fun_min: float = 1e-12,
         alpha_fun_p: float = 3.0,
         us_fipy=False,
-        fipy_simulator_dict = {
-            'simulation_iterations': 200,
-            'convergence_threshold': 1e-4,
-            'velocityRelaxation': 0.6,
-            'pressureRelaxation': 0.8,
-            'hot_steps': 10,
-            'log_step': 2,
-            'parallel_num': 8,
-            'use_tqdm': True,
-            'use_log': True,
-            'max_iteration': 150,
-            'line_search_steps': [0.05],
-            'momentum_weight': 0.8,
-            'full_run': True,
-        },
-        dolfinx_simulator_dict = {
-            'max_iteration': 150,
-            'line_search_steps': [0.05],
-            'momentum_weight': 0.8,
-            'full_run': True,
-        },
+        extract_threshold: float = 0.4,
+        diffusion_step: int = 0,
     ):
-        self.name = name
-        self.run_dir = run_dir
-        if os.path.exists(self.run_dir):
-            shutil.rmtree(self.run_dir)
-        os.makedirs(self.run_dir)
-        
-        self.boundary_list = boundary_list
-        self.obj_cost_args_list = obj_cost_args_list
-        self.reg_cost_args = reg_cost_args
-        assert 'target_volume' in self.reg_cost_args.keys(), 'Target volume is required for Volume regularization'
-        self.obstacle_cost_args = obstacle_cost_args
-        
-        self.us_fipy = us_fipy
-        self.fipy_simulator_dict = fipy_simulator_dict
-        self.dolfinx_simulator_dict = dolfinx_simulator_dict
-        
+        super().__init__(
+            name=name,
+            run_dir=run_dir,
+            msh_file=None,  # type: ignore
+            mesh=None,  # type: ignore
+            boundary_list=boundary_list,
+            fluid_type=fluid_type,
+            viscosity_init=viscosity_init,
+            topo_weight_init=topo_weight_init,
+            init_topo_weight_method=init_topo_weight_method,
+            weight_filter_radius=None,  # type: ignore
+            alpha_fun_max=alpha_fun_max,
+            alpha_fun_min=alpha_fun_min,
+            alpha_fun_p=alpha_fun_p,
+            us_fipy=us_fipy
+        )
         self.space_dim = space_dim
         self.space_left_bottom_corner = space_left_bottom_corner
         self.space_right_top_corner = space_right_top_corner
@@ -392,29 +382,87 @@ class TopoFluidHierarchyOptimizer(object):
         self.mesh_min_sizes = mesh_min_sizes
         self.mesh_max_sizes = mesh_max_sizes
         
-        # ------ optimizer related ------
-        self.fluid_type: Literal['stoke', 'naiver_stoke', 'rans'] = fluid_type
-        self.viscosity_init = viscosity_init
-        self.topo_weight_init = topo_weight_init
-        self.init_topo_weight_method: Literal['poisson', 'filter', 'none'] = init_topo_weight_method
-        self.alpha_fun_max = alpha_fun_max
-        self.alpha_fun_min = alpha_fun_min
-        self.alpha_fun_p = alpha_fun_p
-        
-        # ------ grid optimizers ------
+        self.extract_threshold = extract_threshold
+        self.diffusion_step = diffusion_step
         self.grid_optimizers: list[TopoFluidGridOptimizer] = []
     
-    def optimize(self):
+    def optimize(
+        self,
+        run_cfgs: list[dict] = [
+            {
+                'obj_cost_args_list': [{
+                    'style': 'MinDissipation+BrinkmanPenalized',
+                    'with_viscosity': True,
+                    'dissipation_weight': 1.0,
+                    'penalized_weight': 1.0,
+                }],
+                'reg_cost_args': {
+                    'style': 'Volume',
+                    'weight': 0.1,
+                    'target_volume': 0.5,
+                    'reg_rescale': True,
+                },
+                'obstacle_cost_args': None,
+                'fipy_simulator_cfg': {
+                    'simulation_iterations': 200,
+                    'convergence_threshold': 1e-4,
+                    'velocityRelaxation': 0.6,
+                    'pressureRelaxation': 0.8,
+                    'hot_steps': 10,
+                    'log_step': 2,
+                    'parallel_num': 8,
+                    'use_tqdm': True,
+                    'use_log': True,
+                    'max_iteration': 150,
+                    'line_search_steps': [0.1, 0.05],
+                    'momentum_weight': 0.8,
+                    'full_run': False,
+                },
+                'dolfinx_simulator_cfg': {
+                    'max_iteration': 150,
+                    'line_search_steps': [0.1, 0.05],
+                    'momentum_weight': 0.8,
+                    'full_run': False,
+                }
+            }
+        ]
+    ):
         self.grid_optimizers.clear()
-        for layer_id, (space_resolution, mesh_min_size, mesh_max_size) in enumerate(zip(self.space_resolutions, self.mesh_min_sizes, self.mesh_max_sizes)):
+                
+        last_obj_cost_args_list: list[dict] = None  # type: ignore
+        last_reg_cost_args: dict = None  # type: ignore
+        last_obstacle_cost_args: dict = None  # type: ignore
+        last_fipy_simulator_cfg: dict = None  # type: ignore
+        last_dolfinx_simulator_cfg: dict = None  # type: ignore
+        
+        for layer_id, (space_resolution, mesh_min_size, mesh_max_size) in enumerate(
+            zip(self.space_resolutions, self.mesh_min_sizes, self.mesh_max_sizes)
+        ):
             if len(self.grid_optimizers) > 0:
                 reference_optimizer = self.grid_optimizers[-1]
             else:
                 reference_optimizer = None
             
             layer_dir = os.path.join(self.run_dir, f'layer_{layer_id}')
-            os.makedirs(layer_dir)
             
+            # ------ define optimizer ------
+            run_cfg = run_cfgs[min(layer_id, len(run_cfgs) - 1)]
+            obj_cost_args_list = run_cfg.get('obj_cost_args_list', last_obj_cost_args_list)
+            reg_cost_args = run_cfg.get('reg_cost_args', last_reg_cost_args)
+            obstacle_cost_args = run_cfg.get('obstacle_cost_args', last_obstacle_cost_args)
+            fipy_simulator_cfg = run_cfg.get('fipy_simulator_cfg', last_fipy_simulator_cfg)
+            dolfinx_simulator_cfg = run_cfg.get('dolfinx_simulator_cfg', last_dolfinx_simulator_cfg)
+            assert obj_cost_args_list is not None, 'obj_cost_args_list is required'
+            assert reg_cost_args is not None, 'reg_cost_args is required'
+            assert 'target_volume' in reg_cost_args.keys(), 'Target volume is required for Volume regularization'
+            log_run_json = {
+                'obj_cost_args_list': obj_cost_args_list,
+                'reg_cost_args': reg_cost_args,
+                'obstacle_cost_args': obstacle_cost_args,
+                'fipy_simulator_cfg': fipy_simulator_cfg,
+                'dolfinx_simulator_cfg': dolfinx_simulator_cfg,
+            }
+                        
             grid_optim = TopoFluidGridOptimizer(
                 name=f'{self.name}_layer_{layer_id}',
                 run_dir=layer_dir,
@@ -425,9 +473,9 @@ class TopoFluidHierarchyOptimizer(object):
                 mesh_min_size=mesh_min_size,
                 mesh_max_size=mesh_max_size,
                 boundary_list=self.boundary_list,
-                obj_cost_args_list=self.obj_cost_args_list,
-                reg_cost_args=self.reg_cost_args,
-                obstacle_cost_args=self.obstacle_cost_args,
+                obj_cost_args_list=copy.deepcopy(obj_cost_args_list),
+                reg_cost_args=copy.deepcopy(reg_cost_args),
+                obstacle_cost_args=copy.deepcopy(obstacle_cost_args) if obstacle_cost_args is not None else None,
                 fluid_type=self.fluid_type,
                 viscosity_init=self.viscosity_init,
                 topo_weight_init=self.topo_weight_init,
@@ -436,92 +484,26 @@ class TopoFluidHierarchyOptimizer(object):
                 alpha_fun_min=self.alpha_fun_min,
                 alpha_fun_p=self.alpha_fun_p,
                 us_fipy=self.us_fipy,
-                fipy_simulator_dict=self.fipy_simulator_dict,
-                dolfinx_simulator_dict=self.dolfinx_simulator_dict,
+                fipy_simulator_dict=fipy_simulator_cfg,
+                dolfinx_simulator_dict=dolfinx_simulator_cfg,
             )
-            grid_optim.prepare_design_space(reference_optimizer=reference_optimizer)
+            grid_optim.prepare_design_space(
+                reference_optimizer=reference_optimizer,
+                threshold=self.extract_threshold,
+                diffusion_step=self.diffusion_step
+            )
             grid_optim.optimize()
             self.grid_optimizers.append(grid_optim)
+            
+            with open(os.path.join(layer_dir, 'run_cfg.json'), 'w') as f:
+                json.dump(log_run_json, f, indent=4)
+            
+            last_obj_cost_args_list = obj_cost_args_list
+            last_reg_cost_args = reg_cost_args
+            last_obstacle_cost_args = obstacle_cost_args
+            last_fipy_simulator_cfg = fipy_simulator_cfg
+            last_dolfinx_simulator_cfg = dolfinx_simulator_cfg
     
-
-def debug_grid_optimizer():
-    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t44'
-    
-    optim = TopoFluidGridOptimizer(
-        name='t44',
-        run_dir=base_dir,
-        space_dim=2,
-        space_left_bottom_corner=np.array([0.0, 0.0]),
-        space_right_top_corner=np.array([1.0, 1.0]),
-        space_resolution=0.1,
-        mesh_min_size=0.05,
-        mesh_max_size=0.025,
-        boundary_list=[
-            AutoFluidBoundary(
-                name='inlet',
-                boundary_type='velocity',
-                value=[1.0, 0.0],
-                marker=1,
-                face_center=np.array([0.0, 0.2]),
-                face_norm_vector=np.array([1.0, 0.0]),
-                face_radius=0.1
-            ),
-            AutoFluidBoundary(
-                name='outlet',
-                boundary_type='pressure',
-                value=0.0,
-                marker=2,
-                face_center=np.array([1.00, 0.8]),
-                face_norm_vector=np.array([1.0, 0.0]),
-                face_radius=0.1
-            ),
-            AutoFluidBoundary(
-                name='wall',
-                boundary_type='wall',
-                value=0.0,
-                marker=3
-            )
-        ],
-        obj_cost_args_list=[{
-            'style': 'MinDissipation+BrinkmanPenalized',
-            'with_viscosity': True,
-            'dissipation_weight': 1.0,
-            'penalized_weight': 1.0,
-        }],
-        reg_cost_args={
-            'style': 'Volume',
-            'weight': 1.0,
-            'target_volume': 0.1,
-            'reg_rescale': True,
-        },
-        obstacle_cost_args=None,
-        fluid_type='stoke',
-        viscosity_init=1.0 / 400.,
-        topo_weight_init=0.1,
-        init_topo_weight_method='filter',
-        us_fipy=False,
-        fipy_simulator_dict={
-            'simulation_iterations': 200,
-            'convergence_threshold': 1e-4,
-            'velocityRelaxation': 0.6,
-            'pressureRelaxation': 0.8,
-            'hot_steps': 10,
-            'log_step': 2,
-            'parallel_num': 8,
-            'use_tqdm': True,
-            'use_log': True,
-        },
-        dolfinx_simulator_dict={
-            'max_iteration': 150,
-            'line_search_steps': [0.05],
-            'momentum_weight': 0.8,
-            'full_run': False,
-        }
-    )
-    
-    optim.prepare_design_space()
-    optim.optimize()
-
 
 def debug_hierarchy_optimizer_2d():
     base_dir = '/home/admin123456/Desktop/work/gmsh_test/t44'
@@ -550,7 +532,7 @@ def debug_hierarchy_optimizer_2d():
                 boundary_type='pressure',
                 value=0.0,
                 marker=2,
-                face_center=np.array([1.00, 0.8]),
+                face_center=np.array([1.0, 0.8]),
                 face_norm_vector=np.array([1.0, 0.0]),
                 face_radius=0.1
             ),
@@ -561,54 +543,59 @@ def debug_hierarchy_optimizer_2d():
                 marker=3
             )
         ],
-        obj_cost_args_list=[{
-            'style': 'MinDissipation+BrinkmanPenalized',
-            'with_viscosity': True,
-            'dissipation_weight': 1.0,
-            'penalized_weight': 1.0,
-        }],
-        reg_cost_args={
-            'style': 'Volume',
-            'weight': 1.0,
-            'target_volume': 0.1,
-            'reg_rescale': True,
-        },
-        obstacle_cost_args=None,
         fluid_type='stoke',
         viscosity_init=1.0 / 400.,
         topo_weight_init=0.1,
         init_topo_weight_method='filter',
         us_fipy=False,
-        fipy_simulator_dict={
-            'simulation_iterations': 200,
-            'convergence_threshold': 1e-4,
-            'velocityRelaxation': 0.6,
-            'pressureRelaxation': 0.8,
-            'hot_steps': 10,
-            'log_step': 2,
-            'parallel_num': 8,
-            'use_tqdm': True,
-            'use_log': True,
-            'max_iteration': 150,
-            'line_search_steps': [0.1, 0.05],
-            'momentum_weight': 0.8,
-            'full_run': False,
-        },
-        dolfinx_simulator_dict={
-            'max_iteration': 100,
-            'line_search_steps': [0.1, 0.05],
-            'momentum_weight': 0.8,
-            'full_run': False,
-        }
     )
-    optim.optimize()
+    optim.optimize(
+        run_cfgs=[
+            {
+                'obj_cost_args_list':[{
+                    'style': 'MinDissipation+BrinkmanPenalized',
+                    'with_viscosity': True,
+                    'dissipation_weight': 1.0,
+                    'penalized_weight': 1.0,
+                }],
+                'reg_cost_args':{
+                    'style': 'Volume',
+                    'weight': 1.0,
+                    'target_volume': 0.1,
+                    'reg_rescale': True,
+                },
+                'obstacle_cost_args':None,
+                'fipy_simulator_cfg': {
+                    'simulation_iterations': 200,
+                    'convergence_threshold': 1e-4,
+                    'velocityRelaxation': 0.6,
+                    'pressureRelaxation': 0.8,
+                    'hot_steps': 10,
+                    'log_step': 2,
+                    'parallel_num': 8,
+                    'use_tqdm': True,
+                    'use_log': True,
+                    'max_iteration': 150,
+                    'line_search_steps': [0.1, 0.05],
+                    'momentum_weight': 0.8,
+                    'full_run': False,
+                },
+                'dolfinx_simulator_cfg': {
+                    'max_iteration': 100,
+                    'line_search_steps': [0.1, 0.05],
+                    'momentum_weight': 0.8,
+                    'full_run': False,
+                }
+            }
+        ]
+    )
 
 
 def debug_hierarchy_optimizer_3d():
     base_dir = '/home/admin123456/Desktop/work/gmsh_test/t44'
     
     optim = TopoFluidHierarchyOptimizer(
-        name='t44',
+        name='t44_compare',
         run_dir=base_dir,
         space_dim=3,
         space_left_bottom_corner=np.array([0.0, 0.0, 0.0]),
@@ -642,50 +629,247 @@ def debug_hierarchy_optimizer_3d():
                 marker=3
             )
         ],
-        obj_cost_args_list=[{
-            'style': 'MinDissipation+BrinkmanPenalized',
-            'with_viscosity': True,
-            'dissipation_weight': 1.0,
-            'penalized_weight': 1.0,
-        }],
-        reg_cost_args={
-            'style': 'Volume',
-            'weight': 0.1,
-            'target_volume': 0.06,
-            'reg_rescale': True,
-        },
-        obstacle_cost_args=None,
         fluid_type='stoke',
         viscosity_init=1.0 / 400.,
         topo_weight_init=0.1,
         init_topo_weight_method='filter',
         us_fipy=True,
-        fipy_simulator_dict={
-            'simulation_iterations': 200,
-            'convergence_threshold': 1e-4,
-            'velocityRelaxation': 0.6,
-            'pressureRelaxation': 0.8,
-            'hot_steps': 10,
-            'log_step': 2,
-            'parallel_num': 8,
-            'use_tqdm': False,
-            'use_log': True,
-            'max_iteration': 300,
-            'line_search_steps': [0.1, 0.05],
-            'momentum_weight': 0.8,
-            'full_run': False,
-        },
-        dolfinx_simulator_dict={
-            'max_iteration': 100,
-            'line_search_steps': [0.1, 0.05],
-            'momentum_weight': 0.8,
-            'full_run': False,
-        }
+        extract_threshold=0.3,
+        diffusion_step=0,
     )
-    optim.optimize()
+    optim.optimize(
+        run_cfgs=[
+            {
+                'obj_cost_args_list':[{
+                    'style': 'MinDissipation+BrinkmanPenalized',
+                    'with_viscosity': True,
+                    'dissipation_weight': 1.0,
+                    'penalized_weight': 1.0,
+                }],
+                'reg_cost_args':{
+                    'style': 'Volume',
+                    'weight': 0.1,
+                    'target_volume': 0.06,
+                    'reg_rescale': True,
+                },
+                'obstacle_cost_args':None,
+                'fipy_simulator_cfg': {
+                    'simulation_iterations': 200,
+                    'convergence_threshold': 1e-4,
+                    'velocityRelaxation': 0.6,
+                    'pressureRelaxation': 0.8,
+                    'hot_steps': 10,
+                    'log_step': 2,
+                    'parallel_num': 4,
+                    'use_tqdm': True,
+                    'use_log': True,
+                    'max_iteration': 300,
+                    'line_search_steps': [0.1, 0.05],
+                    'momentum_weight': 0.8,
+                    'full_run': False,
+                },
+                'dolfinx_simulator_cfg': {
+                    'max_iteration': 100,
+                    'line_search_steps': [0.1, 0.05],
+                    'momentum_weight': 0.8,
+                    'full_run': False,
+                }
+            },
+            {
+                'fipy_simulator_cfg': {
+                    'simulation_iterations': 200,
+                    'convergence_threshold': 1e-4,
+                    'velocityRelaxation': 0.6,
+                    'pressureRelaxation': 0.8,
+                    'hot_steps': 10,
+                    'log_step': 2,
+                    'parallel_num': 8,
+                    'use_tqdm': True,
+                    'use_log': True,
+                    'max_iteration': 300,
+                    'line_search_steps': [0.1, 0.05],
+                    'momentum_weight': 0.8,
+                    'full_run': False,
+                },
+            },
+            {
+                'fipy_simulator_cfg': {
+                    'simulation_iterations': 200,
+                    'convergence_threshold': 1e-4,
+                    'velocityRelaxation': 0.6,
+                    'pressureRelaxation': 0.8,
+                    'hot_steps': 10,
+                    'log_step': 2,
+                    'parallel_num': 8,
+                    'use_tqdm': True,
+                    'use_log': True,
+                    'max_iteration': 300,
+                    'line_search_steps': [0.05],
+                    'momentum_weight': 0.8,
+                    'full_run': False,
+                },
+            }
+        ]
+    )
+
+
+def debug_multi_2d_pipes():
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48'
+
+    boundaries = [
+        AutoFluidBoundary(
+            name='inlet',
+            boundary_type='velocity',
+            value=[0.0, 1.0],
+            marker=1,
+            face_center=np.array([1.0, 0.0]),
+            face_norm_vector=np.array([0.0, 1.0]),
+            face_radius=0.1
+        ),
+        AutoFluidBoundary(
+            name='outlet1',
+            boundary_type='pressure',
+            value=0.0,
+            marker=2,
+            face_center=np.array([0.2, 1.0]),
+            face_norm_vector=np.array([0.0, 1.0]),
+            face_radius=0.1
+        ),
+        AutoFluidBoundary(
+            name='outlet2',
+            boundary_type='pressure',
+            value=0.0,
+            marker=3,
+            face_center=np.array([0.6, 1.0]),
+            face_norm_vector=np.array([0.0, 1.0]),
+            face_radius=0.1
+        ),
+        AutoFluidBoundary(
+            name='outlet3',
+            boundary_type='pressure',
+            value=0.0,
+            marker=4,
+            face_center=np.array([1.0, 1.0]),
+            face_norm_vector=np.array([0.0, 1.0]),
+            face_radius=0.1
+        ),
+        AutoFluidBoundary(
+            name='outlet4',
+            boundary_type='pressure',
+            value=0.0,
+            marker=5,
+            face_center=np.array([1.4, 1.0]),
+            face_norm_vector=np.array([0.0, 1.0]),
+            face_radius=0.1
+        ),
+        AutoFluidBoundary(
+            name='outlet5',
+            boundary_type='pressure',
+            value=0.0,
+            marker=6,
+            face_center=np.array([1.8, 1.0]),
+            face_norm_vector=np.array([0.0, 1.0]),
+            face_radius=0.1
+        ),
+        AutoFluidBoundary(
+            name='wall',
+            boundary_type='wall',
+            value=0.0,
+            marker=7
+        )
+    ]
+
+    optim = TopoFluidHierarchyOptimizer(
+        name='t48',
+        run_dir=base_dir,
+        space_dim=2,
+        space_left_bottom_corner=np.array([0.0, 0.0]),
+        space_right_top_corner=np.array([2.0, 1.0]),
+        space_resolutions=[0.1, 0.06, 0.03, 0.03],
+        mesh_min_sizes=[0.03, 0.02, 0.01, 0.005],
+        mesh_max_sizes=[0.06, 0.04, 0.02, 0.01],
+        boundary_list=boundaries,
+        fluid_type='stoke',
+        viscosity_init=1.0 / 400.,
+        topo_weight_init=0.1,
+        init_topo_weight_method='poisson',
+        us_fipy=False,
+        extract_threshold=0.4,
+        diffusion_step=0,
+    )
+    optim.optimize(
+        run_cfgs=[
+            {
+                'obj_cost_args_list':[
+                    {
+                        'style': 'MinDissipation+BrinkmanPenalized',
+                        'with_viscosity': True,
+                        'dissipation_weight': 1.0,
+                        'penalized_weight': 1.0,
+                    },
+                    {
+                        'style': 'FixedFlux',
+                        'inlet_markers': [1],
+                        'outlet_markers': [2, 3, 4, 5, 6],
+                        'outlet_marker_ratios': [0.2, 0.2, 0.2, 0.2, 0.2],
+                        'outlet_marker_weights': [0.1, 0.1, 0.1, 0.1, 0.1],  # TODO: shouldn't be main cost
+                        'with_rescale': True
+                    }
+                ],
+                'reg_cost_args':{
+                    'style': 'Volume',
+                    'weight': 1.0,
+                    'target_volume': 0.6,
+                    'reg_rescale': True,
+                },
+                'obstacle_cost_args':None,
+                'dolfinx_simulator_cfg': {
+                    'max_iteration': 200,
+                    'line_search_steps': [0.1, 0.05],
+                    'momentum_weight': 0.8,
+                    'full_run': False,
+                }
+            },
+            {
+                'reg_cost_args': {
+                    'style': 'Volume',
+                    'weight': 1.0,
+                    'target_volume': 0.4,
+                    'reg_rescale': True,
+                },
+            },
+            {
+                'reg_cost_args': {
+                    'style': 'Volume',
+                    'weight': 1.0,
+                    'target_volume': 0.2,
+                    'reg_rescale': True,
+                },
+                'dolfinx_simulator_cfg': {
+                    'max_iteration': 200,
+                    'line_search_steps': [0.05],
+                    'momentum_weight': 0.8,
+                    'full_run': False,
+                }
+            },
+            {
+                'reg_cost_args': {
+                    'style': 'Volume',
+                    'weight': 1.0,
+                    'target_volume': 0.1,
+                    'reg_rescale': True,
+                },
+                'dolfinx_simulator_cfg': {
+                    'max_iteration': 200,
+                    'line_search_steps': [0.05],
+                    'momentum_weight': 0.8,
+                    'full_run': True,
+                }
+            }
+        ]
+    )
 
 
 if __name__ == '__main__':
-    # debug_grid_optimizer()
     # debug_hierarchy_optimizer_2d()
     debug_hierarchy_optimizer_3d()

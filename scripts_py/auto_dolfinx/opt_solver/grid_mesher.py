@@ -23,7 +23,6 @@ from scripts_py.simulator.dolfin_simulator import FluidBoundary
 
 
 class GridMesher(object):
-    """依然不太稳定"""
     def __init__(
         self, 
         dim: int,
@@ -256,53 +255,132 @@ class GridMesher(object):
 
     # ------ gmsh operation ------
     @staticmethod
-    def sort_line_segments(line_segments: np.ndarray, line_idxs: np.ndarray):        
-        unique_ps = np.unique(line_segments)
-        path_dict = {p: {} for p in unique_ps}
-        p_exist_dict = {p: False for p in unique_ps}
+    def sort_line_segments(line_segments: np.ndarray, line_idxs: np.ndarray):
+        """
+        line_segments: each contains two point indexes
+        line_idxs: line index of the line_segments
+        """
         
-        for line_idx, (p1, p2) in enumerate(line_segments):
-            path_dict[p1][p2] = {'direction': 1, 'line_idx': line_idx}
-            path_dict[p2][p1] = {'direction': -1, 'line_idx': line_idx}
-        
-        sorted_line_idxs = [0]
-        sorted_directions = [1]
-        start_p = line_segments[sorted_line_idxs[-1]][0]
-        p_exist_dict[start_p] = True
-        while True:
-            if sorted_directions[-1] == 1:
-                p2 = line_segments[sorted_line_idxs[-1]][1]
-            else:
-                p2 = line_segments[sorted_line_idxs[-1]][0]
-            if p_exist_dict[p2]:
-                break
+        def find_one_segment(line_segments: np.ndarray, line_idxs: np.ndarray):
+            unique_ps = np.unique(line_segments)
+            path_dict = {p: {} for p in unique_ps}
+            p_exist_dict = {p: False for p in unique_ps}
             
-            p_exist_dict[p2] = True
-            for other_p in path_dict[p2].keys():
-                if not p_exist_dict[other_p]:
-                    info = path_dict[p2][other_p]
-                    sorted_line_idxs.append(info['line_idx'])
-                    sorted_directions.append(info['direction'])
+            for line_idx, (p1, p2) in enumerate(line_segments):
+                path_dict[p1][p2] = {'direction': 1, 'line_idx': line_idx}
+                path_dict[p2][p1] = {'direction': -1, 'line_idx': line_idx}
+            
+            sorted_line_idxs = [0]
+            sorted_directions = [1]
+            start_p = line_segments[sorted_line_idxs[-1]][0]
+            p_exist_dict[start_p] = True
+            while True:
+                if sorted_directions[-1] == 1:
+                    p2 = line_segments[sorted_line_idxs[-1]][1]
+                else:
+                    p2 = line_segments[sorted_line_idxs[-1]][0]
+                if p_exist_dict[p2]:
                     break
+                
+                p_exist_dict[p2] = True
+                for other_p in path_dict[p2].keys():
+                    if not p_exist_dict[other_p]:
+                        info = path_dict[p2][other_p]
+                        sorted_line_idxs.append(info['line_idx'])
+                        sorted_directions.append(info['direction'])
+                        break
+            
+            for other_p in path_dict[p2].keys():
+                if other_p == start_p:
+                    sorted_line_idxs.append(path_dict[p2][other_p]['line_idx'])
+                    sorted_directions.append(path_dict[p2][other_p]['direction'])
+                    break
+            
+            sorted_line_idxs = np.array(sorted_line_idxs)
+            
+            contain_line = np.zeros(shape=line_segments.shape[0], dtype=bool)
+            contain_line[sorted_line_idxs] = True
+            
+            sorted_line_idxs = line_idxs[sorted_line_idxs]
+            sorted_directions = np.array(sorted_directions)
+            
+            # sorted_line_segments = line_segments[sorted_line_idxs]
+            # b = sorted_line_segments[sorted_directions == -1]
+            # sorted_line_segments[sorted_directions == -1, 0] = b[:, 1]
+            # sorted_line_segments[sorted_directions == -1, 1] = b[:, 0]
+            # print(sorted_line_segments)
+            
+            return sorted_line_idxs, sorted_directions, contain_line
+            
+        # assert len(sorted_line_idxs) == line_segments.shape[0], "Sorted line idxs length mismatch"
         
-        for other_p in path_dict[p2].keys():
-            if other_p == start_p:
-                sorted_line_idxs.append(path_dict[p2][other_p]['line_idx'])
-                sorted_directions.append(path_dict[p2][other_p]['direction'])
+        cur_line_segments = line_segments.copy()
+        cur_line_idxs = line_idxs.copy()
+        sorted_res = []
+        while True:
+            sorted_line_idxs, sorted_directions, contain_line = find_one_segment(cur_line_segments, cur_line_idxs)
+            sorted_res.append((sorted_line_idxs * sorted_directions).astype(int).tolist())
+            
+            rest_line_segments = cur_line_segments[~contain_line]
+            rest_line_idxs = cur_line_idxs[~contain_line]
+            if rest_line_segments.shape[0] == 0:
+                break
+            cur_line_segments = rest_line_segments
+            cur_line_idxs = rest_line_idxs
+        
+        return sorted_res
+
+    @staticmethod
+    def find_surface_parts(surface_segments: np.ndarray, surface_idxs: np.ndarray):
+        """
+        surface_segments: each contains four line indexes
+        surface_idxs: surface index of the surface_segments
+        """
+        
+        def find_one_part(surface_segments: np.ndarray):
+            line2surface_map = {}
+            for map_i, line_idxs in enumerate(surface_segments):
+                for line_idx in line_idxs:
+                    if line_idx not in line2surface_map:
+                        line2surface_map[line_idx] = []
+                    line2surface_map[line_idx].append(map_i)
+            
+            contain_surface = np.zeros(shape=surface_segments.shape[0], dtype=bool)
+            contain_surface[0] = True
+            related_surface_map_idxs = [0]
+            while True:
+                new_related_line_idxs = []
+                for map_idx in related_surface_map_idxs:
+                    new_related_line_idxs.extend(surface_segments[map_idx].tolist())
+                new_related_line_idxs = np.unique(np.array(new_related_line_idxs))
+                
+                new_related_surface_map_idxs = []
+                for line_idx in new_related_line_idxs:
+                    for new_surface_map_idx in line2surface_map[line_idx]:
+                        if not contain_surface[new_surface_map_idx]:
+                            new_related_surface_map_idxs.append(new_surface_map_idx)
+                            contain_surface[new_surface_map_idx] = True
+                
+                new_related_surface_map_idxs = np.array(new_related_surface_map_idxs)
+                if new_related_surface_map_idxs.shape[0] == 0:
+                    break
+                related_surface_map_idxs = np.unique(new_related_surface_map_idxs)
+            
+            return contain_surface
+        
+        cur_surface_segments = surface_segments.copy()
+        cur_surface_idxs = surface_idxs.copy()
+        surface_parts = []
+        while True:
+            contain_surface = find_one_part(cur_surface_segments)
+            surface_parts.append(cur_surface_idxs[contain_surface])
+            
+            cur_surface_segments = cur_surface_segments[~contain_surface]
+            cur_surface_idxs = cur_surface_idxs[~contain_surface]
+            if cur_surface_segments.shape[0] == 0:
                 break
         
-        sorted_line_idxs = np.array(sorted_line_idxs)
-        sorted_line_idxs = line_idxs[sorted_line_idxs]
-        sorted_directions = np.array(sorted_directions)
-        assert len(sorted_line_idxs) == line_segments.shape[0], "Sorted line idxs length mismatch"
-        
-        # sorted_line_segments = line_segments[sorted_line_idxs]
-        # b = sorted_line_segments[sorted_directions == -1]
-        # sorted_line_segments[sorted_directions == -1, 0] = b[:, 1]
-        # sorted_line_segments[sorted_directions == -1, 1] = b[:, 0]
-        # print(sorted_line_segments)
-                
-        return (sorted_line_idxs * sorted_directions).astype(int).tolist()
+        return surface_parts
 
     def extract_2d_field(self, field_value: np.ndarray, threshold: float, output_type: Literal['geo', 'vtk'], **kwargs):
         line_idxs = self.extract_field_boundary_idxs(field_value, threshold)
@@ -337,11 +415,13 @@ class GridMesher(object):
                 if bry_cfg.boundary_type == 'wall':
                     continue
                 
+                assert self.resolution < bry_cfg.face_radius * 2.0, f"Resolution is too large for boundary {bry_cfg.name}, it should be less than {bry_cfg.face_radius * 2.0}"
                 inout_marker.append(bry_cfg.marker)
                 inside_points_bool = np.bitwise_and(
                     np.linalg.norm(vertices - bry_cfg.face_center, axis=1) < bry_cfg.face_radius,
                     np.abs(np.dot(vertices - bry_cfg.face_center, bry_cfg.face_norm_vector)) < self.resolution * 0.5
                 )
+                
                 inside_lines_bool = np.sum(inside_points_bool[new_line2points], axis=1) > 0
                 assert np.sum(inside_lines_bool) > 0, f"No lines found inside group {bry_cfg.name}"
                 line_marker_idxs[inside_lines_bool] = int(bry_cfg.marker)
@@ -363,8 +443,12 @@ class GridMesher(object):
                     f.write(f'{GmshUtils.define_gmsh_line(line_idx, line_conn[0], line_conn[1])}\n')
                 f.write('\n')
                 
-                # ------ sort line2points to ensure the line is always in the same direction ------                
-                f.write(f'{GmshUtils.define_gmsh_surface(surface_idx, line_ids=self.sort_line_segments(new_line2points, line_idxs))}\n')
+                # ------ sort line2points to ensure the line is always in the same direction ------
+                curve_loops = self.sort_line_segments(new_line2points, line_idxs)
+                curve_loop_idxs = (np.arange(len(curve_loops)) + 1).astype(int).tolist()
+                for curve_loop_idx, curve_loop in zip(curve_loop_idxs, curve_loops):
+                    f.write(f'{GmshUtils.define_gmsh_curve_loop(curve_loop_idx, curve_loop)}\n')
+                f.write(f'{GmshUtils.define_gmsh_surface_from_curves(surface_idx, curve_loop_idxs)}\n')                
                 f.write('\n')
                 
                 f.write(f'{GmshUtils.define_gmsh_all_lines_physical_group(group_name='lines', group_id=1)}\n')                
@@ -405,7 +489,7 @@ class GridMesher(object):
         else:
             raise ValueError(f"Invalid output type: {output_type}")
                     
-    def extract_3d_field(self, field_value: np.ndarray, threshold: float, output_type: Literal['geo', 'vtk'], **kwargs):
+    def extract_3d_field(self, field_value: np.ndarray, threshold: float, output_type: Literal['geo', 'vtk'], **kwargs):        
         surface_idxs = self.extract_field_boundary_idxs(field_value, threshold)
         line_idxs = np.unique(self.surface2lines[surface_idxs])
         point_idxs = np.unique(self.line2points[line_idxs])
@@ -451,7 +535,8 @@ class GridMesher(object):
                 for bry_cfg in self.boundaries:
                     if bry_cfg.boundary_type == 'wall':
                         continue
-                                
+                    
+                    assert self.resolution < bry_cfg.face_radius * 2.0, f"Resolution is too large for boundary {bry_cfg.name}, it should be less than {bry_cfg.face_radius * 2.0}"
                     inside_points_bool = np.bitwise_and(
                         np.linalg.norm(vertices - bry_cfg.face_center, axis=1) < bry_cfg.face_radius,
                         np.abs(np.dot(vertices - bry_cfg.face_center, bry_cfg.face_norm_vector)) < self.resolution * 0.5
@@ -480,8 +565,13 @@ class GridMesher(object):
                         f.write(f'{GmshUtils.define_gmsh_line(line_idx, line_conn[0], line_conn[1])}\n')
                     f.write('\n')
                     for surface_idx, surface_conn in zip(surface_idxs, new_surface2lines):
-                        f.write(f'{GmshUtils.define_gmsh_surface(surface_idx, surface_conn)}\n')
-                    f.write(f'{GmshUtils.define_gmsh_volume(volume_idx, surface_ids=surface_idxs)}\n')
+                        f.write(f'{GmshUtils.define_gmsh_surface_from_lines(surface_idx, surface_conn)}\n')
+                        
+                    surface_loops = self.find_surface_parts(new_surface2lines, surface_idxs)
+                    surface_loop_idxs = (np.arange(len(surface_loops)) + 1).astype(int).tolist()
+                    for surface_loop_idx, surface_loop in zip(surface_loop_idxs, surface_loops):
+                        f.write(f'{GmshUtils.define_gmsh_surface_loop(surface_loop_idx, surface_loop)}\n')
+                    f.write(f'{GmshUtils.define_gmsh_volume_from_surface_loops(volume_idx, surface_loop_idxs)}\n')
                     f.write('\n')
                     
                     f.write(f'{GmshUtils.define_gmsh_all_surfaces_physical_group(group_name='surface', group_id=1)}\n')
@@ -536,9 +626,14 @@ class GridMesher(object):
                         f.write(f'{GmshUtils.define_gmsh_line(line_idx, line_conn[0], line_conn[1])}\n')
                     f.write('\n')
                     for surface_idx, surface_conn in zip(surface_idxs, new_surface2lines):
-                        f.write(f'{GmshUtils.define_gmsh_surface(surface_idx, surface_conn)}\n')
+                        f.write(f'{GmshUtils.define_gmsh_surface_from_lines(surface_idx, surface_conn)}\n')
                     f.write('\n')
-                    f.write(f'{GmshUtils.define_gmsh_volume(volume_idx, surface_ids=surface_idxs)}\n')
+                    
+                    surface_loops = self.find_surface_parts(new_surface2lines, surface_idxs)
+                    surface_loop_idxs = (np.arange(len(surface_loops)) + 1).astype(int).tolist()
+                    for surface_loop_idx, surface_loop in zip(surface_loop_idxs, surface_loops):
+                        f.write(f'{GmshUtils.define_gmsh_surface_loop(surface_loop_idx, surface_loop)}\n')
+                    f.write(f'{GmshUtils.define_gmsh_volume_from_surface_loops(volume_idx, surface_loop_idxs)}\n')
                     f.write('\n')
                     
                     source_volume_idx = volume_idx

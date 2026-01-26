@@ -41,17 +41,38 @@ class GmshUtils(object):
         return f'Line({line_id}) = {{{point_id_1}, {point_id_2}}};'
     
     @staticmethod
-    def define_gmsh_surface(surface_id: int, line_ids: list[int]):
+    def define_gmsh_curve_loop(curve_loop_id: int, line_ids: list[int]):
+        assert curve_loop_id > 0, "gmsh only supports positive curve loop id"
+        return f'Curve Loop({curve_loop_id}) = {{{", ".join([str(line_id) for line_id in line_ids])}}};'
+    
+    @staticmethod
+    def define_gmsh_surface_from_lines(surface_id: int, line_ids: list[int]):
         assert surface_id > 0, "gmsh only supports positive surface id"
         content = f'Curve Loop({surface_id}) = {{{", ".join([str(line_id) for line_id in line_ids])}}};\n'
         content += f'Plane Surface({surface_id}) = {{{surface_id}}};'
         return content
     
     @staticmethod
-    def define_gmsh_volume(volume_id: int, surface_ids: list[int]):
+    def define_gmsh_surface_from_curves(surface_id: int, curve_ids: list[int]):
+        assert surface_id > 0, "gmsh only supports positive surface id"
+        return f'Plane Surface({surface_id}) = {{{", ".join([str(curve_id) for curve_id in curve_ids])}}};'
+    
+    @staticmethod
+    def define_gmsh_surface_loop(surface_loop_id: int, surface_ids: list[int]):
+        assert surface_loop_id > 0, "gmsh only supports positive surface loop id"
+        return f'Surface Loop({surface_loop_id}) = {{{", ".join([str(surface_id) for surface_id in surface_ids])}}};'
+    
+    @staticmethod
+    def define_gmsh_volume_from_surfaces(volume_id: int, surface_ids: list[int]):
         assert volume_id > 0, "gmsh only supports positive volume id"
         content = f'Surface Loop({volume_id}) = {{{", ".join([str(surface_id) for surface_id in surface_ids])}}};\n'
         content += f'Volume({volume_id}) = {{{volume_id}}};'
+        return content
+
+    @staticmethod
+    def define_gmsh_volume_from_surface_loops(volume_id: int, surface_loop_ids: list[int]):
+        assert volume_id > 0, "gmsh only supports positive volume id"
+        content = f'Volume({volume_id}) = {{{", ".join([str(surface_loop_id) for surface_loop_id in surface_loop_ids])}}};'
         return content
 
     @staticmethod
