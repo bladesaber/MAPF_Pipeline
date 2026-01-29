@@ -41,7 +41,7 @@ class TopoFluidGridOptimizer(object):
         fluid_type: Literal['stoke', 'naiver_stoke', 'rans'],
         viscosity_init: float|np.ndarray,
         topo_weight_init: float|np.ndarray,
-        init_topo_weight_method: Literal['poisson', 'filter', 'none'],
+        init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'],
         alpha_fun_max: float = 100.0,
         alpha_fun_min: float = 1e-12,
         alpha_fun_p: float = 3.0,
@@ -114,7 +114,7 @@ class TopoFluidGridOptimizer(object):
         self.fluid_type: Literal['stoke', 'naiver_stoke', 'rans'] = fluid_type
         self.viscosity_init = viscosity_init
         self.topo_weight_init = topo_weight_init
-        self.init_topo_weight_method: Literal['poisson', 'filter', 'none'] = init_topo_weight_method
+        self.init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'] = init_topo_weight_method
         self.weight_filter_radius = self.mesh_max_size * 2.5
         self.alpha_fun_max = alpha_fun_max
         self.alpha_fun_min = alpha_fun_min
@@ -248,7 +248,7 @@ class TopoFluidGridOptimizer(object):
         self.topo_function = topo_function  # type: ignore
         return self.topo_function
 
-    def optimize(self):
+    def optimize(self, residual_error_threshold=1e-4):
         if self.us_fipy:
             optim = TopoFluidOptimizerFipy(
                 name=self.name,
@@ -278,7 +278,7 @@ class TopoFluidGridOptimizer(object):
                 convergence_threshold=self.fipy_simulator_dict['convergence_threshold'],
                 velocityRelaxation=self.fipy_simulator_dict['velocityRelaxation'],
                 pressureRelaxation=self.fipy_simulator_dict['pressureRelaxation'],
-                hot_steps=self.fipy_simulator_dict['hot_steps'],
+                hot_steps=10,
                 log_step=self.fipy_simulator_dict['log_step'],
                 parallel_num=self.fipy_simulator_dict['parallel_num'],
                 use_tqdm=self.fipy_simulator_dict['use_tqdm'],
@@ -287,7 +287,7 @@ class TopoFluidGridOptimizer(object):
                     'critical_method': 'residual',
                     'mat_assemble_method': 'lift',
                     'with_residual': True,
-                    'residual_error_threshold': 1e-3  # NOTE: residual_error_threshold在momentum_weight作用下能允许较大的误差
+                    'residual_error_threshold': residual_error_threshold  # 1e-3 NOTE: residual_error_threshold在momentum_weight作用下能允许较大的误差
                 },
             )
             recorder = TensorBoardRecorder(os.path.join(self.opt_dir, 'log'))
@@ -298,6 +298,7 @@ class TopoFluidGridOptimizer(object):
                 recorder=recorder,
                 full_run=self.fipy_simulator_dict['full_run'],
                 result_vtu_file=self.result_opt_vtu,
+                hot_step=self.fipy_simulator_dict['hot_steps']
             )
             
         else:
@@ -331,6 +332,7 @@ class TopoFluidGridOptimizer(object):
                 recorder=recorder,
                 full_run=self.dolfinx_simulator_dict['full_run'],
                 result_vtu_file=self.result_opt_vtu,
+                hot_step=self.dolfinx_simulator_dict['hot_steps']
             )
         
         return result
@@ -351,7 +353,7 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
         fluid_type: Literal['stoke', 'naiver_stoke', 'rans'],
         viscosity_init: float|np.ndarray,
         topo_weight_init: float|np.ndarray,
-        init_topo_weight_method: Literal['poisson', 'filter', 'none'],
+        init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'],
         alpha_fun_max: float = 100.0,
         alpha_fun_min: float = 1e-12,
         alpha_fun_p: float = 3.0,
@@ -425,7 +427,9 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
                     'full_run': False,
                 }
             }
-        ]
+        ],
+        residual_error_threshold=1e-4,
+        inout_pipe_length=0.05
     ):
         self.grid_optimizers.clear()
                 
@@ -486,13 +490,14 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
                 us_fipy=self.us_fipy,
                 fipy_simulator_dict=fipy_simulator_cfg,
                 dolfinx_simulator_dict=dolfinx_simulator_cfg,
+                inout_pipe_length=inout_pipe_length,
             )
             grid_optim.prepare_design_space(
                 reference_optimizer=reference_optimizer,
                 threshold=self.extract_threshold,
                 diffusion_step=self.diffusion_step
             )
-            grid_optim.optimize()
+            grid_optim.optimize(residual_error_threshold=residual_error_threshold)
             self.grid_optimizers.append(grid_optim)
             
             with open(os.path.join(layer_dir, 'run_cfg.json'), 'w') as f:
@@ -600,7 +605,7 @@ def debug_hierarchy_optimizer_3d():
         space_dim=3,
         space_left_bottom_corner=np.array([0.0, 0.0, 0.0]),
         space_right_top_corner=np.array([1.0, 1.0, 1.0]),
-        space_resolutions=[0.2, 0.1, 0.05],
+        space_resolutions=[0.2, 0.1, 0.06],
         mesh_min_sizes=[0.02, 0.01, 0.01],
         mesh_max_sizes=[0.08, 0.03, 0.01],
         boundary_list=[
@@ -632,9 +637,9 @@ def debug_hierarchy_optimizer_3d():
         fluid_type='stoke',
         viscosity_init=1.0 / 400.,
         topo_weight_init=0.1,
-        init_topo_weight_method='filter',
+        init_topo_weight_method='poisson',
         us_fipy=True,
-        extract_threshold=0.3,
+        extract_threshold=0.4,
         diffusion_step=0,
     )
     optim.optimize(
@@ -709,12 +714,13 @@ def debug_hierarchy_optimizer_3d():
                     'full_run': False,
                 },
             }
-        ]
+        ],
+        residual_error_threshold=1e-3,
     )
 
 
 def debug_multi_2d_pipes():
-    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48'
+    base_dir = '/home/admin123456/Desktop/work/gmsh_test/t49'
 
     boundaries = [
         AutoFluidBoundary(
@@ -872,4 +878,6 @@ def debug_multi_2d_pipes():
 
 if __name__ == '__main__':
     # debug_hierarchy_optimizer_2d()
-    debug_hierarchy_optimizer_3d()
+    # debug_hierarchy_optimizer_3d()
+
+    debug_multi_2d_pipes()

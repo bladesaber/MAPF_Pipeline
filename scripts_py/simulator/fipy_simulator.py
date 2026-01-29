@@ -611,7 +611,7 @@ class FipyStokeSimulator(object):
             stoper.define_var('p_residual', convergence_threshold)
             stoper.define_var('continuity_residual', convergence_threshold)
         
-        for iter_idx in range(iterations):            
+        for iter_idx in range(iterations):
             # ------ solve the momentum equation ------
             self.xVelocityEq.cacheMatrix()
             x_residual = self.xVelocityEq.sweep(var=self.xVelocity, underRelaxation=self.velocityRelaxation)

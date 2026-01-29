@@ -139,7 +139,7 @@ class TopoFluidOptimizer(FluidSimulator):
         fluid_type: Literal['stoke', 'naiver_stoke', 'rans'],
         viscosity_init: float|np.ndarray,
         topo_weight_init: float|np.ndarray,
-        init_topo_weight_method: Literal['poisson', 'filter', 'none'],
+        init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'],
         weight_filter_radius: float,
         result_dir: str,
         alpha_fun_max: float = 100.0,
@@ -196,7 +196,7 @@ class TopoFluidOptimizer(FluidSimulator):
         self.control_phi: Control
         self.opt_problem: ReducedFunctional
     
-    def init_topo_weight(self, topo_weight_fun: DolfinxFunction, method: Literal['poisson', 'filter']):
+    def init_topo_weight(self, topo_weight_fun: DolfinxFunction, method: Literal['poisson', 'filter', 'raw']):
         """当整个场的topo_weight都很少时,速度与压力会汇聚在出口的边角区域,造成崩角的效果.
         崩角效果会造成优化畸形(因为拓扑优化易于陷入局部最优点),因此构造一个球形区域,使出口区域比边缘更流畅,减缓崩角的影响.
         当然也可以通过减少reg_cost的权重来减缓崩角的影响.
@@ -205,7 +205,7 @@ class TopoFluidOptimizer(FluidSimulator):
         init_weight_value = topo_weight_fun.x.array.copy()  # type: ignore
         
         sorted_terms = [term for term in sorted(self.topo_weight_constraint_terms.values(), key=lambda x: x.init_priority)]
-        if method == 'filter':
+        if method in ['filter', 'raw']:
             for _ in range(10):
                 init_weight_value = np.asarray(self.weight_filter.run(init_weight_value.reshape((-1, 1)))).reshape((-1))
                 for term in sorted_terms:
@@ -431,7 +431,7 @@ class TopoFluidOptimizer(FluidSimulator):
             outlet_markers: list[int] = obj_cost_args['outlet_markers']
             assert len(outlet_markers) > 1, 'At least two outlet marker is required for FixedFlux cost'
             outlet_marker_ratios = obj_cost_args['outlet_marker_ratios']
-            assert np.sum(outlet_marker_ratios) == 1.0, 'Outlet marker ratios must sum to 1.0'
+            assert np.isclose(np.sum(outlet_marker_ratios), 1.0, atol=1e-2), 'Outlet marker ratios must sum to 1.0'
             outlet_marker_weights = obj_cost_args['outlet_marker_weights']
             
             outlet_cost_forms = {}
@@ -727,7 +727,7 @@ class TopoFluidOptimizer(FluidSimulator):
                         else:
                             recorder.write_scalar(tag=name, scalar_value=value, step=step)
                 
-                if np.abs(loss_current - loss_last) < 1e-6 and (not full_run):
+                if np.abs(loss_current - loss_last) < 1e-6 and (not full_run) and step > hot_step:
                     is_solved = True
                     break
                 
@@ -756,7 +756,7 @@ class TopoFluidOptimizer(FluidSimulator):
                     if loss_new < loss_current or step < hot_step:
                         find_best_step = True
                         loss_last = loss_current
-                        loss_current = loss_new                    
+                        loss_current = loss_new * 0.2 + loss_last * 0.8
                         step_length_last = step_length
                         # self.topo_weight.x.array[:] = topo_phi.x.array  # type: ignore          
                         self.record_Upw(step, gradient=direction_np)
@@ -770,7 +770,7 @@ class TopoFluidOptimizer(FluidSimulator):
                 if loss_new < loss_current or step < hot_step or full_run:
                     find_best_step = True
                     loss_last = loss_current
-                    loss_current = loss_new
+                    loss_current = loss_new * 0.2 + loss_last * 0.8
                     self.record_Upw(step, gradient=direction_np)
                     
             if not find_best_step:

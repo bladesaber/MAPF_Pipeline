@@ -29,7 +29,7 @@ class TopoFluidChainOptimizer(object):
         fluid_type: Literal['stoke', 'naiver_stoke', 'rans'],
         viscosity_init: float|np.ndarray,
         topo_weight_init: float|np.ndarray,
-        init_topo_weight_method: Literal['poisson', 'filter', 'none'],
+        init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'],
         weight_filter_radius: float,
         alpha_fun_max: float = 100.0,
         alpha_fun_min: float = 1e-12,
@@ -50,7 +50,7 @@ class TopoFluidChainOptimizer(object):
         self.fluid_type: Literal['stoke', 'naiver_stoke', 'rans'] = fluid_type
         self.viscosity_init = viscosity_init
         self.topo_weight_init = topo_weight_init
-        self.init_topo_weight_method: Literal['poisson', 'filter', 'none'] = init_topo_weight_method
+        self.init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'] = init_topo_weight_method
         self.weight_filter_radius = weight_filter_radius
         self.alpha_fun_max = alpha_fun_max
         self.alpha_fun_min = alpha_fun_min
@@ -93,6 +93,7 @@ class TopoFluidChainOptimizer(object):
                     'line_search_steps': [0.1, 0.05],
                     'momentum_weight': 0.8,
                     'full_run': False,
+                    'hot_steps': 10,
                 }
             }
         ]
@@ -161,7 +162,7 @@ class TopoFluidChainOptimizer(object):
                     convergence_threshold=fipy_simulator_cfg['convergence_threshold'],
                     velocityRelaxation=fipy_simulator_cfg['velocityRelaxation'],
                     pressureRelaxation=fipy_simulator_cfg['pressureRelaxation'],
-                    hot_steps=fipy_simulator_cfg['hot_steps'],
+                    hot_steps=10,
                     log_step=fipy_simulator_cfg['log_step'],
                     parallel_num=fipy_simulator_cfg['parallel_num'],
                     use_tqdm=fipy_simulator_cfg['use_tqdm'],
@@ -181,6 +182,7 @@ class TopoFluidChainOptimizer(object):
                     recorder=recorder,
                     full_run=fipy_simulator_cfg['full_run'],
                     result_vtu_file=result_opt_vtu,
+                    hot_step=fipy_simulator_cfg['hot_steps']
                 )
                 last_fipy_simulator_cfg = fipy_simulator_cfg
                 
@@ -217,6 +219,7 @@ class TopoFluidChainOptimizer(object):
                     recorder=recorder,
                     full_run=dolfinx_simulator_cfg['full_run'],
                     result_vtu_file=result_opt_vtu,
+                    hot_step=dolfinx_simulator_cfg['hot_steps']
                 )
                 last_dolfinx_simulator_cfg = dolfinx_simulator_cfg
             

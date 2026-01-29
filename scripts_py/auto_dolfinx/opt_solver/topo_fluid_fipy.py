@@ -31,7 +31,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         fluid_type: Literal['stoke', 'naiver_stoke', 'rans'],
         viscosity_init: float|np.ndarray,
         topo_weight_init: float|np.ndarray,
-        init_topo_weight_method: Literal['poisson', 'filter', 'none'],
+        init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'],
         weight_filter_radius: float,
         result_dir: str,
         alpha_fun_max: float = 100.0,
