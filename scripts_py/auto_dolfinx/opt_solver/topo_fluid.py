@@ -206,7 +206,7 @@ class TopoFluidOptimizer(FluidSimulator):
         
         sorted_terms = [term for term in sorted(self.topo_weight_constraint_terms.values(), key=lambda x: x.init_priority)]
         if method in ['filter', 'raw']:
-            for _ in range(10):
+            for _ in range(3):
                 init_weight_value = np.asarray(self.weight_filter.run(init_weight_value.reshape((-1, 1)))).reshape((-1))
                 for term in sorted_terms:
                     init_weight_value[term.set_idxs] = term.set_value
@@ -421,7 +421,6 @@ class TopoFluidOptimizer(FluidSimulator):
             })
             
         elif obj_cost_args['style'] == 'FixedFlux':
-            # TODO: 缺乏其他约束条件,这是个额外约束条件
             inlet_markers: list[int] = obj_cost_args['inlet_markers']
             inlet_flux = 0.0
             for marker in inlet_markers:
@@ -446,6 +445,17 @@ class TopoFluidOptimizer(FluidSimulator):
             cost_parse_dict.update({
                 'inlet_flux': inlet_flux,
                 'outlet_cost_forms': outlet_cost_forms,
+                'num_outlets': len(outlet_markers),
+            })
+        
+        elif obj_cost_args['style'] == 'BalanceFlux':
+            outlet_forms = {}
+            for marker in obj_cost_args['outlet_markers']:
+                outlet_flux_form = ufl.dot(u, self.n_vec) * self.ds(marker)
+                outlet_forms[marker] = outlet_flux_form
+            cost_parse_dict.update({
+                'outlet_forms': outlet_forms,
+                'num_outlets': len(obj_cost_args['outlet_markers']),
             })
         
         else:
@@ -622,6 +632,11 @@ class TopoFluidOptimizer(FluidSimulator):
                     )
                 elif obj_cost_args['style'] == 'FixedFlux':
                     with_rescale = obj_cost_args['with_rescale']
+                    with_max_dif_cost = obj_cost_args['with_max_dif_cost']
+                    
+                    if with_max_dif_cost:
+                        max_dif_cost, max_dif_weight = 0.0, 0.0
+                        
                     for i, (_, outlet_item) in enumerate(obj_cost_args['outlet_cost_forms'].items()):
                         outlet_flux = assemble_scalar(
                             form=outlet_item['flux_form'],
@@ -633,17 +648,65 @@ class TopoFluidOptimizer(FluidSimulator):
                         flux_dif = outlet_flux - target_flux
                         if with_rescale:
                             flux_dif = flux_dif / target_flux
+                        flux_dif_cost = flux_dif ** 2
+                        
+                        if with_max_dif_cost:
+                            max_dif_cost = max(max_dif_cost, flux_dif_cost)
+                            max_dif_weight = outlet_item['weight']
+                        
                         if i == 0:
-                            obj_cost = weight * flux_dif ** 2
+                            obj_cost = weight * flux_dif_cost
                         else:
-                            obj_cost += weight * flux_dif ** 2           
+                            obj_cost += weight * flux_dif_cost
+                            
+                    obj_cost = obj_cost / obj_cost_args['num_outlets']
+                    if with_max_dif_cost:
+                        obj_cost += max_dif_cost * obj_cost_args.get('max_dif_weight', max_dif_weight)
+
+                elif obj_cost_args['style'] == 'BalanceFlux':
+                    weight = obj_cost_args['weight']
+                    with_rescale = obj_cost_args['with_rescale']
+                    with_max_dif_cost = obj_cost_args['with_max_dif_cost']
+                    
+                    outlet_flux_list = []
+                    for marker, outlet_flux_form in obj_cost_args['outlet_forms'].items():
+                        outlet_flux = assemble_scalar(form=outlet_flux_form, domain=self.domain, tape=self.tape)
+                        outlet_flux_list.append(outlet_flux)
+                    
+                    mean_flux = 0.0
+                    for outlet_flux in outlet_flux_list:
+                        mean_flux += outlet_flux
+                    mean_flux = mean_flux / obj_cost_args['num_outlets']
+                    
+                    if with_max_dif_cost:
+                        max_dif_cost = 0.0
+                        
+                    for i, outlet_flux in enumerate(outlet_flux_list):
+                        flux_dif = outlet_flux - mean_flux
+                        if with_rescale:
+                            flux_dif = flux_dif / mean_flux
+                        flux_dif_cost = flux_dif ** 2
+                        
+                        if with_max_dif_cost:
+                            max_dif_cost = max(max_dif_cost, flux_dif_cost)
+                        
+                        if i == 0:
+                            obj_cost = weight * flux_dif_cost
+                        else:
+                            obj_cost += weight * flux_dif_cost
+                        
+                    obj_cost = obj_cost / obj_cost_args['num_outlets']
+                    if with_max_dif_cost:
+                        obj_cost += max_dif_cost * obj_cost_args.get('max_dif_weight', weight)
                 else:
                     raise ValueError(f'Invalid cost style: {obj_cost_args['style']}')
-                
+                                
                 if obj_idx == 0:
                     all_obj_cost = obj_cost
                 else:
                     all_obj_cost += obj_cost  # type: ignore
+                # print(f'{obj_cost_args["style"]}: {obj_cost}')
+                
             self.obj_cost_args_list = obj_cost_args_list
             
             # ------ define regularization cost ------
@@ -727,7 +790,7 @@ class TopoFluidOptimizer(FluidSimulator):
                         else:
                             recorder.write_scalar(tag=name, scalar_value=value, step=step)
                 
-                if np.abs(loss_current - loss_last) < 1e-6 and (not full_run) and step > hot_step:
+                if np.abs(loss_current - loss_last) < 1e-9 and (not full_run) and step > hot_step:
                     is_solved = True
                     break
                 
@@ -797,32 +860,78 @@ class TopoFluidOptimizer(FluidSimulator):
         # ------ compute object cost ------
         for obj_cost_args in self.obj_cost_args_list:
             if obj_cost_args['style'] == 'MinDissipation':
-                eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
+                eval_dict['MinDiss_cost'] = AssembleUtils.assemble_scalar(
                     form=obj_cost_args['weight'] * obj_cost_args['min_dissipation_form']
                 )
-                log_dict['cost']['obj_cost'] = eval_dict['obj_cost']
+                log_dict['cost']['MinDiss_cost'] = eval_dict['MinDiss_cost']
                 
             elif obj_cost_args['style'] == 'MinDissipation+BrinkmanPenalized':
                 min_dissipation_cost = obj_cost_args['dissipation_weight'] * AssembleUtils.assemble_scalar(obj_cost_args['min_dissipation_form'])
                 penalized_cost = obj_cost_args['penalized_weight'] * AssembleUtils.assemble_scalar(obj_cost_args['penalized_term'])
-                eval_dict['obj_cost'] = min_dissipation_cost + penalized_cost
-                log_dict['cost']['min_dissipation_cost'] = min_dissipation_cost
-                log_dict['cost']['penalized_cost'] = penalized_cost
+                eval_dict['MinDissPenalized_cost'] = min_dissipation_cost + penalized_cost
+                log_dict['cost']['MinDiss_cost'] = min_dissipation_cost
+                log_dict['cost']['Penalized_cost'] = penalized_cost
                 
             elif obj_cost_args['style'] == 'MinPressure':
-                eval_dict['obj_cost'] = AssembleUtils.assemble_scalar(
+                eval_dict['MinPressure_cost'] = AssembleUtils.assemble_scalar(
                     form=obj_cost_args['weight'] * obj_cost_args['pressure_form']
                 )
-                log_dict['cost']['obj_cost'] = eval_dict['obj_cost']
+                log_dict['cost']['MinPressure_cost'] = eval_dict['MinPressure_cost']
                 
             elif obj_cost_args['style'] == 'FixedFlux':
+                if 'flux' not in log_dict.keys():
+                    log_dict['flux'] = {}
+                if 'flux_cost' not in log_dict.keys():
+                    log_dict['flux_cost'] = {}
+                
+                outlet_cost_list = []
+                if obj_cost_args['with_max_dif_cost']:
+                    max_dif_cost, max_dif_weight = 0.0, 0.0
+                
                 for (marker, outlet_item) in zip(obj_cost_args['outlet_markers'], obj_cost_args['outlet_cost_forms'].values()):
                     outlet_flux = AssembleUtils.assemble_scalar(form=outlet_item['flux_form'])
                     flux_dif = outlet_flux - outlet_item['target_flux']
                     if obj_cost_args['with_rescale']:
                         flux_dif = flux_dif / outlet_item['target_flux']
-                    eval_dict[f'{marker}_cost'] = outlet_item['weight'] * flux_dif ** 2
-                    log_dict['cost'][f'{marker}_flux_cost'] = np.abs(outlet_flux)
+                    flux_cost = flux_dif ** 2
+                    outlet_cost_list.append(outlet_item['weight'] * flux_cost)
+                    
+                    log_dict['flux_cost'][f'{marker}_flux_cost'] = outlet_item['weight'] * flux_cost
+                    log_dict['flux'][f'{marker}_flux'] = outlet_flux
+                    
+                    if obj_cost_args['with_max_dif_cost']:
+                        max_dif_cost = max(max_dif_cost, flux_cost)
+                        max_dif_weight = outlet_item['weight']
+                
+                outlet_cost_list = np.array(outlet_cost_list)
+                eval_dict[f'FixedFlux_cost'] = float(np.mean(outlet_cost_list))
+                if obj_cost_args['with_max_dif_cost']:
+                    eval_dict[f'FixedFlux_cost'] += max_dif_cost * obj_cost_args.get('max_dif_weight', max_dif_weight)
+            
+            elif obj_cost_args['style'] == 'BalanceFlux':
+                if 'flux' not in log_dict.keys():
+                    log_dict['flux'] = {}
+                
+                outlet_flux_list = []
+                if obj_cost_args['with_max_dif_cost']:
+                    max_dif_cost = 0.0
+                
+                for marker, outlet_flux_form in obj_cost_args['outlet_forms'].items():
+                    outlet_flux = AssembleUtils.assemble_scalar(form=outlet_flux_form)
+                    log_dict['flux'][f'{marker}_flux'] = outlet_flux
+                    outlet_flux_list.append(outlet_flux)
+                outlet_flux_list = np.array(outlet_flux_list)                
+                mean_flux = np.mean(outlet_flux_list)                
+                flux_dif = outlet_flux_list - mean_flux
+                if obj_cost_args['with_rescale']:
+                    flux_dif = flux_dif / mean_flux
+                flux_dif_cost = flux_dif ** 2
+                balance_cost = float(np.mean(obj_cost_args['weight'] * flux_dif_cost))
+                if obj_cost_args['with_max_dif_cost']:
+                    balance_cost += float(np.max(flux_dif_cost) * obj_cost_args.get('max_dif_weight', obj_cost_args['weight']))
+                
+                log_dict['cost']['balance_cost'] = balance_cost
+                eval_dict['BalanceFlux_cost'] = balance_cost            
             else:
                 raise ValueError(f'Invalid cost style: {obj_cost_args['style']}')
             

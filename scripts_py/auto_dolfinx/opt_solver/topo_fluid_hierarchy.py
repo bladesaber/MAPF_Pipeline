@@ -278,7 +278,7 @@ class TopoFluidGridOptimizer(object):
                 convergence_threshold=self.fipy_simulator_dict['convergence_threshold'],
                 velocityRelaxation=self.fipy_simulator_dict['velocityRelaxation'],
                 pressureRelaxation=self.fipy_simulator_dict['pressureRelaxation'],
-                hot_steps=10,
+                hot_steps=self.fipy_simulator_dict.get('simulation_hot_steps', 10),
                 log_step=self.fipy_simulator_dict['log_step'],
                 parallel_num=self.fipy_simulator_dict['parallel_num'],
                 use_tqdm=self.fipy_simulator_dict['use_tqdm'],
@@ -290,6 +290,7 @@ class TopoFluidGridOptimizer(object):
                     'residual_error_threshold': residual_error_threshold  # 1e-3 NOTE: residual_error_threshold在momentum_weight作用下能允许较大的误差
                 },
             )
+            
             recorder = TensorBoardRecorder(os.path.join(self.opt_dir, 'log'))
             result = optim.run(
                 max_iteration=self.fipy_simulator_dict['max_iteration'],
@@ -336,6 +337,14 @@ class TopoFluidGridOptimizer(object):
             )
         
         return result
+
+    def to_json(self):
+        # TODO: easy for test
+        pass
+    
+    def run_from_json(self, json_file: str):
+        # TODO: easy for test
+        pass
 
 
 class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
@@ -482,7 +491,7 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
                 obstacle_cost_args=copy.deepcopy(obstacle_cost_args) if obstacle_cost_args is not None else None,
                 fluid_type=self.fluid_type,
                 viscosity_init=self.viscosity_init,
-                topo_weight_init=self.topo_weight_init,
+                topo_weight_init=self.topo_weight_init if layer_id == 0 else 0.8,
                 init_topo_weight_method=self.init_topo_weight_method,
                 alpha_fun_max=self.alpha_fun_max,
                 alpha_fun_min=self.alpha_fun_min,
