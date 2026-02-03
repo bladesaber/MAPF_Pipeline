@@ -17,6 +17,7 @@ from scripts_py.vtu_recorder import VtuRecorder, TensorBoardRecorder
 
 from thirdparty.pyadjoint.pyadjoint import Tape, ReducedFunctional, Control, compute_gradient
 from thirdparty.pyadjoint.pyadjoint.tape import set_working_tape
+from thirdparty.pyadjoint.pyadjoint.adjfloat import max, min
 
 from scripts_py.mesh_utils import MeshUtils
 from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils
@@ -29,6 +30,8 @@ from scripts_py.auto_dolfinx.types.type_dirichletBC import DolfinxDirichletBC
 from scripts_py.auto_dolfinx.blocks.block_solve import equation_solve
 from scripts_py.auto_dolfinx.blocks.block_assemble import assemble_scalar
 from scripts_py.auto_dolfinx.tape_utils import start_annotation
+
+from scripts_py.functionspae_utils import FunctionSpaceUtils
 
 
 class AutoFluidBoundary(FluidBoundary):
@@ -249,25 +252,46 @@ class TopoFluidOptimizer(FluidSimulator):
         
         topo_weight_fun.interpolate(init_weight)
         
-    def compute_gradient(self, adj_input: float, with_filter=True, with_norm=True) -> np.ndarray:
+    def compute_gradient(self, adj_input: float, with_filter=True, with_norm=True, with_riesz=True) -> np.ndarray:
         dJdm = self.opt_problem.derivative(adj_input=float(adj_input))[0]
+        
+        # ------ apply constraint to gradient ------
+        if self.init_topo_weight_method != 'none':
+            for _, term in self.topo_weight_constraint_terms.items():
+                dJdm = term.apply_constraint_gradient(dJdm)
+        
         if with_filter:
             dJdm = dJdm.reshape((-1, 1))
             dJdm = self.weight_filter.run(dJdm)
             dJdm = np.asarray(dJdm).reshape((-1))
+        
+        """ # NOTE: terrible performance, why?
+        # ------ convert gradient to Riesz representation ------
+        if with_riesz:
+            dJdm = FunctionSpaceUtils.ad_convert_riesz(
+                mesh=self.mesh,
+                func_space=self.cell_scalar_func_space if self.is_topo_cell else self.point_scalar_func_space,
+                func_data=dJdm,
+                riesz_representation='L2',
+                ksp_option={
+                    'ksp_type': 'preonly',
+                    'pc_type': 'lu',
+                    "pc_factor_mat_solver_type": "mumps",
+                    "mat_mumps_icntl_24": 1
+                },
+                comm=self.mesh.domain.comm
+            )
+        # ------ convert gradient to Riesz representation ------
+        """
+        
+        # ------ apply constraint to gradient again ------
+        if self.init_topo_weight_method != 'none' and (with_filter or with_riesz):
+            for _, term in self.topo_weight_constraint_terms.items():
+                dJdm = term.apply_constraint_gradient(dJdm)
+        
         if with_norm:
             norm = np.max(np.abs(dJdm))
             dJdm = dJdm / norm
-        
-        if self.init_topo_weight_method != 'none':
-            # ------ apply constraint to gradient ------
-            for _, term in self.topo_weight_constraint_terms.items():
-                dJdm = term.apply_constraint_gradient(dJdm)
-            self.weight_filter.run(dJdm.reshape((-1, 1)))
-            dJdm = np.asarray(dJdm).reshape((-1))
-            for _, term in self.topo_weight_constraint_terms.items():
-                dJdm = term.apply_constraint_gradient(dJdm)
-            # ------ apply constraint to gradient ------
         
         return dJdm
     
@@ -432,7 +456,7 @@ class TopoFluidOptimizer(FluidSimulator):
             outlet_marker_ratios = obj_cost_args['outlet_marker_ratios']
             assert np.isclose(np.sum(outlet_marker_ratios), 1.0, atol=1e-2), 'Outlet marker ratios must sum to 1.0'
             outlet_marker_weights = obj_cost_args['outlet_marker_weights']
-            
+                        
             outlet_cost_forms = {}
             for marker, ratio, weight in zip(outlet_markers, outlet_marker_ratios, outlet_marker_weights):
                 target_flux = inlet_flux * ratio
@@ -643,8 +667,7 @@ class TopoFluidOptimizer(FluidSimulator):
                             domain=self.domain, tape=self.tape
                         )
                         target_flux = outlet_item['target_flux']
-                        weight = outlet_item['weight']
-                        
+                                                
                         flux_dif = outlet_flux - target_flux
                         if with_rescale:
                             flux_dif = flux_dif / target_flux
@@ -654,6 +677,7 @@ class TopoFluidOptimizer(FluidSimulator):
                             max_dif_cost = max(max_dif_cost, flux_dif_cost)
                             max_dif_weight = outlet_item['weight']
                         
+                        weight = outlet_item['weight']
                         if i == 0:
                             obj_cost = weight * flux_dif_cost
                         else:
@@ -743,7 +767,10 @@ class TopoFluidOptimizer(FluidSimulator):
 
         loss_dict, log_dict = self.eval()
         print('[Log]: Initial loss:', loss_dict)
-
+        
+        # for block in self.tape.get_blocks():
+        #     print(block, ' type: ', type(block))
+        
     def run(
         self,
         line_search_steps: list[float] = [0.1, 0.05, 0.01],
@@ -752,7 +779,8 @@ class TopoFluidOptimizer(FluidSimulator):
         momentum_weight: float = 0.8,
         full_run: bool = False,
         recorder: TensorBoardRecorder|None = None,
-        result_vtu_file: str|None = None
+        result_vtu_file: str|None = None,
+        loss_decay_weight: float = 0.0,
     ) -> dict:
         with_line_search = len(line_search_steps) > 1
         line_search_steps_np: np.ndarray = np.array(line_search_steps)
@@ -778,9 +806,9 @@ class TopoFluidOptimizer(FluidSimulator):
             step += 1
             if step > 1:
                 loss_dict, log_dict = self.eval()
-                log = f"[step/{step} loss:{loss_current:.5f} opt_length:{step_length_last:.5f}]"
+                log = f"[step/{step} loss:{loss_current:.6f} opt_length:{step_length_last:.3f}]"
                 for name, cost_value in loss_dict.items():
-                    log += f" {name}:{cost_value:.5f}"
+                    log += f" {name}:{cost_value:.6f}"
                 print(log)
                 
                 if recorder is not None:
@@ -815,11 +843,11 @@ class TopoFluidOptimizer(FluidSimulator):
                     new_topo_phi = np.maximum(np.minimum(new_topo_phi, 1.0 - 1e-16), 1e-16)
                     topo_phi.x.array[:] = new_topo_phi  # type: ignore
                     
-                    loss_new = self.opt_problem(values=[topo_phi])  # type: ignore
+                    loss_new = self.opt_problem(values=[topo_phi])  # type: ignore                    
                     if loss_new < loss_current or step < hot_step:
                         find_best_step = True
                         loss_last = loss_current
-                        loss_current = loss_new * 0.2 + loss_last * 0.8
+                        loss_current = loss_new * (1.0 - loss_decay_weight) + loss_last * loss_decay_weight
                         step_length_last = step_length
                         # self.topo_weight.x.array[:] = topo_phi.x.array  # type: ignore          
                         self.record_Upw(step, gradient=direction_np)
@@ -833,7 +861,7 @@ class TopoFluidOptimizer(FluidSimulator):
                 if loss_new < loss_current or step < hot_step or full_run:
                     find_best_step = True
                     loss_last = loss_current
-                    loss_current = loss_new * 0.2 + loss_last * 0.8
+                    loss_current = loss_new * (1.0 - loss_decay_weight) + loss_last * loss_decay_weight
                     self.record_Upw(step, gradient=direction_np)
                     
             if not find_best_step:
@@ -871,7 +899,7 @@ class TopoFluidOptimizer(FluidSimulator):
                 eval_dict['MinDissPenalized_cost'] = min_dissipation_cost + penalized_cost
                 log_dict['cost']['MinDiss_cost'] = min_dissipation_cost
                 log_dict['cost']['Penalized_cost'] = penalized_cost
-                
+                                
             elif obj_cost_args['style'] == 'MinPressure':
                 eval_dict['MinPressure_cost'] = AssembleUtils.assemble_scalar(
                     form=obj_cost_args['weight'] * obj_cost_args['pressure_form']
@@ -890,23 +918,25 @@ class TopoFluidOptimizer(FluidSimulator):
                 
                 for (marker, outlet_item) in zip(obj_cost_args['outlet_markers'], obj_cost_args['outlet_cost_forms'].values()):
                     outlet_flux = AssembleUtils.assemble_scalar(form=outlet_item['flux_form'])
+                    log_dict['flux'][f'{marker}_flux'] = outlet_flux
+                    
                     flux_dif = outlet_flux - outlet_item['target_flux']
                     if obj_cost_args['with_rescale']:
                         flux_dif = flux_dif / outlet_item['target_flux']
                     flux_cost = flux_dif ** 2
                     outlet_cost_list.append(outlet_item['weight'] * flux_cost)
-                    
                     log_dict['flux_cost'][f'{marker}_flux_cost'] = outlet_item['weight'] * flux_cost
-                    log_dict['flux'][f'{marker}_flux'] = outlet_flux
                     
                     if obj_cost_args['with_max_dif_cost']:
                         max_dif_cost = max(max_dif_cost, flux_cost)
                         max_dif_weight = outlet_item['weight']
                 
                 outlet_cost_list = np.array(outlet_cost_list)
-                eval_dict[f'FixedFlux_cost'] = float(np.mean(outlet_cost_list))
+                eval_dict['FixedFlux_cost'] = float(np.mean(outlet_cost_list))
+                log_dict['cost']['FixedFlux_cost'] = eval_dict['FixedFlux_cost']
                 if obj_cost_args['with_max_dif_cost']:
                     eval_dict[f'FixedFlux_cost'] += max_dif_cost * obj_cost_args.get('max_dif_weight', max_dif_weight)
+                    log_dict['cost'][f'FixedFlux_cost_max_dif'] = max_dif_cost * obj_cost_args.get('max_dif_weight', max_dif_weight)
             
             elif obj_cost_args['style'] == 'BalanceFlux':
                 if 'flux' not in log_dict.keys():

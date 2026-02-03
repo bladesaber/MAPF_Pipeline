@@ -7,14 +7,10 @@ from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import TopoFluidHie
 
 
 """TODO: 仿真工具不足够鲁棒性,关于累积->决策->迈步的加速收敛方法
-问题不在于收缩至限定体积,问题在限定体积与多管口之间的振荡,应该去除reg_cost,改用PTO控制体积分配.前提是去除体积约束后,梯度引导依然是渐变的,
-NOTE: 这些想法是错的,要解决的是振荡问题,不是步长问题,看来要不控制权重,要不只能按次序优化
-
-penalized_weight>dissipation_weight>outlet_marker_weights>reg_cost ?
-penalized_weight>outlet_marker_weights>dissipation_weight>reg_cost ?
+NOTE: FixedFlux本身的震荡很严重,所以必须是最小的,否则无法收敛.该问题主要是平衡reg_cost与FixedFlux之间的权重.
 """
 
-base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48'
+base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48_fipy_2'
 
 right_boundary = 1.0
 back_boundary = 1.0
@@ -232,29 +228,26 @@ print('outlet_markers:', outlet_markers)
 print('outlet_marker_ratios:', outlet_marker_ratios)
 print('outlet_marker_weights:', outlet_marker_weights)
 
-
+target_ratio = 0.05
+target_volume = (right_boundary * top_boundary * back_boundary) * target_ratio
 optim = TopoFluidHierarchyOptimizer(
     name='t48',
     run_dir=base_dir,
     space_dim=3,
     space_left_bottom_corner=np.array([0.0, 0.0, 0.0]),
     space_right_top_corner=np.array([1.0, 1.0, 1.0]),
-    # space_resolutions=[0.15, 0.075, 0.05],
-    # mesh_min_sizes=[0.03, 0.02, 0.01],
-    # mesh_max_sizes=[0.08, 0.04, 0.02],
     space_resolutions=[0.15],
-    mesh_min_sizes=[0.03],
+    mesh_min_sizes=[0.02],
     mesh_max_sizes=[0.08],
     boundary_list=boundaries,
     fluid_type='stoke',
     viscosity_init=1.0 / 400.,
-    topo_weight_init=0.3,
-    init_topo_weight_method='filter',
+    topo_weight_init=max(target_ratio, 0.3),
+    init_topo_weight_method='raw',
     us_fipy=True,
     extract_threshold=0.4,
     diffusion_step=0,
 )
-target_volume = (right_boundary * top_boundary * back_boundary) / 20.0
 optim.optimize(
     run_cfgs=[
         {
@@ -271,15 +264,15 @@ optim.optimize(
                     'outlet_markers': outlet_markers,
                     'outlet_marker_ratios': outlet_marker_ratios.tolist(),
                     # NOTE: FixedFlux的振荡会造成无法全部管道都不相连,互相约束.但过小的weight会造成无法均衡. 所以这里的大小必须严格测试
-                    'outlet_marker_weights': (outlet_marker_weights * 1e-3).tolist(),  # 2e-2
+                    'outlet_marker_weights': (outlet_marker_weights * 1e-1).tolist(),
                     'with_rescale': True,
                     'with_max_dif_cost': False,
-                    'max_dif_weight': 0.001,
+                    'max_dif_weight': 1e-3,
                 },
             ],
             'reg_cost_args':{
                 'style': 'Volume',
-                'weight': 1e-5,  # 1e-3
+                'weight': 1e-5,
                 'target_volume': target_volume,
                 'reg_rescale': True,
             },
@@ -289,80 +282,23 @@ optim.optimize(
                 'convergence_threshold': 1e-4,
                 'velocityRelaxation': 0.6,
                 'pressureRelaxation': 0.8,
-                'hot_steps': 50,
+                'hot_steps': 80,
                 'simulation_hot_steps': 4,
                 'log_step': 2,
                 'parallel_num': 8,
                 'use_tqdm': True,
                 'use_log': True,
-                'max_iteration': 500,
-                'line_search_steps': [0.1],
+                'max_iteration': 300,
+                'line_search_steps': [0.2, 0.1, 0.05],
                 'momentum_weight': 0.8,
                 'full_run': False,
             },
-        },
-        {
-            'obj_cost_args_list':[
-                {
-                    'style': 'MinDissipation+BrinkmanPenalized',
-                    'with_viscosity': True,
-                    'dissipation_weight': 1.0,
-                    'penalized_weight': 1.0,
-                },
-                {
-                    'style': 'FixedFlux',
-                    'inlet_markers': [1],
-                    'outlet_markers': outlet_markers,
-                    'outlet_marker_ratios': outlet_marker_ratios.tolist(),
-                    'outlet_marker_weights': (outlet_marker_weights * 1.0).tolist(),
-                    'with_rescale': True,
-                    'with_max_dif_cost': False,
-                    'max_dif_weight': 0.0,
-                },
-            ],
-            'reg_cost_args':{
-                'style': 'Volume',
-                'weight': 1e-2,  # 这个参数似乎是对1/20的volume是有效的
-                'target_volume': target_volume,
-                'reg_rescale': True,
-            },
-            'fipy_simulator_cfg': {
-                'simulation_iterations': 200,
-                'convergence_threshold': 1e-4,
-                'velocityRelaxation': 0.6,
-                'pressureRelaxation': 0.8,
-                'hot_steps': 100,
-                'log_step': 2,
-                'parallel_num': 8,
-                'use_tqdm': True,
-                'use_log': True,
-                'max_iteration': 200,
-                'line_search_steps': [0.05],
+            'dolfinx_simulator_cfg': {
+                'max_iteration': 300,
+                'line_search_steps': [0.2, 0.1, 0.05],
                 'momentum_weight': 0.8,
-                'full_run': True,
-            },
-        },
-        {
-            'reg_cost_args':{
-                'style': 'Volume',
-                'weight': 1e-1,
-                'target_volume': target_volume,
-                'reg_rescale': True,
-            },
-            'fipy_simulator_cfg': {
-                'simulation_iterations': 200,
-                'convergence_threshold': 1e-4,
-                'velocityRelaxation': 0.6,
-                'pressureRelaxation': 0.8,
-                'hot_steps': 100,
-                'log_step': 2,
-                'parallel_num': 8,
-                'use_tqdm': True,
-                'use_log': True,
-                'max_iteration': 200,
-                'line_search_steps': [0.05],
-                'momentum_weight': 0.8,
-                'full_run': True,
+                'full_run': False,
+                'hot_steps': 80,
             },
         }
     ],

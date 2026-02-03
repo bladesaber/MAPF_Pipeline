@@ -4,11 +4,14 @@ import shutil
 
 import dolfinx
 import ufl
+from ufl.algorithms.analysis import extract_arguments
 
 import numpy as np
 import pyvista
 import subprocess
 import json
+from functools import partial
+import copy
 
 from thirdparty.pyadjoint.pyadjoint.block import Block
 from thirdparty.pyadjoint.pyadjoint.overloaded_type import get_overloaded_class, create_overloaded_object
@@ -25,8 +28,12 @@ from scripts_py.auto_dolfinx.blocks.block_solve import EquationSolveBlock
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid import AutoFluidBoundary
 from scripts_py.auto_dolfinx.cbs_topo.seq_mesh_utils import SeqMeshObj
 from scripts_py.mesh_utils import MeshObj, MeshUtils
-from scripts_py.simulator.fipy_simulator import FipyStokeSimulator
+from scripts_py.simulator.fipy_simulator import FipyStokeSimulator, FluidBoundary
 from scripts_py.functionspae_utils import FunctionSpaceUtils
+
+from basix.ufl import element, mixed_element
+from scripts_py.eqn_solver import LinearProblemSolver, NonLinearProblemSolver
+
 
 class CacheMemory(object):
     def __init__(self) -> None:
@@ -40,6 +47,73 @@ class CacheMemory(object):
     
     def clear_cache(self) -> None:
         self.cache_memory.clear()
+
+
+def refit_to_dolfinx(
+    mesh: MeshObj,
+    F_form: ufl.Form,
+    state: dolfinx.fem.Function,
+    adjoint: dolfinx.fem.Function,
+    bcs: list[dolfinx.fem.DirichletBC],
+    forward_ksp_option: dict,
+    forward_kwargs: dict,
+    is_linear: bool,
+):
+    if is_linear:
+        F_bilinear_form = ufl.replace(
+            F_form, {
+                state: ufl.TrialFunction(state.function_space),  # type: ignore
+                adjoint: ufl.TestFunction(adjoint.function_space),  # type: ignore
+            }
+        )
+        lhs: ufl.Form = ufl.lhs(F_bilinear_form)  # type: ignore
+        rhs: ufl.Form = ufl.rhs(F_bilinear_form)
+                    
+        res_dict = LinearProblemSolver.solve_fea_petsc(
+            comm=mesh.domain.comm, 
+            uh=state, 
+            a_form=lhs,
+            l_form=rhs, 
+            bcs=bcs, 
+            ksp_option=forward_ksp_option['ksp_setting'],
+            mat_assemble_method=forward_kwargs['mat_assemble_method'],
+            with_residual=forward_kwargs['with_residual']
+        )
+        if not res_dict['is_solved']:
+            raise ValueError(f"Failed to solve recompute problem.")
+            
+        output = res_dict['res']
+            
+    else:
+        F_recompute_linear_form: ufl.Form = ufl.replace(
+            F_form, {adjoint: ufl.TestFunction(adjoint.function_space)}  # type: ignore
+        )
+            
+        jacobi_form = ufl.derivative(
+            F_recompute_linear_form,
+            state,
+            ufl.TrialFunction(state.function_space),
+        )
+        jacobi_form_dolfin = DolfinUtils.ufl_to_dolfin(jacobi_form)
+            
+        res_dict = NonLinearProblemSolver.solve_fea_petsc(
+            comm=mesh.domain.comm,
+            f_form=F_recompute_linear_form,
+            uh=state,
+            jacobi_form=jacobi_form_dolfin,  # type: ignore
+            bcs=bcs,
+            mat_assemble_method=forward_kwargs['mat_assemble_method'],
+            snes_setting=forward_ksp_option['snes_setting'],
+            ksp_setting=forward_ksp_option['ksp_setting'],
+            criterion={},
+            with_residual=forward_kwargs['with_residual'],
+        )
+        if not res_dict['is_solved']:
+            raise ValueError(f"Failed to solve recompute problem.")
+
+        output = res_dict['res']
+    
+    return output
 
 
 def convert_point_to_cell(
@@ -113,7 +187,8 @@ def define_interpolation_bcs(
             #         bc_value=inflow_velocity_exp, 
             #         is_mixed_element=False)
             # )
-            pass   
+            pass
+             
         elif bry_info.boundary_type == 'pressure':
             pressure_L2_bcs.append(
                 BoundaryUtils.define_dirichlet_bc(
@@ -156,14 +231,20 @@ def convert_fipy_result_to_dolfinx(
     uh: dolfinx.fem.Function, 
     V_to_W_dofs: np.ndarray,
     Q_to_W_dofs: np.ndarray,
-    interpolation_ksp_option = {
-        'ksp_type': 'richardson',
-        'ksp_max_it': 1, # only one iteration = equivalent to preonly
-        'pc_type': 'lu',
-        'pc_factor_mat_solver_type': 'mumps',
-        'mat_mumps_icntl_24': 1,
-        'mat_mumps_icntl_25': 0,
-    },
+    # interpolation_ksp_option = {
+    #     'ksp_type': 'richardson',
+    #     'ksp_max_it': 1, # only one iteration = equivalent to preonly
+    #     'pc_type': 'lu',
+    #     'pc_factor_mat_solver_type': 'mumps',
+    #     'mat_mumps_icntl_24': 1,
+    #     'mat_mumps_icntl_25': 0,
+    # },
+    interpolation_ksp_option = {  # NOTE: is it better than richardson? it seems better and faster than richardson. Why?
+        "ksp_type": 'preonly',
+        "pc_type": 'lu',
+        "pc_factor_mat_solver_type": "mumps",
+        "mat_mumps_icntl_24": 1
+    }
 ):
     velocity_L2_bcs, pressure_L2_bcs = define_interpolation_bcs(
         mesh=mesh,
@@ -175,7 +256,7 @@ def convert_fipy_result_to_dolfinx(
     cell_vector_func_space = DolfinUtils.cell_vector_function_space(mesh.domain)
     cell_velocity_fun = dolfinx.fem.Function(cell_vector_func_space)
     cell_velocity_fun.x.array[:] = cell_velocity.reshape((-1,))  # type: ignore
-    # interpolate is not good enough
+    # NOTE: 无论什么映射方法,MeshSize越大,精度越差
     velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
         mesh=mesh,
         original_func=cell_velocity_fun,  # type: ignore
@@ -185,6 +266,7 @@ def convert_fipy_result_to_dolfinx(
         with_dolfinx_function=True,
         ksp_option=interpolation_ksp_option,
     )
+    # NOTE: interpolate is not good enough
     # velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
     #     mesh=mesh,
     #     original_func=cell_velocity_fun,  # type: ignore
@@ -192,6 +274,20 @@ def convert_fipy_result_to_dolfinx(
     #     method='interpolate',
     #     with_dolfinx_function=True,
     # )
+    # # ----------------------------
+    # # NOTE: still wrong
+    # precise_interpolate_fun_1 = FunctionSpaceUtils.convert_dolfinx_function_space(
+    #     mesh=mesh,
+    #     original_func=cell_velocity_fun,  # type: ignore
+    #     target_func_space=DolfinUtils.point_vector_function_space(mesh.domain, degree=2),
+    #     method='L2',
+    #     bcs=velocity_L2_bcs,
+    #     with_dolfinx_function=True,
+    #     ksp_option=interpolation_ksp_option,
+    # )
+    # velocity_interpolate_fun = dolfinx.fem.Function(V_func_space)
+    # velocity_interpolate_fun.interpolate(precise_interpolate_fun_1)  # type: ignore
+    # # ----------------------------
     
     cell_scalar_func_space = DolfinUtils.cell_scalar_function_space(mesh.domain)
     cell_pressure_fun = dolfinx.fem.Function(cell_scalar_func_space)
@@ -212,10 +308,48 @@ def convert_fipy_result_to_dolfinx(
     #     method='interpolate',
     #     with_dolfinx_function=True,
     # )
-                    
+    
     uh.x.array[V_to_W_dofs] = velocity_interpolate_fun.x.array.copy()  # type: ignore
     uh.x.array[Q_to_W_dofs] = pressure_interpolate_fun.x.array.copy()  # type: ignore
+    
+    return uh
 
+
+def convert_fipy_result_to_mix_dolfinx(
+    mesh: MeshObj,
+    cell_velocity: np.ndarray, 
+    cell_pressure: np.ndarray,
+    uh: dolfinx.fem.Function, 
+    interpolation_ksp_option = {
+        "ksp_type": 'preonly',
+        "pc_type": 'lu',
+        "pc_factor_mat_solver_type": "mumps",
+        "mat_mumps_icntl_24": 1
+    }
+):
+    """与convert_fipy_result_to_dolfinx效果一样"""
+    velocity_element = element("DG", mesh.cell_types(), degree=0, shape=(mesh.tdim,))
+    pressure_element = element("DG", mesh.cell_types(), degree=0)
+    mix_element = mixed_element([velocity_element, pressure_element])
+    W = dolfinx.fem.functionspace(mesh.domain, mix_element)
+    W0, W1 = W.sub(0), W.sub(1)
+    V, V_to_W_dofs = W0.collapse()
+    Q, Q_to_W_dofs = W1.collapse()
+    
+    cell_uh = dolfinx.fem.Function(W, name=f"map_state")
+    cell_uh.x.array[V_to_W_dofs] = cell_velocity.reshape((-1,))  # type: ignore
+    cell_uh.x.array[Q_to_W_dofs] = cell_pressure.reshape((-1,))  # type: ignore
+    
+    interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+        mesh=mesh,
+        original_func=cell_uh,  # type: ignore
+        target_func_space=uh.function_space,
+        method='L2',
+        bcs=[],
+        with_dolfinx_function=True,
+        ksp_option=interpolation_ksp_option,
+    )
+    uh.x.array[:] = interpolate_fun.x.array.copy()  # type: ignore
     return uh
 
 
@@ -402,6 +536,19 @@ def equation_cfd_topoWeight_solve(
     tape: Tape = None,  # type: ignore
     with_block: bool = False,
     
+    forward_ksp_option: dict = {
+        'ksp_setting': {
+            'ksp_type': 'preonly',
+            'pc_type': 'lu',
+            "pc_factor_mat_solver_type": "mumps",
+            "mat_mumps_icntl_24": 1
+        },
+        'snes_setting': {}
+    },
+    forward_kwargs: dict = {
+        'mat_assemble_method': 'lift',
+        'with_residual': False
+    },
     **kwargs
 ):
     if tape is None:
@@ -450,7 +597,7 @@ def equation_cfd_topoWeight_solve(
             )
         else:
             raise ValueError(f"Invalid fluid type: {fluid_type}")
-                
+                    
         state = convert_fipy_result_to_dolfinx(
             mesh=structure_mesh,
             cell_velocity=cell_velocity,
@@ -462,6 +609,22 @@ def equation_cfd_topoWeight_solve(
             V_to_W_dofs=V_to_W_dofs,
             Q_to_W_dofs=Q_to_W_dofs,
         )
+        
+        # # NOTE: try to make result to consistent with boundaries. 由于FVM结果与FEM不一致,导致了FixFlux Cost非常不稳定
+        if fluid_type == 'stoke':
+            state = refit_to_dolfinx(
+                mesh=structure_mesh,
+                F_form=F_form,
+                state=state,
+                adjoint=adjoint,
+                bcs=[bry_info.bry_cell for bry_info in boundaries], # type: ignore
+                forward_ksp_option=forward_ksp_option,
+                forward_kwargs=forward_kwargs,
+                is_linear=True,
+            )
+        else:
+            raise ValueError(f"Invalid fluid type: {fluid_type}")
+        
         output = state
         
         if not with_cache:
@@ -510,6 +673,9 @@ def equation_cfd_topoWeight_solve(
             adj_ksp_option=adj_ksp_option,
             tlm_kwargs=tlm_kwargs,
             adj_kwargs=adj_kwargs,
+            
+            forward_ksp_option=forward_ksp_option,
+            forward_kwargs=forward_kwargs,
         )
         
         if tape is None:
@@ -565,6 +731,9 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
         adj_ksp_option: dict, 
         tlm_kwargs: dict,
         adj_kwargs: dict,
+        
+        forward_ksp_option: dict,
+        forward_kwargs: dict,
     ):
         super().__init__(
             domain=structure_mesh.domain,
@@ -575,10 +744,11 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
             is_linear=True,
             tlm_ksp_option=tlm_ksp_option,
             adj_ksp_option=adj_ksp_option, 
-            forward_ksp_option={},
             tlm_kwargs=tlm_kwargs,
             adj_kwargs=adj_kwargs,
-            forward_kwargs={},
+            
+            forward_ksp_option=forward_ksp_option,
+            forward_kwargs=forward_kwargs,
         )
         
         # ------ simulator related ------
@@ -677,5 +847,20 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
             V_to_W_dofs=self.V_to_W_dofs,
             Q_to_W_dofs=self.Q_to_W_dofs,
         )
+        
+        if self.fluid_type == 'stoke':
+            uh = refit_to_dolfinx(
+                mesh=self.structure_mesh,
+                F_form=self.F_form,
+                state=self.state,
+                adjoint=self.adjoint,
+                bcs=[bry_info.bry_cell for bry_info in self.boundaries], # type: ignore
+                forward_ksp_option=self.forward_ksp_option,
+                forward_kwargs=self.forward_kwargs,
+                is_linear=True,
+            )
+        else:
+            raise ValueError(f"Invalid fluid type: {self.fluid_type}")
+        
         return uh
  

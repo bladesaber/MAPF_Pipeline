@@ -10,7 +10,11 @@ import numpy as np
 from scripts_py.auto_dolfinx.types.type_function import DolfinxFunction
 from scripts_py.auto_dolfinx.blocks.block_assemble import assemble_scalar
 from scripts_py.auto_dolfinx.tape_utils import start_annotation
+
 from thirdparty.pyadjoint.pyadjoint import Tape, ReducedFunctional, Control, compute_gradient
+from thirdparty.pyadjoint.pyadjoint.tape import set_working_tape
+from thirdparty.pyadjoint.pyadjoint.adjfloat import max, min
+
 from scripts_py.vtu_recorder import TensorBoardRecorder
 from scripts_py.mesh_utils import MeshObj, MeshUtils
 from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils, BoundaryUtils
@@ -80,13 +84,19 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             "pc_factor_mat_solver_type": "mumps",
             "mat_mumps_icntl_24": 1
         },
+        # adj_ksp_option: dict = {  # TODO: should I use richardson here?
+        #     'ksp_type': 'richardson',
+        #     'ksp_max_it': 1, # only one iteration = equivalent to preonly
+        #     'pc_type': 'lu',
+        #     'pc_factor_mat_solver_type': 'mumps',
+        #     'mat_mumps_icntl_24': 1,
+        #     'mat_mumps_icntl_25': 0,
+        # },
         adj_ksp_option: dict = {
-            'ksp_type': 'richardson',
-            'ksp_max_it': 1, # only one iteration = equivalent to preonly
+            'ksp_type': 'preonly',
             'pc_type': 'lu',
-            'pc_factor_mat_solver_type': 'mumps',
-            'mat_mumps_icntl_24': 1,
-            'mat_mumps_icntl_25': 0,
+            "pc_factor_mat_solver_type": "mumps",
+            "mat_mumps_icntl_24": 1
         },
         tlm_kwargs: dict = {
             'mat_assemble_method': 'lift',
@@ -137,7 +147,6 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                 self.topo_weight_constraint_terms[obs_term.name] = obs_term 
         self.obstacle_cost_args = obstacle_cost_args
         
-        # ------ from parent class ------
         self.define_boundary()
         with start_annotation():
             uh = DolfinxFunction(self.W, name=f"{self.name}_state")
@@ -172,7 +181,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             if self.obstacle_cost_args is not None:
                 if self.obstacle_cost_args['obs_cell_mask'].sum() > 0:
                     structure_obs_weight = self.obstacle_cost_args['obs_cell_mask']
-                
+            
             uh = equation_cfd_topoWeight_solve(
                 fluid_type=self.fluid_type,  # type: ignore
                 boundaries=self.get_bcs(),
@@ -215,7 +224,6 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                 adj_kwargs=adj_kwargs,
                 tape=self.tape,
             )
-            
             self.uh = uh  # type: ignore
             self.f = f  # type: ignore
             self.record_Upw(0)
@@ -247,30 +255,83 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                     )
                 elif obj_cost_args['style'] == 'FixedFlux':
                     with_rescale = obj_cost_args['with_rescale']
+                    with_max_dif_cost = obj_cost_args['with_max_dif_cost']
+                    
+                    if with_max_dif_cost:
+                        max_dif_cost, max_dif_weight = 0.0, 0.0
+                        
                     for i, (_, outlet_item) in enumerate(obj_cost_args['outlet_cost_forms'].items()):
                         outlet_flux = assemble_scalar(
                             form=outlet_item['flux_form'],
                             domain=self.domain, tape=self.tape
                         )
                         target_flux = outlet_item['target_flux']
-                        weight = outlet_item['weight']
-                        
-                        flux_dif = outlet_flux - target_flux                    
+                                                
+                        flux_dif = outlet_flux - target_flux
                         if with_rescale:
                             flux_dif = flux_dif / target_flux
+                        flux_dif_cost = flux_dif ** 2
+                        
+                        if with_max_dif_cost:
+                            max_dif_cost = max(max_dif_cost, flux_dif_cost)
+                            max_dif_weight = outlet_item['weight']
+                        
+                        weight = outlet_item['weight']
                         if i == 0:
-                            obj_cost = weight * flux_dif ** 2
+                            obj_cost = weight * flux_dif_cost
                         else:
-                            obj_cost += weight * flux_dif ** 2
+                            obj_cost += weight * flux_dif_cost
+                            
+                    obj_cost = obj_cost / obj_cost_args['num_outlets']
+                    if with_max_dif_cost:
+                        obj_cost += max_dif_cost * obj_cost_args.get('max_dif_weight', max_dif_weight)
+
+                elif obj_cost_args['style'] == 'BalanceFlux':
+                    weight = obj_cost_args['weight']
+                    with_rescale = obj_cost_args['with_rescale']
+                    with_max_dif_cost = obj_cost_args['with_max_dif_cost']
+                    
+                    outlet_flux_list = []
+                    for marker, outlet_flux_form in obj_cost_args['outlet_forms'].items():
+                        outlet_flux = assemble_scalar(form=outlet_flux_form, domain=self.domain, tape=self.tape)
+                        outlet_flux_list.append(outlet_flux)
+                    
+                    mean_flux = 0.0
+                    for outlet_flux in outlet_flux_list:
+                        mean_flux += outlet_flux
+                    mean_flux = mean_flux / obj_cost_args['num_outlets']
+                    
+                    if with_max_dif_cost:
+                        max_dif_cost = 0.0
+                        
+                    for i, outlet_flux in enumerate(outlet_flux_list):
+                        flux_dif = outlet_flux - mean_flux
+                        if with_rescale:
+                            flux_dif = flux_dif / mean_flux
+                        flux_dif_cost = flux_dif ** 2
+                        
+                        if with_max_dif_cost:
+                            max_dif_cost = max(max_dif_cost, flux_dif_cost)
+                        
+                        if i == 0:
+                            obj_cost = weight * flux_dif_cost
+                        else:
+                            obj_cost += weight * flux_dif_cost
+                        
+                    obj_cost = obj_cost / obj_cost_args['num_outlets']
+                    if with_max_dif_cost:
+                        obj_cost += max_dif_cost * obj_cost_args.get('max_dif_weight', weight)
                 else:
                     raise ValueError(f'Invalid cost style: {obj_cost_args['style']}')
-                
+                                
                 if obj_idx == 0:
                     all_obj_cost = obj_cost
                 else:
                     all_obj_cost += obj_cost  # type: ignore
+                # print(f'{obj_cost_args["style"]}: {obj_cost}')
+                
             self.obj_cost_args_list = obj_cost_args_list
-                        
+            
             # ------ define regularization cost ------
             reg_cost_args = self.prepare_reg_args(reg_cost_args)  # type: ignore
             if reg_cost_args['style'] == 'Volume':
@@ -286,6 +347,19 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             
             loss_all = all_obj_cost + reg_cost
             
+            # ------ define obstacle cost ------
+            if self.obstacle_cost_args is not None:
+                if self.obstacle_cost_args['is_cell_field']:
+                    obs_cost_form = inner(self.obstacle_cost_args['obs_cell_mask'], self.topo_weight) * ufl.dx
+                else:
+                    obs_cost_form = inner(self.obstacle_cost_args['obs_point_mask'], self.topo_weight) * ufl.dx
+                self.obstacle_cost_args['cost_form'] = obs_cost_form
+                
+                obs_cost = assemble_scalar(obs_cost_form, domain=self.domain, tape=self.tape)
+                obs_cost = obs_cost * self.obstacle_cost_args['weight']
+                
+                loss_all += obs_cost
+            
             # ------ define optimization problem ------
             self.control_phi = Control(self.topo_weight)  # type: ignore
             self.opt_problem = ReducedFunctional(loss_all, [self.control_phi])
@@ -293,6 +367,9 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         loss_dict, log_dict = self.eval()
         print('[Log]: Initial loss:', loss_dict)
         
+        # for block in self.tape.get_blocks():
+        #     print(block, ' type: ', type(block))
+
 
 def debug_1():
     base_dir = '/home/admin123456/Desktop/work/gmsh_test/t38'

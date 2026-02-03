@@ -483,17 +483,13 @@ class FipyStokeSimulator(object):
         """
         # FIXME: non-finished
         if not self.using_parallel:
-            pressure = self.pressure(points.T)
+            pressure = self.pressure(points)
             vel_list = []
             vel_list.append(self.xVelocity(points).reshape((-1, 1)))
             vel_list.append(self.yVelocity(points).reshape((-1, 1)))
             if self.tdim == 3:
                 vel_list.append(self.zVelocity(points).reshape((-1, 1)))
             velocity = np.concatenate(vel_list, axis=1)
-            
-            print(pressure)
-            print(vel_list)
-            
             return pressure, velocity
         else:
             raise NotImplementedError("Parallel evaluation is not implemented")

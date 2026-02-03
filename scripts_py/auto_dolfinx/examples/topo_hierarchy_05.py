@@ -8,8 +8,8 @@ from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import TopoFluidHie
 
 base_dir = '/home/admin123456/Desktop/work/gmsh_test/t49'
 
-right_boundary = 3.0
-top_boundary = 3.0
+right_boundary = 4.0
+top_boundary = 4.0
 
 
 def generate_top_pipes(num_pipes: int, start_marker: int, face_radius=0.1):
@@ -115,9 +115,9 @@ boundaries = [
 ]
 
 start_marker = 1
-top_pipes, start_marker = generate_top_pipes(6, start_marker)
-left_pipes, start_marker = generate_left_pipes(6, start_marker)
-right_pipes, start_marker = generate_right_pipes(6, start_marker)
+top_pipes, start_marker = generate_top_pipes(8, start_marker)
+left_pipes, start_marker = generate_left_pipes(8, start_marker)
+right_pipes, start_marker = generate_right_pipes(8, start_marker)
 boundaries.extend(top_pipes)
 boundaries.extend(left_pipes)
 boundaries.extend(right_pipes)
@@ -141,6 +141,8 @@ print('outlet_markers:', outlet_markers)
 print('outlet_marker_ratios:', outlet_marker_ratios)
 print('outlet_marker_weights:', outlet_marker_weights)
 
+target_ratio = 0.05
+target_volume = (right_boundary * top_boundary) * target_ratio
 optim = TopoFluidHierarchyOptimizer(
     name='t49',
     run_dir=base_dir,
@@ -153,13 +155,13 @@ optim = TopoFluidHierarchyOptimizer(
     boundary_list=boundaries,
     fluid_type='stoke',
     viscosity_init=1.0 / 400.,
-    topo_weight_init=0.2,
+    topo_weight_init=max(target_ratio, 0.3),
+    # topo_weight_init=0.05,
     us_fipy=False,
     diffusion_step=0,
     init_topo_weight_method='raw',
     extract_threshold=0.4,
 )
-target_volume = (right_boundary * top_boundary) / 20.0
 optim.optimize(
     run_cfgs=[
         {
@@ -175,25 +177,41 @@ optim.optimize(
                     'inlet_markers': [1],
                     'outlet_markers': outlet_markers,
                     'outlet_marker_ratios': outlet_marker_ratios.tolist(),
-                    'outlet_marker_weights': (outlet_marker_weights * 0.1).tolist(),
+                    'outlet_marker_weights': (outlet_marker_weights * 1e-1).tolist(),
                     'with_rescale': True,
-                    'with_max_dif_cost': True,  # TODO: with_max_dif_cost 容易造成波动振荡
-                    'max_dif_weight': 0.01,  # TODO: 不知道为什么为较大值时会造成额外边界?
+                    'with_max_dif_cost': False,
+                    'max_dif_weight': 5e-2,
                 },
             ],
             'reg_cost_args':{
                 'style': 'Volume',
                 'weight': 1e-3,
-                'target_volume': target_volume,  # TODO: 是不是小的target_volume搭配小的weight能更快收敛
+                'target_volume': target_volume,
                 'reg_rescale': True,
             },
             'obstacle_cost_args':None,
             'dolfinx_simulator_cfg': {
-                'max_iteration': 200,
-                'line_search_steps': [0.1],
+                'max_iteration': 300,
+                'line_search_steps': [0.2, 0.1, 0.05],
                 'momentum_weight': 0.8,
                 'full_run': False,
-                'hot_steps': 50,
+                'hot_steps': 80,
+            },
+            'fipy_simulator_cfg': {
+                'simulation_iterations': 200,
+                'convergence_threshold': 1e-4,
+                'velocityRelaxation': 0.6,
+                'pressureRelaxation': 0.8,
+                'hot_steps': 100,
+                'simulation_hot_steps': 4,
+                'log_step': 2,
+                'parallel_num': 8,
+                'use_tqdm': True,
+                'use_log': True,
+                'max_iteration': 300,
+                'line_search_steps': [0.2, 0.1, 0.05],
+                'momentum_weight': 0.8,
+                'full_run': False,
             },
         },
         {

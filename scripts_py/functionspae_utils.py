@@ -7,8 +7,9 @@ from mpi4py import MPI
 import numpy as np
 
 from scripts_py.mesh_utils import MeshObj
-from scripts_py.dolfinx_utils import DolfinUtils
+from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils
 from scripts_py.eqn_solver import LinearProblemSolver
+from scripts_py.sparse_utils import PetscUtils
 
 
 class FunctionSpaceUtils(object):
@@ -195,3 +196,72 @@ class FunctionSpaceUtils(object):
             with_dolfinx_function = with_dolfinx_function,
             ksp_option=ksp_option
         )
+
+    @staticmethod
+    def ad_convert_riesz(
+        mesh: MeshObj,
+        func_space: dolfinx.fem.FunctionSpace,
+        func_data: np.ndarray,
+        riesz_representation: Literal['L2', 'H1'],
+        ksp_option = {
+            'ksp_type': 'preonly',
+            'pc_type': 'lu',
+            "pc_factor_mat_solver_type": "mumps",
+            "mat_mumps_icntl_24": 1
+        },
+        comm = MPI.COMM_WORLD
+    ):
+        if riesz_representation == "L2":
+            u = ufl.TrialFunction(func_space)
+            v = ufl.TestFunction(func_space)
+
+            a_form = ufl.inner(u, v) * ufl.dx
+            a_mat = AssembleUtils.assemble_mat(a_form, [], method='lift')
+            b_vec = PetscUtils.create_vec(size=func_data.shape[0])
+            b_vec.array[:] = func_data
+            
+            solver = LinearProblemSolver.create_petsc_solver(
+                comm = comm, 
+                solver_setting = ksp_option, 
+                mat = a_mat
+            )
+            res_dict = LinearProblemSolver.solve_by_petsc(
+                b_vec=b_vec, 
+                a_mat=a_mat, 
+                solver=solver, 
+                setOperators=False, 
+                with_residual=False
+            )
+            if not res_dict['is_solved']:
+                raise ValueError(f"Failed to solve Riesz problem.")
+            riesz_np = res_dict['res'].array
+
+        elif riesz_representation == "H1":
+            u = ufl.TrialFunction(func_space)
+            v = ufl.TestFunction(func_space)
+
+            a_form = ufl.inner(u, v) * ufl.dx + ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
+            a_mat = AssembleUtils.assemble_mat(a_form, [], method='lift')
+            b_vec = PetscUtils.create_vec(size=func_data.shape[0])
+            b_vec.array[:] = func_data
+            
+            solver = LinearProblemSolver.create_petsc_solver(
+                comm = comm, 
+                solver_setting = ksp_option, 
+                mat = a_mat
+            )
+            res_dict = LinearProblemSolver.solve_by_petsc(
+                b_vec=b_vec, 
+                a_mat=a_mat, 
+                solver=solver, 
+                setOperators=False, 
+                with_residual=False
+            )
+            if not res_dict['is_solved']:
+                raise ValueError(f"Failed to solve Riesz problem.")
+            riesz_np = res_dict['res'].array
+
+        else:
+            raise NotImplementedError(f"Unknown Riesz representation: {riesz_representation}")
+        
+        return riesz_np
