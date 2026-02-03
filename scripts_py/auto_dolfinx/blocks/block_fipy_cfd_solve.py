@@ -610,20 +610,21 @@ def equation_cfd_topoWeight_solve(
             Q_to_W_dofs=Q_to_W_dofs,
         )
         
+        # very terrible
         # # NOTE: try to make result to consistent with boundaries. 由于FVM结果与FEM不一致,导致了FixFlux Cost非常不稳定
-        if fluid_type == 'stoke':
-            state = refit_to_dolfinx(
-                mesh=structure_mesh,
-                F_form=F_form,
-                state=state,
-                adjoint=adjoint,
-                bcs=[bry_info.bry_cell for bry_info in boundaries], # type: ignore
-                forward_ksp_option=forward_ksp_option,
-                forward_kwargs=forward_kwargs,
-                is_linear=True,
-            )
-        else:
-            raise ValueError(f"Invalid fluid type: {fluid_type}")
+        # if fluid_type == 'stoke':
+        #     state = refit_to_dolfinx(
+        #         mesh=structure_mesh,
+        #         F_form=F_form,
+        #         state=state,
+        #         adjoint=adjoint,
+        #         bcs=[bry_info.bry_cell for bry_info in boundaries], # type: ignore
+        #         forward_ksp_option=forward_ksp_option,
+        #         forward_kwargs=forward_kwargs,
+        #         is_linear=True,
+        #     )
+        # else:
+        #     raise ValueError(f"Invalid fluid type: {fluid_type}")
         
         output = state
         
@@ -848,19 +849,20 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
             Q_to_W_dofs=self.Q_to_W_dofs,
         )
         
-        if self.fluid_type == 'stoke':
-            uh = refit_to_dolfinx(
-                mesh=self.structure_mesh,
-                F_form=self.F_form,
-                state=self.state,
-                adjoint=self.adjoint,
-                bcs=[bry_info.bry_cell for bry_info in self.boundaries], # type: ignore
-                forward_ksp_option=self.forward_ksp_option,
-                forward_kwargs=self.forward_kwargs,
-                is_linear=True,
-            )
-        else:
-            raise ValueError(f"Invalid fluid type: {self.fluid_type}")
+        # very terrible
+        # if self.fluid_type == 'stoke':
+        #     uh = refit_to_dolfinx(
+        #         mesh=self.structure_mesh,
+        #         F_form=self.F_form,
+        #         state=self.state,
+        #         adjoint=self.adjoint,
+        #         bcs=[bry_info.bry_cell for bry_info in self.boundaries], # type: ignore
+        #         forward_ksp_option=self.forward_ksp_option,
+        #         forward_kwargs=self.forward_kwargs,
+        #         is_linear=True,
+        #     )
+        # else:
+        #     raise ValueError(f"Invalid fluid type: {self.fluid_type}")
         
         return uh
  

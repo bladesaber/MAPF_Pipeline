@@ -272,7 +272,7 @@ optim.optimize(
             ],
             'reg_cost_args':{
                 'style': 'Volume',
-                'weight': 1e-5,
+                'weight': 1e-1,
                 'target_volume': target_volume,
                 'reg_rescale': True,
             },
@@ -288,10 +288,10 @@ optim.optimize(
                 'parallel_num': 8,
                 'use_tqdm': True,
                 'use_log': True,
-                'max_iteration': 300,
-                'line_search_steps': [0.2, 0.1, 0.05],
+                'max_iteration': 1000,
+                'line_search_steps': [0.05],
                 'momentum_weight': 0.8,
-                'full_run': False,
+                'full_run': True,
             },
             'dolfinx_simulator_cfg': {
                 'max_iteration': 300,

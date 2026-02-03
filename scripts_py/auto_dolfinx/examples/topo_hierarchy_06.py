@@ -218,9 +218,9 @@ optim.optimize(
                 'use_tqdm': True,
                 'use_log': True,
                 'max_iteration': 300,
-                'line_search_steps': [0.5],
+                'line_search_steps': [0.5],  # 尝试减缓一下波动
                 'momentum_weight': 0.8,
-                'full_run': False,
+                'full_run': True,
             },
         },
     ]
