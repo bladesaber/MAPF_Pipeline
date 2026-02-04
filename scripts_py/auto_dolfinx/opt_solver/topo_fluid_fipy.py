@@ -1,5 +1,6 @@
 from typing import Literal, Callable
 import os
+import shutil
 
 import dolfinx
 import ufl
@@ -64,7 +65,17 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             pressure_space=pressure_space,
         )
         self.msh_file = msh_file
+        self.simulation_dir = os.path.join(self.result_dir, 'simulation')
+        
+        self.fipy_log_dir = os.path.join(self.result_dir, 'fipy_log')
+        if os.path.exists(self.fipy_log_dir):
+            shutil.rmtree(self.fipy_log_dir)
+        os.makedirs(self.fipy_log_dir)
     
+    def copy_fipy_result_log(self, step: int):
+        result_file = os.path.join(self.simulation_dir, 'cache', 'result.vtu')
+        shutil.copy(result_file, os.path.join(self.fipy_log_dir, f'fipy_iter_{step}.vtu'))
+        
     def get_bcs(self):
         """set wall boundary at last"""        
         return [bry_info for bry_info in sorted(self.boundaries.values(), key=lambda x: x.priority)]
@@ -195,7 +206,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                 hot_steps=hot_steps,
                 simulation_iterations=simulation_iterations,
                 convergence_threshold=convergence_threshold,
-                save_dir=os.path.join(self.result_dir, 'simulation'),
+                save_dir=self.simulation_dir,
                 parallel_num=parallel_num,
                 use_tqdm=use_tqdm,
                 use_log=use_log,
@@ -369,6 +380,10 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         
         # for block in self.tape.get_blocks():
         #     print(block, ' type: ', type(block))
+
+    def record_Upw(self, step: int, **kwargs):
+        super().record_Upw(step, **kwargs)
+        self.copy_fipy_result_log(step)
 
 
 def debug_1():

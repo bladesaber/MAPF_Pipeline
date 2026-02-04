@@ -23,6 +23,7 @@ from scripts_py.mesh_utils import MeshUtils
 from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils
 from scripts_py.dolfinx_adjoint.topology_utils.topology_filter import DistanceBandFilter
 from scripts_py.eqn_solver import LinearProblemSolver
+from scripts_py.auto_dolfinx.opt_solver.grad_optimizer import MomentumSGDOptimizer, BaseGradOptimizer
 
 from scripts_py.auto_dolfinx.types.type_mesh import DolfinxMesh
 from scripts_py.auto_dolfinx.types.type_function import DolfinxFunction
@@ -31,7 +32,7 @@ from scripts_py.auto_dolfinx.blocks.block_solve import equation_solve
 from scripts_py.auto_dolfinx.blocks.block_assemble import assemble_scalar
 from scripts_py.auto_dolfinx.tape_utils import start_annotation
 
-from scripts_py.functionspae_utils import FunctionSpaceUtils
+from scripts_py.auto_dolfinx.opt_solver.grad_mapper import GradMapperUtils
 
 
 class AutoFluidBoundary(FluidBoundary):
@@ -252,7 +253,7 @@ class TopoFluidOptimizer(FluidSimulator):
         
         topo_weight_fun.interpolate(init_weight)
         
-    def compute_gradient(self, adj_input: float, with_filter=True, with_norm=True, with_riesz=True) -> np.ndarray:
+    def compute_gradient(self, adj_input: float, with_filter=True, with_norm=True) -> np.ndarray:
         dJdm = self.opt_problem.derivative(adj_input=float(adj_input))[0]
         
         # ------ apply constraint to gradient ------
@@ -265,27 +266,8 @@ class TopoFluidOptimizer(FluidSimulator):
             dJdm = self.weight_filter.run(dJdm)
             dJdm = np.asarray(dJdm).reshape((-1))
         
-        """ # NOTE: terrible performance, why?
-        # ------ convert gradient to Riesz representation ------
-        if with_riesz:
-            dJdm = FunctionSpaceUtils.ad_convert_riesz(
-                mesh=self.mesh,
-                func_space=self.cell_scalar_func_space if self.is_topo_cell else self.point_scalar_func_space,
-                func_data=dJdm,
-                riesz_representation='L2',
-                ksp_option={
-                    'ksp_type': 'preonly',
-                    'pc_type': 'lu',
-                    "pc_factor_mat_solver_type": "mumps",
-                    "mat_mumps_icntl_24": 1
-                },
-                comm=self.mesh.domain.comm
-            )
-        # ------ convert gradient to Riesz representation ------
-        """
-        
         # ------ apply constraint to gradient again ------
-        if self.init_topo_weight_method != 'none' and (with_filter or with_riesz):
+        if self.init_topo_weight_method != 'none' and with_filter:
             for _, term in self.topo_weight_constraint_terms.items():
                 dJdm = term.apply_constraint_gradient(dJdm)
         
@@ -655,6 +637,7 @@ class TopoFluidOptimizer(FluidSimulator):
                         domain=self.domain, tape=self.tape
                     )
                 elif obj_cost_args['style'] == 'FixedFlux':
+                    # NOTE: 该lost的波动无法通过扩大volume来降低
                     with_rescale = obj_cost_args['with_rescale']
                     with_max_dif_cost = obj_cost_args['with_max_dif_cost']
                     
@@ -800,7 +783,9 @@ class TopoFluidOptimizer(FluidSimulator):
         
         with_momentum = momentum_weight > 0.0
         if with_momentum:
-            cum_direction_np = np.zeros_like(self.topo_weight.x.array)  # type: ignore
+            grad_optimizer = MomentumSGDOptimizer(shape=self.topo_weight.x.array.shape, momentum=momentum_weight)  # type: ignore
+        else:
+            grad_optimizer = BaseGradOptimizer(shape=self.topo_weight.x.array.shape)  # type: ignore
         
         while True:
             step += 1
@@ -826,11 +811,7 @@ class TopoFluidOptimizer(FluidSimulator):
                 adj_input=np.minimum(np.maximum(loss_current * 0.1, 0.01), 1e2), 
                 with_filter=True, with_norm=True
             )
-            if with_momentum:
-                cum_direction_np = cum_direction_np * momentum_weight + cur_direction_np * (1.0 - momentum_weight)
-                direction_np = cum_direction_np / np.max(np.abs(cum_direction_np))
-            else:
-                direction_np = cur_direction_np
+            direction_np = grad_optimizer.update(cur_direction_np)
             
             find_best_step = False
             if with_line_search:
@@ -852,6 +833,8 @@ class TopoFluidOptimizer(FluidSimulator):
                         # self.topo_weight.x.array[:] = topo_phi.x.array  # type: ignore          
                         self.record_Upw(step, gradient=direction_np)
                         break
+                    else:
+                        print(f"[Warning]: line search fail. loss_new: {loss_new}, loss_current: {loss_current}")
 
             else:
                 new_topo_phi = topo_phi.x.array - direction_np * step_length_last  # type: ignore

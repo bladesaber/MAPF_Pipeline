@@ -257,15 +257,15 @@ def convert_fipy_result_to_dolfinx(
     cell_velocity_fun = dolfinx.fem.Function(cell_vector_func_space)
     cell_velocity_fun.x.array[:] = cell_velocity.reshape((-1,))  # type: ignore
     # NOTE: 无论什么映射方法,MeshSize越大,精度越差
-    velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
-        mesh=mesh,
-        original_func=cell_velocity_fun,  # type: ignore
-        target_func_space=V_func_space,
-        method='L2',
-        bcs=velocity_L2_bcs,
-        with_dolfinx_function=True,
-        ksp_option=interpolation_ksp_option,
-    )
+    # velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+    #     mesh=mesh,
+    #     original_func=cell_velocity_fun,  # type: ignore
+    #     target_func_space=V_func_space,
+    #     method='L2',
+    #     bcs=velocity_L2_bcs,
+    #     with_dolfinx_function=True,
+    #     ksp_option=interpolation_ksp_option,
+    # )
     # NOTE: interpolate is not good enough
     # velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
     #     mesh=mesh,
@@ -274,20 +274,20 @@ def convert_fipy_result_to_dolfinx(
     #     method='interpolate',
     #     with_dolfinx_function=True,
     # )
-    # # ----------------------------
-    # # NOTE: still wrong
-    # precise_interpolate_fun_1 = FunctionSpaceUtils.convert_dolfinx_function_space(
-    #     mesh=mesh,
-    #     original_func=cell_velocity_fun,  # type: ignore
-    #     target_func_space=DolfinUtils.point_vector_function_space(mesh.domain, degree=2),
-    #     method='L2',
-    #     bcs=velocity_L2_bcs,
-    #     with_dolfinx_function=True,
-    #     ksp_option=interpolation_ksp_option,
-    # )
-    # velocity_interpolate_fun = dolfinx.fem.Function(V_func_space)
-    # velocity_interpolate_fun.interpolate(precise_interpolate_fun_1)  # type: ignore
-    # # ----------------------------
+    # NOTE: after mapping, the result is not consistent with the boundary condition.
+    # And velocity and pressure mapping are not consistent by having shift. 关于FVM映射FEM的问题无法解决
+    higher_degree_velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+        mesh=mesh,
+        original_func=cell_velocity_fun,  # type: ignore
+        target_func_space=DolfinUtils.point_vector_function_space(mesh.domain, degree=2),
+        method='L2',
+        bcs=velocity_L2_bcs,
+        with_dolfinx_function=True,
+        ksp_option=interpolation_ksp_option,
+    )
+    velocity_interpolate_fun = dolfinx.fem.Function(V_func_space)
+    velocity_interpolate_fun.interpolate(higher_degree_velocity_interpolate_fun)  # type: ignore
+    # ----------------------------
     
     cell_scalar_func_space = DolfinUtils.cell_scalar_function_space(mesh.domain)
     cell_pressure_fun = dolfinx.fem.Function(cell_scalar_func_space)
@@ -308,6 +308,17 @@ def convert_fipy_result_to_dolfinx(
     #     method='interpolate',
     #     with_dolfinx_function=True,
     # )
+    # higher_degree_pressure_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+    #     mesh=mesh,
+    #     original_func=cell_pressure_fun,  # type: ignore
+    #     target_func_space=DolfinUtils.point_scalar_function_space(mesh.domain, degree=2),
+    #     method='L2',
+    #     bcs=pressure_L2_bcs,
+    #     with_dolfinx_function=True,
+    #     ksp_option=interpolation_ksp_option,
+    # )
+    # pressure_interpolate_fun = dolfinx.fem.Function(Q_func_space)
+    # pressure_interpolate_fun.interpolate(higher_degree_pressure_interpolate_fun)  # type: ignore
     
     uh.x.array[V_to_W_dofs] = velocity_interpolate_fun.x.array.copy()  # type: ignore
     uh.x.array[Q_to_W_dofs] = pressure_interpolate_fun.x.array.copy()  # type: ignore

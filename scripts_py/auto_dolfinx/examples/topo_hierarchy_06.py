@@ -6,7 +6,7 @@ from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import AutoFluidBou
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import TopoFluidHierarchyOptimizer
 
 
-base_dir = '/home/admin123456/Desktop/work/gmsh_test/t49_fipy_1'
+base_dir = '/home/admin123456/Desktop/work/gmsh_test/t50'
 
 right_boundary = 4.0
 top_boundary = 4.0
@@ -201,7 +201,7 @@ optim.optimize(
             'obstacle_cost_args':None,
             'dolfinx_simulator_cfg': {
                 'max_iteration': 300,
-                'line_search_steps': [0.1, 0.05],
+                'line_search_steps': [0.1],
                 'momentum_weight': 0.8,
                 'full_run': False,
                 'hot_steps': 80,
@@ -218,7 +218,7 @@ optim.optimize(
                 'use_tqdm': True,
                 'use_log': True,
                 'max_iteration': 300,
-                'line_search_steps': [0.5],  # 尝试减缓一下波动
+                'line_search_steps': [0.1],  # 尝试减缓一下波动
                 'momentum_weight': 0.8,
                 'full_run': True,
             },

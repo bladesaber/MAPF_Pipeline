@@ -127,7 +127,7 @@ class TopoFluidGridOptimizer(object):
         
         self.grid_mesher: GridMesher
         self.field_value: np.ndarray
-            
+
     def prepare_design_space(
         self, reference_optimizer: Union["TopoFluidGridOptimizer", None] = None,
         threshold: float = 0.4, diffusion_step = 0
@@ -299,7 +299,8 @@ class TopoFluidGridOptimizer(object):
                 recorder=recorder,
                 full_run=self.fipy_simulator_dict['full_run'],
                 result_vtu_file=self.result_opt_vtu,
-                hot_step=self.fipy_simulator_dict['hot_steps']
+                hot_step=self.fipy_simulator_dict['hot_steps'],
+                loss_decay_weight=self.fipy_simulator_dict.get('loss_decay_weight', 0.0)
             )
             
         else:
@@ -333,7 +334,8 @@ class TopoFluidGridOptimizer(object):
                 recorder=recorder,
                 full_run=self.dolfinx_simulator_dict['full_run'],
                 result_vtu_file=self.result_opt_vtu,
-                hot_step=self.dolfinx_simulator_dict['hot_steps']
+                hot_step=self.dolfinx_simulator_dict['hot_steps'],
+                loss_decay_weight=self.dolfinx_simulator_dict.get('loss_decay_weight', 0.0)
             )
         
         return result
