@@ -10,6 +10,8 @@ import ufl.indexed
 
 import numpy as np
 from functools import partial
+import torch
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from scripts_py.mesh_utils import MeshUtils, MeshObj
 from scripts_py.simulator.dolfin_simulator import FluidBoundary, FluidSimulator
@@ -863,6 +865,93 @@ class TopoFluidOptimizer(FluidSimulator):
                 last_step_record_file = self.recorder.get_step_file_path(step - 1)
             shutil.copy(last_step_record_file, result_vtu_file)        
         return {'is_success': is_solved}  # type: ignore
+    
+    def run_with_lr_scheduler(
+        self,
+        min_lr: float = 1e-2,
+        max_lr: float = 1e-1,
+        max_iteration=200,
+        hot_step: int = 20,
+        momentum_weight: float = 0.8,
+        full_run: bool = False,
+        recorder: TensorBoardRecorder|None = None,
+        result_vtu_file: str|None = None,
+        loss_decay_weight: float = 0.0,
+    ) -> dict:
+        topo_phi = DolfinxFunction(self.topo_weight.function_space, name=f'topo_phi')  # type: ignore
+        topo_phi.x.array[:] = self.topo_weight.x.array.copy()  # type: ignore
+        
+        loss_current, loss_last = 0.0, 0.0
+        loss_dict, log_dict = self.eval()
+        loss_current = np.sum(list(loss_dict.values()))
+        self.record_Upw(0)
+        
+        with_momentum = momentum_weight > 0.0
+        if with_momentum:
+            grad_optimizer = MomentumSGDOptimizer(shape=self.topo_weight.x.array.shape, momentum=momentum_weight)  # type: ignore
+        else:
+            grad_optimizer = BaseGradOptimizer(shape=self.topo_weight.x.array.shape)  # type: ignore
+        
+        topo_phi_tensor = torch.from_numpy(topo_phi.x.array.copy())  # type: ignore
+        topo_phi_tensor.requires_grad = True
+        # optimizer = torch.optim.Adam([topo_phi_tensor], lr=max_lr)  # type: ignore
+        optimizer = torch.optim.SGD([topo_phi_tensor], lr=max_lr, momentum=momentum_weight)  # type: ignore
+        
+        scheduler = ReduceLROnPlateau(optimizer, min_lr=min_lr, factor=0.5)  # type: ignore
+        last_lr = scheduler.get_last_lr()[0]
+        
+        for step in range(max_iteration):
+            step += 1
+            if step > 1:
+                loss_dict, log_dict = self.eval()
+                log = f"[step/{step} loss:{loss_current:.6f} lr:{last_lr:.3f}]"
+                for name, cost_value in loss_dict.items():
+                    log += f" {name}:{cost_value:.6f}"
+                print(log)
+                
+                if recorder is not None:
+                    for name, value in log_dict.items():
+                        if isinstance(value, dict):
+                            recorder.write_scalars(tag=name, scalar_dict=value, step=step)
+                        else:
+                            recorder.write_scalar(tag=name, scalar_value=value, step=step)
+                
+                if np.abs(loss_current - loss_last) < 1e-9 and (not full_run) and step > hot_step:
+                    is_solved = True
+                    break
+                
+            direction_np = self.compute_gradient(
+                adj_input=np.minimum(np.maximum(loss_current * 0.1, 0.01), 1e2), 
+                with_filter=True, with_norm=True
+            )
+            
+            # ------ custome momentum optimizer ------
+            direction_np = grad_optimizer.update(direction_np)
+            new_topo_phi = topo_phi.x.array - direction_np * last_lr  # type: ignore
+            new_topo_phi = np.maximum(np.minimum(new_topo_phi, 1.0 - 1e-16), 1e-16)
+            
+            # ------ torch optimizer ------ not stable enough
+            # topo_phi_tensor.grad = torch.from_numpy(direction_np)
+            # optimizer.step()
+            # new_topo_phi = np.maximum(np.minimum(topo_phi_tensor.detach().numpy(), 1.0 - 1e-16), 1e-16)
+        
+            topo_phi.x.array[:] = new_topo_phi  # type: ignore
+            loss_new = self.opt_problem(values=[topo_phi])  # type: ignore
+            
+            scheduler.step(loss_new)
+            last_lr = scheduler.get_last_lr()[0]
+            
+            loss_last = loss_current
+            loss_current = loss_new * (1.0 - loss_decay_weight) + loss_last * loss_decay_weight
+            self.record_Upw(step, gradient=direction_np)
+        
+        if result_vtu_file is not None:
+            last_step_record_file = self.recorder.get_step_file_path(step)
+            if not os.path.exists(last_step_record_file):
+                last_step_record_file = self.recorder.get_step_file_path(step - 1)
+            shutil.copy(last_step_record_file, result_vtu_file)
+
+        return {'is_success': True}  # type: ignore
     
     def eval(self):
         eval_dict = {}

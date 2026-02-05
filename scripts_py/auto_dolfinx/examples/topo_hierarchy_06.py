@@ -1,12 +1,13 @@
 import os
 import numpy as np
 import pyvista
+from mpi4py import MPI
 
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import AutoFluidBoundary
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import TopoFluidHierarchyOptimizer
 
 
-base_dir = '/home/admin123456/Desktop/work/gmsh_test/t50'
+base_dir = '/home/admin123456/Desktop/work/gmsh_test/t50_3'
 
 right_boundary = 4.0
 top_boundary = 4.0
@@ -25,8 +26,11 @@ def generate_top_pipes(num_pipes: int, start_marker: int, face_radius=0.1):
     #         if np.min(dist_to_prev) > 2 * face_radius + 0.15:
     #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
     
-    face_centers = np.ones((num_pipes, 2)) * top_boundary
-    face_centers[:, 0] = np.linspace(face_radius + 0.05, right_boundary - face_radius - 0.05, num_pipes)
+    if num_pipes == 1:
+        face_centers = np.array([[right_boundary / 2.0, top_boundary]])
+    else:
+        face_centers = np.ones((num_pipes, 2)) * top_boundary
+        face_centers[:, 0] = np.linspace(face_radius * 4.0, right_boundary - face_radius * 4.0, num_pipes)
     
     marker_series = np.arange(start_marker + 1, start_marker + num_pipes + 1)
     bry_list = []
@@ -59,8 +63,11 @@ def generate_left_pipes(num_pipes: int, start_marker: int, face_radius=0.1):
     #         if np.min(dist_to_prev) > 2 * face_radius + 0.15:
     #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
     
-    face_centers = np.zeros((num_pipes, 2))
-    face_centers[:, 1] = np.linspace(face_radius + 0.05, top_boundary - face_radius - 0.05, num_pipes)
+    if num_pipes == 1:
+        face_centers = np.array([[0.0, top_boundary / 2.0]])
+    else:
+        face_centers = np.zeros((num_pipes, 2))
+        face_centers[:, 1] = np.linspace(face_radius * 4.0, top_boundary - face_radius * 4.0, num_pipes)
     
     marker_series = np.arange(start_marker + 1, start_marker + num_pipes + 1)
     bry_list = []
@@ -93,8 +100,11 @@ def generate_right_pipes(num_pipes: int, start_marker: int, face_radius=0.1):
     #         if np.min(dist_to_prev) > 2 * face_radius + 0.15:
     #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
     
-    face_centers = np.ones((num_pipes, 2)) * right_boundary
-    face_centers[:, 1] = np.linspace(face_radius + 0.05, top_boundary - face_radius - 0.05, num_pipes)
+    if num_pipes == 1:
+        face_centers = np.array([[right_boundary, top_boundary / 2.0]])
+    else:
+        face_centers = np.ones((num_pipes, 2)) * right_boundary
+        face_centers[:, 1] = np.linspace(face_radius * 4.0, top_boundary - face_radius * 4.0, num_pipes)
     
     marker_series = np.arange(start_marker + 1, start_marker + num_pipes + 1)
     bry_list = []
@@ -124,9 +134,9 @@ boundaries = [
 ]
 
 start_marker = 1
-top_pipes, start_marker = generate_top_pipes(8, start_marker)
-left_pipes, start_marker = generate_left_pipes(8, start_marker)
-right_pipes, start_marker = generate_right_pipes(8, start_marker)
+top_pipes, start_marker = generate_top_pipes(9, start_marker)
+left_pipes, start_marker = generate_left_pipes(9, start_marker)
+right_pipes, start_marker = generate_right_pipes(9, start_marker)
 boundaries.extend(top_pipes)
 boundaries.extend(left_pipes)
 boundaries.extend(right_pipes)
@@ -160,7 +170,7 @@ optim = TopoFluidHierarchyOptimizer(
     space_right_top_corner=np.array([right_boundary, top_boundary]),
     space_resolutions=[0.1],
     mesh_min_sizes=[0.03],
-    mesh_max_sizes=[0.06],  # NOTE: Mesh size影响所能达到的体积约束
+    mesh_max_sizes=[0.06],
     boundary_list=boundaries,
     fluid_type='stoke',
     viscosity_init=1.0 / 400.,
@@ -170,6 +180,9 @@ optim = TopoFluidHierarchyOptimizer(
     diffusion_step=0,
     init_topo_weight_method='raw',
     extract_threshold=0.4,
+    alpha_fun_max=300.0,
+    alpha_fun_min=1e-12,
+    alpha_fun_p=3.0,
 )
 optim.optimize(
     run_cfgs=[
@@ -194,7 +207,7 @@ optim.optimize(
             ],
             'reg_cost_args':{
                 'style': 'Volume',
-                'weight': 1e-3,
+                'weight': 1e-1,
                 'target_volume': target_volume,
                 'reg_rescale': True,
             },
@@ -205,20 +218,28 @@ optim.optimize(
                 'momentum_weight': 0.8,
                 'full_run': False,
                 'hot_steps': 80,
+                'use_lr_scheduler': False,
+                'min_lr': 1e-2,
+                'max_lr': 1e-1,
+                'loss_decay_weight': 0.0,
             },
             'fipy_simulator_cfg': {
+                'use_lr_scheduler': True,
+                'min_lr': 1e-2,
+                'max_lr': 1e-1,
+                'loss_decay_weight': 0.0,
                 'simulation_iterations': 200,
                 'convergence_threshold': 1e-4,
                 'velocityRelaxation': 0.6,
                 'pressureRelaxation': 0.8,
-                'hot_steps': 100,
+                'hot_steps': 50,
                 'simulation_hot_steps': 4,
                 'log_step': 2,
                 'parallel_num': 8,
                 'use_tqdm': True,
                 'use_log': True,
                 'max_iteration': 300,
-                'line_search_steps': [0.1],  # 尝试减缓一下波动
+                'line_search_steps': [0.1],
                 'momentum_weight': 0.8,
                 'full_run': True,
             },

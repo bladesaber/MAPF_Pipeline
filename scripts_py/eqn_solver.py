@@ -221,6 +221,7 @@ class LinearProblemSolver(object):
         # PetscUtils.save_data(b_vec, '/home/admin123456/Desktop/work/gmsh_test/t23/b_vec.dat')
         
         solver = LinearProblemSolver.create_petsc_solver(comm, ksp_option, a_mat)
+        # solver.setMonitor(lambda _, it, residual: print(f"Iter:{it} residual:{residual}"))
         res_dict = LinearProblemSolver.solve_by_petsc(b_vec, a_mat, solver, setOperators=False, with_residual=with_residual)
 
         solver.destroy()

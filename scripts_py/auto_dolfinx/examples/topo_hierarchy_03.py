@@ -10,26 +10,40 @@ from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import TopoFluidHie
 NOTE: FixedFlux本身的震荡很严重,所以必须是最小的,否则无法收敛.该问题主要是平衡reg_cost与FixedFlux之间的权重.
 """
 
-base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48_fipy_2'
+base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48_1'
 
 right_boundary = 1.0
 back_boundary = 1.0
 top_boundary = 1.0
 
 
-def generate_top_pipes(num_pipes: int, start_marker: int, face_radius=0.05):
+def generate_top_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min_ratio=0.3, max_ratio=0.7):
     face_norm_vector=np.array([0.0, 0.0, 1.0])
-    face_centers = np.array([])
-    while len(face_centers) < num_pipes:
-        random_center = np.array([0.0, 0.0, top_boundary])
-        random_center[:2] = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
-        if face_centers.shape[0] == 0:
-            face_centers = np.array([random_center])
-        else:
-            dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
-            if np.min(dist_to_prev) > 2 * face_radius + face_radius:
-                face_centers = np.concatenate([face_centers, [random_center]], axis=0)
     
+    # face_centers = np.array([])
+    # while len(face_centers) < num_pipes:
+    #     random_center = np.array([0.0, 0.0, top_boundary])
+    #     random_center[:2] = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
+    #     if face_centers.shape[0] == 0:
+    #         face_centers = np.array([random_center])
+    #     else:
+    #         dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
+    #         if np.min(dist_to_prev) > 2 * face_radius + face_radius:
+    #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
+    
+    if num_pipes == 1:
+        face_centers = np.array([[right_boundary / 2.0, back_boundary / 2.0, top_boundary]])
+    else:
+        row_num = max(int(np.sqrt(num_pipes)), 1)
+        x_centers = np.linspace(right_boundary * min_ratio, right_boundary * max_ratio, row_num)
+        y_centers = np.linspace(back_boundary * min_ratio, back_boundary * max_ratio, row_num)
+        x_centers, y_centers = np.meshgrid(x_centers, y_centers)        
+        face_centers = np.concatenate([
+            x_centers[..., np.newaxis], 
+            y_centers[..., np.newaxis],
+            np.ones(shape=(x_centers.shape[0], x_centers.shape[1], 1)) * top_boundary
+        ], axis=-1).reshape(-1, 3)
+        
     marker_series = np.arange(start_marker + 1, start_marker + num_pipes + 1)
     bry_list = []
     for face_center, marker in zip(face_centers, marker_series):
@@ -45,23 +59,36 @@ def generate_top_pipes(num_pipes: int, start_marker: int, face_radius=0.05):
     return bry_list, int(marker_series[-1])
 
 
-def generate_front_pipes(num_pipes: int, start_marker: int, face_radius=0.05):
+def generate_front_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min_ratio=0.3, max_ratio=0.7):
     face_norm_vector=np.array([0.0, -1.0, 0.0])
-    face_centers = np.array([])
-    while len(face_centers) < num_pipes:
-        random_center = np.array([0.0, 0.0, 0.0])
-        random_xz = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
-        if random_xz[1] < 0.4:
-            continue
-        random_center[0] = random_xz[0]
-        random_center[2] = random_xz[1]
+    # face_centers = np.array([])
+    # while len(face_centers) < num_pipes:
+    #     random_center = np.array([0.0, 0.0, 0.0])
+    #     random_xz = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
+    #     if random_xz[1] < 0.4:
+    #         continue
+    #     random_center[0] = random_xz[0]
+    #     random_center[2] = random_xz[1]
 
-        if face_centers.shape[0] == 0:
-            face_centers = np.array([random_center])
-        else:
-            dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
-            if np.min(dist_to_prev) > 2 * face_radius + face_radius:
-                face_centers = np.concatenate([face_centers, [random_center]], axis=0)
+    #     if face_centers.shape[0] == 0:
+    #         face_centers = np.array([random_center])
+    #     else:
+    #         dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
+    #         if np.min(dist_to_prev) > 2 * face_radius + face_radius:
+    #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
+    
+    if num_pipes == 1:
+        face_centers = np.array([[right_boundary / 2.0, 0.0, top_boundary / 2.0]])
+    else:
+        row_num = max(int(np.sqrt(num_pipes)), 1)
+        x_centers = np.linspace(right_boundary * min_ratio, right_boundary * max_ratio, row_num)
+        z_centers = np.linspace(top_boundary * min_ratio, top_boundary * max_ratio, row_num)
+        x_centers, z_centers = np.meshgrid(x_centers, z_centers)
+        face_centers = np.concatenate([
+            x_centers[..., np.newaxis],
+            np.zeros(shape=(x_centers.shape[0], x_centers.shape[1], 1)),
+            z_centers[..., np.newaxis],
+        ], axis=-1).reshape(-1, 3)
     
     marker_series = np.arange(start_marker + 1, start_marker + num_pipes + 1)
     bry_list = []
@@ -78,23 +105,36 @@ def generate_front_pipes(num_pipes: int, start_marker: int, face_radius=0.05):
     return bry_list, int(marker_series[-1])
 
 
-def generate_back_pipes(num_pipes: int, start_marker: int, face_radius=0.05):
+def generate_back_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min_ratio=0.3, max_ratio=0.7):
     face_norm_vector=np.array([0.0, 1.0, 0.0])
-    face_centers = np.array([])
-    while len(face_centers) < num_pipes:
-        random_center = np.array([0.0, back_boundary, 0.0])
-        random_xz = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
-        if random_xz[1] < 0.4:
-            continue
-        random_center[0] = random_xz[0]
-        random_center[2] = random_xz[1]
+    # face_centers = np.array([])
+    # while len(face_centers) < num_pipes:
+    #     random_center = np.array([0.0, back_boundary, 0.0])
+    #     random_xz = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
+    #     if random_xz[1] < 0.4:
+    #         continue
+    #     random_center[0] = random_xz[0]
+    #     random_center[2] = random_xz[1]
 
-        if face_centers.shape[0] == 0:
-            face_centers = np.array([random_center])
-        else:
-            dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
-            if np.min(dist_to_prev) > 2 * face_radius + face_radius:
-                face_centers = np.concatenate([face_centers, [random_center]], axis=0)
+    #     if face_centers.shape[0] == 0:
+    #         face_centers = np.array([random_center])
+    #     else:
+    #         dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
+    #         if np.min(dist_to_prev) > 2 * face_radius + face_radius:
+    #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
+    
+    if num_pipes == 1:
+        face_centers = np.array([[right_boundary / 2.0, back_boundary, top_boundary / 2.0]])
+    else:
+        row_num = max(int(np.sqrt(num_pipes)), 1)
+        x_centers = np.linspace(right_boundary * min_ratio, right_boundary * max_ratio, row_num)
+        z_centers = np.linspace(top_boundary * min_ratio, top_boundary * max_ratio, row_num)
+        x_centers, z_centers = np.meshgrid(x_centers, z_centers)
+        face_centers = np.concatenate([
+            x_centers[..., np.newaxis],
+            np.ones(shape=(x_centers.shape[0], x_centers.shape[1], 1)) * back_boundary,
+            z_centers[..., np.newaxis],
+        ], axis=-1).reshape(-1, 3)
     
     marker_series = np.arange(start_marker + 1, start_marker + num_pipes + 1)
     bry_list = []
@@ -111,23 +151,36 @@ def generate_back_pipes(num_pipes: int, start_marker: int, face_radius=0.05):
     return bry_list, int(marker_series[-1])
 
 
-def generate_left_pipes(num_pipes: int, start_marker: int, face_radius=0.05):
+def generate_left_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min_ratio=0.3, max_ratio=0.7):
     face_norm_vector=np.array([-1.0, 0.0, 0.0])
-    face_centers = np.array([])
-    while len(face_centers) < num_pipes:
-        random_center = np.array([0., 0., 0.])
-        random_yz = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
-        if random_yz[1] < 0.4:
-            continue
-        random_center[1] = random_yz[0]
-        random_center[2] = random_yz[1]
+    # face_centers = np.array([])
+    # while len(face_centers) < num_pipes:
+    #     random_center = np.array([0., 0., 0.])
+    #     random_yz = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
+    #     if random_yz[1] < 0.4:
+    #         continue
+    #     random_center[1] = random_yz[0]
+    #     random_center[2] = random_yz[1]
 
-        if face_centers.shape[0] == 0:
-            face_centers = np.array([random_center])
-        else:
-            dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
-            if np.min(dist_to_prev) > 2 * face_radius + face_radius:
-                face_centers = np.concatenate([face_centers, [random_center]], axis=0)
+    #     if face_centers.shape[0] == 0:
+    #         face_centers = np.array([random_center])
+    #     else:
+    #         dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
+    #         if np.min(dist_to_prev) > 2 * face_radius + face_radius:
+    #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
+    
+    if num_pipes == 1:
+        face_centers = np.array([[0.0, back_boundary / 2.0, top_boundary / 2.0]])
+    else:
+        row_num = max(int(np.sqrt(num_pipes)), 1)
+        y_centers = np.linspace(back_boundary * min_ratio, back_boundary * max_ratio, row_num)
+        z_centers = np.linspace(top_boundary * min_ratio, top_boundary * max_ratio, row_num)
+        y_centers, z_centers = np.meshgrid(y_centers, z_centers)
+        face_centers = np.concatenate([
+            np.zeros(shape=(y_centers.shape[0], y_centers.shape[1], 1)),
+            y_centers[..., np.newaxis],
+            z_centers[..., np.newaxis],
+        ], axis=-1).reshape(-1, 3)
     
     marker_series = np.arange(start_marker + 1, start_marker + num_pipes + 1)
     bry_list = []
@@ -144,23 +197,36 @@ def generate_left_pipes(num_pipes: int, start_marker: int, face_radius=0.05):
     return bry_list, int(marker_series[-1])
 
 
-def generate_right_pipes(num_pipes: int, start_marker: int, face_radius=0.05):
+def generate_right_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min_ratio=0.3, max_ratio=0.7):
     face_norm_vector=np.array([1.0, 0.0, 0.0])
-    face_centers = np.array([])
-    while len(face_centers) < num_pipes:
-        random_center = np.array([right_boundary, 0.0, 0.0])
-        random_yz = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
-        if random_yz[1] < 0.4:
-            continue
-        random_center[1] = random_yz[0]
-        random_center[2] = random_yz[1]
+    # face_centers = np.array([])
+    # while len(face_centers) < num_pipes:
+    #     random_center = np.array([right_boundary, 0.0, 0.0])
+    #     random_yz = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
+    #     if random_yz[1] < 0.4:
+    #         continue
+    #     random_center[1] = random_yz[0]
+    #     random_center[2] = random_yz[1]
 
-        if face_centers.shape[0] == 0:
-            face_centers = np.array([random_center])
-        else:
-            dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
-            if np.min(dist_to_prev) > 2 * face_radius + face_radius:
-                face_centers = np.concatenate([face_centers, [random_center]], axis=0)
+    #     if face_centers.shape[0] == 0:
+    #         face_centers = np.array([random_center])
+    #     else:
+    #         dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
+    #         if np.min(dist_to_prev) > 2 * face_radius + face_radius:
+    #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
+    
+    if num_pipes == 1:
+        face_centers = np.array([[right_boundary, back_boundary / 2.0, top_boundary / 2.0]])
+    else:
+        row_num = max(int(np.sqrt(num_pipes)), 1)
+        y_centers = np.linspace(back_boundary * min_ratio, back_boundary * max_ratio, row_num)
+        z_centers = np.linspace(top_boundary * min_ratio, top_boundary * max_ratio, row_num)
+        y_centers, z_centers = np.meshgrid(y_centers, z_centers)
+        face_centers = np.concatenate([
+            np.ones(shape=(y_centers.shape[0], y_centers.shape[1], 1)) * right_boundary,
+            y_centers[..., np.newaxis],
+            z_centers[..., np.newaxis],
+        ], axis=-1).reshape(-1, 3)
     
     marker_series = np.arange(start_marker + 1, start_marker + num_pipes + 1)
     bry_list = []
@@ -191,11 +257,14 @@ boundaries = [
 
 start_marker = 1
 
-top_pipes, start_marker = generate_top_pipes(4, start_marker)
-front_pipes, start_marker = generate_front_pipes(4, start_marker)
-back_pipes, start_marker = generate_back_pipes(4, start_marker)
-left_pipes, start_marker = generate_left_pipes(4, start_marker)
-right_pipes, start_marker = generate_right_pipes(4, start_marker)
+min_ratio = 0.3
+max_ratio = 0.7
+face_radius = 0.05
+top_pipes, start_marker = generate_top_pipes(4, start_marker, face_radius, min_ratio, max_ratio)
+front_pipes, start_marker = generate_front_pipes(4, start_marker, face_radius, min_ratio, max_ratio)
+back_pipes, start_marker = generate_back_pipes(4, start_marker, face_radius, min_ratio, max_ratio)
+left_pipes, start_marker = generate_left_pipes(4, start_marker, face_radius, min_ratio, max_ratio)
+right_pipes, start_marker = generate_right_pipes(4, start_marker, face_radius, min_ratio, max_ratio)
 
 boundaries.extend(top_pipes)
 boundaries.extend(front_pipes)
@@ -228,7 +297,7 @@ print('outlet_markers:', outlet_markers)
 print('outlet_marker_ratios:', outlet_marker_ratios)
 print('outlet_marker_weights:', outlet_marker_weights)
 
-target_ratio = 0.05
+target_ratio = 0.2
 target_volume = (right_boundary * top_boundary * back_boundary) * target_ratio
 optim = TopoFluidHierarchyOptimizer(
     name='t48',
@@ -238,7 +307,7 @@ optim = TopoFluidHierarchyOptimizer(
     space_right_top_corner=np.array([1.0, 1.0, 1.0]),
     space_resolutions=[0.15],
     mesh_min_sizes=[0.02],
-    mesh_max_sizes=[0.08],
+    mesh_max_sizes=[0.06],
     boundary_list=boundaries,
     fluid_type='stoke',
     viscosity_init=1.0 / 400.,
@@ -272,7 +341,7 @@ optim.optimize(
             ],
             'reg_cost_args':{
                 'style': 'Volume',
-                'weight': 1e-1,
+                'weight': 1e-3,
                 'target_volume': target_volume,
                 'reg_rescale': True,
             },
@@ -282,16 +351,16 @@ optim.optimize(
                 'convergence_threshold': 1e-4,
                 'velocityRelaxation': 0.6,
                 'pressureRelaxation': 0.8,
-                'hot_steps': 80,
+                'hot_steps': 50,
                 'simulation_hot_steps': 4,
                 'log_step': 2,
                 'parallel_num': 8,
                 'use_tqdm': True,
                 'use_log': True,
-                'max_iteration': 1000,
+                'max_iteration': 300,
                 'line_search_steps': [0.05],
                 'momentum_weight': 0.8,
-                'full_run': True,
+                'full_run': False,
             },
             'dolfinx_simulator_cfg': {
                 'max_iteration': 300,

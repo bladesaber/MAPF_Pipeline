@@ -557,6 +557,8 @@ class MeshObj(object):
         self.grid = MeshUtils.mesh_to_vtk(self.domain, self.tdim)
         self.num_points = self.domain.geometry.x.shape[0]
         self.num_cells = self.grid.n_cells
+        self.cell_volumes: np.ndarray = None  # type: ignore
+        self.point_to_cells: list = None  # type: ignore
 
         self.cells_to_points = MeshUtils.cell_connectivity(self.grid, self.tdim)
         cell_counter: collections.Counter = collections.Counter(self.cells_to_points.flatten().tolist())
@@ -570,6 +572,27 @@ class MeshObj(object):
         self.angle_tol_max = 160.0
         self.angle_tol_min = 20.0
 
+    def get_cell_volumes(self):
+        if self.cell_volumes is not None:
+            return self.cell_volumes
+        V_dg0 = DolfinUtils.cell_scalar_function_space(self.domain)
+        cell_volume_expr = dolfinx.fem.Expression(ufl.CellVolume(self.domain.ufl_domain()), V_dg0.element.interpolation_points())
+        cell_volumes_func = dolfinx.fem.Function(V_dg0)
+        cell_volumes_func.interpolate(cell_volume_expr)  # type: ignore
+        self.cell_volumes = cell_volumes_func.x.array.copy()  # type: ignore
+        return self.cell_volumes
+    
+    def get_point_to_cells(self):
+        if self.point_to_cells is not None:
+            return self.point_to_cells
+        self.domain.topology.create_connectivity(0, self.domain.topology.dim)
+        conn = self.domain.topology.connectivity(0, self.domain.topology.dim)
+        point_to_cells = []
+        for point_idx in range(self.num_points):
+            point_to_cells.append(conn.links(point_idx))
+        self.point_to_cells = point_to_cells
+        return self.point_to_cells
+        
     @property
     def points(self):
         return self.domain.geometry.x

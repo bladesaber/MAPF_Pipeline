@@ -115,7 +115,7 @@ class TopoFluidGridOptimizer(object):
         self.viscosity_init = viscosity_init
         self.topo_weight_init = topo_weight_init
         self.init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'] = init_topo_weight_method
-        self.weight_filter_radius = self.mesh_max_size * 2.5
+        self.weight_filter_radius = self.mesh_max_size * 1.5  # TODO: change to 1.1?
         self.alpha_fun_max = alpha_fun_max
         self.alpha_fun_min = alpha_fun_min
         self.alpha_fun_p = alpha_fun_p
@@ -249,7 +249,7 @@ class TopoFluidGridOptimizer(object):
         return self.topo_function
 
     def optimize(self, residual_error_threshold=1e-4):
-        if self.us_fipy:
+        if self.us_fipy:   
             optim = TopoFluidOptimizerFipy(
                 name=self.name,
                 msh_file=self.msh_file_path,
@@ -292,16 +292,28 @@ class TopoFluidGridOptimizer(object):
             )
             
             recorder = TensorBoardRecorder(os.path.join(self.opt_dir, 'log'))
-            result = optim.run(
-                max_iteration=self.fipy_simulator_dict['max_iteration'],
-                line_search_steps=self.fipy_simulator_dict['line_search_steps'],
-                momentum_weight=self.fipy_simulator_dict['momentum_weight'],
-                recorder=recorder,
-                full_run=self.fipy_simulator_dict['full_run'],
-                result_vtu_file=self.result_opt_vtu,
-                hot_step=self.fipy_simulator_dict['hot_steps'],
-                loss_decay_weight=self.fipy_simulator_dict.get('loss_decay_weight', 0.0)
-            )
+            use_lr_scheduler = self.fipy_simulator_dict.get('use_lr_scheduler', False)     
+            if not use_lr_scheduler:
+                result = optim.run(
+                    max_iteration=self.fipy_simulator_dict['max_iteration'],
+                    line_search_steps=self.fipy_simulator_dict['line_search_steps'],
+                    momentum_weight=self.fipy_simulator_dict['momentum_weight'],
+                    recorder=recorder,
+                    full_run=self.fipy_simulator_dict['full_run'],
+                    result_vtu_file=self.result_opt_vtu,
+                    hot_step=self.fipy_simulator_dict['hot_steps'],
+                    loss_decay_weight=self.fipy_simulator_dict.get('loss_decay_weight', 0.0)
+                )
+            else:
+                result = optim.run_with_lr_scheduler(
+                    min_lr=self.fipy_simulator_dict['min_lr'],
+                    max_lr=self.fipy_simulator_dict['max_lr'],
+                    max_iteration=self.fipy_simulator_dict['max_iteration'],
+                    hot_step=self.fipy_simulator_dict['hot_steps'],
+                    momentum_weight=self.fipy_simulator_dict['momentum_weight'],
+                    full_run=self.fipy_simulator_dict['full_run'],
+                    recorder=recorder,
+                )
             
         else:
             optim = TopoFluidOptimizer(
@@ -327,16 +339,28 @@ class TopoFluidGridOptimizer(object):
                 obstacle_cost_args=self.obstacle_cost_args,
             )
             recorder = TensorBoardRecorder(os.path.join(self.opt_dir, 'log'))
-            result = optim.run(
-                max_iteration=self.dolfinx_simulator_dict['max_iteration'],
-                line_search_steps=self.dolfinx_simulator_dict['line_search_steps'],
-                momentum_weight=self.dolfinx_simulator_dict['momentum_weight'],
-                recorder=recorder,
-                full_run=self.dolfinx_simulator_dict['full_run'],
-                result_vtu_file=self.result_opt_vtu,
-                hot_step=self.dolfinx_simulator_dict['hot_steps'],
-                loss_decay_weight=self.dolfinx_simulator_dict.get('loss_decay_weight', 0.0)
-            )
+            use_lr_scheduler = self.dolfinx_simulator_dict.get('use_lr_scheduler', False)     
+            if not use_lr_scheduler:
+                result = optim.run(
+                    max_iteration=self.dolfinx_simulator_dict['max_iteration'],
+                    line_search_steps=self.dolfinx_simulator_dict['line_search_steps'],
+                    momentum_weight=self.dolfinx_simulator_dict['momentum_weight'],
+                    recorder=recorder,
+                    full_run=self.dolfinx_simulator_dict['full_run'],
+                    result_vtu_file=self.result_opt_vtu,
+                    hot_step=self.dolfinx_simulator_dict['hot_steps'],
+                    loss_decay_weight=self.dolfinx_simulator_dict.get('loss_decay_weight', 0.0)
+                )
+            else:
+                result = optim.run_with_lr_scheduler(
+                    min_lr=self.dolfinx_simulator_dict['min_lr'],
+                    max_lr=self.dolfinx_simulator_dict['max_lr'],
+                    max_iteration=self.dolfinx_simulator_dict['max_iteration'],
+                    hot_step=self.dolfinx_simulator_dict['hot_steps'],
+                    momentum_weight=self.dolfinx_simulator_dict['momentum_weight'],
+                    full_run=self.dolfinx_simulator_dict['full_run'],
+                    recorder=recorder,
+                )
         
         return result
 

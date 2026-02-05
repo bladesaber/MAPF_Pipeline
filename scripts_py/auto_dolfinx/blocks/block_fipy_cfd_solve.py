@@ -257,15 +257,15 @@ def convert_fipy_result_to_dolfinx(
     cell_velocity_fun = dolfinx.fem.Function(cell_vector_func_space)
     cell_velocity_fun.x.array[:] = cell_velocity.reshape((-1,))  # type: ignore
     # NOTE: 无论什么映射方法,MeshSize越大,精度越差
-    velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
-        mesh=mesh,
-        original_func=cell_velocity_fun,  # type: ignore
-        target_func_space=V_func_space,
-        method='L2',
-        bcs=velocity_L2_bcs,
-        with_dolfinx_function=True,
-        ksp_option=interpolation_ksp_option,
-    )
+    # velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+    #     mesh=mesh,
+    #     original_func=cell_velocity_fun,  # type: ignore
+    #     target_func_space=V_func_space,
+    #     method='L2',
+    #     bcs=velocity_L2_bcs,
+    #     with_dolfinx_function=True,
+    #     ksp_option=interpolation_ksp_option,
+    # )
     # NOTE: interpolate is not good enough
     # velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
     #     mesh=mesh,
@@ -280,27 +280,79 @@ def convert_fipy_result_to_dolfinx(
     #     mesh=mesh,
     #     original_func=cell_velocity_fun,  # type: ignore
     #     target_func_space=DolfinUtils.point_vector_function_space(mesh.domain, degree=2),  # terrible
-    #     method='L2',
+    #     method='L2+poisson',
     #     bcs=velocity_L2_bcs,
     #     with_dolfinx_function=True,
     #     ksp_option=interpolation_ksp_option,
+    #     alpha=0.001,
     # )
     # velocity_interpolate_fun = dolfinx.fem.Function(V_func_space)
     # velocity_interpolate_fun.interpolate(higher_degree_velocity_interpolate_fun)  # type: ignore
-    # # ----------------------------
-    
-    cell_scalar_func_space = DolfinUtils.cell_scalar_function_space(mesh.domain)
-    cell_pressure_fun = dolfinx.fem.Function(cell_scalar_func_space)
-    cell_pressure_fun.x.array[:] = cell_pressure.reshape((-1,))  # type: ignore
-    pressure_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+    # NOTE: it still a bomb
+    # velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+    #     mesh=mesh,
+    #     original_func=cell_velocity_fun,  # type: ignore
+    #     target_func_space=V_func_space,
+    #     method='L2+poisson',
+    #     bcs=velocity_L2_bcs,
+    #     with_dolfinx_function=True,
+    #     ksp_option=interpolation_ksp_option,
+    #     alpha=0.0002,
+    # )
+    velocity_point_fun = FunctionSpaceUtils.convert_cell_to_point(
         mesh=mesh,
-        original_func=cell_pressure_fun,  # type: ignore
-        target_func_space=Q_func_space,
+        func_data=cell_velocity,
+        is_vector=True,
+        method='volume_weighted',
+        bcs=[],
+        with_dolfinx_function=True,
+        target_func_space=None,
+        ksp_option={},
+    )
+    velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+        mesh=mesh,
+        original_func=velocity_point_fun,  # type: ignore
+        target_func_space=V_func_space,
         method='L2',
-        bcs=pressure_L2_bcs,
+        bcs=velocity_L2_bcs,
         with_dolfinx_function=True,
         ksp_option=interpolation_ksp_option,
     )
+    # # ------ Hyper method ------
+    # velocity_point_fun = FunctionSpaceUtils.convert_cell_to_point(
+    #     mesh=mesh,
+    #     func_data=cell_velocity,
+    #     is_vector=True,
+    #     method='volume_weighted',
+    #     bcs=[],
+    #     with_dolfinx_function=True,
+    #     target_func_space=None,
+    #     ksp_option={},
+    # )
+    # velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+    #     mesh=mesh,
+    #     original_func=velocity_point_fun,  # type: ignore
+    #     target_func_space=V_func_space,
+    #     method='L2+poisson',
+    #     bcs=velocity_L2_bcs,
+    #     with_dolfinx_function=True,
+    #     ksp_option=interpolation_ksp_option,
+    #     alpha=0.001,
+    # )
+    # # ------ Hyper method ------
+       
+    cell_scalar_func_space = DolfinUtils.cell_scalar_function_space(mesh.domain)
+    cell_pressure_fun = dolfinx.fem.Function(cell_scalar_func_space)
+    cell_pressure_fun.x.array[:] = cell_pressure.reshape((-1,))  # type: ignore
+    # pressure_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+    #     mesh=mesh,
+    #     original_func=cell_pressure_fun,  # type: ignore
+    #     target_func_space=Q_func_space,
+    #     method='L2',
+    #     bcs=pressure_L2_bcs,
+    #     with_dolfinx_function=True,
+    #     ksp_option=interpolation_ksp_option,
+    # )
     # pressure_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
     #     mesh=mesh,
     #     original_func=cell_pressure_fun,  # type: ignore
@@ -319,6 +371,59 @@ def convert_fipy_result_to_dolfinx(
     # )
     # pressure_interpolate_fun = dolfinx.fem.Function(Q_func_space)
     # pressure_interpolate_fun.interpolate(higher_degree_pressure_interpolate_fun)  # type: ignore
+    # NOTE: distort real result
+    # pressure_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+    #     mesh=mesh,
+    #     original_func=cell_pressure_fun,  # type: ignore
+    #     target_func_space=Q_func_space,
+    #     method='L2+poisson',
+    #     bcs=pressure_L2_bcs,
+    #     with_dolfinx_function=True,
+    #     ksp_option=interpolation_ksp_option,
+    #     alpha=0.0005,
+    # )
+    pressure_point_fun = FunctionSpaceUtils.convert_cell_to_point(
+        mesh=mesh,
+        func_data=cell_pressure,
+        is_vector=False,
+        method='volume_weighted',
+        bcs=[],
+        with_dolfinx_function=True,
+        target_func_space=None,
+        ksp_option={},
+    )
+    pressure_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+        mesh=mesh,
+        original_func=pressure_point_fun,  # type: ignore
+        target_func_space=Q_func_space,
+        method='L2',
+        bcs=pressure_L2_bcs,
+        with_dolfinx_function=True,
+        ksp_option=interpolation_ksp_option,
+    )
+    
+    # # ------ Hyper method ------
+    # pressure_point_fun = FunctionSpaceUtils.convert_cell_to_point(
+    #     mesh=mesh,
+    #     func_data=cell_pressure,
+    #     is_vector=False,
+    #     method='volume_weighted',
+    #     bcs=[],
+    #     with_dolfinx_function=True,
+    #     target_func_space=None,
+    #     ksp_option={},
+    # )
+    # pressure_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
+    #     mesh=mesh,
+    #     original_func=pressure_point_fun,  # type: ignore
+    #     target_func_space=Q_func_space,
+    #     method='L2+poisson',
+    #     bcs=pressure_L2_bcs,
+    #     with_dolfinx_function=True,
+    #     ksp_option=interpolation_ksp_option,
+    #     alpha=0.001,
+    # )
+    # # ------ Hyper method ------
     
     uh.x.array[V_to_W_dofs] = velocity_interpolate_fun.x.array.copy()  # type: ignore
     uh.x.array[Q_to_W_dofs] = pressure_interpolate_fun.x.array.copy()  # type: ignore
@@ -621,7 +726,7 @@ def equation_cfd_topoWeight_solve(
             Q_to_W_dofs=Q_to_W_dofs,
         )
         
-        # very terrible
+        # # very terrible
         # # NOTE: try to make result to consistent with boundaries. 由于FVM结果与FEM不一致,导致了FixFlux Cost非常不稳定
         # if fluid_type == 'stoke':
         #     state = refit_to_dolfinx(
@@ -860,7 +965,7 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
             Q_to_W_dofs=self.Q_to_W_dofs,
         )
         
-        # very terrible
+        # # very terrible
         # if self.fluid_type == 'stoke':
         #     uh = refit_to_dolfinx(
         #         mesh=self.structure_mesh,

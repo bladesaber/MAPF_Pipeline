@@ -28,6 +28,8 @@ from scripts_py.simulator.eary_stoper import EarlyStopper
 from scripts_py.openmpi_utils import OpenMpiUtils
 from scripts_py.functionspae_utils import FunctionSpaceUtils
 
+from fipy.solvers.petsc import LinearGMRESSolver, LinearPCGSolver  # Import at top
+
 
 class FipyStokeSimulator(object):
     '''Gmsh2D/Gmsh3D only accept .msh version 2'''
@@ -176,9 +178,13 @@ class FipyStokeSimulator(object):
         self.ap = CellVariable(mesh=self.mesh, value=1.)
         self.coeff = 1. / self.ap.arithmeticFaceValue * self.mesh._faceAreas * self.mesh._cellDistances
         self.pressureCorrectionEq = DiffusionTerm(coeff=self.coeff) - self.face_velocity.divergence
-        
-        self.pressureCorrection = CellVariable(mesh=self.mesh)
-        self.pressureCorrectionSolver = self.pressureCorrectionEq.getDefaultSolver(tolerance=1e-10, iterations=2000)
+
+        self.pressureCorrection = CellVariable(mesh=self.mesh)        
+        # self.pressureCorrectionSolver = self.pressureCorrectionEq.getDefaultSolver(tolerance=1e-10, iterations=2000)
+        # self.velocity_solver = None
+        # TODO: is it better than using default solver?
+        self.velocity_solver = LinearGMRESSolver(tolerance=1e-8, iterations=500, precon='hypre')  # Good for diffusion  # type: ignore
+        self.pressureCorrectionSolver = LinearPCGSolver(tolerance=1e-10, iterations=2000, precon='mg')  # Multigrid for pressure # type: ignore
         
         # ------ define other variables ------
         self.volume = CellVariable(mesh=self.mesh, value=self.mesh.cellVolumes, name='Volume')
@@ -610,14 +616,14 @@ class FipyStokeSimulator(object):
         for iter_idx in range(iterations):
             # ------ solve the momentum equation ------
             self.xVelocityEq.cacheMatrix()
-            x_residual = self.xVelocityEq.sweep(var=self.xVelocity, underRelaxation=self.velocityRelaxation)
+            x_residual = self.xVelocityEq.sweep(var=self.xVelocity, underRelaxation=self.velocityRelaxation, solver=self.velocity_solver)
             
             self.yVelocityEq.cacheMatrix()
-            y_residual = self.yVelocityEq.sweep(var=self.yVelocity, underRelaxation=self.velocityRelaxation)
+            y_residual = self.yVelocityEq.sweep(var=self.yVelocity, underRelaxation=self.velocityRelaxation, solver=self.velocity_solver)
             
             if self.tdim == 3:
                 self.zVelocityEq.cacheMatrix()
-                z_residual = self.zVelocityEq.sweep(var=self.zVelocity, underRelaxation=self.velocityRelaxation)
+                z_residual = self.zVelocityEq.sweep(var=self.zVelocity, underRelaxation=self.velocityRelaxation, solver=self.velocity_solver)
             # ------ solve the momentum equation ------
 
             # ------ update the ap coefficient from the matrix diagonal ------
@@ -742,6 +748,16 @@ class FipyStokeSimulator(object):
                     residual_dict['z_residual'] = global_z_residual
                 with open(os.path.join(save_dir, 'residual.json'), 'w') as f:
                     json.dump(residual_dict, f, indent=4)
+                
+                # # ------ Just test ------
+                # grid = pyvista.read(os.path.join(save_dir, 'result.vtu'))
+                # pressure, velocity = self.eval_points(points=self.structure_mesh.points.T[:self.structure_mesh.tdim, :])  # type: ignore
+                # grid.point_data['vel'] = velocity
+                # grid.point_data['p'] = pressure
+                # grid.point_data['vel_mag'] = np.linalg.norm(velocity, axis=1)
+                # grid.save(os.path.join(save_dir, 'result.vtu'))
+                # # ------ Just test ------
+                
 
     @staticmethod
     def from_msh(
