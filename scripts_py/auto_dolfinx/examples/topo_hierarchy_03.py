@@ -10,7 +10,7 @@ from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import TopoFluidHie
 NOTE: FixedFlux本身的震荡很严重,所以必须是最小的,否则无法收敛.该问题主要是平衡reg_cost与FixedFlux之间的权重.
 """
 
-base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48_1'
+base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48_2'
 
 right_boundary = 1.0
 back_boundary = 1.0
@@ -247,7 +247,7 @@ boundaries = [
     AutoFluidBoundary(
         name='inlet',
         boundary_type='velocity',
-        value=[0.0, 0.0, 1.0],
+        value=[0.0, 0.0, 10.0],
         marker=1,
         face_center=np.array([0.5, 0.5, 0.0]),
         face_norm_vector=np.array([0.0, 0.0, 1.0]),
@@ -257,14 +257,14 @@ boundaries = [
 
 start_marker = 1
 
-min_ratio = 0.3
-max_ratio = 0.7
+min_ratio = 0.2
+max_ratio = 0.8
 face_radius = 0.05
-top_pipes, start_marker = generate_top_pipes(4, start_marker, face_radius, min_ratio, max_ratio)
-front_pipes, start_marker = generate_front_pipes(4, start_marker, face_radius, min_ratio, max_ratio)
-back_pipes, start_marker = generate_back_pipes(4, start_marker, face_radius, min_ratio, max_ratio)
-left_pipes, start_marker = generate_left_pipes(4, start_marker, face_radius, min_ratio, max_ratio)
-right_pipes, start_marker = generate_right_pipes(4, start_marker, face_radius, min_ratio, max_ratio)
+top_pipes, start_marker = generate_top_pipes(9, start_marker, face_radius, min_ratio, max_ratio)
+front_pipes, start_marker = generate_front_pipes(9, start_marker, face_radius, min_ratio, max_ratio)
+back_pipes, start_marker = generate_back_pipes(9, start_marker, face_radius, min_ratio, max_ratio)
+left_pipes, start_marker = generate_left_pipes(9, start_marker, face_radius, min_ratio, max_ratio)
+right_pipes, start_marker = generate_right_pipes(9, start_marker, face_radius, min_ratio, max_ratio)
 
 boundaries.extend(top_pipes)
 boundaries.extend(front_pipes)
@@ -305,9 +305,9 @@ optim = TopoFluidHierarchyOptimizer(
     space_dim=3,
     space_left_bottom_corner=np.array([0.0, 0.0, 0.0]),
     space_right_top_corner=np.array([1.0, 1.0, 1.0]),
-    space_resolutions=[0.15],
-    mesh_min_sizes=[0.02],
-    mesh_max_sizes=[0.06],
+    space_resolutions=[0.15, 0.1, 0.05],
+    mesh_min_sizes=[0.03, 0.02, 0.01],
+    mesh_max_sizes=[0.06, 0.04, 0.02],
     boundary_list=boundaries,
     fluid_type='stoke',
     viscosity_init=1.0 / 400.,
@@ -316,6 +316,9 @@ optim = TopoFluidHierarchyOptimizer(
     us_fipy=True,
     extract_threshold=0.4,
     diffusion_step=0,
+    alpha_fun_max=300.0,
+    alpha_fun_min=1e-12,
+    alpha_fun_p=3.0,
 )
 optim.optimize(
     run_cfgs=[
@@ -333,15 +336,15 @@ optim.optimize(
                     'outlet_markers': outlet_markers,
                     'outlet_marker_ratios': outlet_marker_ratios.tolist(),
                     # NOTE: FixedFlux的振荡会造成无法全部管道都不相连,互相约束.但过小的weight会造成无法均衡. 所以这里的大小必须严格测试
-                    'outlet_marker_weights': (outlet_marker_weights * 1e-1).tolist(),
+                    'outlet_marker_weights': (outlet_marker_weights * 1e1).tolist(),
                     'with_rescale': True,
                     'with_max_dif_cost': False,
-                    'max_dif_weight': 1e-3,
+                    'max_dif_weight': 1e-2,
                 },
             ],
             'reg_cost_args':{
                 'style': 'Volume',
-                'weight': 1e-3,
+                'weight': 5e-1,
                 'target_volume': target_volume,
                 'reg_rescale': True,
             },
@@ -358,20 +361,34 @@ optim.optimize(
                 'use_tqdm': True,
                 'use_log': True,
                 'max_iteration': 300,
-                'line_search_steps': [0.05],
+                'line_search_steps': [0.2],
                 'momentum_weight': 0.8,
                 'full_run': False,
+                'use_lr_scheduler': False,
+                'min_lr': 1e-2,
+                'max_lr': 2e-1,
+            }
+        },
+        {
+            'reg_cost_args':{
+                'style': 'Volume',
+                'weight': 1.0,
+                'target_volume': target_volume,
+                'reg_rescale': True,
             },
-            'dolfinx_simulator_cfg': {
-                'max_iteration': 300,
-                'line_search_steps': [0.2, 0.1, 0.05],
-                'momentum_weight': 0.8,
-                'full_run': False,
-                'hot_steps': 80,
+        },
+        {
+            'reg_cost_args':{
+                'style': 'Volume',
+                'weight': 2.0,
+                'target_volume': target_volume,
+                'reg_rescale': True,
             },
         }
     ],
     residual_error_threshold=1e-3,
-    inout_pipe_length=0.03
+    inout_pipe_length=0.03,
+    weight_filter_ratio=2.5,
+    dist_max_ratio=1.0,  # small cause it faster to test the experiment
 )
 

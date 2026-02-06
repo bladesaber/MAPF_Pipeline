@@ -244,7 +244,9 @@ def convert_fipy_result_to_dolfinx(
         "pc_type": 'lu',
         "pc_factor_mat_solver_type": "mumps",
         "mat_mumps_icntl_24": 1
-    }
+    },
+    alpha_value: np.ndarray|None = None,
+    alpha_max: float|None = None,
 ):
     velocity_L2_bcs, pressure_L2_bcs = define_interpolation_bcs(
         mesh=mesh,
@@ -309,6 +311,15 @@ def convert_fipy_result_to_dolfinx(
         target_func_space=None,
         ksp_option={},
     )
+    
+    # ------ add high alpha area to strict low velocity area ------
+    # NOTE: 这里的问题是在环绕渗透的地方通常会有很低的速度,但渗透率由不至于非常低,所以这个过滤意义不大. Need to check
+    if alpha_value is not None and alpha_max is not None:
+        point_velocity_np = velocity_point_fun.x.array.copy().reshape((-1, mesh.tdim))  # type: ignore
+        point_velocity_np[alpha_value > alpha_max * 0.99, :] = 0.0  # type: ignore
+    velocity_point_fun.x.array[:] = point_velocity_np.reshape((-1,))  # type: ignore
+    # ------ add high alpha area to strict low velocity area ------
+    
     velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
         mesh=mesh,
         original_func=velocity_point_fun,  # type: ignore
@@ -713,7 +724,7 @@ def equation_cfd_topoWeight_solve(
             )
         else:
             raise ValueError(f"Invalid fluid type: {fluid_type}")
-                    
+        
         state = convert_fipy_result_to_dolfinx(
             mesh=structure_mesh,
             cell_velocity=cell_velocity,
@@ -724,6 +735,8 @@ def equation_cfd_topoWeight_solve(
             uh=state,
             V_to_W_dofs=V_to_W_dofs,
             Q_to_W_dofs=Q_to_W_dofs,
+            alpha_value=structure_source_term,
+            alpha_max=alpha_max,
         )
         
         # # very terrible

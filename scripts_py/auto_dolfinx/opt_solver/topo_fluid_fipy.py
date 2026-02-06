@@ -271,12 +271,13 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                     if with_max_dif_cost:
                         max_dif_cost, max_dif_weight = 0.0, 0.0
                         
-                    for i, (_, outlet_item) in enumerate(obj_cost_args['outlet_cost_forms'].items()):
+                    for i, (marker, outlet_item) in enumerate(obj_cost_args['outlet_cost_forms'].items()):
                         outlet_flux = assemble_scalar(
                             form=outlet_item['flux_form'],
                             domain=self.domain, tape=self.tape
                         )
                         target_flux = outlet_item['target_flux']
+                        print(f"{marker} flux: {outlet_flux}, target: {target_flux}, inlet_flux: {obj_cost_args['inlet_flux']}")
                                                 
                         flux_dif = outlet_flux - target_flux
                         if with_rescale:

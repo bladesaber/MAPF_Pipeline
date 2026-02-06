@@ -489,7 +489,7 @@ class GridMesher(object):
         else:
             raise ValueError(f"Invalid output type: {output_type}")
                     
-    def extract_3d_field(self, field_value: np.ndarray, threshold: float, output_type: Literal['geo', 'vtk'], **kwargs):        
+    def extract_3d_field(self, field_value: np.ndarray, threshold: float, output_type: Literal['geo', 'vtk'], **kwargs):
         surface_idxs = self.extract_field_boundary_idxs(field_value, threshold)
         line_idxs = np.unique(self.surface2lines[surface_idxs])
         point_idxs = np.unique(self.line2points[line_idxs])

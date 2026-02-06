@@ -45,6 +45,8 @@ class TopoFluidGridOptimizer(object):
         alpha_fun_max: float = 100.0,
         alpha_fun_min: float = 1e-12,
         alpha_fun_p: float = 3.0,
+        weight_filter_ratio: float = 1.5,
+        dist_max_ratio: float = 1.0,
         us_fipy=False,
         fipy_simulator_dict = {
             'simulation_iterations': 200,
@@ -95,6 +97,7 @@ class TopoFluidGridOptimizer(object):
         self.space_resolution = space_resolution
         self.mesh_min_size = mesh_min_size
         self.mesh_max_size = mesh_max_size
+        self.dist_max_ratio = dist_max_ratio
         
         self.inout_pipe_length = inout_pipe_length  
         if self.inout_pipe_length > 0.0 and self.space_dim == 3:
@@ -115,7 +118,7 @@ class TopoFluidGridOptimizer(object):
         self.viscosity_init = viscosity_init
         self.topo_weight_init = topo_weight_init
         self.init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'] = init_topo_weight_method
-        self.weight_filter_radius = self.mesh_max_size * 1.5  # TODO: change to 1.1?
+        self.weight_filter_radius = self.mesh_max_size * weight_filter_ratio
         self.alpha_fun_max = alpha_fun_max
         self.alpha_fun_min = alpha_fun_min
         self.alpha_fun_p = alpha_fun_p
@@ -209,7 +212,7 @@ class TopoFluidGridOptimizer(object):
             min_size=self.mesh_min_size,
             max_size=max(self.mesh_max_size, self.mesh_min_size * 1.1),
             dist_min=self.mesh_min_size,
-            dist_max=max(self.mesh_max_size, self.mesh_min_size * 2.0),
+            dist_max=self.mesh_min_size * self.dist_max_ratio,  # self.dist_max_ratio larger than 1.0 make flux optimization more stable
             msh_file_path=self.msh_file_path
         )
         assert os.path.exists(self.msh_file_path), "[Error]: gmsh failed"
@@ -464,7 +467,9 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
             }
         ],
         residual_error_threshold=1e-4,
-        inout_pipe_length=0.05
+        inout_pipe_length=0.05,
+        weight_filter_ratio: float|list[float]=1.5,
+        dist_max_ratio: float|list[float]=2.0,
     ):
         self.grid_optimizers.clear()
                 
@@ -474,8 +479,18 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
         last_fipy_simulator_cfg: dict = None  # type: ignore
         last_dolfinx_simulator_cfg: dict = None  # type: ignore
         
-        for layer_id, (space_resolution, mesh_min_size, mesh_max_size) in enumerate(
-            zip(self.space_resolutions, self.mesh_min_sizes, self.mesh_max_sizes)
+        if isinstance(weight_filter_ratio, float):
+            weight_filter_ratio_list = [weight_filter_ratio] * len(self.space_resolutions)
+        else:
+            weight_filter_ratio_list: list[float] = weight_filter_ratio  # type: ignore
+        if isinstance(dist_max_ratio, float):
+            dist_max_ratio_list = [dist_max_ratio] * len(self.space_resolutions)
+        else:
+            dist_max_ratio_list: list[float] = dist_max_ratio  # type: ignore
+        
+        for layer_id, (space_resolution, mesh_min_size, mesh_max_size, weight_filter_ratio, dist_max_ratio) in enumerate(
+            zip(self.space_resolutions, self.mesh_min_sizes, self.mesh_max_sizes, 
+                weight_filter_ratio_list, dist_max_ratio_list)
         ):
             if len(self.grid_optimizers) > 0:
                 reference_optimizer = self.grid_optimizers[-1]
@@ -522,6 +537,8 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
                 alpha_fun_max=self.alpha_fun_max,
                 alpha_fun_min=self.alpha_fun_min,
                 alpha_fun_p=self.alpha_fun_p,
+                weight_filter_ratio=weight_filter_ratio,
+                dist_max_ratio=dist_max_ratio,
                 us_fipy=self.us_fipy,
                 fipy_simulator_dict=fipy_simulator_cfg,
                 dolfinx_simulator_dict=dolfinx_simulator_cfg,
