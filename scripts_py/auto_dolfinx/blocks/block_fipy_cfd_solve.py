@@ -976,6 +976,8 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
             uh=uh,
             V_to_W_dofs=self.V_to_W_dofs,
             Q_to_W_dofs=self.Q_to_W_dofs,
+            alpha_value=structure_source_term,
+            alpha_max=self.alpha_max,
         )
         
         # # very terrible
