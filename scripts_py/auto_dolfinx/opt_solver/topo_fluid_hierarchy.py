@@ -105,6 +105,7 @@ class TopoFluidGridOptimizer(object):
             self.boundary_list = []
             for boundary in boundary_list:
                 boundary_copy = copy.deepcopy(boundary)
+                boundary_copy.origin_face_center = boundary_copy.face_center  # type: ignore
                 if boundary_copy.boundary_type == 'velocity':
                     boundary_copy.face_center = boundary_copy.face_center - boundary_copy.face_norm_vector * self.inout_pipe_length
                 elif boundary_copy.boundary_type == 'pressure':
@@ -118,7 +119,8 @@ class TopoFluidGridOptimizer(object):
         self.viscosity_init = viscosity_init
         self.topo_weight_init = topo_weight_init
         self.init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'] = init_topo_weight_method
-        self.weight_filter_radius = self.mesh_max_size * weight_filter_ratio
+        self.weight_filter_ratio = weight_filter_ratio
+        self.weight_filter_radius = self.mesh_max_size * self.weight_filter_ratio
         self.alpha_fun_max = alpha_fun_max
         self.alpha_fun_min = alpha_fun_min
         self.alpha_fun_p = alpha_fun_p
@@ -133,7 +135,7 @@ class TopoFluidGridOptimizer(object):
 
     def prepare_design_space(
         self, reference_optimizer: Union["TopoFluidGridOptimizer", None] = None,
-        threshold: float = 0.4, diffusion_step = 0
+        threshold: float = 0.4, diffusion_step = 0, compress_mesh=False
     ):
         grid_mesher = GridMesher(
             dim=self.space_dim,
@@ -161,6 +163,20 @@ class TopoFluidGridOptimizer(object):
                 pcd_xyz=grid_points[inside_ref_cell_bool],
                 cell_indices=point_to_ref_cell_idxs[inside_ref_cell_bool].tolist()
             ).reshape(-1)
+            
+            # ------ add pipe include plane points ------
+            if self.inout_pipe_length > 0.0:
+                for bry in self.boundary_list:
+                    if bry.boundary_type == 'wall':
+                        continue
+                    face_center = bry.origin_face_center[:grid_mesher.dim]  # type: ignore
+                    in_cylinder_bool = np.bitwise_and(
+                        np.linalg.norm(grid_mesher.points - face_center, axis=1) < bry.face_radius,
+                        np.abs(np.dot(grid_mesher.points - face_center, bry.face_norm_vector)) < grid_mesher.resolution * 0.5
+                    )
+                    point_field_value[in_cylinder_bool] = 1.0
+            # ------ add pipe include plane points ------
+            
             point_field_value = (point_field_value >= threshold).astype(float)
             
             # # ----- debug visualization ------
@@ -213,7 +229,8 @@ class TopoFluidGridOptimizer(object):
             max_size=max(self.mesh_max_size, self.mesh_min_size * 1.1),
             dist_min=self.mesh_min_size,
             dist_max=self.mesh_min_size * self.dist_max_ratio,  # self.dist_max_ratio larger than 1.0 make flux optimization more stable
-            msh_file_path=self.msh_file_path
+            msh_file_path=self.msh_file_path,
+            compress_mesh_extend_from_boundary=compress_mesh
         )
         assert os.path.exists(self.msh_file_path), "[Error]: gmsh failed"
         
@@ -317,6 +334,8 @@ class TopoFluidGridOptimizer(object):
                     momentum_weight=self.fipy_simulator_dict['momentum_weight'],
                     full_run=self.fipy_simulator_dict['full_run'],
                     recorder=recorder,
+                    result_vtu_file=self.result_opt_vtu,
+                    loss_decay_weight=self.fipy_simulator_dict.get('loss_decay_weight', 0.0)
                 )
             
         else:
@@ -368,13 +387,128 @@ class TopoFluidGridOptimizer(object):
         
         return result
 
-    def to_json(self):
-        # TODO: easy for test
-        pass
+    @staticmethod
+    def bry_to_dict(bry: AutoFluidBoundary):
+        return {
+            'name': bry.name,
+            'boundary_type': bry.boundary_type,
+            'marker': bry.marker,
+            'value': list(bry.value) if isinstance(bry.value, np.ndarray) else bry.value,
+            'face_center': list(bry.face_center) if bry.face_center is not None else None,
+            'face_norm_vector': list(bry.face_norm_vector) if bry.face_norm_vector is not None else None,
+            'face_radius': bry.face_radius if bry.face_radius is not None else None,
+            'is_free': bry.is_free,
+            'kwargs': bry.kwargs,
+        }
+
+    @staticmethod
+    def dict_to_bry(bry_dict: dict):
+        bry_value = bry_dict['value']
+        if isinstance(bry_value, list):
+            bry_value = np.array(bry_value)
+        return AutoFluidBoundary(
+            name=bry_dict['name'],
+            boundary_type=bry_dict['boundary_type'],
+            value=bry_value,
+            marker=bry_dict['marker'],
+            face_center=np.array(bry_dict['face_center']) if bry_dict['face_center'] is not None else None,
+            face_norm_vector=np.array(bry_dict['face_norm_vector']) if bry_dict['face_norm_vector'] is not None else None,
+            face_radius=bry_dict['face_radius'] if bry_dict['face_radius'] is not None else None,
+            is_free=bry_dict['is_free'],
+            **bry_dict['kwargs'],
+        )
+
+    def save_cfg(self):
+        if isinstance(self.viscosity_init, np.ndarray):
+            viscosity_init_file = os.path.join(self.run_dir, 'viscosity_init.npy')
+            np.save(viscosity_init_file, self.viscosity_init)
+            viscosity_init = viscosity_init_file
+        else:
+            viscosity_init = self.viscosity_init
+        
+        if isinstance(self.topo_weight_init, np.ndarray):
+            topo_weight_init_file = os.path.join(self.run_dir, 'topo_weight_init.npy')
+            np.save(topo_weight_init_file, self.topo_weight_init)
+            topo_weight_init = topo_weight_init_file
+        else:
+            topo_weight_init = self.topo_weight_init
+        
+        cfg = {
+            'name': self.name,
+            'run_dir': self.run_dir,
+            'space_dim': self.space_dim,
+            'space_left_bottom_corner': self.space_left_bottom_corner.tolist(),
+            'space_right_top_corner': self.space_right_top_corner.tolist(),
+            'space_resolution': self.space_resolution,
+            'mesh_min_size': self.mesh_min_size,
+            'mesh_max_size': self.mesh_max_size,
+            'boundary_list': [self.bry_to_dict(bry) for bry in self.boundary_list],
+            'obj_cost_args_list': self.obj_cost_args_list,
+            'reg_cost_args': self.reg_cost_args,
+            'obstacle_cost_args': self.obstacle_cost_args,
+            'fluid_type': self.fluid_type,
+            'viscosity_init': viscosity_init,
+            'topo_weight_init': topo_weight_init,
+            'init_topo_weight_method': self.init_topo_weight_method,
+            'alpha_fun_max': self.alpha_fun_max,
+            'alpha_fun_min': self.alpha_fun_min,
+            'alpha_fun_p': self.alpha_fun_p,
+            'weight_filter_ratio': self.weight_filter_ratio,
+            'dist_max_ratio': self.dist_max_ratio,
+            'us_fipy': self.us_fipy,
+            'fipy_simulator_dict': self.fipy_simulator_dict,
+            'dolfinx_simulator_dict': self.dolfinx_simulator_dict,
+            'inout_pipe_length': self.inout_pipe_length,
+        }
+        with open(os.path.join(self.run_dir, 'settings.json'), 'w') as f:
+            json.dump(cfg, f, indent=4)
     
-    def run_from_json(self, json_file: str):
-        # TODO: easy for test
-        pass
+    @staticmethod
+    def load_from_json(json_file: str):
+        with open(json_file, 'r') as f:
+            cfg = json.load(f)
+        
+        boundary_list = []
+        for bry_dict in cfg['boundary_list']:
+            boundary_list.append(TopoFluidGridOptimizer.dict_to_bry(bry_dict))
+        
+        if isinstance(cfg['viscosity_init'], str):
+            viscosity_init = np.load(cfg['viscosity_init'], allow_pickle=True)
+        else:
+            viscosity_init = cfg['viscosity_init']
+        if isinstance(cfg['topo_weight_init'], str):
+            topo_weight_init = np.load(cfg['topo_weight_init'], allow_pickle=True)
+        else:
+            topo_weight_init = cfg['topo_weight_init']
+        
+        optim = TopoFluidGridOptimizer(
+            name=cfg['name'],
+            run_dir=cfg['run_dir'],
+            space_dim=cfg['space_dim'],
+            space_left_bottom_corner=cfg['space_left_bottom_corner'],
+            space_right_top_corner=cfg['space_right_top_corner'],
+            space_resolution=cfg['space_resolution'],
+            mesh_min_size=cfg['mesh_min_size'],
+            mesh_max_size=cfg['mesh_max_size'],
+            boundary_list=boundary_list,
+            obj_cost_args_list=cfg['obj_cost_args_list'],
+            reg_cost_args=cfg['reg_cost_args'],
+            obstacle_cost_args=cfg['obstacle_cost_args'],
+            fluid_type=cfg['fluid_type'],
+            viscosity_init=viscosity_init,
+            topo_weight_init=topo_weight_init,
+            init_topo_weight_method=cfg['init_topo_weight_method'],
+            alpha_fun_max=cfg['alpha_fun_max'],
+            alpha_fun_min=cfg['alpha_fun_min'],
+            alpha_fun_p=cfg['alpha_fun_p'],
+            weight_filter_ratio=cfg['weight_filter_ratio'],
+            dist_max_ratio=cfg['dist_max_ratio'],
+            us_fipy=cfg['us_fipy'],
+            fipy_simulator_dict=cfg['fipy_simulator_dict'],
+            dolfinx_simulator_dict=cfg['dolfinx_simulator_dict'],
+            inout_pipe_length=cfg['inout_pipe_length'],
+        )
+        return optim
 
 
 class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
@@ -427,6 +561,10 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
         self.diffusion_step = diffusion_step
         self.grid_optimizers: list[TopoFluidGridOptimizer] = []
     
+    def append_optimizer_from_json(self, json_file: str):
+        optim = TopoFluidGridOptimizer.load_from_json(json_file)
+        self.grid_optimizers.append(optim)
+    
     def optimize(
         self,
         run_cfgs: list[dict] = [
@@ -471,6 +609,8 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
         inout_pipe_length=0.05,
         weight_filter_ratio: float|list[float]=1.5,
         dist_max_ratio: float|list[float]=2.0,
+        compress_mesh: bool = False,
+        optimizer_jsons: list[str] = []
     ):
         self.grid_optimizers.clear()
                 
@@ -489,10 +629,15 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
         else:
             dist_max_ratio_list: list[float] = dist_max_ratio  # type: ignore
         
+        # --------------------------------------
         for layer_id, (space_resolution, mesh_min_size, mesh_max_size, weight_filter_ratio, dist_max_ratio) in enumerate(
             zip(self.space_resolutions, self.mesh_min_sizes, self.mesh_max_sizes, 
                 weight_filter_ratio_list, dist_max_ratio_list)
         ):
+            if layer_id < len(optimizer_jsons):
+                self.append_optimizer_from_json(optimizer_jsons[layer_id])
+                continue
+            
             if len(self.grid_optimizers) > 0:
                 reference_optimizer = self.grid_optimizers[-1]
             else:
@@ -544,17 +689,19 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
                 fipy_simulator_dict=fipy_simulator_cfg,
                 dolfinx_simulator_dict=dolfinx_simulator_cfg,
                 inout_pipe_length=inout_pipe_length,
-            )
+            )           
             grid_optim.prepare_design_space(
                 reference_optimizer=reference_optimizer,
                 threshold=self.extract_threshold,
-                diffusion_step=self.diffusion_step
+                diffusion_step=self.diffusion_step,
+                compress_mesh=compress_mesh
             )
             grid_optim.optimize(residual_error_threshold=residual_error_threshold)
             self.grid_optimizers.append(grid_optim)
             
             with open(os.path.join(layer_dir, 'run_cfg.json'), 'w') as f:
                 json.dump(log_run_json, f, indent=4)
+            grid_optim.save_cfg()
             
             last_obj_cost_args_list = obj_cost_args_list
             last_reg_cost_args = reg_cost_args

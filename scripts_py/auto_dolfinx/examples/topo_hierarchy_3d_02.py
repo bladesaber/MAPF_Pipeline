@@ -10,7 +10,7 @@ from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import TopoFluidHie
 NOTE: 当分支很多时,target flux就会很小.由于alpha_max的限制,渗透率很低的依然存在速率,而这些速率会导致即便不存在连通域,也存在flux,结果就不正确.
 """
 
-base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48_2'
+base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48_1'
 
 right_boundary = 1.0
 back_boundary = 1.0
@@ -229,9 +229,9 @@ optim = TopoFluidHierarchyOptimizer(
     space_dim=3,
     space_left_bottom_corner=np.array([0.0, 0.0, 0.0]),
     space_right_top_corner=np.array([1.0, 1.0, 1.0]),
-    space_resolutions=[0.15, 0.1, 0.05],
-    mesh_min_sizes=[0.03, 0.02, 0.01],
-    mesh_max_sizes=[0.06, 0.04, 0.02],  # NOTE: 网格太大了,由于中心outlet速度太快,因此必须大幅度收窄,可能导致结果上中心outlet不见了
+    space_resolutions=[0.15, 0.05, 0.05],  # NOTE: should less than minimum pipe radius
+    mesh_min_sizes=[0.02, 0.015, 0.01],
+    mesh_max_sizes=[0.05, 0.03, 0.02],  # NOTE: 网格太大了,由于中心outlet速度太快,因此必须大幅度收窄,可能导致结果上中心outlet不见了
     boundary_list=boundaries,
     fluid_type='stoke',
     viscosity_init=1.0 / 400.,
@@ -240,7 +240,7 @@ optim = TopoFluidHierarchyOptimizer(
     us_fipy=True,
     extract_threshold=0.4,
     diffusion_step=0,
-    alpha_fun_max=400.0,  # NOTE: 增加alpha_max以避免渗透率问题
+    alpha_fun_max=300.0,  # NOTE: 增加alpha_max以避免渗透率问题
     alpha_fun_min=1e-12,
     alpha_fun_p=3.0,
 )
@@ -284,11 +284,11 @@ optim.optimize(
                 'parallel_num': 8,
                 'use_tqdm': True,
                 'use_log': True,
-                'max_iteration': 300,
+                'max_iteration': 600,
                 'line_search_steps': [0.2],
                 'momentum_weight': 0.8,
                 'full_run': False,
-                'use_lr_scheduler': False,
+                'use_lr_scheduler': True,
                 'min_lr': 1e-2,
                 'max_lr': 2e-1,
             }
@@ -313,6 +313,7 @@ optim.optimize(
     residual_error_threshold=1e-3,
     inout_pipe_length=0.03,
     weight_filter_ratio=1.5,
-    dist_max_ratio=2.0,  # small cause it faster to test the experiment
+    dist_max_ratio=2.0,
+    compress_mesh=True,
 )
 

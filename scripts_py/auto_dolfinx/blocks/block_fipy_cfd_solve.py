@@ -313,15 +313,18 @@ def convert_fipy_result_to_dolfinx(
         ksp_option={},
     )
     
+    """
     # ------ add high alpha area to strict low velocity area ------
-    # TODO: not a good choice, remove in the future
+    # TODO: terrible, not a good choice, remove in the future
     # NOTE: 这里的问题是在环绕渗透的地方通常会有很低的速度,但渗透率由不至于非常低,所以这个过滤意义不大. Need to check
     if alpha_value is not None and alpha_max is not None:
         point_velocity_np = velocity_point_fun.x.array.copy().reshape((-1, mesh.tdim))  # type: ignore
-        # TODO: try not use zero, use velocity / 10.0
-        point_velocity_np[alpha_value > alpha_max * alpha_filter_ratio, :] = 0.0  # type: ignore
+        # point_velocity_np[alpha_value > alpha_max * alpha_filter_ratio, :] = 0.0  # type: ignore        
+        strict_area_bool = alpha_value > alpha_max * alpha_filter_ratio
+        point_velocity_np[strict_area_bool, :] = point_velocity_np[strict_area_bool, :] / 10.0
         velocity_point_fun.x.array[:] = point_velocity_np.reshape((-1,))  # type: ignore
     # ------ add high alpha area to strict low velocity area ------
+    """
     
     velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
         mesh=mesh,

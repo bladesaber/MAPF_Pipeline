@@ -206,3 +206,6 @@ class GmshUtils(object):
         
         return dim_cfg
 
+    @staticmethod
+    def compress_extend_from_boundary():
+        return f'Mesh.MeshSizeExtendFromBoundary = 0;'

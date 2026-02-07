@@ -470,6 +470,10 @@ class GridMesher(object):
                 )}\n')
                 f.write(f'{GmshUtils.define_minimum_field(aggregate_field_id=3, field_ids=[2])}\n')
                 # ------ generate fine based on coarse group idxs ------
+                
+                compress_mesh = kwargs.get('compress_mesh_extend_from_boundary', False)
+                if compress_mesh:
+                    f.write(f'{GmshUtils.compress_extend_from_boundary()}\n')  # TODO: please check whether it work
             
             msh_file = kwargs['msh_file_path']
             base_dir = os.path.dirname(msh_file)
@@ -592,6 +596,10 @@ class GridMesher(object):
                     )}\n')
                     f.write(f'{GmshUtils.define_minimum_field(aggregate_field_id=3, field_ids=[2])}\n')
                     
+                    compress_mesh = kwargs.get('compress_mesh_extend_from_boundary', False)
+                    if compress_mesh:
+                        f.write(f'{GmshUtils.compress_extend_from_boundary()}\n')  # TODO: please check whether it work
+                    
                 msh_file = kwargs['msh_file_path']
                 base_dir = os.path.dirname(msh_file)
                 original_msh_file = os.path.join(base_dir, 'original.msh')
@@ -697,6 +705,11 @@ class GridMesher(object):
                         dist_max=kwargs['dist_max'],
                     )}\n')
                     f.write(f'{GmshUtils.define_minimum_field(aggregate_field_id=3, field_ids=[2])}\n')
+                    f.write('\n')
+                    
+                    compress_mesh = kwargs.get('compress_mesh_extend_from_boundary', False)
+                    if compress_mesh:
+                        f.write(f'{GmshUtils.compress_extend_from_boundary()}\n')  # TODO: please check whether it work
                 
                 msh_file = kwargs['msh_file_path']
                 base_dir = os.path.dirname(msh_file)
