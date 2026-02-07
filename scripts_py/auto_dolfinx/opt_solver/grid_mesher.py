@@ -642,10 +642,11 @@ class GridMesher(object):
                         if bry_cfg.boundary_type == 'wall':
                             continue
                         volume_idx += 1
+                        
                         f.write(f'{GmshUtils.define_gmsh_cylinder(
                             volume_id=volume_idx,
                             center=bry_cfg.face_center,
-                            vector=bry_cfg.face_norm_vector * (0.05 if bry_cfg.boundary_type == 'velocity' else -0.05),
+                            vector=bry_cfg.face_norm_vector * self.inout_pipe_length * (1.0 if bry_cfg.boundary_type == 'velocity' else -1.0),
                             radius=bry_cfg.face_radius,
                         )}\n')
                         union_volume_idxs.append(volume_idx)

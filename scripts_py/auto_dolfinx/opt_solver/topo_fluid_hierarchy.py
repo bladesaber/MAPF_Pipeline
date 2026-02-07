@@ -99,7 +99,7 @@ class TopoFluidGridOptimizer(object):
         self.mesh_max_size = mesh_max_size
         self.dist_max_ratio = dist_max_ratio
         
-        self.inout_pipe_length = inout_pipe_length  
+        self.inout_pipe_length = inout_pipe_length
         if self.inout_pipe_length > 0.0 and self.space_dim == 3:
             # TODO: 这里默认了velocity是inlet,pressure是outlet,日后需要更改
             self.boundary_list = []
@@ -292,6 +292,7 @@ class TopoFluidGridOptimizer(object):
                     'with_residual': True,
                     'residual_error_threshold': residual_error_threshold  # 1e-3 NOTE: residual_error_threshold在momentum_weight作用下能允许较大的误差
                 },
+                alpha_filter_ratio=self.fipy_simulator_dict.get('alpha_filter_ratio', -1.0),
             )
             
             recorder = TensorBoardRecorder(os.path.join(self.opt_dir, 'log'))

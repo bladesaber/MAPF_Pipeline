@@ -123,6 +123,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         parallel_num: int = 1,
         use_tqdm: bool = True,
         use_log: bool = True,
+        alpha_filter_ratio=-1.0,
     ):
         # ------ init topo weight boundary constraint terms ------
         if self.init_topo_weight_method != 'none':
@@ -224,6 +225,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                 alpha_min=self.alpha_fun_min,
                 alpha_max=self.alpha_fun_max,
                 alpha_p=self.alpha_fun_p,
+                alpha_filter_ratio=alpha_filter_ratio,
                 
                 # ------ autodolfinx related ------
                 F_form=govern_form,

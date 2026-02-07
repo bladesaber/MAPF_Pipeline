@@ -6,11 +6,11 @@ from scripts_py.auto_dolfinx.opt_solver.topo_fluid import AutoFluidBoundary
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import TopoFluidHierarchyOptimizer
 
 
-"""TODO: 仿真工具不足够鲁棒性,关于累积->决策->迈步的加速收敛方法
-NOTE: FixedFlux本身的震荡很严重,所以必须是最小的,否则无法收敛.该问题主要是平衡reg_cost与FixedFlux之间的权重.
+"""
+NOTE: 当分支很多时,target flux就会很小.由于alpha_max的限制,渗透率很低的依然存在速率,而这些速率会导致即便不存在连通域,也存在flux,结果就不正确.
 """
 
-base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48_2'
+base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48_1'
 
 right_boundary = 1.0
 back_boundary = 1.0
@@ -19,18 +19,6 @@ top_boundary = 1.0
 
 def generate_top_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min_ratio=0.3, max_ratio=0.7):
     face_norm_vector=np.array([0.0, 0.0, 1.0])
-    
-    # face_centers = np.array([])
-    # while len(face_centers) < num_pipes:
-    #     random_center = np.array([0.0, 0.0, top_boundary])
-    #     random_center[:2] = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
-    #     if face_centers.shape[0] == 0:
-    #         face_centers = np.array([random_center])
-    #     else:
-    #         dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
-    #         if np.min(dist_to_prev) > 2 * face_radius + face_radius:
-    #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
-    
     if num_pipes == 1:
         face_centers = np.array([[right_boundary / 2.0, back_boundary / 2.0, top_boundary]])
     else:
@@ -61,22 +49,6 @@ def generate_top_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min_
 
 def generate_front_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min_ratio=0.3, max_ratio=0.7):
     face_norm_vector=np.array([0.0, -1.0, 0.0])
-    # face_centers = np.array([])
-    # while len(face_centers) < num_pipes:
-    #     random_center = np.array([0.0, 0.0, 0.0])
-    #     random_xz = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
-    #     if random_xz[1] < 0.4:
-    #         continue
-    #     random_center[0] = random_xz[0]
-    #     random_center[2] = random_xz[1]
-
-    #     if face_centers.shape[0] == 0:
-    #         face_centers = np.array([random_center])
-    #     else:
-    #         dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
-    #         if np.min(dist_to_prev) > 2 * face_radius + face_radius:
-    #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
-    
     if num_pipes == 1:
         face_centers = np.array([[right_boundary / 2.0, 0.0, top_boundary / 2.0]])
     else:
@@ -107,22 +79,6 @@ def generate_front_pipes(num_pipes: int, start_marker: int, face_radius=0.05, mi
 
 def generate_back_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min_ratio=0.3, max_ratio=0.7):
     face_norm_vector=np.array([0.0, 1.0, 0.0])
-    # face_centers = np.array([])
-    # while len(face_centers) < num_pipes:
-    #     random_center = np.array([0.0, back_boundary, 0.0])
-    #     random_xz = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
-    #     if random_xz[1] < 0.4:
-    #         continue
-    #     random_center[0] = random_xz[0]
-    #     random_center[2] = random_xz[1]
-
-    #     if face_centers.shape[0] == 0:
-    #         face_centers = np.array([random_center])
-    #     else:
-    #         dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
-    #         if np.min(dist_to_prev) > 2 * face_radius + face_radius:
-    #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
-    
     if num_pipes == 1:
         face_centers = np.array([[right_boundary / 2.0, back_boundary, top_boundary / 2.0]])
     else:
@@ -153,22 +109,6 @@ def generate_back_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min
 
 def generate_left_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min_ratio=0.3, max_ratio=0.7):
     face_norm_vector=np.array([-1.0, 0.0, 0.0])
-    # face_centers = np.array([])
-    # while len(face_centers) < num_pipes:
-    #     random_center = np.array([0., 0., 0.])
-    #     random_yz = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
-    #     if random_yz[1] < 0.4:
-    #         continue
-    #     random_center[1] = random_yz[0]
-    #     random_center[2] = random_yz[1]
-
-    #     if face_centers.shape[0] == 0:
-    #         face_centers = np.array([random_center])
-    #     else:
-    #         dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
-    #         if np.min(dist_to_prev) > 2 * face_radius + face_radius:
-    #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
-    
     if num_pipes == 1:
         face_centers = np.array([[0.0, back_boundary / 2.0, top_boundary / 2.0]])
     else:
@@ -199,22 +139,6 @@ def generate_left_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min
 
 def generate_right_pipes(num_pipes: int, start_marker: int, face_radius=0.05, min_ratio=0.3, max_ratio=0.7):
     face_norm_vector=np.array([1.0, 0.0, 0.0])
-    # face_centers = np.array([])
-    # while len(face_centers) < num_pipes:
-    #     random_center = np.array([right_boundary, 0.0, 0.0])
-    #     random_yz = np.random.uniform(face_radius + 0.05, 1.0 - face_radius - 0.05, size=(2,))
-    #     if random_yz[1] < 0.4:
-    #         continue
-    #     random_center[1] = random_yz[0]
-    #     random_center[2] = random_yz[1]
-
-    #     if face_centers.shape[0] == 0:
-    #         face_centers = np.array([random_center])
-    #     else:
-    #         dist_to_prev = np.linalg.norm(face_centers - random_center, axis=1)
-    #         if np.min(dist_to_prev) > 2 * face_radius + face_radius:
-    #             face_centers = np.concatenate([face_centers, [random_center]], axis=0)
-    
     if num_pipes == 1:
         face_centers = np.array([[right_boundary, back_boundary / 2.0, top_boundary / 2.0]])
     else:
@@ -247,7 +171,7 @@ boundaries = [
     AutoFluidBoundary(
         name='inlet',
         boundary_type='velocity',
-        value=[0.0, 0.0, 10.0],
+        value=[0.0, 0.0, 1.0],
         marker=1,
         face_center=np.array([0.5, 0.5, 0.0]),
         face_norm_vector=np.array([0.0, 0.0, 1.0]),
@@ -307,7 +231,7 @@ optim = TopoFluidHierarchyOptimizer(
     space_right_top_corner=np.array([1.0, 1.0, 1.0]),
     space_resolutions=[0.15, 0.1, 0.05],
     mesh_min_sizes=[0.03, 0.02, 0.01],
-    mesh_max_sizes=[0.06, 0.04, 0.02],
+    mesh_max_sizes=[0.06, 0.04, 0.02],  # NOTE: 网格太大了,由于中心outlet速度太快,因此必须大幅度收窄,可能导致结果上中心outlet不见了
     boundary_list=boundaries,
     fluid_type='stoke',
     viscosity_init=1.0 / 400.,
@@ -316,7 +240,7 @@ optim = TopoFluidHierarchyOptimizer(
     us_fipy=True,
     extract_threshold=0.4,
     diffusion_step=0,
-    alpha_fun_max=300.0,
+    alpha_fun_max=400.0,  # NOTE: 增加alpha_max以避免渗透率问题
     alpha_fun_min=1e-12,
     alpha_fun_p=3.0,
 )
@@ -327,7 +251,7 @@ optim.optimize(
                 {
                     'style': 'MinDissipation+BrinkmanPenalized',
                     'with_viscosity': True,
-                    'dissipation_weight': 1.0,
+                    'dissipation_weight': 1.0,  # TODO: 由于增加了速度,在这里缩减权重.不知为什么这里缩减权重有效,而增加下面的权重反而无效?
                     'penalized_weight': 1.0,
                 },
                 {
@@ -336,7 +260,7 @@ optim.optimize(
                     'outlet_markers': outlet_markers,
                     'outlet_marker_ratios': outlet_marker_ratios.tolist(),
                     # NOTE: FixedFlux的振荡会造成无法全部管道都不相连,互相约束.但过小的weight会造成无法均衡. 所以这里的大小必须严格测试
-                    'outlet_marker_weights': (outlet_marker_weights * 1e1).tolist(),
+                    'outlet_marker_weights': (outlet_marker_weights * 1e-1).tolist(),
                     'with_rescale': True,
                     'with_max_dif_cost': False,
                     'max_dif_weight': 1e-2,
@@ -344,7 +268,7 @@ optim.optimize(
             ],
             'reg_cost_args':{
                 'style': 'Volume',
-                'weight': 5e-1,
+                'weight': 2e-3,
                 'target_volume': target_volume,
                 'reg_rescale': True,
             },
@@ -363,7 +287,7 @@ optim.optimize(
                 'max_iteration': 300,
                 'line_search_steps': [0.2],
                 'momentum_weight': 0.8,
-                'full_run': False,
+                'full_run': True,
                 'use_lr_scheduler': False,
                 'min_lr': 1e-2,
                 'max_lr': 2e-1,
@@ -372,7 +296,7 @@ optim.optimize(
         {
             'reg_cost_args':{
                 'style': 'Volume',
-                'weight': 1.0,
+                'weight': 4e-3,
                 'target_volume': target_volume,
                 'reg_rescale': True,
             },
@@ -380,7 +304,7 @@ optim.optimize(
         {
             'reg_cost_args':{
                 'style': 'Volume',
-                'weight': 2.0,
+                'weight': 8e-3,
                 'target_volume': target_volume,
                 'reg_rescale': True,
             },
@@ -388,7 +312,7 @@ optim.optimize(
     ],
     residual_error_threshold=1e-3,
     inout_pipe_length=0.03,
-    weight_filter_ratio=2.5,
+    weight_filter_ratio=1.5,
     dist_max_ratio=1.0,  # small cause it faster to test the experiment
 )
 
