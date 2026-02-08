@@ -224,7 +224,7 @@ optim = TopoFluidHierarchyOptimizer(
     space_dim=3,
     space_left_bottom_corner=np.array([0.0, 0.0, 0.0]),
     space_right_top_corner=np.array([1.0, 1.0, 1.0]),
-    space_resolutions=[0.15, 0.04, 0.04],
+    space_resolutions=[0.15, 0.04, 0.025],
     mesh_min_sizes=[0.02, 0.015, 0.01],
     mesh_max_sizes=[0.04, 0.03, 0.02],  # NOTE: 网格太大了,由于中心outlet速度太快,因此必须大幅度收窄,可能导致结果上中心outlet不见了
     boundary_list=boundaries,
@@ -269,7 +269,7 @@ optim.optimize(
             },
             'obstacle_cost_args':None,
             'fipy_simulator_cfg': {
-                'simulation_iterations': 100,
+                'simulation_iterations': 150,
                 'convergence_threshold': 1e-4,
                 'velocityRelaxation': 0.6,
                 'pressureRelaxation': 0.8,

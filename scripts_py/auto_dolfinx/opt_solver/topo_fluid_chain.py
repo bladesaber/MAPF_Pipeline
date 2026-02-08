@@ -38,9 +38,12 @@ class TopoFluidChainOptimizer(object):
     ):
         self.name = name
         self.run_dir = run_dir
-        if os.path.exists(self.run_dir):
-            shutil.rmtree(self.run_dir)
-        os.makedirs(self.run_dir)
+        
+        # if os.path.exists(self.run_dir):
+        #     shutil.rmtree(self.run_dir)
+        # os.makedirs(self.run_dir)
+        if not os.path.exists(self.run_dir):
+            os.makedirs(self.run_dir)
         
         self.us_fipy = us_fipy
         self.msh_file = msh_file
@@ -109,9 +112,13 @@ class TopoFluidChainOptimizer(object):
         
         for chain_idx, run_cfg in enumerate(run_cfgs):
             chain_dir = os.path.join(self.run_dir, f'chain_{chain_idx}')
-            if os.path.exists(chain_dir):
-                shutil.rmtree(chain_dir)
-            os.makedirs(chain_dir)
+            
+            # if os.path.exists(chain_dir):
+            #     shutil.rmtree(chain_dir)
+            # os.makedirs(chain_dir)
+            if not os.path.exists(chain_dir):
+                os.makedirs(chain_dir)
+            
             result_opt_vtu = os.path.join(chain_dir, 'opt.vtu')
             
             # ------ define optimizer ------

@@ -73,9 +73,13 @@ class TopoFluidGridOptimizer(object):
     ):
         self.name = name
         self.run_dir = run_dir
-        if os.path.exists(self.run_dir):
-            shutil.rmtree(self.run_dir)
-        os.makedirs(self.run_dir)
+        
+        # if os.path.exists(self.run_dir):
+        #     shutil.rmtree(self.run_dir)
+        # os.makedirs(self.run_dir)
+        if not os.path.exists(self.run_dir):
+            os.makedirs(self.run_dir)
+        
         self.opt_dir = os.path.join(run_dir, 'opt')
         
         self.geo_file_path = os.path.join(self.run_dir, 'design_space.geo')
@@ -634,15 +638,6 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
             zip(self.space_resolutions, self.mesh_min_sizes, self.mesh_max_sizes, 
                 weight_filter_ratio_list, dist_max_ratio_list)
         ):
-            if layer_id < len(optimizer_jsons):
-                self.append_optimizer_from_json(optimizer_jsons[layer_id])
-                continue
-            
-            if len(self.grid_optimizers) > 0:
-                reference_optimizer = self.grid_optimizers[-1]
-            else:
-                reference_optimizer = None
-            
             layer_dir = os.path.join(self.run_dir, f'layer_{layer_id}')
             
             # ------ define optimizer ------
@@ -655,53 +650,63 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
             assert obj_cost_args_list is not None, 'obj_cost_args_list is required'
             assert reg_cost_args is not None, 'reg_cost_args is required'
             assert 'target_volume' in reg_cost_args.keys(), 'Target volume is required for Volume regularization'
-            log_run_json = {
-                'obj_cost_args_list': obj_cost_args_list,
-                'reg_cost_args': reg_cost_args,
-                'obstacle_cost_args': obstacle_cost_args,
-                'fipy_simulator_cfg': fipy_simulator_cfg,
-                'dolfinx_simulator_cfg': dolfinx_simulator_cfg,
-            }
-                        
-            grid_optim = TopoFluidGridOptimizer(
-                name=f'{self.name}_layer_{layer_id}',
-                run_dir=layer_dir,
-                space_dim=self.space_dim,
-                space_left_bottom_corner=self.space_left_bottom_corner,
-                space_right_top_corner=self.space_right_top_corner,
-                space_resolution=space_resolution,
-                mesh_min_size=mesh_min_size,
-                mesh_max_size=mesh_max_size,
-                boundary_list=self.boundary_list,
-                obj_cost_args_list=copy.deepcopy(obj_cost_args_list),
-                reg_cost_args=copy.deepcopy(reg_cost_args),
-                obstacle_cost_args=copy.deepcopy(obstacle_cost_args) if obstacle_cost_args is not None else None,
-                fluid_type=self.fluid_type,
-                viscosity_init=self.viscosity_init,
-                topo_weight_init=self.topo_weight_init if layer_id == 0 else 0.8,
-                init_topo_weight_method=self.init_topo_weight_method,
-                alpha_fun_max=self.alpha_fun_max,
-                alpha_fun_min=self.alpha_fun_min,
-                alpha_fun_p=self.alpha_fun_p,
-                weight_filter_ratio=weight_filter_ratio,
-                dist_max_ratio=dist_max_ratio,
-                us_fipy=self.us_fipy,
-                fipy_simulator_dict=fipy_simulator_cfg,
-                dolfinx_simulator_dict=dolfinx_simulator_cfg,
-                inout_pipe_length=inout_pipe_length,
-            )           
-            grid_optim.prepare_design_space(
-                reference_optimizer=reference_optimizer,
-                threshold=self.extract_threshold,
-                diffusion_step=self.diffusion_step,
-                compress_mesh=compress_mesh
-            )
-            grid_optim.optimize(residual_error_threshold=residual_error_threshold)
-            self.grid_optimizers.append(grid_optim)
             
-            with open(os.path.join(layer_dir, 'run_cfg.json'), 'w') as f:
-                json.dump(log_run_json, f, indent=4)
-            grid_optim.save_cfg()
+            if layer_id >= len(optimizer_jsons):
+                log_run_json = {
+                    'obj_cost_args_list': obj_cost_args_list,
+                    'reg_cost_args': reg_cost_args,
+                    'obstacle_cost_args': obstacle_cost_args,
+                    'fipy_simulator_cfg': fipy_simulator_cfg,
+                    'dolfinx_simulator_cfg': dolfinx_simulator_cfg,
+                }            
+                grid_optim = TopoFluidGridOptimizer(
+                    name=f'{self.name}_layer_{layer_id}',
+                    run_dir=layer_dir,
+                    space_dim=self.space_dim,
+                    space_left_bottom_corner=self.space_left_bottom_corner,
+                    space_right_top_corner=self.space_right_top_corner,
+                    space_resolution=space_resolution,
+                    mesh_min_size=mesh_min_size,
+                    mesh_max_size=mesh_max_size,
+                    boundary_list=self.boundary_list,
+                    obj_cost_args_list=copy.deepcopy(obj_cost_args_list),
+                    reg_cost_args=copy.deepcopy(reg_cost_args),
+                    obstacle_cost_args=copy.deepcopy(obstacle_cost_args) if obstacle_cost_args is not None else None,
+                    fluid_type=self.fluid_type,
+                    viscosity_init=self.viscosity_init,
+                    topo_weight_init=self.topo_weight_init if layer_id == 0 else 0.8,
+                    init_topo_weight_method=self.init_topo_weight_method,
+                    alpha_fun_max=self.alpha_fun_max,
+                    alpha_fun_min=self.alpha_fun_min,
+                    alpha_fun_p=self.alpha_fun_p,
+                    weight_filter_ratio=weight_filter_ratio,
+                    dist_max_ratio=dist_max_ratio,
+                    us_fipy=self.us_fipy,
+                    fipy_simulator_dict=fipy_simulator_cfg,
+                    dolfinx_simulator_dict=dolfinx_simulator_cfg,
+                    inout_pipe_length=inout_pipe_length,
+                )
+                grid_optim.save_cfg()
+                
+                if len(self.grid_optimizers) > 0:
+                    reference_optimizer = self.grid_optimizers[-1]
+                else:
+                    reference_optimizer = None
+
+                grid_optim.prepare_design_space(
+                    reference_optimizer=reference_optimizer,
+                    threshold=self.extract_threshold,
+                    diffusion_step=self.diffusion_step,
+                    compress_mesh=compress_mesh
+                )
+                grid_optim.optimize(residual_error_threshold=residual_error_threshold)
+                self.grid_optimizers.append(grid_optim)
+                
+                with open(os.path.join(layer_dir, 'run_cfg.json'), 'w') as f:
+                    json.dump(log_run_json, f, indent=4)
+            
+            else:
+                self.append_optimizer_from_json(optimizer_jsons[layer_id])
             
             last_obj_cost_args_list = obj_cost_args_list
             last_reg_cost_args = reg_cost_args

@@ -917,7 +917,6 @@ class TopoFluidOptimizer(FluidSimulator):
                             recorder.write_scalar(tag=name, scalar_value=value, step=step)
                 
                 if np.abs(loss_current - loss_last) < 1e-9 and (not full_run) and step > hot_step:
-                    is_solved = True
                     break
                 
             direction_np = self.compute_gradient(
