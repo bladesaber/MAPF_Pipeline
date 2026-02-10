@@ -10,7 +10,7 @@ from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import TopoFluidHie
 NOTE: 当分支很多时,target flux就会很小.由于alpha_max的限制,渗透率很低的依然存在速率,而这些速率会导致即便不存在连通域,也存在flux,结果就不正确.
 """
 
-base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48_1'
+base_dir = '/home/admin123456/Desktop/work/gmsh_test/t48_2'
 
 right_boundary = 1.0
 back_boundary = 1.0
@@ -229,16 +229,16 @@ optim = TopoFluidHierarchyOptimizer(
     space_dim=3,
     space_left_bottom_corner=np.array([0.0, 0.0, 0.0]),
     space_right_top_corner=np.array([1.0, 1.0, 1.0]),
-    space_resolutions=[0.15, 0.05, 0.025],  # NOTE: should less than minimum pipe radius * 2.0
-    mesh_min_sizes=[0.02, 0.015, 0.01],
-    mesh_max_sizes=[0.05, 0.03, 0.02],  # NOTE: 网格太大了,由于中心outlet速度太快,因此必须大幅度收窄,可能导致结果上中心outlet不见了
+    space_resolutions=[0.1],  # NOTE: should less than minimum pipe radius * 2.0
+    mesh_min_sizes=[0.02],
+    mesh_max_sizes=[0.045],  # NOTE: 网格太大了,由于中心outlet速度太快,因此必须大幅度收窄,可能导致结果上中心outlet不见了
     boundary_list=boundaries,
     fluid_type='stoke',
     viscosity_init=1.0 / 400.,
-    topo_weight_init=max(target_ratio, 0.3),
+    topo_weight_init=0.8,  # TODO: try optimize from fluid zone
     init_topo_weight_method='raw',
     us_fipy=True,
-    extract_threshold=0.35,
+    extract_threshold=0.5,
     diffusion_step=0,
     alpha_fun_max=300.0,  # NOTE: 增加alpha_max以避免渗透率问题
     alpha_fun_min=1e-12,
@@ -284,7 +284,7 @@ optim.optimize(
                 'parallel_num': 8,
                 'use_tqdm': True,
                 'use_log': True,
-                'max_iteration': 600,
+                'max_iteration': 400,
                 'line_search_steps': [0.2],
                 'momentum_weight': 0.8,
                 'full_run': False,
@@ -312,7 +312,7 @@ optim.optimize(
                 'parallel_num': 8,
                 'use_tqdm': True,
                 'use_log': True,
-                'max_iteration': 600,
+                'max_iteration': 400,
                 'line_search_steps': [0.15],
                 'momentum_weight': 0.8,
                 'full_run': False,
@@ -329,7 +329,7 @@ optim.optimize(
                 'reg_rescale': True,
             },
             'fipy_simulator_cfg': {
-                'simulation_iterations': 200,
+                'simulation_iterations': 100,
                 'convergence_threshold': 1e-4,
                 'velocityRelaxation': 0.6,
                 'pressureRelaxation': 0.8,
@@ -339,7 +339,7 @@ optim.optimize(
                 'parallel_num': 8,
                 'use_tqdm': True,
                 'use_log': True,
-                'max_iteration': 600,
+                'max_iteration': 400,
                 'line_search_steps': [0.1],
                 'momentum_weight': 0.8,
                 'full_run': False,
@@ -355,7 +355,8 @@ optim.optimize(
     dist_max_ratio=2.0,
     compress_mesh=True,
     optimizer_jsons=[
-        '/home/admin123456/Desktop/work/gmsh_test/t48_1/layer_0/settings.json'
+        # os.path.join(base_dir, 'layer_0', 'settings.json'),
+        # os.path.join(base_dir, 'layer_1', 'settings.json'),
     ]
 )
 

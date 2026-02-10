@@ -386,7 +386,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
 
     def record_Upw(self, step: int, **kwargs):
         super().record_Upw(step, **kwargs)
-        self.copy_fipy_result_log(step)
+        # self.copy_fipy_result_log(step)  # for debug
 
 
 def debug_1():

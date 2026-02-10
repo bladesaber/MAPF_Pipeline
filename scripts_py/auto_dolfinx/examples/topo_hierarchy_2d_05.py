@@ -7,7 +7,7 @@ from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import AutoFluidBou
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import TopoFluidHierarchyOptimizer
 
 
-base_dir = '/home/admin123456/Desktop/work/gmsh_test/t50_3'
+base_dir = '/home/admin123456/Desktop/work/gmsh_test/t51'
 
 right_boundary = 4.0
 top_boundary = 4.0
@@ -207,7 +207,7 @@ optim.optimize(
             ],
             'reg_cost_args':{
                 'style': 'Volume',
-                'weight': 1e-1,
+                'weight': 2.5e-2,
                 'target_volume': target_volume,
                 'reg_rescale': True,
             },

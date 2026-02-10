@@ -224,9 +224,9 @@ optim = TopoFluidHierarchyOptimizer(
     space_dim=3,
     space_left_bottom_corner=np.array([0.0, 0.0, 0.0]),
     space_right_top_corner=np.array([1.0, 1.0, 1.0]),
-    space_resolutions=[0.15, 0.04, 0.025],
-    mesh_min_sizes=[0.02, 0.015, 0.01],
-    mesh_max_sizes=[0.04, 0.03, 0.02],  # NOTE: 网格太大了,由于中心outlet速度太快,因此必须大幅度收窄,可能导致结果上中心outlet不见了
+    space_resolutions=[0.1, 0.035],
+    mesh_min_sizes=[0.02, 0.015],
+    mesh_max_sizes=[0.035, 0.025],  # NOTE: 网格太大了,由于中心outlet速度太快,因此必须大幅度收窄,可能导致结果上中心outlet不见了
     boundary_list=boundaries,
     fluid_type='stoke',
     viscosity_init=1.0 / 400.,
@@ -269,7 +269,7 @@ optim.optimize(
             },
             'obstacle_cost_args':None,
             'fipy_simulator_cfg': {
-                'simulation_iterations': 150,
+                'simulation_iterations': 100,
                 'convergence_threshold': 1e-4,
                 'velocityRelaxation': 0.6,
                 'pressureRelaxation': 0.8,
@@ -279,7 +279,7 @@ optim.optimize(
                 'parallel_num': 8,
                 'use_tqdm': True,
                 'use_log': True,
-                'max_iteration': 600,
+                'max_iteration': 500,
                 'line_search_steps': [0.2],
                 'momentum_weight': 0.8,
                 'full_run': False,
@@ -292,17 +292,55 @@ optim.optimize(
             'reg_cost_args':{
                 'style': 'Volume',
                 'weight': 4e-3,
-                'target_volume': target_volume,
+                'target_volume': target_volume * 0.8,
                 'reg_rescale': True,
             },
+            'fipy_simulator_cfg': {
+                'simulation_iterations': 100,
+                'convergence_threshold': 1e-4,
+                'velocityRelaxation': 0.6,
+                'pressureRelaxation': 0.8,
+                'hot_steps': 50,
+                'simulation_hot_steps': 4,
+                'log_step': 2,
+                'parallel_num': 8,
+                'use_tqdm': True,
+                'use_log': True,
+                'max_iteration': 400,
+                'line_search_steps': [0.15],
+                'momentum_weight': 0.8,
+                'full_run': False,
+                'use_lr_scheduler': True,
+                'min_lr': 1e-2,
+                'max_lr': 0.15,
+            }
         },
         {
             'reg_cost_args':{
                 'style': 'Volume',
                 'weight': 8e-3,
-                'target_volume': target_volume,
+                'target_volume': target_volume * 0.8,
                 'reg_rescale': True,
             },
+            'fipy_simulator_cfg': {
+                'simulation_iterations': 100,
+                'convergence_threshold': 1e-4,
+                'velocityRelaxation': 0.6,
+                'pressureRelaxation': 0.8,
+                'hot_steps': 50,
+                'simulation_hot_steps': 4,
+                'log_step': 2,
+                'parallel_num': 8,
+                'use_tqdm': True,
+                'use_log': True,
+                'max_iteration': 400,
+                'line_search_steps': [0.1],
+                'momentum_weight': 0.8,
+                'full_run': False,
+                'use_lr_scheduler': True,
+                'min_lr': 1e-2,
+                'max_lr': 0.1,
+            }
         }
     ],
     residual_error_threshold=1e-3,
@@ -310,5 +348,8 @@ optim.optimize(
     weight_filter_ratio=1.5,
     dist_max_ratio=2.0,
     compress_mesh=True,
+    optimizer_jsons=[
+        os.path.join(base_dir, 'layer_0', 'settings.json'),
+    ]
 )
 

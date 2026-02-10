@@ -16,6 +16,7 @@ import pyvista
 import math
 import json
 import subprocess
+from tqdm import tqdm
 
 from scripts_py.mesh_utils import MeshUtils
 from scripts_py.gmsh_utils import GmshUtils
@@ -664,7 +665,7 @@ class GridMesher(object):
                 dim_cfgs = GmshUtils.read_geometry_from_geo_file(geo_file_path, dims=[1, 2])
                 fine_surface_tags, valid_boundary_count = {}, 0
                 wall_marker = 9999999
-                for bry_cfg in self.boundaries:
+                for bry_cfg in tqdm(self.boundaries, desc='Extracting fine surface tags'):
                     if bry_cfg.boundary_type == 'wall':
                         wall_marker = bry_cfg.marker
                         continue
