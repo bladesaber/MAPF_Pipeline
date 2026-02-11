@@ -14,7 +14,7 @@ from scripts_py.auto_dolfinx.tape_utils import start_annotation
 
 from thirdparty.pyadjoint.pyadjoint import Tape, ReducedFunctional, Control, compute_gradient
 from thirdparty.pyadjoint.pyadjoint.tape import set_working_tape
-from thirdparty.pyadjoint.pyadjoint.adjfloat import max, min
+from thirdparty.pyadjoint.pyadjoint.adjfloat import max, min  # NOTE: please use max and min from pyadjoint
 
 from scripts_py.vtu_recorder import TensorBoardRecorder
 from scripts_py.mesh_utils import MeshObj, MeshUtils
@@ -22,7 +22,9 @@ from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils, BoundaryUtils
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid import (
     TopoFluidOptimizer, 
     AutoFluidBoundary, 
-    TopoWeightConstraintTerm
+    TopoWeightConstraintTerm,
+    AlphaExponentialFunc,
+    AlphaSigmoidFunc,
 )
 from scripts_py.auto_dolfinx.blocks.block_fipy_cfd_solve import equation_cfd_topoWeight_solve
 
@@ -39,9 +41,14 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
         init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'],
         weight_filter_radius: float,
         result_dir: str,
-        alpha_fun_max: float = 100.0,
-        alpha_fun_min: float = 1e-12,
-        alpha_fun_p: float = 3.0,
+        alpha_fun: dict = {
+            'name': 'exponential',
+            'args': {
+                'alpha_min': 1e-12,
+                'alpha_max': 100.0,
+                'p': 3.0,
+            }
+        },
         velocity_degree = 1,
         pressure_degree = 1,
         velocity_space: Literal['CG', 'DG', 'Lagrange'] = 'Lagrange',
@@ -56,9 +63,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             init_topo_weight_method=init_topo_weight_method,
             weight_filter_radius=weight_filter_radius,
             result_dir=result_dir,
-            alpha_fun_max=alpha_fun_max,
-            alpha_fun_min=alpha_fun_min,
-            alpha_fun_p=alpha_fun_p,
+            alpha_fun=alpha_fun,
             velocity_degree=velocity_degree,
             pressure_degree=pressure_degree,
             velocity_space=velocity_space,
@@ -180,14 +185,8 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             if self.init_topo_weight_method != 'none':
                 self.init_topo_weight(self.topo_weight, method=self.init_topo_weight_method)  # type: ignore
             
-            alpha = self.alpha_fun(
-                rho=self.topo_weight,  # type: ignore
-                alpha_min=self.alpha_fun_min, 
-                alpha_max=self.alpha_fun_max, 
-                p=self.alpha_fun_p, 
-                pow_operator=np.power
-            )
-            govern_form += alpha * inner(u, v) * ufl.dx
+            alpha = self.alpha_func(self.topo_weight)  # type: ignore
+            govern_form += alpha * inner(u, v) * ufl.dx  # type: ignore
             
             structure_obs_weight = None
             if self.obstacle_cost_args is not None:
@@ -221,10 +220,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
                 
                 # ------ alpha related ------
                 topo_weight_name=self.topo_weight.name,  # type: ignore
-                alpha_fun=self.alpha_fun,
-                alpha_min=self.alpha_fun_min,
-                alpha_max=self.alpha_fun_max,
-                alpha_p=self.alpha_fun_p,
+                alpha_func=self.alpha_func,
                 alpha_filter_ratio=alpha_filter_ratio,
                 
                 # ------ autodolfinx related ------
@@ -246,7 +242,7 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             for obj_idx, obj_cost_args in enumerate(obj_cost_args_list):
                 obj_cost_args = self.prepare_cost_args(
                     u=u, p=p, obj_cost_args=obj_cost_args,  # type: ignore
-                    viscosity=self.viscosity, alpha=alpha,
+                    viscosity=self.viscosity, alpha=alpha, rho=self.topo_weight,
                 )
                 if obj_cost_args['style'] == 'MinDissipation':
                     obj_cost = assemble_scalar(
@@ -351,10 +347,15 @@ class TopoFluidOptimizerFipy(TopoFluidOptimizer):
             if reg_cost_args['style'] == 'Volume':
                 target_volume = reg_cost_args['target_volume']
                 topo_volume = assemble_scalar(reg_cost_args['vol_form'], domain=self.domain, tape=self.tape)
-                volume_dif = target_volume - topo_volume
                 if reg_cost_args['reg_rescale']:
-                    volume_dif = volume_dif / target_volume
-                reg_cost = reg_cost_args['weight'] * (volume_dif ** 2)
+                    topo_volume_rescale = topo_volume / target_volume                    
+                    volume_dif = topo_volume_rescale - 1.0                    
+                    reg_cost = reg_cost_args['weight'] * (volume_dif ** 2)                    
+                    reg_cost += reg_cost_args['weight'] * (max(volume_dif, 0.0) + -1.0 * min(volume_dif, 0.0))
+                    
+                else:
+                    reg_cost = reg_cost_args['weight'] * ((topo_volume - target_volume) ** 2)
+                
             else:
                 raise ValueError(f'Invalid regularization style: {reg_cost_args['style']}')
             self.reg_cost_args = reg_cost_args
@@ -406,9 +407,14 @@ def debug_1():
         init_topo_weight_method='filter',
         weight_filter_radius=0.06,
         result_dir=os.path.join(base_dir, 'fipy_topo'),
-        alpha_fun_max=100.0,
-        alpha_fun_min=1e-12,
-        alpha_fun_p=3.0,
+        alpha_fun={
+            'name': 'exponential',
+            'args': {
+                'alpha_min': 1e-12,
+                'alpha_max': 100.0,
+                'p': 3.0,
+            }
+        },
     )    
     optim.setup_tape(Tape())
     
@@ -491,9 +497,14 @@ def debug_2():
         topo_weight_init=1.0,
         weight_filter_radius=0.075,
         result_dir=os.path.join(base_dir, 'fipy_topo'),
-        alpha_fun_max=100.0,
-        alpha_fun_min=1e-12,
-        alpha_fun_p=3.0,
+        alpha_fun={
+            'name': 'exponential',
+            'args': {
+                'alpha_min': 1e-12,
+                'alpha_max': 100.0,
+                'p': 3.0,
+            }
+        },
     )    
     optim.setup_tape(Tape())
     
@@ -576,9 +587,14 @@ def debug_3():
         topo_weight_init=0.1,
         weight_filter_radius=0.075,
         result_dir=os.path.join(base_dir, 'fipy_topo'),
-        alpha_fun_max=100.0,
-        alpha_fun_min=1e-12,
-        alpha_fun_p=3.0,
+        alpha_fun={
+            'name': 'exponential',
+            'args': {
+                'alpha_min': 1e-12,
+                'alpha_max': 100.0,
+                'p': 3.0,
+            }
+        },
     )    
     optim.setup_tape(Tape())
     

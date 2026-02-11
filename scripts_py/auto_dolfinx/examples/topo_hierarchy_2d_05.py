@@ -6,7 +6,6 @@ from mpi4py import MPI
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import AutoFluidBoundary
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import TopoFluidHierarchyOptimizer
 
-
 base_dir = '/home/admin123456/Desktop/work/gmsh_test/t51'
 
 right_boundary = 4.0
@@ -180,9 +179,14 @@ optim = TopoFluidHierarchyOptimizer(
     diffusion_step=0,
     init_topo_weight_method='raw',
     extract_threshold=0.4,
-    alpha_fun_max=100.0,
-    alpha_fun_min=1e-12,
-    alpha_fun_p=3.0,
+    alpha_fun={
+        'name': 'exponential',
+        'args': {
+            'alpha_min': 1e-12,
+            'alpha_max': 100.0,
+            'p': 3.0,
+        }
+    },
 )
 optim.optimize(
     run_cfgs=[

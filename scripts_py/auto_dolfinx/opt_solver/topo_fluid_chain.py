@@ -31,9 +31,14 @@ class TopoFluidChainOptimizer(object):
         topo_weight_init: float|np.ndarray,
         init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'],
         weight_filter_radius: float,
-        alpha_fun_max: float = 100.0,
-        alpha_fun_min: float = 1e-12,
-        alpha_fun_p: float = 3.0,
+        alpha_fun: dict = {
+            'name': 'exponential',
+            'args': {
+                'alpha_min': 1e-12,
+                'alpha_max': 100.0,
+                'p': 3.0,
+            }
+        },
         us_fipy=False
     ):
         self.name = name
@@ -55,9 +60,7 @@ class TopoFluidChainOptimizer(object):
         self.topo_weight_init = topo_weight_init
         self.init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'] = init_topo_weight_method
         self.weight_filter_radius = weight_filter_radius
-        self.alpha_fun_max = alpha_fun_max
-        self.alpha_fun_min = alpha_fun_min
-        self.alpha_fun_p = alpha_fun_p
+        self.alpha_fun = alpha_fun
     
     def optimize(
         self, 
@@ -151,9 +154,7 @@ class TopoFluidChainOptimizer(object):
                     init_topo_weight_method=init_topo_weight_method,
                     weight_filter_radius=self.weight_filter_radius,
                     result_dir=chain_dir,
-                    alpha_fun_max=self.alpha_fun_max,
-                    alpha_fun_min=self.alpha_fun_min,
-                    alpha_fun_p=self.alpha_fun_p,
+                    alpha_fun=self.alpha_fun,
                     velocity_degree=1,
                     pressure_degree=1
                 )
@@ -205,9 +206,7 @@ class TopoFluidChainOptimizer(object):
                     init_topo_weight_method=init_topo_weight_method,
                     weight_filter_radius=self.weight_filter_radius,
                     result_dir=chain_dir,
-                    alpha_fun_max=self.alpha_fun_max,
-                    alpha_fun_min=self.alpha_fun_min,
-                    alpha_fun_p=self.alpha_fun_p,
+                    alpha_fun=self.alpha_fun,
                 )
                 optim.setup_tape(Tape())
                 for boundary in self.boundary_list:
@@ -328,9 +327,14 @@ def debug():
         topo_weight_init=0.1,
         init_topo_weight_method='filter',
         weight_filter_radius=0.05,
-        alpha_fun_max=100.0,
-        alpha_fun_min=1e-12,
-        alpha_fun_p=3.0,
+        alpha_fun={
+            'name': 'exponential',
+            'args': {
+                'alpha_min': 1e-12,
+                'alpha_max': 100.0,
+                'p': 3.0,
+            }
+        },
         us_fipy=False,
     )
     

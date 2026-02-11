@@ -180,9 +180,14 @@ optim = TopoFluidHierarchyOptimizer(
     diffusion_step=0,
     init_topo_weight_method='raw',
     extract_threshold=0.4,
-    alpha_fun_max=300.0,
-    alpha_fun_min=1e-12,
-    alpha_fun_p=3.0,
+    alpha_fun={
+        'name': 'exponential',
+        'args': {
+            'alpha_min': 1e-12,
+            'alpha_max': 300.0,
+            'p': 3.0,
+        }
+    },
 )
 optim.optimize(
     run_cfgs=[

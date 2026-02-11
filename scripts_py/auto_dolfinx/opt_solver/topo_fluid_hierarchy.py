@@ -42,9 +42,14 @@ class TopoFluidGridOptimizer(object):
         viscosity_init: float|np.ndarray,
         topo_weight_init: float|np.ndarray,
         init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'],
-        alpha_fun_max: float = 100.0,
-        alpha_fun_min: float = 1e-12,
-        alpha_fun_p: float = 3.0,
+        alpha_fun: dict = {
+            'name': 'exponential',
+            'args': {
+                'alpha_min': 1e-12,
+                'alpha_max': 100.0,
+                'p': 3.0,
+            }
+        },
         weight_filter_ratio: float = 1.5,
         dist_max_ratio: float = 1.0,
         us_fipy=False,
@@ -125,9 +130,7 @@ class TopoFluidGridOptimizer(object):
         self.init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'] = init_topo_weight_method
         self.weight_filter_ratio = weight_filter_ratio
         self.weight_filter_radius = self.mesh_max_size * self.weight_filter_ratio
-        self.alpha_fun_max = alpha_fun_max
-        self.alpha_fun_min = alpha_fun_min
-        self.alpha_fun_p = alpha_fun_p
+        self.alpha_fun = alpha_fun
         
         # ------
         self.mesh: MeshObj = None  # type: ignore
@@ -284,9 +287,7 @@ class TopoFluidGridOptimizer(object):
                 init_topo_weight_method=self.init_topo_weight_method,
                 weight_filter_radius=self.weight_filter_radius,
                 result_dir=self.opt_dir,
-                alpha_fun_max=self.alpha_fun_max,
-                alpha_fun_min=self.alpha_fun_min,
-                alpha_fun_p=self.alpha_fun_p,
+                alpha_fun=self.alpha_fun,
                 velocity_degree=1,
                 pressure_degree=1
             )
@@ -352,9 +353,7 @@ class TopoFluidGridOptimizer(object):
                 init_topo_weight_method=self.init_topo_weight_method,
                 weight_filter_radius=self.weight_filter_radius,
                 result_dir=self.opt_dir,
-                alpha_fun_max=self.alpha_fun_max,
-                alpha_fun_min=self.alpha_fun_min,
-                alpha_fun_p=self.alpha_fun_p,
+                alpha_fun=self.alpha_fun,
             )
             optim.setup_tape(Tape())
             for boundary in self.boundary_list:
@@ -454,9 +453,7 @@ class TopoFluidGridOptimizer(object):
             'viscosity_init': viscosity_init,
             'topo_weight_init': topo_weight_init,
             'init_topo_weight_method': self.init_topo_weight_method,
-            'alpha_fun_max': self.alpha_fun_max,
-            'alpha_fun_min': self.alpha_fun_min,
-            'alpha_fun_p': self.alpha_fun_p,
+            'alpha_fun': self.alpha_fun,
             'weight_filter_ratio': self.weight_filter_ratio,
             'dist_max_ratio': self.dist_max_ratio,
             'us_fipy': self.us_fipy,
@@ -502,9 +499,7 @@ class TopoFluidGridOptimizer(object):
             viscosity_init=viscosity_init,
             topo_weight_init=topo_weight_init,
             init_topo_weight_method=cfg['init_topo_weight_method'],
-            alpha_fun_max=cfg['alpha_fun_max'],
-            alpha_fun_min=cfg['alpha_fun_min'],
-            alpha_fun_p=cfg['alpha_fun_p'],
+            alpha_fun=cfg['alpha_fun'],
             weight_filter_ratio=cfg['weight_filter_ratio'],
             dist_max_ratio=cfg['dist_max_ratio'],
             us_fipy=cfg['us_fipy'],
@@ -531,9 +526,14 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
         viscosity_init: float|np.ndarray,
         topo_weight_init: float|np.ndarray,
         init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'],
-        alpha_fun_max: float = 100.0,
-        alpha_fun_min: float = 1e-12,
-        alpha_fun_p: float = 3.0,
+        alpha_fun: dict = {
+            'name': 'exponential',
+            'args': {
+                'alpha_min': 1e-12,
+                'alpha_max': 100.0,
+                'p': 3.0,
+            }
+        },
         us_fipy=False,
         extract_threshold: float = 0.4,
         diffusion_step: int = 0,
@@ -549,9 +549,7 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
             topo_weight_init=topo_weight_init,
             init_topo_weight_method=init_topo_weight_method,
             weight_filter_radius=None,  # type: ignore
-            alpha_fun_max=alpha_fun_max,
-            alpha_fun_min=alpha_fun_min,
-            alpha_fun_p=alpha_fun_p,
+            alpha_fun=alpha_fun,
             us_fipy=us_fipy
         )
         self.space_dim = space_dim
@@ -676,9 +674,7 @@ class TopoFluidHierarchyOptimizer(TopoFluidChainOptimizer):
                     viscosity_init=self.viscosity_init,
                     topo_weight_init=self.topo_weight_init if layer_id == 0 else 0.8,
                     init_topo_weight_method=self.init_topo_weight_method,
-                    alpha_fun_max=self.alpha_fun_max,
-                    alpha_fun_min=self.alpha_fun_min,
-                    alpha_fun_p=self.alpha_fun_p,
+                    alpha_fun=self.alpha_fun,
                     weight_filter_ratio=weight_filter_ratio,
                     dist_max_ratio=dist_max_ratio,
                     us_fipy=self.us_fipy,

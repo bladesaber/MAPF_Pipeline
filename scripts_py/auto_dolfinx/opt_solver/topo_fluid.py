@@ -19,7 +19,7 @@ from scripts_py.vtu_recorder import VtuRecorder, TensorBoardRecorder
 
 from thirdparty.pyadjoint.pyadjoint import Tape, ReducedFunctional, Control, compute_gradient
 from thirdparty.pyadjoint.pyadjoint.tape import set_working_tape
-from thirdparty.pyadjoint.pyadjoint.adjfloat import max, min
+from thirdparty.pyadjoint.pyadjoint.adjfloat import max, min  # NOTE: please use max and min from pyadjoint
 
 from scripts_py.mesh_utils import MeshUtils
 from scripts_py.dolfinx_utils import DolfinUtils, AssembleUtils
@@ -137,6 +137,61 @@ class TopoWeightConstraintTerm(object):
         return gradient_np
 
 
+class AlphaFunction(object):
+    def __init__(
+        self,
+        name: str,
+        func_args: dict,
+    ):
+        self.name = name
+        self.func_args = func_args
+    
+    def __call__(self, rho: np.ndarray|dolfinx.fem.Function):
+        raise NotImplementedError(f"AlphaFunction {self.name} is not implemented")
+
+
+class AlphaExponentialFunc(AlphaFunction):
+    def __init__(
+        self,
+        name: str,
+        func_args: dict,
+    ):
+        super().__init__(name, func_args)
+    
+    def __call__(self, rho: np.ndarray|dolfinx.fem.Function):
+        return self.alpha_fun(rho, **self.func_args)
+    
+    @staticmethod
+    def alpha_fun(rho: np.ndarray|dolfinx.fem.Function, alpha_min=1e-12, alpha_max=100.0, p=3.0):
+        if isinstance(rho, dolfinx.fem.Function):
+            pow_operator = ufl.elem_pow
+        else:
+            pow_operator = np.power
+        
+        return alpha_min + pow_operator(1.0 - rho, p) * (alpha_max - alpha_min)  # type: ignore
+
+
+class AlphaSigmoidFunc(AlphaFunction):
+    def __init__(
+        self,
+        name: str,
+        func_args: dict,
+    ):
+        super().__init__(name, func_args)
+    
+    def __call__(self, rho: np.ndarray|dolfinx.fem.Function):
+        return self.alpha_fun(rho, **self.func_args)
+    
+    @staticmethod
+    def alpha_fun(rho: np.ndarray|dolfinx.fem.Function, alpha_min=1e-12, alpha_max=100.0, x0=0.5, k=20.0):
+        if isinstance(rho, dolfinx.fem.Function):
+            exp_operator = ufl.exp
+        else:
+            exp_operator = np.exp
+        
+        return alpha_min + (alpha_max - alpha_min) * (1.0 - 1.0 / (1.0 + exp_operator(-k * (rho - x0))))  # type: ignore
+
+
 class TopoFluidOptimizer(FluidSimulator):
     def __init__(
         self, 
@@ -148,9 +203,14 @@ class TopoFluidOptimizer(FluidSimulator):
         init_topo_weight_method: Literal['poisson', 'filter', 'none', 'raw'],
         weight_filter_radius: float,
         result_dir: str,
-        alpha_fun_max: float = 100.0,
-        alpha_fun_min: float = 1e-12,
-        alpha_fun_p: float = 3.0,
+        alpha_fun: dict = {
+            'name': 'exponential',
+            'args': {
+                'alpha_min': 1e-12,
+                'alpha_max': 100.0,
+                'p': 3.0,
+            }
+        },
         velocity_degree = 2,
         pressure_degree = 1,
         velocity_space: Literal['CG', 'DG', 'Lagrange'] = 'Lagrange',
@@ -184,9 +244,12 @@ class TopoFluidOptimizer(FluidSimulator):
         self.fluid_type: Literal['stoke', 'naiver_stoke', 'rans'] = fluid_type
         self.viscosity_init = viscosity_init
         
-        self.alpha_fun_max = alpha_fun_max
-        self.alpha_fun_min = alpha_fun_min
-        self.alpha_fun_p = alpha_fun_p
+        if alpha_fun['name'] == 'exponential':
+            self.alpha_func = AlphaExponentialFunc(alpha_fun['name'], alpha_fun['args'])
+        elif alpha_fun['name'] == 'sigmoid':
+            self.alpha_func = AlphaSigmoidFunc(alpha_fun['name'], alpha_fun['args'])
+        else:
+            raise ValueError(f"Invalid alpha function: {alpha_fun['name']}")
         
         self.topo_weight_init = topo_weight_init
         self.init_topo_weight_method = init_topo_weight_method
@@ -353,10 +416,6 @@ class TopoFluidOptimizer(FluidSimulator):
         """set wall boundary at last"""        
         return [bry_info.bry_cell for bry_info in sorted(self.boundaries.values(), key=lambda x: x.priority)]
 
-    @staticmethod
-    def alpha_fun(rho: np.ndarray|dolfinx.fem.Function, alpha_min=1e-12, alpha_max=100.0, p=3.0, pow_operator=ufl.elem_pow):
-        return alpha_min + pow_operator(1.0 - rho, p) * (alpha_max - alpha_min)  # type: ignore
-
     def define_govern_equation(
         self, 
         u: ufl.tensors.ListTensor, p: ufl.indexed.Indexed,
@@ -392,6 +451,15 @@ class TopoFluidOptimizer(FluidSimulator):
             raise ValueError(f'Invalid fluid type: {self.fluid_type}')
         return govern_form
 
+    @staticmethod
+    def sigmoid_fun(rho: np.ndarray|dolfinx.fem.Function, alpha_min=1e-12, alpha_max=100.0, x0=0.5, k=20.0):
+        if isinstance(rho, dolfinx.fem.Function):
+            exp_operator = ufl.exp
+        else:
+            exp_operator = np.exp
+        
+        return alpha_min + (alpha_max - alpha_min) * (1.0 - 1.0 / (1.0 + exp_operator(-k * (rho - x0))))  # type: ignore
+
     def prepare_cost_args(self, u: ufl.tensors.ListTensor, p: ufl.indexed.Indexed, obj_cost_args: dict, **kwargs):
         cost_parse_dict = {}
         
@@ -412,7 +480,15 @@ class TopoFluidOptimizer(FluidSimulator):
                 min_dissipation_form = kwargs['viscosity'] * inner(grad(u), grad(u)) * ufl.dx
             else:
                 min_dissipation_form = inner(grad(u), grad(u)) * ufl.dx
-            penalized_term = 0.5 * kwargs['alpha'] * inner(u, u) * ufl.dx
+            # penalized_term = 0.5 * kwargs['alpha'] * inner(u, u) * ufl.dx    # TODO: 这里应该bound住alpha吗?, please check sigmoid_fun
+            penalized_term = 0.5 * self.sigmoid_fun(
+                kwargs['rho'], 
+                alpha_min=kwargs.get('alpha_min', 1e-12), 
+                alpha_max=kwargs.get('alpha_max', 300.0), 
+                x0=kwargs.get('x0', 0.5), 
+                k=kwargs.get('k', 20.0)
+            ) * inner(u, u) * ufl.dx  # type: ignore
+            
             cost_parse_dict.update({
                 'min_dissipation_form': min_dissipation_form,
                 'penalized_term': penalized_term,
@@ -585,14 +661,8 @@ class TopoFluidOptimizer(FluidSimulator):
             if self.init_topo_weight_method != 'none':
                 self.init_topo_weight(self.topo_weight, method=self.init_topo_weight_method)  # type: ignore
             
-            alpha = self.alpha_fun(
-                rho=self.topo_weight,  # type: ignore
-                alpha_min=self.alpha_fun_min, 
-                alpha_max=self.alpha_fun_max, 
-                p=self.alpha_fun_p, 
-                pow_operator=np.power
-            )
-            govern_form += alpha * inner(u, v) * ufl.dx
+            alpha = self.alpha_func(self.topo_weight)  # type: ignore
+            govern_form += alpha * inner(u, v) * ufl.dx  # type: ignore
             
             uh = equation_solve(
                 domain=self.domain,
@@ -618,7 +688,7 @@ class TopoFluidOptimizer(FluidSimulator):
             for obj_idx, obj_cost_args in enumerate(obj_cost_args_list):
                 obj_cost_args = self.prepare_cost_args(
                     u=u, p=p, obj_cost_args=obj_cost_args,  # type: ignore
-                    viscosity=self.viscosity, alpha=alpha,
+                    viscosity=self.viscosity, alpha=alpha, rho=self.topo_weight,
                 )
                 if obj_cost_args['style'] == 'MinDissipation':
                     obj_cost = assemble_scalar(
@@ -646,12 +716,13 @@ class TopoFluidOptimizer(FluidSimulator):
                     if with_max_dif_cost:
                         max_dif_cost, max_dif_weight = 0.0, 0.0
                         
-                    for i, (_, outlet_item) in enumerate(obj_cost_args['outlet_cost_forms'].items()):
+                    for i, (marker, outlet_item) in enumerate(obj_cost_args['outlet_cost_forms'].items()):
                         outlet_flux = assemble_scalar(
                             form=outlet_item['flux_form'],
                             domain=self.domain, tape=self.tape
                         )
                         target_flux = outlet_item['target_flux']
+                        print(f"{marker} flux: {outlet_flux}, target: {target_flux}, inlet_flux: {obj_cost_args['inlet_flux']}")
                                                 
                         flux_dif = outlet_flux - target_flux
                         if with_rescale:
@@ -723,10 +794,17 @@ class TopoFluidOptimizer(FluidSimulator):
             if reg_cost_args['style'] == 'Volume':
                 target_volume = reg_cost_args['target_volume']
                 topo_volume = assemble_scalar(reg_cost_args['vol_form'], domain=self.domain, tape=self.tape)
-                volume_dif = target_volume - topo_volume
                 if reg_cost_args['reg_rescale']:
-                    volume_dif = volume_dif / target_volume
-                reg_cost = reg_cost_args['weight'] * (volume_dif ** 2)
+                    topo_volume_rescale = topo_volume / target_volume
+                    # reg_cost = reg_cost_args['weight'] * ((topo_volume_rescale - 1.0) ** 2)
+                    
+                    volume_dif = topo_volume_rescale - 1.0                    
+                    reg_cost = reg_cost_args['weight'] * (volume_dif ** 2)                    
+                    reg_cost += reg_cost_args['weight'] * (max(volume_dif, 0.0) + -1.0 * min(volume_dif, 0.0))
+                    
+                else:
+                    reg_cost = reg_cost_args['weight'] * ((topo_volume - target_volume) ** 2)
+                
             else:
                 raise ValueError(f'Invalid regularization style: {reg_cost_args['style']}')
             self.reg_cost_args = reg_cost_args
@@ -1040,11 +1118,17 @@ class TopoFluidOptimizer(FluidSimulator):
         if self.reg_cost_args['style'] == 'Volume':
             target_volume = self.reg_cost_args['target_volume']
             topo_volume = AssembleUtils.assemble_scalar(self.reg_cost_args['vol_form'])
-            volume_dif = target_volume - topo_volume
             if self.reg_cost_args['reg_rescale']:
-                volume_dif = volume_dif / target_volume
-            eval_dict['reg_cost'] = self.reg_cost_args['weight'] * (volume_dif ** 2)
+                topo_volume_rescale = topo_volume / target_volume
+                # eval_dict['reg_cost'] = self.reg_cost_args['weight'] * (float(topo_volume_rescale - 1.0) ** 2)
                 
+                volume_dif = topo_volume_rescale - 1.0
+                eval_dict['reg_cost'] = self.reg_cost_args['weight'] * float(volume_dif ** 2)
+                eval_dict['reg_cost'] += self.reg_cost_args['weight'] * float((np.maximum(volume_dif, 0.0) + -1.0 * np.minimum(volume_dif, 0.0)))
+                
+            else:
+                eval_dict['reg_cost'] = self.reg_cost_args['weight'] * (float(target_volume - topo_volume) ** 2)
+                            
             log_dict['cost']['reg_cost'] = eval_dict['reg_cost']
             log_dict['volume'] = topo_volume
                 
@@ -1116,9 +1200,14 @@ def debug_1():
         init_topo_weight_method='filter',
         weight_filter_radius=0.06,
         result_dir=os.path.join(base_dir, 'dolfinx_topo'),
-        alpha_fun_max=100.0,
-        alpha_fun_min=1e-12,
-        alpha_fun_p=3.0,
+        alpha_fun={
+            'name': 'exponential',
+            'args': {
+                'alpha_min': 1e-12,
+                'alpha_max': 100.0,
+                'p': 3.0,
+            }
+        },
     )    
     optim.setup_tape(Tape())
     
@@ -1191,9 +1280,14 @@ def debug_2():
         topo_weight_init=1.0,
         weight_filter_radius=0.075,
         result_dir=os.path.join(base_dir, 'dolfinx_topo'),
-        alpha_fun_max=1000.0,
-        alpha_fun_min=1e-12,
-        alpha_fun_p=3.0,
+        alpha_fun={
+            'name': 'exponential',
+            'args': {
+                'alpha_min': 1e-12,
+                'alpha_max': 1000.0,
+                'p': 3.0,
+            }
+        },
     )    
     optim.setup_tape(Tape())
     
@@ -1251,6 +1345,6 @@ def debug_2():
 
 
 if __name__ == '__main__':
-    debug_1()
+    # debug_1()
     # debug_2()
     pass

@@ -34,6 +34,8 @@ from scripts_py.functionspae_utils import FunctionSpaceUtils
 from basix.ufl import element, mixed_element
 from scripts_py.eqn_solver import LinearProblemSolver, NonLinearProblemSolver
 
+from scripts_py.auto_dolfinx.opt_solver.topo_fluid import AlphaFunction
+
 
 class CacheMemory(object):
     def __init__(self) -> None:
@@ -245,9 +247,6 @@ def convert_fipy_result_to_dolfinx(
         "pc_factor_mat_solver_type": "mumps",
         "mat_mumps_icntl_24": 1
     },
-    alpha_value: np.ndarray|None = None,
-    alpha_max: float|None = None,
-    alpha_filter_ratio: float = 0.95,
 ):
     velocity_L2_bcs, pressure_L2_bcs = define_interpolation_bcs(
         mesh=mesh,
@@ -312,19 +311,6 @@ def convert_fipy_result_to_dolfinx(
         target_func_space=None,
         ksp_option={},
     )
-    
-    """
-    # ------ add high alpha area to strict low velocity area ------
-    # TODO: terrible, not a good choice, remove in the future
-    # NOTE: 这里的问题是在环绕渗透的地方通常会有很低的速度,但渗透率由不至于非常低,所以这个过滤意义不大. Need to check
-    if alpha_value is not None and alpha_max is not None:
-        point_velocity_np = velocity_point_fun.x.array.copy().reshape((-1, mesh.tdim))  # type: ignore
-        # point_velocity_np[alpha_value > alpha_max * alpha_filter_ratio, :] = 0.0  # type: ignore        
-        strict_area_bool = alpha_value > alpha_max * alpha_filter_ratio
-        point_velocity_np[strict_area_bool, :] = point_velocity_np[strict_area_bool, :] / 10.0
-        velocity_point_fun.x.array[:] = point_velocity_np.reshape((-1,))  # type: ignore
-    # ------ add high alpha area to strict low velocity area ------
-    """
     
     velocity_interpolate_fun = FunctionSpaceUtils.convert_dolfinx_function_space(
         mesh=mesh,
@@ -637,10 +623,7 @@ def equation_cfd_topoWeight_solve(
     
     # ------ alpha related ------
     topo_weight_name: str,
-    alpha_fun: Callable,
-    alpha_min: float,
-    alpha_max: float,
-    alpha_p: float,
+    alpha_func: AlphaFunction,
     
     # ------ autdolfinx related ------
     F_form: ufl.Form,
@@ -700,13 +683,7 @@ def equation_cfd_topoWeight_solve(
         if not find_topo_weight:
             raise ValueError(f"Topo weight {topo_weight_name} not found in F_form.")
         
-        structure_source_term = alpha_fun(
-            rho=topo_weight.x.array.copy(),
-            alpha_min=alpha_min,
-            alpha_max=alpha_max,
-            p=alpha_p,
-            pow_operator=np.power
-        )
+        structure_source_term = alpha_func(topo_weight.x.array.copy())  # type: ignore
         
         if fluid_type == 'stoke':
             cell_velocity, cell_pressure, cache_memory = run_stoke_fluid_simulation(
@@ -742,9 +719,6 @@ def equation_cfd_topoWeight_solve(
             uh=state,
             V_to_W_dofs=V_to_W_dofs,
             Q_to_W_dofs=Q_to_W_dofs,
-            alpha_value=structure_source_term if alpha_filter_ratio > 0.0 else None,
-            alpha_max=alpha_max if alpha_filter_ratio > 0.0 else None,
-            alpha_filter_ratio=alpha_filter_ratio,
         )
         
         # # very terrible
@@ -798,10 +772,7 @@ def equation_cfd_topoWeight_solve(
             
             # ------ alpha related ------
             topo_weight_name = topo_weight_name,
-            alpha_fun = alpha_fun,
-            alpha_min = alpha_min,
-            alpha_max = alpha_max,
-            alpha_p = alpha_p,
+            alpha_func = alpha_func,
             
             # ------ autdolfinx related ------
             F_form=F_form,
@@ -814,7 +785,6 @@ def equation_cfd_topoWeight_solve(
             
             forward_ksp_option=forward_ksp_option,
             forward_kwargs=forward_kwargs,
-            alpha_filter_ratio=alpha_filter_ratio,
         )
         
         if tape is None:
@@ -851,11 +821,7 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
         
         # ------ alpha related ------
         topo_weight_name: str,
-        alpha_fun: Callable,
-        alpha_min: float,
-        alpha_max: float,
-        alpha_p: float,
-        alpha_filter_ratio: float,
+        alpha_func: AlphaFunction,
         
         # ------ result convert related ------
         V_to_W_dofs: np.ndarray,
@@ -912,11 +878,7 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
         
         # ------ alpha related ------
         self.topo_weight_name = topo_weight_name
-        self.alpha_fun = alpha_fun
-        self.alpha_min = alpha_min
-        self.alpha_max = alpha_max
-        self.alpha_p = alpha_p
-        self.alpha_filter_ratio = alpha_filter_ratio
+        self.alpha_func = alpha_func
         
         # ------ result convert related ------
         self.V_to_W_dofs = V_to_W_dofs
@@ -937,13 +899,7 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
         if not find_topo_weight:
             raise ValueError(f"Topo weight {self.topo_weight_name} not found in F_form.")
             
-        structure_source_term = self.alpha_fun(
-            rho=topo_weight.x.array.copy(),
-            alpha_min=self.alpha_min,
-            alpha_max=self.alpha_max,
-            p=self.alpha_p,
-            pow_operator=np.power
-        )
+        structure_source_term = self.alpha_func(topo_weight.x.array.copy())  # type: ignore
         
         if self.cache_memory is not None:
             init_vtu = self.cache_memory.get_cache('init_vtu')
@@ -987,9 +943,6 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
             uh=uh,
             V_to_W_dofs=self.V_to_W_dofs,
             Q_to_W_dofs=self.Q_to_W_dofs,
-            alpha_value=structure_source_term if self.alpha_filter_ratio > 0.0 else None,
-            alpha_max=self.alpha_max if self.alpha_filter_ratio > 0.0 else None,
-            alpha_filter_ratio=self.alpha_filter_ratio,
         )
         
         # # very terrible
