@@ -183,13 +183,12 @@ class AlphaSigmoidFunc(AlphaFunction):
         return self.alpha_fun(rho, **self.func_args)
     
     @staticmethod
-    def alpha_fun(rho: np.ndarray|dolfinx.fem.Function, alpha_min=1e-12, alpha_max=100.0, x0=0.5, k=20.0):
-        if isinstance(rho, dolfinx.fem.Function):
-            exp_operator = ufl.exp
+    def alpha_fun(rho: np.ndarray|dolfinx.fem.Function, alpha_min=1e-12, alpha_max=100.0, x0=0.5, k=20.0, inverse=True):
+        exp_operator = ufl.exp if isinstance(rho, dolfinx.fem.Function) else np.exp
+        if inverse:
+            return alpha_min + (alpha_max - alpha_min) * (1.0 - 1.0 / (1.0 + exp_operator(-k * (rho - x0))))  # type: ignore
         else:
-            exp_operator = np.exp
-        
-        return alpha_min + (alpha_max - alpha_min) * (1.0 - 1.0 / (1.0 + exp_operator(-k * (rho - x0))))  # type: ignore
+            return alpha_min + (alpha_max - alpha_min) * (1.0 / (1.0 + exp_operator(-k * (rho - x0))))  # type: ignore
 
 
 class TopoFluidOptimizer(FluidSimulator):
@@ -451,15 +450,6 @@ class TopoFluidOptimizer(FluidSimulator):
             raise ValueError(f'Invalid fluid type: {self.fluid_type}')
         return govern_form
 
-    @staticmethod
-    def sigmoid_fun(rho: np.ndarray|dolfinx.fem.Function, alpha_min=1e-12, alpha_max=100.0, x0=0.5, k=20.0):
-        if isinstance(rho, dolfinx.fem.Function):
-            exp_operator = ufl.exp
-        else:
-            exp_operator = np.exp
-        
-        return alpha_min + (alpha_max - alpha_min) * (1.0 - 1.0 / (1.0 + exp_operator(-k * (rho - x0))))  # type: ignore
-
     def prepare_cost_args(self, u: ufl.tensors.ListTensor, p: ufl.indexed.Indexed, obj_cost_args: dict, **kwargs):
         cost_parse_dict = {}
         
@@ -481,12 +471,13 @@ class TopoFluidOptimizer(FluidSimulator):
             else:
                 min_dissipation_form = inner(grad(u), grad(u)) * ufl.dx
             # penalized_term = 0.5 * kwargs['alpha'] * inner(u, u) * ufl.dx    # TODO: 这里应该bound住alpha吗?, please check sigmoid_fun
-            penalized_term = 0.5 * self.sigmoid_fun(
+            penalized_term = 0.5 * AlphaSigmoidFunc.alpha_fun(
                 kwargs['rho'], 
-                alpha_min=kwargs.get('alpha_min', 1e-12), 
-                alpha_max=kwargs.get('alpha_max', 300.0), 
-                x0=kwargs.get('x0', 0.5), 
-                k=kwargs.get('k', 20.0)
+                alpha_min=obj_cost_args.get('penalized_alpha_min', 1e-12), 
+                alpha_max=obj_cost_args.get('penalized_alpha_max', 300.0), 
+                x0=0.5, 
+                k=obj_cost_args.get('penalized_alpha_k', 20.0),
+                inverse=True
             ) * inner(u, u) * ufl.dx  # type: ignore
             
             cost_parse_dict.update({
@@ -1045,7 +1036,8 @@ class TopoFluidOptimizer(FluidSimulator):
             elif obj_cost_args['style'] == 'MinDissipation+BrinkmanPenalized':
                 min_dissipation_cost = obj_cost_args['dissipation_weight'] * AssembleUtils.assemble_scalar(obj_cost_args['min_dissipation_form'])
                 penalized_cost = obj_cost_args['penalized_weight'] * AssembleUtils.assemble_scalar(obj_cost_args['penalized_term'])
-                eval_dict['MinDissPenalized_cost'] = min_dissipation_cost + penalized_cost
+                eval_dict['MinDiss_cost'] = min_dissipation_cost
+                eval_dict['Penalized_cost'] = penalized_cost
                 log_dict['cost']['MinDiss_cost'] = min_dissipation_cost
                 log_dict['cost']['Penalized_cost'] = penalized_cost
                                 

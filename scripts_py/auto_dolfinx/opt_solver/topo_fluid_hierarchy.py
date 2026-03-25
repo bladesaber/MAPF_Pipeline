@@ -276,7 +276,7 @@ class TopoFluidGridOptimizer(object):
         return self.topo_function
 
     def optimize(self, residual_error_threshold=1e-4):
-        if self.us_fipy:   
+        if self.us_fipy:
             optim = TopoFluidOptimizerFipy(
                 name=self.name,
                 msh_file=self.msh_file_path,
