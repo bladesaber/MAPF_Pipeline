@@ -31,6 +31,9 @@ from scripts_py.functionspae_utils import FunctionSpaceUtils
 from fipy.solvers.petsc import LinearGMRESSolver, LinearPCGSolver  # Import at top
 
 
+# TODO: please using mesh.physicalCellMap replace define_obs_mask in the future
+
+
 class FipyStokeSimulator(object):
     '''Gmsh2D/Gmsh3D only accept .msh version 2'''
     def __init__(

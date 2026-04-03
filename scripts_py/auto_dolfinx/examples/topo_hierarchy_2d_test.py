@@ -5,9 +5,9 @@ import numpy as np
 import pyvista
 from mpi4py import MPI
 
-from scripts_py.auto_dolfinx.opt_solver.topo_fluid_hierarchy import AutoFluidBoundary
+from scripts_py.auto_dolfinx.opt_solver.topo_fluid_v2_tmp import AutoFluidBoundary
 from scripts_py.auto_dolfinx.opt_solver.grid_mesher import GridMesher
-from scripts_py.auto_dolfinx.opt_solver.topo_fluid_v2 import TopoFluidOptimizer
+from scripts_py.auto_dolfinx.opt_solver.topo_fluid_v2_tmp import TopoFluidOptimizer
 from scripts_py.mesh_utils import MeshUtils, MeshObj
 
 from thirdparty.pyadjoint.pyadjoint import Tape

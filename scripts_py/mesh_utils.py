@@ -310,7 +310,7 @@ class MeshUtils(object):
         if style == "facet":
             if marker is None:
                 # return whole boundary entity idxs
-                domain.topology.create_connectivity(tdim - 1, tdim)
+                # domain.topology.create_connectivity(tdim - 1, tdim)
                 entities_idxs = dolfinx.mesh.exterior_facet_indices(domain.topology)
             else:
                 if isinstance(marker, Callable):
@@ -336,6 +336,7 @@ class MeshUtils(object):
         """
         dof为dolfin.fem.function数组内的索引idx
         """
+        
         return dolfinx.fem.locate_dofs_topological(
             V, entity_dim=dim, entities=entity_idxs
         )
@@ -365,6 +366,13 @@ class MeshUtils(object):
         indices = dolfinx.mesh.locate_entities_boundary(domain, dim, location_func)
         markers = np.full(indices.shape[0], fill_value=marker).astype(np.int32)
         mesh_tag = dolfinx.mesh.meshtags(domain, dim, indices, markers)
+        return mesh_tag
+    
+    @staticmethod
+    def define_meshTag_from_numpy(
+        domain: dolfinx.mesh.Mesh, dim: int, indices: np.ndarray, values: np.ndarray
+    ) -> dolfinx.mesh.MeshTags:
+        mesh_tag = dolfinx.mesh.meshtags(domain, dim, indices.astype(np.int32), values.astype(np.int32))
         return mesh_tag
 
     @staticmethod
@@ -558,10 +566,14 @@ class MeshObj(object):
         self.num_points = self.domain.geometry.x.shape[0]
         self.num_cells = self.grid.n_cells
         self.cell_volumes: np.ndarray = None  # type: ignore
+        
+        self.domain.topology.create_connectivity(self.fdim, self.tdim)
+        self.domain.topology.create_connectivity(self.tdim, self.tdim)
+        
         self.point_to_cells: list = None  # type: ignore
-
-        self.cells_to_points = MeshUtils.cell_connectivity(self.grid, self.tdim)
-        cell_counter: collections.Counter = collections.Counter(self.cells_to_points.flatten().tolist())
+        self.cells_to_points: np.ndarray = None  # type: ignore
+        
+        cell_counter: collections.Counter = collections.Counter(self.get_cell_to_points().flatten().tolist())
         self.occurrences = np.array([cell_counter[i] for i in range(self.num_points)])
         self.facets_to_points = MeshUtils.facet_connectivity(self.domain)
         self.exterior_facet_idxs = MeshUtils.extract_entity_indices(self.domain, style='facet')
@@ -592,7 +604,13 @@ class MeshObj(object):
             point_to_cells.append(conn.links(point_idx))
         self.point_to_cells = point_to_cells
         return self.point_to_cells
-        
+    
+    def get_cell_to_points(self):
+        if self.cells_to_points is not None:
+            return self.cells_to_points
+        self.cells_to_points = MeshUtils.cell_connectivity(self.grid, self.tdim)
+        return self.cells_to_points
+    
     @property
     def points(self):
         return self.domain.geometry.x
@@ -761,7 +779,18 @@ class MeshObj(object):
             MeshUtils.extract_entity_indices(
                 self.domain, style='facet', mesh_tags=self.facet_tags, marker=marker
             )
+            # self.facet_tags.find(marker)
         )
+
+    def extract_cell_indices(self, marker: int, point_space: bool = False) -> np.ndarray:
+        if point_space:
+            return MeshUtils.extract_entity_dofs(
+                DolfinUtils.point_scalar_function_space(self.domain), self.tdim, self.cell_tags.find(marker)
+            )
+        else:
+            return MeshUtils.extract_entity_dofs(
+                DolfinUtils.cell_scalar_function_space(self.domain), self.tdim, self.cell_tags.find(marker)
+            )
 
 
 def debug_convert_msh22():

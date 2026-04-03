@@ -676,7 +676,7 @@ class GridMesher(object):
                             continue
                         line_tag_cfg = dim_cfgs[1][face_cfg['down_tags'][0]]
                         if line_tag_cfg['type'] != 'Circle':
-                            continue
+                            continue                        
                         if np.isclose(np.array(face_cfg['center']), bry_cfg.face_center).all():
                             fine_surface_tags[face_tag] = {
                                 'name': bry_cfg.name,

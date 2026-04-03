@@ -26,6 +26,7 @@ class FluidBoundary(object):
         boundary_type: Literal['velocity', 'pressure', 'wall'],
         value: Union[float, list[float], np.ndarray],
         marker: int,
+        boundary_dim: Literal['facet', 'cell'] = 'facet',
         **kwargs
     ):
         if boundary_type == 'velocity':
@@ -40,10 +41,11 @@ class FluidBoundary(object):
         else:
             raise ValueError("[Error]: Invalid boundary type.")
         
-        self.name = name
+        self.name: str = name
         self.boundary_type = boundary_type
         self.value: np.ndarray|float = value
         self.marker = marker
+        self.boundary_dim = boundary_dim
         self.bry_cell: BoundaryCell
         
         self.priority = -1
@@ -244,7 +246,9 @@ class StokeSimulator(FluidSimulator):
     def define_boundary(self):
         for name, bry_info in self.boundaries.items():
             if bry_info.boundary_type == 'velocity':
-                
+                if bry_info.boundary_dim != 'facet':
+                    raise NotImplementedError(f"[Error]: {bry_info.boundary_dim} boundary is not supported for velocity boundary.")
+                                
                 inflow_velocity_exp = partial(
                     FluidBoundary.inflow_velocity_exp,
                     velocity=np.array(bry_info.value),
@@ -254,7 +258,7 @@ class StokeSimulator(FluidSimulator):
                     face_radius=bry_info.face_radius, # type: ignore
                     method=bry_info.interpolate_method,
                 )
-                
+                    
                 bry_info.bry_cell = BoundaryCell.define_bry_cell(
                     name=name,
                     bc_func_space=self.W0,
@@ -270,6 +274,9 @@ class StokeSimulator(FluidSimulator):
                 )
 
             elif bry_info.boundary_type == 'pressure':
+                if bry_info.boundary_dim != 'facet':
+                    raise NotImplementedError(f"[Error]: {bry_info.boundary_dim} boundary is not supported for pressure boundary.")
+                
                 pressure_func = dolfinx.fem.Function(self.Q, name=name)
                 pressure_func.x.array[:] = bry_info.value  # type: ignore
                 bry_info.bry_cell = BoundaryCell.define_bry_cell(
@@ -288,22 +295,32 @@ class StokeSimulator(FluidSimulator):
 
             elif bry_info.boundary_type == 'wall':
                 wall_func = dolfinx.fem.Function(self.V, name=name)
-                bry_info.bry_cell = BoundaryCell.define_bry_cell(
-                    name=name,
-                    bc_func_space=self.W0,
-                    value_func_space=self.V,
-                    dofs=MeshUtils.extract_entity_dofs(
+                
+                if bry_info.boundary_dim == 'facet':
+                    dofs = MeshUtils.extract_entity_dofs(
                         (self.W0, self.V), self.mesh.fdim,
                         MeshUtils.extract_entity_indices(
                             self.mesh.domain, style='facet', mesh_tags=self.mesh.facet_tags, marker=bry_info.marker
                         )
-                    ),
+                    )
+                elif bry_info.boundary_dim == 'cell':
+                    cell_bool = bry_info.kwargs['cell_bool']
+                    entity_indices = self.mesh.cell_tags.indices[cell_bool]
+                    dofs = MeshUtils.extract_entity_dofs((self.W0, self.V), self.mesh.tdim, entity_indices)
+                else:
+                    raise ValueError(f"[Error]: {bry_info.boundary_dim} boundary is not supported for wall boundary.")
+                
+                bry_info.bry_cell = BoundaryCell.define_bry_cell(
+                    name=name,
+                    bc_func_space=self.W0,
+                    value_func_space=self.V,
+                    dofs=dofs,
                     bc_value=wall_func,
                     is_mixed_element=True,
                 )
 
             else:
-                raise ValueError('[Error]: Invalid Boundary Type.')
+                raise ValueError('[Error]: Invalid Boundary Type.')                    
         
     def get_bcs(self):
         """set wall boundary at last"""        

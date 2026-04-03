@@ -26,7 +26,7 @@ from thirdparty.pyadjoint.pyadjoint.tape import (
 from scripts_py.dolfinx_utils import DolfinUtils, BoundaryUtils
 from scripts_py.auto_dolfinx.blocks.block_solve import EquationSolveBlock
 from scripts_py.auto_dolfinx.opt_solver.topo_fluid import AutoFluidBoundary
-from scripts_py.auto_dolfinx.cbs_topo.seq_mesh_utils import SeqMeshObj
+# from scripts_py.auto_dolfinx.cbs_topo.seq_mesh_utils import SeqMeshObj
 from scripts_py.mesh_utils import MeshObj, MeshUtils
 from scripts_py.simulator.fipy_simulator import FipyStokeSimulator, FluidBoundary
 from scripts_py.functionspae_utils import FunctionSpaceUtils
@@ -603,7 +603,7 @@ def equation_cfd_topoWeight_solve(
     viscosity: float|np.ndarray|list,
     velocityRelaxation: float,
     pressureRelaxation: float,
-    structure_mesh: SeqMeshObj,
+    structure_mesh: MeshObj,
     structure_obs_weight: np.ndarray|None,
     log_step: int,
     hot_steps: int,
@@ -665,7 +665,6 @@ def equation_cfd_topoWeight_solve(
         'mat_assemble_method': 'lift',
         'with_residual': False
     },
-    alpha_filter_ratio: float = -1.0,
     **kwargs
 ):
     if tape is None:
@@ -807,7 +806,7 @@ class CfdTopoWeightEqnSolveBlock(EquationSolveBlock):
         viscosity: float|np.ndarray|list,
         velocityRelaxation: float,
         pressureRelaxation: float,
-        structure_mesh: SeqMeshObj,
+        structure_mesh: MeshObj,
         structure_obs_weight: np.ndarray|None,
         hot_steps: int,
         log_step: int,
