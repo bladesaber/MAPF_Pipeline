@@ -7,3 +7,6 @@
 [submodule "cpp_pkg/thirdparty/pyadjoint"]
 	path = cpp_pkg/thirdparty/pyadjoint
 	url = https://github.com/dolfin-adjoint/pyadjoint.git
+[submodule "thirdparty/agi_application"]
+	path = thirdparty/agi_application
+	url = https://github.com/bladesaber/agi_application.git

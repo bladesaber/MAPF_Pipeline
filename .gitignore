@@ -1,24 +1,24 @@
 /reference_project
 /.idea
 /Company Record
-/build
-/build_test
 .vscode
 __pycache__
 *.npy
 *.csv
 *.stl
 *.STL
-/Thirdparty
-/cmake-build-debug
 /temp_files
 /pathSearch_pkg/third_party
 /pathSearch_pkg/.idea
 /pathSearch_pkg/.vscode
 /easy_server/.vscode
 /easy_server/.idea
-/pathSearch_pkg/build
 *.o
 *_
 */node_modules
 /easy_server/web_front/node_modules
+
+# Build outputs (any depth)
+build/
+build_test/
+cmake-build-*/
