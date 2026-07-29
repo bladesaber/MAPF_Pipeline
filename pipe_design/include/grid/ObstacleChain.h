@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-namespace pipe::grid {
+namespace pipe_design::grid {
 
 /// Immutable constraint list with parent sharing (CBS-friendly COW).
 ///
@@ -62,4 +62,4 @@ private:
     std::vector<geom::CapsuleObstacle> capsules_;
 };
 
-}  // namespace pipe::grid
+}  // namespace pipe_design::grid

@@ -2,7 +2,7 @@
 
 #include "geom/Types.h"
 
-namespace pipe::geom {
+namespace pipe_design::geom {
 
 inline float distance(const Vec3& a, const Vec3& b) {
     return (a - b).norm();
@@ -35,4 +35,4 @@ inline float signed_clearance(const Vec3& point, const CapsuleObstacle& obs) {
     return point_to_segment_distance(point, obs.a, obs.b) - obs.radius;
 }
 
-}  // namespace pipe::geom
+}  // namespace pipe_design::geom

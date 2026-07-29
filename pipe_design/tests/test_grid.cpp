@@ -9,13 +9,13 @@
 #include <cmath>
 #include <iostream>
 
-using pipe::geom::CapsuleObstacle;
-using pipe::geom::SphereObstacle;
-using pipe::geom::Vec3;
-using pipe::grid::CellCoord;
-using pipe::grid::CompositeGrid;
-using pipe::grid::ObstacleChain;
-using pipe::grid::StaticClearanceGrid;
+using pipe_design::geom::CapsuleObstacle;
+using pipe_design::geom::SphereObstacle;
+using pipe_design::geom::Vec3;
+using pipe_design::grid::CellCoord;
+using pipe_design::grid::CompositeGrid;
+using pipe_design::grid::ObstacleChain;
+using pipe_design::grid::StaticClearanceGrid;
 
 static int g_failures = 0;
 

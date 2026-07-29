@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace pipe::grid {
+namespace pipe_design::grid {
 
 CompositeGrid::CompositeGrid(
     const StaticClearanceGrid& static_grid,
@@ -62,4 +62,4 @@ bool CompositeGrid::is_free(const geom::Vec3& point, float pipe_radius) const {
     return true;
 }
 
-}  // namespace pipe::grid
+}  // namespace pipe_design::grid

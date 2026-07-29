@@ -6,7 +6,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace pipe::grid {
+namespace pipe_design::grid {
 
 StaticClearanceGrid::StaticClearanceGrid(
     int size_x,
@@ -144,4 +144,4 @@ void StaticClearanceGrid::stamp_capsule(const geom::CapsuleObstacle& capsule) {
     }
 }
 
-}  // namespace pipe::grid
+}  // namespace pipe_design::grid

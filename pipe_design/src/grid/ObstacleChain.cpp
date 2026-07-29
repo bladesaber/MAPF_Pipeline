@@ -4,7 +4,7 @@
 
 #include <limits>
 
-namespace pipe::grid {
+namespace pipe_design::grid {
 
 std::shared_ptr<ObstacleChain> ObstacleChain::make_root() {
     return std::shared_ptr<ObstacleChain>(new ObstacleChain());
@@ -68,4 +68,4 @@ bool ObstacleChain::collides(const geom::Vec3& point, float pipe_radius) const {
     return false;
 }
 
-}  // namespace pipe::grid
+}  // namespace pipe_design::grid

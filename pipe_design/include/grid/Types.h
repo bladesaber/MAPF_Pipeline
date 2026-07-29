@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <ostream>
 
-namespace pipe::grid {
+namespace pipe_design::grid {
 
 /// Integer cell coordinate on the search grid.
 struct CellCoord {
@@ -31,4 +31,4 @@ struct CellCoord {
     }
 };
 
-}  // namespace pipe::grid
+}  // namespace pipe_design::grid

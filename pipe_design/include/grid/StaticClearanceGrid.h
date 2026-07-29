@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace pipe::grid {
+namespace pipe_design::grid {
 
 /// Dense truncated clearance field for static obstacles.
 ///
@@ -67,4 +67,4 @@ private:
     std::vector<float> field_;
 };
 
-}  // namespace pipe::grid
+}  // namespace pipe_design::grid

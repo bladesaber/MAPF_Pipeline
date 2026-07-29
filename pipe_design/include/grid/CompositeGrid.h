@@ -6,7 +6,7 @@
 
 #include <memory>
 
-namespace pipe::grid {
+namespace pipe_design::grid {
 
 /// Occupancy query that combines:
 ///   - StaticClearanceGrid  (shared dense field)
@@ -51,4 +51,4 @@ private:
     std::shared_ptr<const ObstacleChain> chain_;
 };
 
-}  // namespace pipe::grid
+}  // namespace pipe_design::grid

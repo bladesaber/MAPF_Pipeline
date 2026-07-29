@@ -3,7 +3,7 @@
 #include <cmath>
 #include <ostream>
 
-namespace pipe::geom {
+namespace pipe_design::geom {
 
 /// Continuous world-space point / vector.
 struct Vec3 {
@@ -45,4 +45,4 @@ struct CapsuleObstacle {
     CapsuleObstacle(Vec3 a_, Vec3 b_, float radius_) : a(a_), b(b_), radius(radius_) {}
 };
 
-}  // namespace pipe::geom
+}  // namespace pipe_design::geom
