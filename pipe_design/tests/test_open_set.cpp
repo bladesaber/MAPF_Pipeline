@@ -89,7 +89,7 @@ static void test_lazy_heap_stale_entries() {
 
     a.f = 2.0;
     a.g = 1.0;
-    heap.decrease_key(&a);
+    EXPECT_TRUE(!heap.decrease_key(&a));  // lazy: must re-push
     heap.push(&a);
 
     SearchNode* best = heap.pop();
@@ -190,11 +190,6 @@ static void test_bucket_heap_throws_on_over_limit() {
 // Speed benchmark
 // ---------------------------------------------------------------------------
 
-enum class DecreaseMode {
-    TrueDecrease,  // Binary / Pairing / Bucket: update f then decrease_key
-    LazyRepush,    // LazyBinary: update f then push again
-};
-
 struct BenchResult {
     std::string name;
     double ms = 0.0;
@@ -220,7 +215,7 @@ static void reset_nodes_for_bench(std::vector<SearchNode>& nodes, uint32_t seed)
 }
 
 /// A*-like workload: push all → decrease ~25% keys → pop until empty.
-static void run_open_set_workload(OpenSet& heap, std::vector<SearchNode>& nodes, DecreaseMode mode) {
+static void run_open_set_workload(OpenSet& heap, std::vector<SearchNode>& nodes) {
     heap.clear();
     for (SearchNode& n : nodes) {
         n.status = NodeStatus::Open;
@@ -234,11 +229,8 @@ static void run_open_set_workload(OpenSet& heap, std::vector<SearchNode>& nodes,
         }
         n.f = std::max(0.0, n.f * 0.5);
         n.g += 0.1;
-        if (mode == DecreaseMode::TrueDecrease) {
-            heap.decrease_key(&n);
-        } else {
-            heap.decrease_key(&n);
-            heap.push(&n);
+        if (!heap.decrease_key(&n)) {
+            heap.push(&n);  // LazyBinaryHeap
         }
     }
 
@@ -252,16 +244,15 @@ static BenchResult benchmark_one(
     const std::string& name,
     OpenSet& heap,
     std::vector<SearchNode>& nodes,
-    DecreaseMode mode,
     int rounds) {
     reset_nodes_for_bench(nodes, 1);
-    run_open_set_workload(heap, nodes, mode);
+    run_open_set_workload(heap, nodes);
 
     double sum_ms = 0.0;
     for (int r = 0; r < rounds; ++r) {
         reset_nodes_for_bench(nodes, static_cast<uint32_t>(1000 + r));
         const auto t0 = std::chrono::steady_clock::now();
-        run_open_set_workload(heap, nodes, mode);
+        run_open_set_workload(heap, nodes);
         const auto t1 = std::chrono::steady_clock::now();
         sum_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
     }
@@ -285,13 +276,11 @@ static void benchmark_open_set_speed() {
     BucketHeap bucket_coarse(/*delta=*/1.0, /*max_cost=*/100.0);
 
     std::vector<BenchResult> results;
-    results.push_back(benchmark_one("BinaryHeap", binary, nodes, DecreaseMode::TrueDecrease, kRounds));
-    results.push_back(benchmark_one("LazyBinaryHeap", lazy, nodes, DecreaseMode::LazyRepush, kRounds));
-    results.push_back(benchmark_one("PairingHeap", pairing, nodes, DecreaseMode::TrueDecrease, kRounds));
-    results.push_back(
-        benchmark_one("BucketHeap(delta=0.1)", bucket_fine, nodes, DecreaseMode::TrueDecrease, kRounds));
-    results.push_back(
-        benchmark_one("BucketHeap(delta=1.0)", bucket_coarse, nodes, DecreaseMode::TrueDecrease, kRounds));
+    results.push_back(benchmark_one("BinaryHeap", binary, nodes, kRounds));
+    results.push_back(benchmark_one("LazyBinaryHeap", lazy, nodes, kRounds));
+    results.push_back(benchmark_one("PairingHeap", pairing, nodes, kRounds));
+    results.push_back(benchmark_one("BucketHeap(delta=0.1)", bucket_fine, nodes, kRounds));
+    results.push_back(benchmark_one("BucketHeap(delta=1.0)", bucket_coarse, nodes, kRounds));
 
     const double baseline = results.front().ms;
     std::cout << "\n=== Open-set speed benchmark ===\n";

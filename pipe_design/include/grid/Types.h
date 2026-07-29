@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <ostream>
 
 namespace pipe_design::grid {
@@ -32,3 +33,17 @@ struct CellCoord {
 };
 
 }  // namespace pipe_design::grid
+
+namespace std {
+
+template <>
+struct hash<pipe_design::grid::CellCoord> {
+    std::size_t operator()(const pipe_design::grid::CellCoord& c) const noexcept {
+        const std::size_t hx = static_cast<std::size_t>(static_cast<uint32_t>(c.x));
+        const std::size_t hy = static_cast<std::size_t>(static_cast<uint32_t>(c.y));
+        const std::size_t hz = static_cast<std::size_t>(static_cast<uint32_t>(c.z));
+        return hx * 73856093u ^ hy * 19349663u ^ hz * 83492791u;
+    }
+};
+
+}  // namespace std

@@ -43,6 +43,14 @@ public:
         return clearance(cell) >= pipe_radius;
     }
 
+    /// Row-major index: x + y*size_x + z*size_x*size_y. Cell must be in_bounds.
+    std::size_t flat_index(const CellCoord& cell) const;
+
+    /// Total cell count (size_x * size_y * size_z).
+    std::size_t cell_count() const {
+        return field_.size();
+    }
+
     /// Rebuild the whole field from static geometry.
     /// clearance_cap should be >= max_obstacle_radius + max_pipe_radius.
     void bake(
@@ -53,7 +61,6 @@ public:
     void clear();
 
 private:
-    std::size_t flat_index(const CellCoord& cell) const;
     void stamp_sphere(const geom::SphereObstacle& sphere);
     void stamp_capsule(const geom::CapsuleObstacle& capsule);
     void lower_clearance(const CellCoord& cell, float value);

@@ -8,12 +8,13 @@
 
 namespace pipe_design::planner {
 
-/// Lazy binary heap: decrease_key = push a fresh entry; stale pops are skipped.
+/// Lazy binary heap: improve a key by push()-ing again; stale pops are skipped.
 /// Often fastest for grid A* when reopenings are rare.
 ///
 /// Contract: keep node->status == Open while the node is logically on open.
 /// When expanding, set Closed so stale duplicates are discarded on pop/empty.
-/// After improving f/g, call push(node) again (decrease_key is a no-op hint).
+/// After improving f/g on an open node: if (!decrease_key(node)) push(node);
+/// decrease_key always returns false (no in-place update).
 class LazyBinaryHeap final : public OpenSet {
 public:
     void clear() override;

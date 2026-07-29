@@ -28,9 +28,9 @@ public:
     /// True if this open set currently tracks the node.
     virtual bool contains(const SearchNode* node) const = 0;
 
-    /// After node->f decreased while on open, restore heap order.
-    /// Default: not supported (returns false). Lazy heaps may no-op and return true
-    /// if stale entries are discarded on pop.
+    /// After node->f decreased while already on open, restore heap order.
+    /// Returns true if the heap was updated in place.
+    /// Returns false if not applied — caller must push(node) again (lazy open sets).
     virtual bool decrease_key(SearchNode* node) {
         (void)node;
         return false;

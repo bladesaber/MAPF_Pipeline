@@ -1,16 +1,28 @@
 # pipe_design Roadmap
 
-Framework for **multi-group pipe routing** in a bounded 3D domain.
-Unlike classical MAPF, a routed pipe **permanently occupies** space; conflicts are geometric (radii), not time-space.
+Framework for **automatic multi-group pipe routing** inside a bounded 3D design domain
+(e.g. valve / manifold / equipment envelopes).
+
+Unlike classical MAPF (multi-agent pathfinding), agents do **not** free space after moving:
+once a pipe is routed it **permanently occupies** volume. Conflicts are therefore
+**geometric** (radii / clearance), not time-space.
 
 ---
 
 ## 1. Problem Rules
 
-1. Pipes belong to **groups**. Occupancy conflict between **different groups** is forbidden.
-2. Within a group, sharing / branching policy is configurable (default: same-group paths may connect via multi-terminal topology).
-3. Obstacles and pipes have radii. Shapes are approximated by **spheres** and **capsules** (sphere swept along a segment).
-4. No reverse gear for kinematic planners: use **Dubins**, not Reeds-Shepp.
+1. **Application:** auto-design continuous pipe paths in a fixed 3D domain (static obstacles +
+   already-routed pipes), not transient robot trajectories.
+2. **Groups:** pipes are partitioned into **groups**. Occupancy conflict between
+   **different groups** is forbidden.
+3. **Permanent occupancy:** a routed pipe stays as an obstacle forever. There is no
+   “pass and release” as in MAPF; later paths must clear earlier ones (and static geometry).
+4. **Within a group:** sharing / branching policy is configurable (default: same-group paths
+   may connect via multi-terminal topology — MST / spine / Steiner).
+5. **Geometry:** obstacles and pipes have radii. Shapes are approximated by **spheres** and
+   **capsules** (sphere swept along a segment). Blocked iff `clearance < pipe_radius`.
+6. **Kinematics (when used):** no reverse gear — prefer **Dubins**, not Reeds-Shepp
+   (relevant for Hybrid A* / minimum turning radius).
 
 ---
 
@@ -56,9 +68,11 @@ pipe_design/
   include/
     geom/          # types + geometry utilities
     grid/          # StaticClearanceGrid, ObstacleChain, CompositeGrid
-    heuristic/     # (planned)
+    heuristic/     # Heuristic, Manhattan, Euclidean, Octile, Dijkstra, …
     planner/
-      low/         # (planned) A*, Theta*, Hybrid-A*, …
+      open/        # OpenSet + heap backends
+      motion/      # ActionModel, Six/Eight/TwentySixConnected, …
+      low/         # A*, Path, SearchNode; Theta* / Hybrid-A* planned
       middle/      # (planned) bi-dir, adaptive step, …
       topology/    # (planned) MST, Steiner, …
       schedule/    # (planned) Task, Scheduler
@@ -150,8 +164,8 @@ Legend: **P0** must-have → **P4** later. ★ = preferred for this domain.
 
 | Heuristic | Priority | Notes |
 |-----------|----------|-------|
-| Manhattan / Euclidean / Octile / Chebyshev | P0 | Match connectivity |
-| ★ True distance (Dijkstra/BFS on static grid) | P1 | Admissible w.r.t. static obstacles |
+| Manhattan / Euclidean / Octile / Chebyshev | P0 | Manhattan, Euclidean, Octile done; Chebyshev TBD |
+| ★ True distance (Dijkstra/BFS on static grid) | P1 | `heuristic::Dijkstra` multi-source + relaxed bake |
 | Clearance-aware / bend penalty in cost | P1 | Design quality ≠ pure length |
 | Dubins length | P2 | For Hybrid A\* only |
 | Landmark / ALT | P3 | Very large maps |
@@ -205,8 +219,10 @@ Construction **order** may be **pair** (or segment) granularity.
 
 ### Phase P1 — Single pipe + multi-terminal
 
-- [ ] A\* on `CompositeGrid`  
-- [ ] Basic heuristics (Euclidean / Octile)  
+- [x] A\* on `CompositeGrid` (steppable; 6-connect)  
+- [x] Basic heuristics (Manhattan / Euclidean / Octile)  
+- [x] True-distance heuristic on static field (`Dijkstra`)  
+- [ ] Chebyshev heuristic  
 - [ ] Weighted A\* + bidirectional (middle)  
 - [ ] Adaptive step from clearance  
 - [ ] Topology: MST → sequential pair routing (one group)  
@@ -214,7 +230,7 @@ Construction **order** may be **pair** (or segment) granularity.
 
 ### Phase P2 — Multi-group
 
-- [ ] True-distance heuristic on static field  
+- [x] True-distance heuristic on static field (`Dijkstra`; landed with P1 heuristics)  
 - [ ] Theta\* or smooth+recheck  
 - [ ] CBS with `ObstacleChain` constraints + disjoint split  
 - [ ] PBS alternative  

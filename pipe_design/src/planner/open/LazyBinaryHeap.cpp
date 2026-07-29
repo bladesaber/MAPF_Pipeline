@@ -44,7 +44,8 @@ bool LazyBinaryHeap::contains(const SearchNode* node) const {
 
 bool LazyBinaryHeap::decrease_key(SearchNode* node) {
     (void)node;
-    return true;
+    // No in-place fix: caller must push(node) again with the new f/g.
+    return false;
 }
 
 }  // namespace pipe_design::planner
