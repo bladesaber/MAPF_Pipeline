@@ -39,6 +39,7 @@ tools/
 
 Do not put CBS / topology / production routing logic here.
 Raw benchmark files live under `data/movingai/` (see that README); loaders must not hard-code machine-specific paths outside `tools/data/`.
+Generated instances and C++ dumps go to a caller-chosen `--output-dir` (not under `data/` by default).
 
 ---
 
@@ -126,13 +127,16 @@ Do **not** reuse this schema for full pipe-design / multi-group problems — tha
 | `action_model_kwargs` | object | e.g. `step_cost` (default = `resolution`), `turn_weight` |
 | `heuristic` | string | `"manhattan"` \| `"euclidean"` \| `"octile"` \| `"dijkstra"` |
 | `heuristic_kwargs` | object | e.g. `step_cost` (default = `resolution`) |
+| `heuristic_id` | string | Preset provenance id (optional; default empty) |
 | `heap` | string | `"LazyBinaryHeap"` \| `"BinaryHeap"` \| `"PairingHeap"` \| `"BucketHeap"` |
 | `heap_kwargs` | object | e.g. BucketHeap `delta`, `max_cost` |
+| `heap_id` | string | Preset provenance id (optional; default empty) |
 | `model` | string | `"astar"` \| `"directed_astar"` (more later) |
 | `model_kwargs` | object | e.g. `heuristic_weight`; directed: `num_yaw_bins`, `num_pitch_bins` |
+| `model_id` | string | Preset provenance id (optional; default empty) |
 | `max_expansions` | int? | Omit / null = unlimited |
 | `max_time_ms` | float | Cap on **sum of `step()` time** per query; `<= 0` = unlimited (default `0`) |
-| `output_dir` | string | Where C++ writes reports / dumps; empty = stdout only (no files) |
+| `output_dir` | string | Where C++ writes reports / dumps; empty = stdout only (no files). For `gen/movingai_grids.py`: one map → one instance dir → this field equals that dir. |
 | `export_closed_set` | bool | If true, write under `output_dir/closed_set/` |
 | `export_posthoc` | bool | If true, write under `output_dir/posthoc/` (requires `size_z==1`) |
 | `obstacles` | **list** of objects | See below — not a single dict |
@@ -224,7 +228,8 @@ JSON object; batch runs use **JSONL** (`write_search_reports_jsonl`).
 | `closed` / `nodes_stored` | Closed-status count / `nodes_.size()` |
 | `bytes_estimate` | Rough: `nodes_stored * 64 + open_final * 16` |
 | `path_cost` / `path_length` / `path_turns` | Solution quality (`path` cell list included) |
-| `model`, `heuristic`, `action_model`, `heap` | Provenance from `SearchInstance` |
+| `model`, `heuristic`, `action_model`, `heap` | Solver type names from `SearchInstance` |
+| `model_id`, `heap_id`, `heuristic_id` | Preset provenance ids from `SearchInstance` (may be empty) |
 | `instance_id`, `map_id`, `query_id` | Provenance |
 | `opt_cost`, `reference_cost` | Copied from query when present |
 
@@ -302,8 +307,10 @@ Legend: **P0** first → **P3** later.
 
 ### Phase T1 — Benchmark loop
 
-- [ ] **Python** MovingAI `.map` / `.scen` → standard instance (§4 grids — P0)
-- [ ] **Python** batch driver → invoke C++ runner → JSONL/CSV of reports
+- [x] **Python** MovingAI `.map` / `.scen` → standard instance (§4 grids — P0) (`tools/gen/movingai_grids.py`)
+- [x] **Python** MovingAI batch gen (model × heap × heuristic presets) → instances (`tools/gen/batch_movingai_grids.py`)
+- [x] **Python** low/mid search bench: run batch → `all_reports.csv` (`tools/bench/compare_search.py`); one-factor compare (`tools/bench/factor_compare.py`)
+- [ ] **Python** aggregate reports → JSONL/CSV tables / plots
 - [ ] Success vs time/expansions aggregate plot
 - [ ] Heuristic vs Dijkstra true-distance heatmap + admissibility checks
 - [ ] Wire into comparing new low-level algos (Theta*, weighted, …)
@@ -315,7 +322,7 @@ Legend: **P0** first → **P3** later.
 - [ ] **Python** high-level: reference path(s) → obstacle placement (size + occupancy)
 - [ ] Multi-query / multi-solution instance support
 - [ ] Optional 3D slice viewer
-- [ ] **Python** Posthoc exporter: `Trace` → `.trace.json` / `.yaml` ([docs](https://posthoc.pathfinding.ai/docs/search-trace))
+- [x] **Python** Posthoc exporter: `posthoc/trace_q*` → `.trace.yaml` + optional `.grid` (`tools/viz/to_posthoc.py`)
 
 ### Phase T3 — Polish
 

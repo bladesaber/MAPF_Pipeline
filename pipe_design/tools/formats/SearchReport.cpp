@@ -42,6 +42,9 @@ json dump(const SearchReport& r) {
         {"heuristic", r.heuristic},
         {"action_model", r.action_model},
         {"heap", r.heap},
+        {"model_id", r.model_id},
+        {"heap_id", r.heap_id},
+        {"heuristic_id", r.heuristic_id},
     };
     if (r.opt_cost) {
         j["opt_cost"] = *r.opt_cost;

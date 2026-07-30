@@ -70,14 +70,17 @@ SearchInstance parse(const json& j) {
     if (j.contains("heuristic_kwargs") && j["heuristic_kwargs"].is_object()) {
         inst.heuristic_kwargs = j["heuristic_kwargs"];
     }
+    inst.heuristic_id = j.value("heuristic_id", std::string{});
     inst.heap = j.value("heap", std::string{"LazyBinaryHeap"});
     if (j.contains("heap_kwargs") && j["heap_kwargs"].is_object()) {
         inst.heap_kwargs = j["heap_kwargs"];
     }
+    inst.heap_id = j.value("heap_id", std::string{});
     inst.model = j.value("model", std::string{"astar"});
     if (j.contains("model_kwargs") && j["model_kwargs"].is_object()) {
         inst.model_kwargs = j["model_kwargs"];
     }
+    inst.model_id = j.value("model_id", std::string{});
     if (j.contains("max_expansions") && !j["max_expansions"].is_null()) {
         inst.max_expansions = j["max_expansions"].get<std::size_t>();
     }
@@ -156,10 +159,13 @@ json dump(const SearchInstance& inst) {
         {"action_model_kwargs", inst.action_model_kwargs},
         {"heuristic", inst.heuristic},
         {"heuristic_kwargs", inst.heuristic_kwargs},
+        {"heuristic_id", inst.heuristic_id},
         {"heap", inst.heap},
         {"heap_kwargs", inst.heap_kwargs},
+        {"heap_id", inst.heap_id},
         {"model", inst.model},
         {"model_kwargs", inst.model_kwargs},
+        {"model_id", inst.model_id},
         {"max_time_ms", inst.max_time_ms},
         {"output_dir", inst.output_dir},
         {"export_closed_set", inst.export_closed_set},

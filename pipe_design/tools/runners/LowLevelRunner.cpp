@@ -210,6 +210,9 @@ SearchReport fill_report(
     r.heuristic = instance.heuristic;
     r.action_model = instance.action_model;
     r.heap = instance.heap;
+    r.model_id = instance.model_id;
+    r.heap_id = instance.heap_id;
+    r.heuristic_id = instance.heuristic_id;
     r.opt_cost = q.opt_cost;
     r.reference_cost = q.reference_cost;
     return r;

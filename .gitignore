@@ -22,3 +22,13 @@ __pycache__
 build/
 build_test/
 cmake-build-*/
+
+# MovingAI / pathfinding benchmark payloads (keep README + .gitkeep)
+pipe_design/tools/data/movingai/**/*.map
+pipe_design/tools/data/movingai/**/*.scen
+pipe_design/tools/data/movingai/**/*.zip
+pipe_design/tools/data/movingai/**/*.tar
+pipe_design/tools/data/movingai/**/*.tar.gz
+pipe_design/tools/data/movingai/**/*.tgz
+pipe_design/tools/data/movingai/**/*.7z
+pipe_design/tools/data/movingai/**/*.png

@@ -1,0 +1,22 @@
+{
+  "octile": {
+    "heuristic_id": "heuristic_1",
+    "heuristic": "octile",
+    "heuristic_kwargs": { "step_cost": 1.0 }
+  },
+  "manhattan": {
+    "heuristic_id": "heuristic_2",
+    "heuristic": "manhattan",
+    "heuristic_kwargs": { "step_cost": 1.0 }
+  },
+  "euclidean": {
+    "heuristic_id": "heuristic_3",
+    "heuristic": "euclidean",
+    "heuristic_kwargs": { "step_cost": 1.0 }
+  },
+  "dijkstra": {
+    "heuristic_id": "heuristic_4",
+    "heuristic": "dijkstra",
+    "heuristic_kwargs": { "step_cost": 1.0, "bake_radius": 0.0 }
+  }
+}

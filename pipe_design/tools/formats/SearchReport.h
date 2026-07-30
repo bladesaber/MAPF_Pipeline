@@ -46,6 +46,10 @@ struct SearchReport {
     std::string heuristic;
     std::string action_model;
     std::string heap;
+    /// Preset provenance ids copied from SearchInstance (empty if unused).
+    std::string model_id;
+    std::string heap_id;
+    std::string heuristic_id;
 
     std::optional<double> opt_cost;
     std::optional<double> reference_cost;

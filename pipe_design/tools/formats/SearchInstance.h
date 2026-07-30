@@ -43,10 +43,13 @@ struct SearchQuery {
 ///   "action_model_kwargs": {"step_cost": 1.0, "turn_weight": 0.0},
 ///   "heuristic": "manhattan",
 ///   "heuristic_kwargs": {"step_cost": 1.0},
+///   "heuristic_id": "",
 ///   "heap": "LazyBinaryHeap",
 ///   "heap_kwargs": {},
+///   "heap_id": "",
 ///   "model": "astar",
 ///   "model_kwargs": {"heuristic_weight": 1.0},
+///   "model_id": "",
 ///   "max_expansions": null,
 ///   "max_time_ms": 0,
 ///   "output_dir": "runs/smoke",
@@ -85,13 +88,17 @@ struct SearchInstance {
 
     std::string heuristic = "manhattan";
     nlohmann::json heuristic_kwargs = nlohmann::json::object();
+    /// Preset provenance id (e.g. from search_presets); empty if unused.
+    std::string heuristic_id;
 
     /// "LazyBinaryHeap" | "BinaryHeap" | "PairingHeap" | "BucketHeap"
     std::string heap = "LazyBinaryHeap";
     nlohmann::json heap_kwargs = nlohmann::json::object();
+    std::string heap_id;
 
     std::string model = "astar";
     nlohmann::json model_kwargs = nlohmann::json::object();
+    std::string model_id;
 
     /// Cap on A* expansions; default = unlimited.
     std::size_t max_expansions = std::numeric_limits<std::size_t>::max();

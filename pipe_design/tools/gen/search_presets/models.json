@@ -1,0 +1,7 @@
+{
+  "astar": {
+    "model_id": "model_1",
+    "model": "astar",
+    "model_kwargs": { "heuristic_weight": 1.0 }
+  }
+}

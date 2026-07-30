@@ -1,0 +1,22 @@
+{
+  "LazyBinaryHeap": {
+    "heap_id": "heap_1",
+    "heap": "LazyBinaryHeap",
+    "heap_kwargs": {}
+  },
+  "BinaryHeap": {
+    "heap_id": "heap_2",
+    "heap": "BinaryHeap",
+    "heap_kwargs": {}
+  },
+  "PairingHeap": {
+    "heap_id": "heap_3",
+    "heap": "PairingHeap",
+    "heap_kwargs": {}
+  },
+  "BucketHeap": {
+    "heap_id": "heap_4",
+    "heap": "BucketHeap",
+    "heap_kwargs": { "delta": 5.0 }
+  }
+}
