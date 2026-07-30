@@ -28,6 +28,8 @@ Parent catalog: [`../ROADMAP.md`](../ROADMAP.md) (§4.2 low-level, §4.3 middle,
 ```text
 tools/
   ROADMAP.md          # this file
+  data/
+    movingai/         # raw MovingAI downloads (grids/ P0, voxels/ P1) — not committed
   formats/            # schemas + Python loaders/writers for standard instance / report
   gen/                # Python: MovingAI → instance; synthetic / high-level generators
   runners/            # C++ (thin CLI): read instance → pipe_planner → SearchReport (+ Trace)
@@ -36,6 +38,7 @@ tools/
 ```
 
 Do not put CBS / topology / production routing logic here.
+Raw benchmark files live under `data/movingai/` (see that README); loaders must not hard-code machine-specific paths outside `tools/data/`.
 
 ---
 
@@ -101,46 +104,154 @@ Python loaders target MovingAI `.map` / `.scen` first (P0); voxel maps next (P1)
 Keep schemas versioned and small. Prefer JSON for interchange; binary optional later.
 **Python writes instances; C++ reads instances and writes reports** — both sides must agree on these contracts.
 
-### 5.1 Grid map + scenario (low / mid)
+### 5.1 `SearchInstance` JSON (low / mid) — `tools/formats/SearchInstance`
 
-| Field | Notes |
-|-------|--------|
-| `width, height, depth` | `depth=1` for 2D |
-| `obstacles` / grid cells | blocked vs free |
-| `connectivity` | `6` / `8` / `26` |
-| `starts[]`, `goals[]` | one or many queries per map |
-| `opt_cost` (optional) | known optimal for regression |
+Canonical file-bridge input for **low- and middle-level** grid search.
+Implemented by `pipe_design::tools::SearchInstance`.
+Python writes; C++ loads. Defaults for degraded 2D grid search: `resolution=1`,
+`pipe_radius=0.1`, sphere `cell_radius=0.1`, `size_z=1`.
 
-**Preferred source:** §4 open benchmarks (2D grids P0; 3D voxels P1). Thin 3D fallback = `nz=1` extrusion only when a voxel set is unavailable.
+Do **not** reuse this schema for full pipe-design / multi-group problems — that is §5.2 `DesignInstance` (future).
 
-### 5.2 High-level instance (project-facing)
+| Field | Type | Notes |
+|-------|------|--------|
+| `version` | int | Schema version (`1`) |
+| `instance_id` | string | Id for this instance / experiment slice |
+| `map_id` | string | Map provenance, e.g. `dao/arena` |
+| `size` | `[sx,sy]` or `[sx,sy,sz]` | Grid dimensions |
+| `resolution` | float | Default `1.0` (world cell length; default `step_cost`) |
+| `clearance_cap` | float | Default `1.0` |
+| `pipe_radius` | float | Default `0.1` |
+| `action_model` | string | `"SixConnected"` \| `"EightConnected"` \| `"TwentySixConnected"` |
+| `action_model_kwargs` | object | e.g. `step_cost` (default = `resolution`), `turn_weight` |
+| `heuristic` | string | `"manhattan"` \| `"euclidean"` \| `"octile"` \| `"dijkstra"` |
+| `heuristic_kwargs` | object | e.g. `step_cost` (default = `resolution`) |
+| `heap` | string | `"LazyBinaryHeap"` \| `"BinaryHeap"` \| `"PairingHeap"` \| `"BucketHeap"` |
+| `heap_kwargs` | object | e.g. BucketHeap `delta`, `max_cost` |
+| `model` | string | `"astar"` \| `"directed_astar"` (more later) |
+| `model_kwargs` | object | e.g. `heuristic_weight`; directed: `num_yaw_bins`, `num_pitch_bins` |
+| `max_expansions` | int? | Omit / null = unlimited |
+| `max_time_ms` | float | Cap on **sum of `step()` time** per query; `<= 0` = unlimited (default `0`) |
+| `output_dir` | string | Where C++ writes reports / dumps; empty = stdout only (no files) |
+| `export_closed_set` | bool | If true, write under `output_dir/closed_set/` |
+| `export_posthoc` | bool | If true, write under `output_dir/posthoc/` (requires `size_z==1`) |
+| `obstacles` | **list** of objects | See below — not a single dict |
+| `queries` | list | Each query may have **multiple** starts/goals |
 
-Pipeline: **seed ≥1 feasible reference paths → place obstacles** (size + volume/area occupancy density = difficulty knobs).
+**`obstacles[]` entries** (only two modes; load fills `spheres` / `capsules`):
+
+| `mode` | Fields | Effect |
+|--------|--------|--------|
+| `"sphere"` | `cell_radius`, `cells: [[x,y,z], …]` | Sphere at each cell center |
+| `"capsules"` | `cell_radius`, `from_point`, `to_point` | One capsule (world coords) |
+
+**`queries[]` entries** (`SearchQuery`):
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `query_id` | int | Optional; auto-assigned if omitted |
+| `start` | `[x,y,z]` **or** `[[x,y,z], …]` | Non-empty; shorthand single cell allowed |
+| `goal` | same | Non-empty |
+| `opt_cost` | float? | Known optimal (e.g. MovingAI) when present |
+| `reference_cost` | float? | Cost of a reference / seed path when present |
+
+Example:
+
+```json
+{
+  "version": 1,
+  "instance_id": "dao/arena/smoke",
+  "map_id": "dao/arena",
+  "size": [sx, sy, sz],
+  "resolution": 1.0,
+  "clearance_cap": 1.0,
+  "pipe_radius": 0.1,
+  "action_model": "EightConnected",
+  "action_model_kwargs": {"step_cost": 1.0},
+  "heuristic": "manhattan",
+  "heuristic_kwargs": {"step_cost": 1.0},
+  "heap": "LazyBinaryHeap",
+  "heap_kwargs": {},
+  "model": "astar",
+  "model_kwargs": {"heuristic_weight": 1.0},
+  "max_expansions": null,
+  "max_time_ms": 0,
+  "output_dir": "runs/smoke",
+  "export_closed_set": false,
+  "export_posthoc": false,
+  "obstacles": [
+    {"mode": "sphere", "cell_radius": 0.1, "cells": [[x,y,z], ...]},
+    {"mode": "capsules", "cell_radius": 0.1,
+     "from_point": [x,y,z], "to_point": [x,y,z]}
+  ],
+  "queries": [
+    {"query_id": 0,
+     "start": [[x,y,z], ...],
+     "goal":  [[x,y,z], ...],
+     "opt_cost": 3.0,
+     "reference_cost": 3.2}
+  ]
+}
+```
+
+**Preferred map source:** §4 open benchmarks (2D grids P0; 3D voxels P1). Thin 3D fallback = `nz=1` extrusion only when a voxel set is unavailable.
+
+### 5.2 `DesignInstance` (high-level / project-facing) — **future**
+
+> **TODO (not implemented):** `tools/formats/DesignInstance` — do not conflate with `SearchInstance`.
+
+Intended for real pipe-design conditions (radius, clearance, multi-path seeds, groups), not pure grid SOTA benches.
+
+Pipeline sketch: **seed ≥1 feasible reference paths → place obstacles** (size + volume/area occupancy density = difficulty knobs).
 
 Also emit: reference path(s), optional second solution, domain bounds, pipe radius, static obstacle list. Difficulty axes beyond density: corridor width, maze-ness, local choke points.
 
-### 5.3 `SearchReport` (one run → one file)
+When implementing: new type + schema; keep §5.1 `SearchInstance` unchanged for low/mid runners.
 
-Emitted by the **C++ runner** after each query.
+### 5.3 `SearchReport` (one run → one file) — `tools/formats/SearchReport`
+
+Emitted by the **C++ runner** after each query (`SearchInstance` / low–mid).
+JSON object; batch runs use **JSONL** (`write_search_reports_jsonl`).
 
 | Field | Meaning |
 |-------|---------|
-| `success` / `status` | Success / Failure / expansion cap |
-| `total_time_ms` | Wall clock |
+| `success` / `status` | Success / Failure / Running (hit expansion or time cap) |
+| `total_time_ms` | Sum of `planner.step()` only (excludes export / limit checks) |
 | `expansions` | Closed pops |
-| `generated` | Nodes created / relaxed |
-| `reexpansions` | Reopen count (0 if consistent h + no reopen) |
-| `open_peak` / `open_final` | Open-set size |
-| `closed` / `nodes_stored` | Closed / `nodes_.size()` |
-| `bytes_estimate` | Rough: nodes × sizeof + open (RSS optional appendix) |
-| `path_cost` / `path_length` / `path_turns` | Solution quality |
-| `algo`, `heuristic`, `map_id`, `query_id` | Provenance |
+| `generated` | Currently ≈ `nodes_stored` (fine-grained counters TBD in planner) |
+| `reexpansions` | Reopen count — **0 until A\* instruments reopen** |
+| `open_peak` / `open_final` | Open-set size (peak tracked in runner step loop) |
+| `closed` / `nodes_stored` | Closed-status count / `nodes_.size()` |
+| `bytes_estimate` | Rough: `nodes_stored * 64 + open_final * 16` |
+| `path_cost` / `path_length` / `path_turns` | Solution quality (`path` cell list included) |
+| `model`, `heuristic`, `action_model`, `heap` | Provenance from `SearchInstance` |
+| `instance_id`, `map_id`, `query_id` | Provenance |
+| `opt_cost`, `reference_cost` | Copied from query when present |
 
-Optional trace dump for viz: closed order (cell + expansion index), final path cells + headings, open frontier snapshot.
+### 5.3.1 Viz / debug dumps (under `output_dir`, not in `SearchReport`)
 
-### 5.4 Planner instrumentation (library side, not tools)
+`SearchReport` stays lean (final result + counters). Process viz uses optional side files:
 
-`AStar` today exposes mainly `expansions()`. Before rich viz, add counters (on planner or a thin Runner wrapper): `generated`, `reexpansions`, `open_peak`, timing. Tools must not re-implement search bookkeeping.
+| File | Producer | When | Content |
+|------|----------|------|---------|
+| `reports.jsonl` | `pipe_run_low` | `output_dir` non-empty | One `SearchReport` per line |
+| `closed_set/closed_q{id}.json` | `pipe_run_low` | `export_closed_set` | `{size, closed:[{x,y,z,t},…]}` — `t` = expansion index |
+| `posthoc/trace_q{id}.json` | `pipe_run_low` | `export_posthoc` | Posthoc-ish events (`source`/`expand`/`end`); requires `size_z==1` |
+| `heuristic_q{id}.json` | `pipe_dump_heuristic` | always (needs `output_dir`) | Free cells `{x,y,z,h}` via `Heuristic::estimate` (no search) |
+
+CLI: `pipe_run_low --instance …` and `pipe_dump_heuristic --instance …` — **no `--out`**; path comes from `SearchInstance.output_dir`.
+Python `viz/` reads these JSON files only (see `viz/README.md`). Posthoc format conversion stays in Python.
+
+### 5.4 `DesignReport` (high-level / project-facing) — **future**
+
+> **TODO (not implemented):** `tools/formats/DesignReport` — do not conflate with `SearchReport`.
+
+Intended output for `DesignInstance` solves (multi-pipe / groups / clearance quality), e.g. per-group success, conflict counts, total pipe length, clearance margins. Keep separate schema when high-level runners land.
+
+### 5.5 Planner instrumentation (library side, not tools)
+
+`AStar` today exposes `expansions()` and `nodes()`. Runner derives open peak / closed from open set + node status.
+Fine-grained `generated` / `reexpansions` need planner counters later; tools must not re-implement search bookkeeping.
 
 ---
 
@@ -150,8 +261,9 @@ Legend: **P0** first → **P3** later.
 
 | Component | Priority | Lang | Notes |
 |-----------|----------|------|-------|
-| ★ Instance + `SearchReport` schemas | P0 | Py + C++ | Shared contracts (§5) |
-| ★ C++ thin runner | P0 | C++ | instance → A* → `SearchReport` JSON |
+| ★ `SearchInstance` + `SearchReport` schemas | P0 | Py + C++ | Low/mid (§5.1 / §5.3); `DesignInstance` / `DesignReport` later |
+| ★ C++ thin runner | P0 | C++ | `pipe_run_low`: instance → A* → `reports.jsonl` (+ optional closed/trace) |
+| ★ C++ heuristic dump | P1 | C++ | `pipe_dump_heuristic`: `estimate` heatmap JSON (no search) |
 | ★ Path + obstacle grid visualizer | P0 | Py | Mark blocked cells; draw path; show heading per step |
 | ★ Closed-set overlay | P0 | Py | Color by first-closed expansion index (2D slice) |
 | ★ MovingAI loader + batch driver | P0 | Py | Load `.map`/`.scen` → instance; invoke C++ runner |
@@ -180,9 +292,11 @@ Legend: **P0** first → **P3** later.
 
 ### Phase T0 — Foundation
 
-- [ ] Define `formats/` schemas (`Map`, `Scenario`, `SearchReport`, optional `Trace`) — language-agnostic
-- [ ] Instrument planner / Runner: stats fields in §5.3
-- [ ] **C++** thin runner: instance → A* → `SearchReport` JSON
+- [x] Define `SearchInstance` / `SearchReport` schemas (§5.1 / §5.3)
+- [ ] Instrument planner for fine-grained `generated` / `reexpansions` (§5.5)
+- [x] **C++** thin runner: instance → search → `reports.jsonl` under `output_dir` (no `--out` CLI)
+- [x] **C++** optional dumps: `export_closed_set` / `export_posthoc` → `closed_q*` / `trace_q*`
+- [x] **C++** `pipe_dump_heuristic`: independent heatmap via `Heuristic::estimate`
 - [ ] **Python** `viz/`: 2D path + obstacles + headings (read report + map)
 - [ ] **Python** `viz/`: closed-set heatmap on same grid
 

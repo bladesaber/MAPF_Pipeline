@@ -23,6 +23,8 @@ add_library(pipe_planner
 target_include_directories(pipe_planner PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(pipe_planner PUBLIC pipe_grid)
 
+add_subdirectory(tools)
+
 enable_testing()
 
 add_executable(test_grid tests/test_grid.cpp)
