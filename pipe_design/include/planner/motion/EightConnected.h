@@ -37,6 +37,9 @@ public:
             const int axes = (o[0] != 0) + (o[1] != 0);
             const double length = step_cost_ * (axes == 2 ? kSqrt2 : 1.0);
             const geom::Heading heading = geom::Heading::from_grid_step(o[0], o[1], 0);
+            if (!accept_turn(in_heading, heading)) {
+                continue;
+            }
             out.push_back(Successor{
                 grid::CellCoord{from.x + o[0], from.y + o[1], from.z},
                 heading,

@@ -28,6 +28,9 @@ public:
         out.reserve(out.size() + 6);
         for (const auto& o : kOffsets) {
             const geom::Heading heading = geom::Heading::from_grid_step(o[0], o[1], o[2]);
+            if (!accept_turn(in_heading, heading)) {
+                continue;
+            }
             out.push_back(Successor{
                 grid::CellCoord{from.x + o[0], from.y + o[1], from.z + o[2]},
                 heading,

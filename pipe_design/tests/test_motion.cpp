@@ -121,9 +121,35 @@ static void test_twenty_six_costs() {
     EXPECT_TRUE(corners == 8);
 }
 
+static void test_six_max_turn_deg() {
+    SixConnected m(1.0);
+    m.set_max_turn_deg(90.0);
+
+    const Heading east = Heading::from_grid_step(1, 0, 0);
+    std::vector<Successor> out;
+    m.successors(CellCoord{0, 0, 0}, east, out);
+
+    // 6-connect: straight + 4 right angles; reverse (+west) dropped.
+    EXPECT_TRUE(out.size() == 5);
+    bool found_reverse = false;
+    for (const Successor& s : out) {
+        if (s.heading.nearly_equal(Heading::from_grid_step(-1, 0, 0))) {
+            found_reverse = true;
+        }
+        EXPECT_TRUE(east.alignment(s.heading) >= -1e-5f);
+    }
+    EXPECT_TRUE(!found_reverse);
+
+    // No in-heading → filter off.
+    out.clear();
+    m.successors(CellCoord{0, 0, 0}, out);
+    EXPECT_TRUE(out.size() == 6);
+}
+
 int main() {
     test_six_count_and_heading();
     test_six_turn_penalty();
+    test_six_max_turn_deg();
     test_eight_costs();
     test_twenty_six_costs();
 

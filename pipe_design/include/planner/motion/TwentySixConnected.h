@@ -39,6 +39,9 @@ public:
                         scale = kSqrt3;
                     }
                     const geom::Heading heading = geom::Heading::from_grid_step(dx, dy, dz);
+                    if (!accept_turn(in_heading, heading)) {
+                        continue;
+                    }
                     out.push_back(Successor{
                         grid::CellCoord{from.x + dx, from.y + dy, from.z + dz},
                         heading,
