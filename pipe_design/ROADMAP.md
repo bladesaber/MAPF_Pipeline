@@ -72,7 +72,7 @@ pipe_design/
     planner/
       open/        # OpenSet + heap backends
       motion/      # ActionModel, Six/Eight/TwentySixConnected, …
-      low/         # A*, Path, SearchNode; Theta* / Hybrid-A* planned
+      low/         # A*, Theta*, Lazy Theta*, Path, SearchNode; Hybrid-A* planned
       middle/      # (planned) bi-dir, adaptive step, …
       topology/    # (planned) MST, Steiner, …
       schedule/    # (planned) Task, Scheduler
@@ -140,6 +140,8 @@ Legend: **P0** must-have → **P4** later. ★ = preferred for this domain.
 | Algorithm | Priority | Notes |
 |-----------|----------|-------|
 | ★ A\* (grid, 6/26-connect) | P0 | Baseline |
+| Greedy best-first (`f=h`) | P0 | `GreedyBestFirst`; thin A\* variant |
+| Dijkstra / UCS (`f=g`) | P0 | `planner::Dijkstra`; ≠ `heuristic::Dijkstra` |
 | ★ Theta\* / Lazy Theta\* | P1 | Any-angle; good for pipes |
 | ★ Hybrid A\* | P2 | Heading + min turning radius |
 | Anytime / ARA\* / ANA\* | P2 | Feasible first, improve later |
@@ -220,6 +222,8 @@ Construction **order** may be **pair** (or segment) granularity.
 ### Phase P1 — Single pipe + multi-terminal
 
 - [x] A\* on `CompositeGrid` (steppable; 6-connect)  
+- [x] Greedy best-first (`f=h`) + Dijkstra/UCS (`f=g`)  
+- [x] Theta\* / Lazy Theta\* (any-angle + LOS)  
 - [x] Basic heuristics (Manhattan / Euclidean / Octile)  
 - [x] True-distance heuristic on static field (`Dijkstra`)  
 - [ ] Chebyshev heuristic  
@@ -231,7 +235,7 @@ Construction **order** may be **pair** (or segment) granularity.
 ### Phase P2 — Multi-group
 
 - [x] True-distance heuristic on static field (`Dijkstra`; landed with P1 heuristics)  
-- [ ] Theta\* or smooth+recheck  
+- [x] Theta\* or smooth+recheck  
 - [ ] CBS with `ObstacleChain` constraints + disjoint split  
 - [ ] PBS alternative  
 - [ ] Pair-level cross-group interleaving in scheduler  

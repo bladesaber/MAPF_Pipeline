@@ -18,6 +18,8 @@ add_library(pipe_planner
     src/planner/open/BucketHeap.cpp
     src/planner/low/AStar.cpp
     src/planner/low/DirectedAStar.cpp
+    src/planner/low/ThetaStar.cpp
+    src/planner/low/LazyThetaStar.cpp
     src/heuristic/Dijkstra.cpp
 )
 target_include_directories(pipe_planner PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

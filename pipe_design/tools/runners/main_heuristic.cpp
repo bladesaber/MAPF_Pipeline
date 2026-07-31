@@ -48,8 +48,9 @@ int main(int argc, char** argv) {
         } else if (arg == "--help" || arg == "-h") {
             std::cout
                 << "Usage: pipe_dump_heuristic --instance <file.json>\n"
-                << "  Independent of search. Writes heuristic_q*.json under output_dir\n"
-                << "  (h = Heuristic::estimate to each query's goals, free cells only).\n";
+                << "  Independent of search. Writes heuristic_q*.json under\n"
+                << "  output_dir/heuristic/ (h = Heuristic::estimate to each\n"
+                << "  query's goals, free cells only).\n";
             return 0;
         } else {
             std::cerr << "Unknown arg: " << arg << '\n';
@@ -71,7 +72,8 @@ int main(int argc, char** argv) {
             throw std::runtime_error("pipe_dump_heuristic: no queries (need goals)");
         }
 
-        fs::create_directories(instance.output_dir);
+        const fs::path out_dir = fs::path(instance.output_dir) / "heuristic";
+        fs::create_directories(out_dir);
 
         auto static_grid = instance.make_static_grid();
         static_grid.bake(instance.bake_spheres(), instance.bake_capsules());
@@ -112,8 +114,7 @@ int main(int argc, char** argv) {
             j["cells"] = std::move(cells);
 
             const fs::path path =
-                fs::path(instance.output_dir) /
-                ("heuristic_q" + std::to_string(q.query_id) + ".json");
+                out_dir / ("heuristic_q" + std::to_string(q.query_id) + ".json");
             std::ofstream out(path);
             if (!out) {
                 throw std::runtime_error("cannot write " + path.string());

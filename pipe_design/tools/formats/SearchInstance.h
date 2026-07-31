@@ -48,6 +48,8 @@ struct SearchQuery {
 ///   "heap_id": "",
 ///   "model": "astar",
 ///   "model_kwargs": {"heuristic_weight": 1.0},
+///   // also: "directed_astar", "greedy", "dijkstra",
+///   //       "theta_star", "lazy_theta_star" (+ optional step_cost)
 ///   "model_id": "",
 ///   "max_expansions": null,
 ///   "max_time_ms": 0,

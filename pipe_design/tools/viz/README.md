@@ -7,7 +7,7 @@ Python plots / adapters over C++ dump files under `SearchInstance.output_dir`.
 
 | File | Producer | Script |
 |------|----------|--------|
-| `heuristic_q{id}.json` | `pipe_dump_heuristic` | `plot_heuristic.py` |
+| `heuristic/heuristic_q{id}.json` | `pipe_dump_heuristic` | `plot_heuristic.py` |
 | `posthoc/trace_q{id}.json` | `pipe_run_low` + `export_posthoc` | `to_posthoc.py` |
 | `reports.jsonl` | `pipe_run_low` | (TODO path / aggregates) |
 | `closed_set/closed_q*.json` | `pipe_run_low` + `export_closed_set` | (TODO) |
@@ -18,11 +18,11 @@ Python plots / adapters over C++ dump files under `SearchInstance.output_dir`.
 
 ```bash
 pipe_dump_heuristic --instance /path/to/runs/arena/instance.json
-# → heuristic_q0.json …
+# → heuristic/heuristic_q0.json …
 
 python3 pipe_design/tools/viz/plot_heuristic.py \
-  -i /path/to/runs/arena/heuristic_q0.json \
-  -o /path/to/runs/arena/heuristic_q0.png
+  -i /path/to/runs/arena/heuristic/heuristic_q0.json \
+  -o /path/to/runs/arena/heuristic/heuristic_q0.png
 ```
 
 Free cells colored by `h`; blocked gray; goals as red ×. `--z N` for `size_z>1`.

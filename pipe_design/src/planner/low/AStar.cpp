@@ -105,6 +105,8 @@ SearchStatus AStar<Node>::step() {
     last_expanded_ = current;
     ++expansions_;
 
+    before_expand(current);
+
     if (is_goal(current->coord)) {
         goal_node_ = current;
         status_ = SearchStatus::Success;

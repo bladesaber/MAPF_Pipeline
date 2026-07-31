@@ -131,7 +131,7 @@ Do **not** reuse this schema for full pipe-design / multi-group problems — tha
 | `heap` | string | `"LazyBinaryHeap"` \| `"BinaryHeap"` \| `"PairingHeap"` \| `"BucketHeap"` |
 | `heap_kwargs` | object | e.g. BucketHeap `delta`, `max_cost` |
 | `heap_id` | string | Preset provenance id (optional; default empty) |
-| `model` | string | `"astar"` \| `"directed_astar"` (more later) |
+| `model` | string | `"astar"` \| `"directed_astar"` \| `"greedy"` \| `"dijkstra"` \| `"theta_star"` \| `"lazy_theta_star"` |
 | `model_kwargs` | object | e.g. `heuristic_weight`; directed: `num_yaw_bins`, `num_pitch_bins` |
 | `model_id` | string | Preset provenance id (optional; default empty) |
 | `max_expansions` | int? | Omit / null = unlimited |
@@ -240,7 +240,7 @@ JSON object; batch runs use **JSONL** (`write_search_reports_jsonl`).
 | `reports.jsonl` | `pipe_run_low` | `output_dir` non-empty | One `SearchReport` per line |
 | `closed_set/closed_q{id}.json` | `pipe_run_low` | `export_closed_set` | `{size, closed:[{x,y,z,t},…]}` — `t` = expansion index |
 | `posthoc/trace_q{id}.json` | `pipe_run_low` | `export_posthoc` | Posthoc-ish events (`source`/`expand`/`end`); requires `size_z==1` |
-| `heuristic_q{id}.json` | `pipe_dump_heuristic` | always (needs `output_dir`) | Free cells `{x,y,z,h}` via `Heuristic::estimate` (no search) |
+| `heuristic/heuristic_q{id}.json` | `pipe_dump_heuristic` | always (needs `output_dir`) | Free cells `{x,y,z,h}` via `Heuristic::estimate` (no search) |
 
 CLI: `pipe_run_low --instance …` and `pipe_dump_heuristic --instance …` — **no `--out`**; path comes from `SearchInstance.output_dir`.
 Python `viz/` reads these JSON files only (see `viz/README.md`). Posthoc format conversion stays in Python.

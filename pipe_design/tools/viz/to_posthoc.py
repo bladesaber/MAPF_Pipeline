@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 
 # Default Pixel views (search-trace 1.4.0).
+# Literal fills — Posthoc has no built-in `colors.*`; use CSS names or theme.*.
 VIEWS = {
     "main": [
         {
@@ -21,7 +22,7 @@ VIEWS = {
             "height": 1,
             "x": "${{ $.x }}",
             "y": "${{ $.y }}",
-            "fill": "${{ colors.green }}",
+            "fill": "green",
             "$if": "${{ $.type == 'source' }}",
         },
         {
@@ -30,7 +31,7 @@ VIEWS = {
             "height": 1,
             "x": "${{ $.x }}",
             "y": "${{ $.y }}",
-            "fill": "${{ colors.blue }}",
+            "fill": "blue",
             "$if": "${{ $.type == 'expand' }}",
             "clear": "end",
         },
@@ -40,7 +41,7 @@ VIEWS = {
             "height": 1,
             "x": "${{ $.x }}",
             "y": "${{ $.y }}",
-            "fill": "${{ colors.red }}",
+            "fill": "red",
             "$if": "${{ $.type == 'end' }}",
         },
     ]

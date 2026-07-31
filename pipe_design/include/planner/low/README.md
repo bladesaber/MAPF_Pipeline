@@ -9,6 +9,11 @@ Owns **node storage** and the search loop; does **not** own grid / heuristic / o
 |------|------|
 | `SearchNode.h` | `SearchNode` (cell), `DirectedSearchNode` (cell + heading), state keys + hash |
 | `AStar.h` / `.cpp` | `AStar<Node>` — steppable A\* (`reset` / `step` / `search`) |
+| `GreedyBestFirst.h` | A\* variant: `f = h` (ignore g for ranking) |
+| `Dijkstra.h` | A\* variant: `f = g` (uniform-cost; ≠ `heuristic::Dijkstra`) |
+| `LineOfSight.h` | Cell-center LOS + Euclidean edge cost (Theta\*) |
+| `ThetaStar.h` / `.cpp` | Basic Theta\* — parent LOS on expand |
+| `LazyThetaStar.h` / `.cpp` | Lazy Theta\* — deferred LOS in `before_expand` |
 | `DirectedAStar.h` / `.cpp` | `AStar<DirectedSearchNode>` + heading-aware `expand` |
 | `Path.h` | Discrete cell path + `cost` |
 
@@ -63,6 +68,13 @@ Default `AStar::expand`: `in_heading = none` → no turn filter/penalty.
 Priority: `f = combine_key(g, h)` default `g + w·h` (`set_heuristic_weight`).  
 `h` = min heuristic over all goals.
 
+| Planner | `combine_key` |
+|---------|---------------|
+| `AStar` | `g + w·h` |
+| `GreedyBestFirst` | `h` |
+| `Dijkstra` | `g` |
+| `ThetaStar` / `LazyThetaStar` | same as A\* (`g + w·h`); differ in `expand` / LOS |
+
 ## Usage sketch
 
 ```cpp
@@ -76,6 +88,25 @@ AStar<SearchNode> plain;
 plain.reset(grid, start, goal, radius, h, open, actions);
 plain.search();
 Path p = plain.path();
+
+GreedyBestFirst greedy;
+greedy.reset(grid, start, goal, radius, h, open, actions);
+greedy.search();
+
+Dijkstra ucs;  // planner::Dijkstra — not heuristic::Dijkstra
+ucs.reset(grid, start, goal, radius, h, open, actions);
+ucs.search();
+
+Euclidean eu(1.0);  // preferred for Theta*
+ThetaStar theta;
+theta.set_step_cost(1.0);
+theta.reset(grid, start, goal, radius, eu, open, actions);
+theta.search();  // path cells are any-angle waypoints
+
+LazyThetaStar lazy_theta;
+lazy_theta.set_step_cost(1.0);
+lazy_theta.reset(grid, start, goal, radius, eu, open, actions);
+lazy_theta.search();
 
 DirectedAStar directed;
 directed.set_heading_bins(8, 1);
@@ -91,8 +122,8 @@ directed.search();
 | New open-set | `planner/open` (`OpenSet&` in `reset`) |
 | New heuristic | `heuristic::Heuristic` |
 | Heading-aware / Hybrid-style expand | subclass `AStar<YourNode>`, override `expand` (see `DirectedAStar`) |
-| Different f | override `combine_key` |
-| Theta* / any-angle | new planner type; reuse `Path` / keys as needed |
+| Different f | override `combine_key` (see `GreedyBestFirst`, `Dijkstra`) |
+| Theta* / any-angle | `ThetaStar` / `LazyThetaStar` (+ `LineOfSight`) |
 
 Do **not** put CBS, group scheduling, or topology in this folder.
 

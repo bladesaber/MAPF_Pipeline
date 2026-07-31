@@ -4,7 +4,11 @@
 #include "grid/Types.h"
 #include "heuristic/Geometric.h"
 #include "planner/low/AStar.h"
+#include "planner/low/Dijkstra.h"
 #include "planner/low/DirectedAStar.h"
+#include "planner/low/GreedyBestFirst.h"
+#include "planner/low/LazyThetaStar.h"
+#include "planner/low/ThetaStar.h"
 #include "planner/motion/SixConnected.h"
 #include "planner/open/LazyBinaryHeap.h"
 
@@ -17,13 +21,18 @@ using pipe_design::geom::Vec3;
 using pipe_design::grid::CellCoord;
 using pipe_design::grid::CompositeGrid;
 using pipe_design::grid::StaticClearanceGrid;
+using pipe_design::heuristic::Euclidean;
 using pipe_design::heuristic::Manhattan;
 using pipe_design::planner::AStar;
+using pipe_design::planner::Dijkstra;
 using pipe_design::planner::DirectedAStar;
+using pipe_design::planner::GreedyBestFirst;
+using pipe_design::planner::LazyThetaStar;
 using pipe_design::planner::SearchNode;
 using pipe_design::planner::LazyBinaryHeap;
 using pipe_design::planner::Path;
 using pipe_design::planner::SearchStatus;
+using pipe_design::planner::ThetaStar;
 using pipe_design::planner::motion::SixConnected;
 
 static int g_failures = 0;
@@ -53,6 +62,18 @@ static bool path_is_6_connected(const Path& path) {
         const CellCoord d = path.cells[i] - path.cells[i - 1];
         const int manh = std::abs(d.x) + std::abs(d.y) + std::abs(d.z);
         if (manh != 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool path_has_line_of_sight(const CompositeGrid& grid, const Path& path, float r) {
+    if (path.cells.size() < 2) {
+        return !path.cells.empty();
+    }
+    for (std::size_t i = 1; i < path.cells.size(); ++i) {
+        if (!ThetaStar::line_of_sight(grid, path.cells[i - 1], path.cells[i], r)) {
             return false;
         }
     }
@@ -259,6 +280,174 @@ static void test_directed_with_turn_weight() {
     EXPECT_TRUE(!astar.goal_node()->in_dir.is_none());
 }
 
+static void test_dijkstra_matches_astar_cost() {
+    StaticClearanceGrid static_grid(15, 10, 1, 1.f, 3.f);
+    std::vector<SphereObstacle> walls;
+    for (int y = 0; y <= 4; ++y) {
+        walls.push_back(SphereObstacle{Vec3{5.5f, static_cast<float>(y) + 0.5f, 0.5f}, 0.6f});
+    }
+    static_grid.bake(walls);
+    CompositeGrid grid(static_grid);
+    Manhattan h(1.0);
+    SixConnected actions(1.0);
+    LazyBinaryHeap open_a;
+    LazyBinaryHeap open_d;
+
+    const CellCoord start{0, 2, 0};
+    const CellCoord goal{10, 2, 0};
+
+    AStar<SearchNode> astar;
+    astar.reset(grid, start, goal, 0.2f, h, open_a, actions);
+    EXPECT_TRUE(astar.search() == SearchStatus::Success);
+
+    Dijkstra dijkstra;
+    dijkstra.reset(grid, start, goal, 0.2f, h, open_d, actions);
+    EXPECT_TRUE(dijkstra.search() == SearchStatus::Success);
+
+    EXPECT_NEAR(dijkstra.path().cost, astar.path().cost, 1e-9);
+    EXPECT_TRUE(path_is_6_connected(dijkstra.path()));
+    // Priority key is g only; at goal f == g.
+    EXPECT_NEAR(dijkstra.goal_node()->f, dijkstra.goal_node()->g, 1e-9);
+}
+
+static void test_greedy_finds_path() {
+    StaticClearanceGrid static_grid(20, 10, 1, 1.f, 5.f);
+    static_grid.clear();
+    CompositeGrid grid(static_grid);
+    Manhattan h(1.0);
+    SixConnected actions(1.0);
+    LazyBinaryHeap open;
+
+    GreedyBestFirst greedy;
+    const CellCoord start{0, 0, 0};
+    const CellCoord goal{8, 4, 0};
+    greedy.reset(grid, start, goal, 0.1f, h, open, actions);
+    EXPECT_TRUE(greedy.search() == SearchStatus::Success);
+
+    const Path p = greedy.path();
+    EXPECT_TRUE(p.cells.front() == start);
+    EXPECT_TRUE(p.cells.back() == goal);
+    EXPECT_TRUE(path_is_6_connected(p));
+    // Priority key is h only; at goal f == 0.
+    EXPECT_NEAR(greedy.goal_node()->f, 0.0, 1e-9);
+    EXPECT_NEAR(greedy.goal_node()->h, 0.0, 1e-9);
+}
+
+static void test_greedy_detour() {
+    StaticClearanceGrid static_grid(15, 10, 1, 1.f, 3.f);
+    std::vector<SphereObstacle> walls;
+    for (int y = 0; y <= 4; ++y) {
+        walls.push_back(SphereObstacle{Vec3{5.5f, static_cast<float>(y) + 0.5f, 0.5f}, 0.6f});
+    }
+    static_grid.bake(walls);
+    CompositeGrid grid(static_grid);
+    Manhattan h(1.0);
+    SixConnected actions(1.0);
+    LazyBinaryHeap open;
+
+    GreedyBestFirst greedy;
+    greedy.reset(grid, CellCoord{0, 2, 0}, CellCoord{10, 2, 0}, 0.2f, h, open, actions);
+    EXPECT_TRUE(greedy.search() == SearchStatus::Success);
+    EXPECT_TRUE(path_is_6_connected(greedy.path()));
+    EXPECT_TRUE(greedy.path().cost > 10.0);
+}
+
+static void test_theta_diagonal_shorter_than_astar() {
+    StaticClearanceGrid static_grid(20, 20, 1, 1.f, 5.f);
+    static_grid.clear();
+    CompositeGrid grid(static_grid);
+    Euclidean h(1.0);
+    SixConnected actions(1.0);
+    LazyBinaryHeap open_a;
+    LazyBinaryHeap open_t;
+
+    const CellCoord start{0, 0, 0};
+    const CellCoord goal{8, 8, 0};
+    const float r = 0.1f;
+
+    AStar<SearchNode> astar;
+    astar.reset(grid, start, goal, r, h, open_a, actions);
+    EXPECT_TRUE(astar.search() == SearchStatus::Success);
+
+    ThetaStar theta;
+    theta.set_step_cost(1.0);
+    theta.reset(grid, start, goal, r, h, open_t, actions);
+    EXPECT_TRUE(theta.search() == SearchStatus::Success);
+
+    const Path p = theta.path();
+    EXPECT_TRUE(p.cells.front() == start);
+    EXPECT_TRUE(p.cells.back() == goal);
+    EXPECT_TRUE(path_has_line_of_sight(grid, p, r));
+    // Any-angle should beat 6-connect Manhattan (16).
+    EXPECT_TRUE(p.cost < astar.path().cost);
+    EXPECT_NEAR(p.cost, std::sqrt(2.0) * 8.0, 1e-6);
+}
+
+static void test_theta_blocked_detour() {
+    StaticClearanceGrid static_grid(15, 10, 1, 1.f, 3.f);
+    std::vector<SphereObstacle> walls;
+    for (int y = 0; y <= 4; ++y) {
+        walls.push_back(SphereObstacle{Vec3{5.5f, static_cast<float>(y) + 0.5f, 0.5f}, 0.6f});
+    }
+    static_grid.bake(walls);
+    CompositeGrid grid(static_grid);
+    Euclidean h(1.0);
+    SixConnected actions(1.0);
+    LazyBinaryHeap open;
+
+    ThetaStar theta;
+    theta.set_step_cost(1.0);
+    const CellCoord start{0, 2, 0};
+    const CellCoord goal{10, 2, 0};
+    const float r = 0.2f;
+    theta.reset(grid, start, goal, r, h, open, actions);
+    EXPECT_TRUE(theta.search() == SearchStatus::Success);
+    const Path p = theta.path();
+    EXPECT_TRUE(p.cells.front() == start);
+    EXPECT_TRUE(p.cells.back() == goal);
+    EXPECT_TRUE(path_has_line_of_sight(grid, p, r));
+    EXPECT_TRUE(p.cost > 10.0);
+}
+
+static void test_lazy_theta_matches_theta_cost_open() {
+    StaticClearanceGrid static_grid(20, 20, 1, 1.f, 5.f);
+    static_grid.clear();
+    CompositeGrid grid(static_grid);
+    Euclidean h(1.0);
+    SixConnected actions(1.0);
+    LazyBinaryHeap open_t;
+    LazyBinaryHeap open_l;
+
+    const CellCoord start{1, 1, 0};
+    const CellCoord goal{12, 7, 0};
+    const float r = 0.1f;
+
+    ThetaStar theta;
+    theta.set_step_cost(1.0);
+    theta.reset(grid, start, goal, r, h, open_t, actions);
+    EXPECT_TRUE(theta.search() == SearchStatus::Success);
+
+    LazyThetaStar lazy;
+    lazy.set_step_cost(1.0);
+    lazy.reset(grid, start, goal, r, h, open_l, actions);
+    EXPECT_TRUE(lazy.search() == SearchStatus::Success);
+
+    EXPECT_NEAR(lazy.path().cost, theta.path().cost, 1e-6);
+    EXPECT_TRUE(path_has_line_of_sight(grid, lazy.path(), r));
+}
+
+static void test_line_of_sight_blocked() {
+    StaticClearanceGrid static_grid(10, 5, 1, 1.f, 3.f);
+    std::vector<SphereObstacle> walls;
+    for (int y = 0; y < 5; ++y) {
+        walls.push_back(SphereObstacle{Vec3{4.5f, static_cast<float>(y) + 0.5f, 0.5f}, 0.7f});
+    }
+    static_grid.bake(walls);
+    CompositeGrid grid(static_grid);
+    EXPECT_TRUE(ThetaStar::line_of_sight(grid, CellCoord{0, 2, 0}, CellCoord{1, 2, 0}, 0.2f));
+    EXPECT_TRUE(!ThetaStar::line_of_sight(grid, CellCoord{0, 2, 0}, CellCoord{8, 2, 0}, 0.2f));
+}
+
 int main() {
     test_start_equals_goal();
     test_empty_straight_line();
@@ -269,6 +458,13 @@ int main() {
     test_multi_start_multi_goal();
     test_weighted_combine_key();
     test_directed_with_turn_weight();
+    test_dijkstra_matches_astar_cost();
+    test_greedy_finds_path();
+    test_greedy_detour();
+    test_theta_diagonal_shorter_than_astar();
+    test_theta_blocked_detour();
+    test_lazy_theta_matches_theta_cost_open();
+    test_line_of_sight_blocked();
 
     if (g_failures != 0) {
         std::cerr << g_failures << " assertion(s) failed.\n";

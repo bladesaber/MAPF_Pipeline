@@ -3,5 +3,25 @@
     "model_id": "model_1",
     "model": "astar",
     "model_kwargs": { "heuristic_weight": 1.0 }
+  },
+  "greedy": {
+    "model_id": "model_greedy",
+    "model": "greedy",
+    "model_kwargs": {}
+  },
+  "dijkstra": {
+    "model_id": "model_dijkstra",
+    "model": "dijkstra",
+    "model_kwargs": {}
+  },
+  "theta_star": {
+    "model_id": "model_theta",
+    "model": "theta_star",
+    "model_kwargs": { "heuristic_weight": 1.0 }
+  },
+  "lazy_theta_star": {
+    "model_id": "model_lazy_theta",
+    "model": "lazy_theta_star",
+    "model_kwargs": { "heuristic_weight": 1.0 }
   }
 }

@@ -8,8 +8,12 @@
 #include "heuristic/Manhattan.h"
 #include "heuristic/Octile.h"
 #include "planner/low/AStar.h"
+#include "planner/low/Dijkstra.h"
 #include "planner/low/DirectedAStar.h"
+#include "planner/low/GreedyBestFirst.h"
+#include "planner/low/LazyThetaStar.h"
 #include "planner/low/SearchNode.h"
+#include "planner/low/ThetaStar.h"
 #include "planner/motion/EightConnected.h"
 #include "planner/motion/SixConnected.h"
 #include "planner/motion/TwentySixConnected.h"
@@ -42,10 +46,14 @@ using json = nlohmann::json;
 using pipe_design::grid::CompositeGrid;
 using pipe_design::grid::StaticClearanceGrid;
 using pipe_design::planner::AStar;
+using pipe_design::planner::Dijkstra;
 using pipe_design::planner::DirectedAStar;
+using pipe_design::planner::GreedyBestFirst;
+using pipe_design::planner::LazyThetaStar;
 using pipe_design::planner::OpenSet;
 using pipe_design::planner::SearchNode;
 using pipe_design::planner::SearchStatus;
+using pipe_design::planner::ThetaStar;
 using pipe_design::planner::heading_between;
 
 void ensure_output_dir(const std::string& dir) {
@@ -316,6 +324,33 @@ void write_posthoc_trace(
         }
     }
 
+    // Real solution path: walk goal_node parent chain (start → goal), then end.
+    // Posthoc draws the path via id/pId; type "path" gets a distinct color in viz.
+    if (const auto* gn = planner.goal_node()) {
+        std::vector<const SearchNode*> chain;
+        for (const SearchNode* n = gn; n != nullptr; n = n->parent) {
+            chain.push_back(n);
+        }
+        std::reverse(chain.begin(), chain.end());
+
+        for (std::size_t i = 0; i < chain.size(); ++i) {
+            const SearchNode& n = *chain[i];
+            const bool is_last = (i + 1 == chain.size());
+            json e = {
+                {"type", is_last ? "end" : "path"},
+                {"id", cell_id.at(n.coord)},
+                {"f", n.f},
+                {"g", n.g},
+                {"x", n.coord.x},
+                {"y", n.coord.y},
+            };
+            if (n.parent) {
+                e["pId"] = cell_id.at(n.parent->coord);
+            }
+            events.push_back(std::move(e));
+        }
+    }
+
     json j;
     j["version"] = "1.4.0";
     j["instance_id"] = instance.instance_id;
@@ -423,6 +458,24 @@ std::vector<SearchReport> LowLevelRunner::run(const SearchInstance& instance) co
             kw_int(instance.model_kwargs, "num_yaw_bins", 8),
             kw_int(instance.model_kwargs, "num_pitch_bins", 1));
         planner.set_heuristic_weight(weight);
+        reports = run_queries(instance, grid, static_grid, *open, *actions, planner);
+    } else if (instance.model == "greedy") {
+        GreedyBestFirst planner;
+        reports = run_queries(instance, grid, static_grid, *open, *actions, planner);
+    } else if (instance.model == "dijkstra") {
+        Dijkstra planner;
+        reports = run_queries(instance, grid, static_grid, *open, *actions, planner);
+    } else if (instance.model == "theta_star") {
+        ThetaStar planner;
+        planner.set_heuristic_weight(weight);
+        planner.set_step_cost(
+            kw_double(instance.model_kwargs, "step_cost", instance.resolution));
+        reports = run_queries(instance, grid, static_grid, *open, *actions, planner);
+    } else if (instance.model == "lazy_theta_star") {
+        LazyThetaStar planner;
+        planner.set_heuristic_weight(weight);
+        planner.set_step_cost(
+            kw_double(instance.model_kwargs, "step_cost", instance.resolution));
         reports = run_queries(instance, grid, static_grid, *open, *actions, planner);
     } else {
         throw std::runtime_error("LowLevelRunner: unsupported model " + instance.model);

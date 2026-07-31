@@ -83,6 +83,7 @@ public:
 protected:
     /// Open-set priority key. Override for custom mixes; default is g + w*h.
     virtual double combine_key(double g, double h) const;
+    virtual void before_expand(Node* /*current*/) {}
     virtual void expand(Node* current);
 
     Node* ensure_node(const Key& key);

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Plot a 2D heuristic heatmap from pipe_dump_heuristic JSON.
 
-Input schema (main_heuristic.cpp → heuristic_q{id}.json under output_dir):
+Input schema (main_heuristic.cpp → heuristic_q{id}.json under output_dir/heuristic/):
   instance_id, map_id, query_id, heuristic, size [sx,sy,sz],
   goals [[x,y,z], …], cells [{x,y,z,h}, …]  (free cells only)
 
