@@ -20,6 +20,8 @@ add_library(pipe_planner
     src/planner/low/DirectedAStar.cpp
     src/planner/low/ThetaStar.cpp
     src/planner/low/LazyThetaStar.cpp
+    src/planner/low/ARAStar.cpp
+    src/planner/low/ANAStar.cpp
     src/heuristic/Dijkstra.cpp
 )
 target_include_directories(pipe_planner PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -40,6 +42,10 @@ add_test(NAME open_set_unit COMMAND test_open_set)
 add_executable(test_astar tests/test_astar.cpp)
 target_link_libraries(test_astar PRIVATE pipe_planner)
 add_test(NAME astar_unit COMMAND test_astar)
+
+add_executable(test_anytime tests/test_anytime.cpp)
+target_link_libraries(test_anytime PRIVATE pipe_planner)
+add_test(NAME anytime_unit COMMAND test_anytime)
 
 add_executable(test_heuristic tests/test_heuristic.cpp)
 target_link_libraries(test_heuristic PRIVATE pipe_planner)

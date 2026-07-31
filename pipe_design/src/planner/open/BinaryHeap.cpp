@@ -80,6 +80,13 @@ SearchNode* BinaryHeap::pop() {
     return top;
 }
 
+SearchNode* BinaryHeap::top() const {
+    if (heap_.empty()) {
+        throw std::logic_error("BinaryHeap::top: empty");
+    }
+    return heap_.front();
+}
+
 bool BinaryHeap::decrease_key(SearchNode* node) {
     const auto it = index_.find(node);
     if (it == index_.end()) {

@@ -38,6 +38,14 @@ SearchNode* LazyBinaryHeap::pop() {
     return node;
 }
 
+SearchNode* LazyBinaryHeap::top() const {
+    discard_stale();
+    if (heap_.empty()) {
+        throw std::logic_error("LazyBinaryHeap::top: empty");
+    }
+    return heap_.top().node;
+}
+
 bool LazyBinaryHeap::contains(const SearchNode* node) const {
     return node != nullptr && node->status == NodeStatus::Open;
 }

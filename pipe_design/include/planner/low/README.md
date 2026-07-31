@@ -11,6 +11,8 @@ Owns **node storage** and the search loop; does **not** own grid / heuristic / o
 | `AStar.h` / `.cpp` | `AStar<Node>` — steppable A\* (`reset` / `step` / `search`) |
 | `GreedyBestFirst.h` | A\* variant: `f = h` (ignore g for ranking) |
 | `Dijkstra.h` | A\* variant: `f = g` (uniform-cost; ≠ `heuristic::Dijkstra`) |
+| `ARAStar.h` / `.cpp` | Anytime Repairing A\* — inflate ε, then repair via INCONS |
+| `ANAStar.h` / `.cpp` | Anytime Nonparametric A\* — key `(G−g)/h`, no ε schedule |
 | `LineOfSight.h` | Cell-center LOS + Euclidean edge cost (Theta\*) |
 | `ThetaStar.h` / `.cpp` | Basic Theta\* — parent LOS on expand |
 | `LazyThetaStar.h` / `.cpp` | Lazy Theta\* — deferred LOS in `before_expand` |
@@ -73,6 +75,8 @@ Priority: `f = combine_key(g, h)` default `g + w·h` (`set_heuristic_weight`).
 | `AStar` | `g + w·h` |
 | `GreedyBestFirst` | `h` |
 | `Dijkstra` | `g` |
+| `ARAStar` | `g + ε·h` (ε decreases over repair rounds) |
+| `ANAStar` | `−(G−g)/h` after first incumbent; else `h` |
 | `ThetaStar` / `LazyThetaStar` | same as A\* (`g + w·h`); differ in `expand` / LOS |
 
 ## Usage sketch
@@ -96,6 +100,18 @@ greedy.search();
 Dijkstra ucs;  // planner::Dijkstra — not heuristic::Dijkstra
 ucs.reset(grid, start, goal, radius, h, open, actions);
 ucs.search();
+
+ARAStar ara;
+ara.set_eps_schedule(/*start=*/5.0, /*target=*/1.0, /*step=*/0.5);
+ara.reset(grid, start, goal, radius, h, open, actions);
+ara.search(100);           // may still be Running with an incumbent
+Path early = ara.path();   // OK while Running
+ara.search();              // run to ε = 1
+
+ANAStar ana;
+ana.reset(grid, start, goal, radius, h, open, actions);
+ana.search(50);            // incumbent via path()
+ana.search();              // optimal when Success
 
 Euclidean eu(1.0);  // preferred for Theta*
 ThetaStar theta;
@@ -122,7 +138,8 @@ directed.search();
 | New open-set | `planner/open` (`OpenSet&` in `reset`) |
 | New heuristic | `heuristic::Heuristic` |
 | Heading-aware / Hybrid-style expand | subclass `AStar<YourNode>`, override `expand` (see `DirectedAStar`) |
-| Different f | override `combine_key` (see `GreedyBestFirst`, `Dijkstra`) |
+| Different f | override `combine_key` (see `GreedyBestFirst`, `Dijkstra`, `ARAStar`, `ANAStar`) |
+| Anytime / repair | `ARAStar` / `ANAStar` (own `step` / `expand`; `path()` while Running) |
 | Theta* / any-angle | `ThetaStar` / `LazyThetaStar` (+ `LineOfSight`) |
 
 Do **not** put CBS, group scheduling, or topology in this folder.

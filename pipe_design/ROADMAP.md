@@ -137,18 +137,28 @@ Legend: **P0** must-have → **P4** later. ★ = preferred for this domain.
 
 ### 4.2 Low-level planners
 
+Single-query baselines first; **incremental / dynamic-obstacle** methods next — they match CBS
+`ObstacleChain` add/remove and sequential pipe occupancy better than anytime alone
+(anytime = same map, improve quality; incremental = map deltas, reuse search state).
+
 | Algorithm | Priority | Notes |
 |-----------|----------|-------|
 | ★ A\* (grid, 6/26-connect) | P0 | Baseline |
 | Greedy best-first (`f=h`) | P0 | `GreedyBestFirst`; thin A\* variant |
 | Dijkstra / UCS (`f=g`) | P0 | `planner::Dijkstra`; ≠ `heuristic::Dijkstra` |
 | ★ Theta\* / Lazy Theta\* | P1 | Any-angle; good for pipes |
+| ★ Path / tree warm-start | P1 | Soft reuse prior path or open/closed after chain delta |
+| ★ Local repair replan | P1 | Invalidate only cells hit by new/removed obstacles; re-expand locally |
+| ★ LPA\* | P1–P2 | Lifelong Planning A\*; repair `g` under edge-cost / free-set changes |
+| ★ D\* Lite | P1–P2 | Incremental replan toward fixed goal; natural for CBS constraint add |
+| Focused D\* / D\* | P2 | Classic dynamic replan; heavier than D\* Lite for our grid+chain |
+| AD\* (Anytime D\*) | P2–P3 | Anytime + dynamic; only if both qualities needed in one loop |
+| Anytime / ARA\* / ANA\* | P2 | `ARAStar`, `ANAStar` done; fixed map quality ladder, not chain reuse |
 | ★ Hybrid A\* | P2 | Heading + min turning radius |
-| Anytime / ARA\* / ANA\* | P2 | Feasible first, improve later |
-| JPS / JPS+ | P2 | Weaker once radius/clearance dominates |
-| PRM / Lazy PRM | P3 | Multi-query static domains |
+| JPS / JPS+ | P2 | Weaker once radius/clearance dominates; JPS+ bake breaks on chain edits |
+| PRM / Lazy PRM | P3 | Multi-query static domains; edge validity checks help mild dynamics |
 | RRT\* / Informed-RRT\* | P3 | Open spaces; often worse in narrow ducts |
-| ACO | P4 / experimental | Prefer anytime A\* or LNS instead |
+| ACO | P4 / experimental | Prefer LNS / incremental repair instead |
 
 ### 4.3 Middle-level (optional wrappers)
 
@@ -243,7 +253,7 @@ Construction **order** may be **pair** (or segment) granularity.
 ### Phase P3 — Quality & scale
 
 - [ ] Hybrid A\* + Dubins (if turning radius required)  
-- [ ] Anytime search  
+- [x] Anytime search (`ARAStar`, `ANAStar`)  
 - [ ] LNS over pairs/groups  
 - [ ] Outer `[W]` incremental task expansion (soft reference, heuristic window growth)  
 - [ ] KD-tree or local patches for large dynamic sets  

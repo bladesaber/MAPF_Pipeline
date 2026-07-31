@@ -23,6 +23,7 @@ public:
 
     void push(SearchNode* node) override;
     SearchNode* pop() override;
+    SearchNode* top() const override;
     bool contains(const SearchNode* node) const override;
     bool decrease_key(SearchNode* node) override;
 

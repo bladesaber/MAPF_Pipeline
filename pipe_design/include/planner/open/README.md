@@ -20,6 +20,7 @@ Swappable via `OpenSet*`. Do not put CBS / topology / grid logic here.
 |----|---------|
 | `push` | Insert node currently on open |
 | `pop` | Remove best node (undefined if empty) |
+| `top` | Best node without removing (undefined if empty) |
 | `contains` | Whether this open set tracks the node |
 | `decrease_key` | After `node->f` improved while on open; `true` = fixed in place, `false` = caller must `push` again |
 | `clear` / `empty` / `size` | Lifecycle |

@@ -122,6 +122,13 @@ SearchNode* PairingHeap::pop() {
     return item;
 }
 
+SearchNode* PairingHeap::top() const {
+    if (root_ == nullptr) {
+        throw std::logic_error("PairingHeap::top: empty");
+    }
+    return root_->item;
+}
+
 bool PairingHeap::decrease_key(SearchNode* node) {
     const auto it = handle_.find(node);
     if (it == handle_.end()) {

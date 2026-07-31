@@ -98,6 +98,29 @@ static void test_lazy_heap_stale_entries() {
     EXPECT_TRUE(heap.empty());
 }
 
+static void test_top_matches_next_pop() {
+    LazyBinaryHeap lazy;
+    BinaryHeap binary;
+    SearchNode a(CellCoord{0, 0, 0});
+    SearchNode b(CellCoord{1, 0, 0});
+    a.status = NodeStatus::Open;
+    b.status = NodeStatus::Open;
+    a.f = 5.0;
+    a.g = 1.0;
+    b.f = 3.0;
+    b.g = 1.0;
+    lazy.push(&a);
+    lazy.push(&b);
+    binary.push(&a);
+    binary.push(&b);
+    EXPECT_TRUE(lazy.top() == &b);
+    EXPECT_TRUE(binary.top() == &b);
+    EXPECT_TRUE(lazy.pop() == &b);
+    EXPECT_TRUE(binary.pop() == &b);
+    EXPECT_TRUE(lazy.top() == &a);
+    EXPECT_TRUE(binary.top() == &a);
+}
+
 static void test_pairing_heap_decrease() {
     PairingHeap heap;
     SearchNode a(CellCoord{0, 0, 0});
@@ -302,6 +325,7 @@ int main() {
     test_binary_heap_order_and_decrease();
     test_binary_heap_tie_break_larger_g();
     test_lazy_heap_stale_entries();
+    test_top_matches_next_pop();
     test_pairing_heap_decrease();
     test_pairing_many_pushes();
     test_bucket_heap_order_and_decrease();

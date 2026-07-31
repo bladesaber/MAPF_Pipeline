@@ -25,6 +25,9 @@ public:
     /// Remove and return the best node. Undefined if empty().
     virtual SearchNode* pop() = 0;
 
+    /// Best node without removing. Undefined if empty().
+    virtual SearchNode* top() const = 0;
+
     /// True if this open set currently tracks the node.
     virtual bool contains(const SearchNode* node) const = 0;
 

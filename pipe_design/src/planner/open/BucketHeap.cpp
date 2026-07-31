@@ -98,6 +98,20 @@ SearchNode* BucketHeap::pop() {
     return best;
 }
 
+SearchNode* BucketHeap::top() const {
+    if (size_ == 0 || buckets_.empty()) {
+        throw std::logic_error("BucketHeap::top: empty");
+    }
+    const auto& vec = buckets_.begin()->second;
+    std::size_t best_i = 0;
+    for (std::size_t i = 1; i < vec.size(); ++i) {
+        if (worse_than(vec[best_i], vec[i])) {
+            best_i = i;
+        }
+    }
+    return vec[best_i];
+}
+
 bool BucketHeap::decrease_key(SearchNode* node) {
     const auto it = bin_of_.find(node);
     if (it == bin_of_.end()) {
