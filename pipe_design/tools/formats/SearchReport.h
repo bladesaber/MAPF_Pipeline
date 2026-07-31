@@ -51,7 +51,6 @@ struct SearchReport {
     std::string heap_id;
     std::string heuristic_id;
 
-    std::optional<double> opt_cost;
     std::optional<double> reference_cost;
 
     void to_file(const std::string& path) const;

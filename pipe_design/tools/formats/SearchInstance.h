@@ -19,7 +19,6 @@ struct SearchQuery {
     int query_id = 0;
     std::vector<grid::CellCoord> starts;
     std::vector<grid::CellCoord> goals;
-    std::optional<double> opt_cost;
     std::optional<double> reference_cost;
 };
 
@@ -64,7 +63,6 @@ struct SearchQuery {
 ///     {"query_id": 0,
 ///      "start": [[x,y,z], ...],   // or shorthand [x,y,z]
 ///      "goal":  [[x,y,z], ...],
-///      "opt_cost": 3.0,
 ///      "reference_cost": 3.2}
 ///   ]
 /// }

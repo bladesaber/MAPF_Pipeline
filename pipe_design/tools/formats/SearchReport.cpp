@@ -46,9 +46,6 @@ json dump(const SearchReport& r) {
         {"heap_id", r.heap_id},
         {"heuristic_id", r.heuristic_id},
     };
-    if (r.opt_cost) {
-        j["opt_cost"] = *r.opt_cost;
-    }
     if (r.reference_cost) {
         j["reference_cost"] = *r.reference_cost;
     }

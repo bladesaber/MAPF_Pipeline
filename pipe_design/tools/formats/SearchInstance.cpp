@@ -123,9 +123,6 @@ SearchInstance parse(const json& j) {
             query.query_id = q.value("query_id", auto_id++);
             query.starts = read_cells(q.at("start"));
             query.goals = read_cells(q.at("goal"));
-            if (q.contains("opt_cost") && !q["opt_cost"].is_null()) {
-                query.opt_cost = q["opt_cost"].get<double>();
-            }
             if (q.contains("reference_cost") && !q["reference_cost"].is_null()) {
                 query.reference_cost = q["reference_cost"].get<double>();
             }
@@ -212,9 +209,6 @@ json dump(const SearchInstance& inst) {
             goals.push_back(json::array({c.x, c.y, c.z}));
         }
         json jq = {{"query_id", q.query_id}, {"start", starts}, {"goal", goals}};
-        if (q.opt_cost) {
-            jq["opt_cost"] = *q.opt_cost;
-        }
         if (q.reference_cost) {
             jq["reference_cost"] = *q.reference_cost;
         }

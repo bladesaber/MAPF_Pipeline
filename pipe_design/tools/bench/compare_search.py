@@ -9,7 +9,7 @@ Batch layout (from gen/batch_movingai_grids.py):
     instance.json
     reports.jsonl          # after pipe_run_low
 
-For one-factor comparison tables, see factor_compare.py.
+For env-normalized multi-factor analysis (OLS weights, …), see factor_compare.py.
 """
 
 from __future__ import annotations

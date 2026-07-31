@@ -57,7 +57,8 @@ def load_scen(path: Path) -> list[dict]:
                 "start_y": int(parts[5]),
                 "goal_x": int(parts[6]),
                 "goal_y": int(parts[7]),
-                "opt_cost": float(parts[8]),
+                # MovingAI "optimal" is a benchmark reference, not a proven opt.
+                "reference_cost": float(parts[8]),
             }
         )
     return queries
@@ -94,7 +95,7 @@ def build_instance(
             "query_id": i,
             "start": [q["start_x"], q["start_y"], 0],
             "goal": [q["goal_x"], q["goal_y"], 0],
-            "opt_cost": q["opt_cost"],
+            "reference_cost": q["reference_cost"],
         }
         for i, q in enumerate(scen_queries)
     ]

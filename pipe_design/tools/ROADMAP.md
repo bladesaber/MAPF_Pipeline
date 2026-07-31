@@ -11,7 +11,7 @@ Parent catalog: [`../ROADMAP.md`](../ROADMAP.md) (§4.2 low-level, §4.3 middle,
 
 | Goal | Deliverable / criterion |
 |------|-------------------------|
-| Low/mid SOTA compare | Same MovingAI `.map`/`.scen` (P0) + voxels (P1); report success rate, time, expansions, path cost vs known `opt_cost` when present |
+| Low/mid SOTA compare | Same MovingAI `.map`/`.scen` (P0) + voxels (P1); report success rate, time, expansions, path cost vs `reference_cost` when present |
 | Search-shape debug | Path + heading overlay; closed-set colored by expansion order — catch “search away from goal” before merging a new planner |
 | Heuristic correctness | Heatmap of `h` and `h − true_dist`; fail CI/sample checks if `h > true` (inadmissible) |
 | Perf / memory profile | Per-run `SearchReport`: wall time, open peak, closed/nodes, reexpansions, bytes estimate — compare algos on identical queries |
@@ -156,8 +156,7 @@ Do **not** reuse this schema for full pipe-design / multi-group problems — tha
 | `query_id` | int | Optional; auto-assigned if omitted |
 | `start` | `[x,y,z]` **or** `[[x,y,z], …]` | Non-empty; shorthand single cell allowed |
 | `goal` | same | Non-empty |
-| `opt_cost` | float? | Known optimal (e.g. MovingAI) when present |
-| `reference_cost` | float? | Cost of a reference / seed path when present |
+| `reference_cost` | float? | Benchmark or seed reference (e.g. MovingAI scen cost) |
 
 Example:
 
@@ -192,7 +191,6 @@ Example:
     {"query_id": 0,
      "start": [[x,y,z], ...],
      "goal":  [[x,y,z], ...],
-     "opt_cost": 3.0,
      "reference_cost": 3.2}
   ]
 }
@@ -231,7 +229,7 @@ JSON object; batch runs use **JSONL** (`write_search_reports_jsonl`).
 | `model`, `heuristic`, `action_model`, `heap` | Solver type names from `SearchInstance` |
 | `model_id`, `heap_id`, `heuristic_id` | Preset provenance ids from `SearchInstance` (may be empty) |
 | `instance_id`, `map_id`, `query_id` | Provenance |
-| `opt_cost`, `reference_cost` | Copied from query when present |
+| `reference_cost` | Copied from query when present |
 
 ### 5.3.1 Viz / debug dumps (under `output_dir`, not in `SearchReport`)
 
