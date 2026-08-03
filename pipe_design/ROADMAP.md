@@ -137,17 +137,13 @@ Legend: **P0** must-have → **P4** later. ★ = preferred for this domain.
 
 ### 4.2 Low-level planners
 
-Single-query baselines first; **incremental / dynamic-obstacle** methods next — they match CBS
-`ObstacleChain` add/remove and sequential pipe occupancy better than anytime alone
-(anytime = same map, improve quality; incremental = map deltas, reuse search state).
-
 | Algorithm | Priority | Notes |
 |-----------|----------|-------|
 | ★ A\* (grid, 6/26-connect) | P0 | Baseline |
 | Greedy best-first (`f=h`) | P0 | `GreedyBestFirst`; thin A\* variant |
 | Dijkstra / UCS (`f=g`) | P0 | `planner::Dijkstra`; ≠ `heuristic::Dijkstra` |
 | ★ Theta\* / Lazy Theta\* | P1 | Any-angle; good for pipes |
-| ★ Path / tree warm-start | P1 | Soft reuse prior path or open/closed after chain delta |
+| ★ Stitching replan | P1 | Anchors `a→b` on broken path; see `include/planner/low/REPLAN_ROADMAP.md` |
 | ★ Local repair replan | P1 | Invalidate only cells hit by new/removed obstacles; re-expand locally |
 | ★ LPA\* | P1–P2 | Lifelong Planning A\*; repair `g` under edge-cost / free-set changes |
 | ★ D\* Lite | P1–P2 | Incremental replan toward fixed goal; natural for CBS constraint add |

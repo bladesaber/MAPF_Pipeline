@@ -16,7 +16,7 @@ namespace pipe_design::planner {
 /// does not allocate a huge array. If f > max_cost (or f < 0), push/decrease_key throw.
 ///
 /// Within a bin, nodes are kept in an unsorted vector; pop scans the lowest bin
-/// for the best node by OpenSet::worse_than (exact f/g, not only quantized key).
+/// for the best node by `worse_than` / `MinFgCompare` (exact f/g, not only quantized key).
 ///
 /// decrease_key moves the node from its old bin to the new bin.
 class BucketHeap final : public OpenSet {

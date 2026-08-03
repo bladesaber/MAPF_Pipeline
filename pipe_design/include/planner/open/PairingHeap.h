@@ -6,40 +6,45 @@
 
 namespace pipe_design::planner {
 
-/// Pairing min-heap with decrease_key. Handles stored in a side map (not on SearchNode).
-class PairingHeap final : public OpenSet {
+/// Pairing min-heap with decrease_key. Handles stored in a side map (not on Node).
+template <typename Node = SearchNode, typename Compare = MinFgCompare>
+class PairingHeapBase: public OpenSetBase<Node, Compare> {
 public:
-    PairingHeap() = default;
-    ~PairingHeap() override { clear(); }
+    PairingHeapBase() = default;
+    ~PairingHeapBase() override { clear(); }
 
-    PairingHeap(const PairingHeap&) = delete;             // 禁止拷贝构造
-    PairingHeap& operator=(const PairingHeap&) = delete;  // 禁止赋值操作
+    PairingHeapBase(const PairingHeapBase&) = delete;             // 禁止拷贝构造
+    PairingHeapBase& operator=(const PairingHeapBase&) = delete;  // 禁止赋值操作
 
     void clear() override;
     bool empty() const override { return root_ == nullptr; }
     std::size_t size() const override { return size_; }
 
-    void push(SearchNode* node) override;
-    SearchNode* pop() override;
-    SearchNode* top() const override;
-    bool contains(const SearchNode* node) const override;
-    bool decrease_key(SearchNode* node) override;
+    void push(Node* node) override;
+    Node* pop() override;
+    Node* top() const override;
+    bool contains(const Node* node) const override;
+    bool decrease_key(Node* node) override;
 
-private:
+protected:
     struct HeapNode {
-        SearchNode* item = nullptr;
+        Node* item = nullptr;
         HeapNode* child = nullptr;
         HeapNode* next = nullptr;
         HeapNode* prev = nullptr;  // sibling prev, or parent if leftmost child
     };
 
-    static HeapNode* meld(HeapNode* a, HeapNode* b);
-    static HeapNode* merge_pairs(HeapNode* first);
+    HeapNode* meld(HeapNode* a, HeapNode* b);
+    HeapNode* merge_pairs(HeapNode* first);
     void detach(HeapNode* node);
 
     HeapNode* root_ = nullptr;
     std::size_t size_ = 0;
-    std::unordered_map<const SearchNode*, HeapNode*> handle_;
+    std::unordered_map<const Node*, HeapNode*> handle_;
 };
+
+using PairingHeap = PairingHeapBase<SearchNode, MinFgCompare>;
+
+extern template class PairingHeapBase<SearchNode, MinFgCompare>;
 
 }  // namespace pipe_design::planner

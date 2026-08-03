@@ -15,6 +15,7 @@ add_library(pipe_planner
     src/planner/open/BinaryHeap.cpp
     src/planner/open/LazyBinaryHeap.cpp
     src/planner/open/PairingHeap.cpp
+    src/planner/open/LPAOpenSet.cpp
     src/planner/open/BucketHeap.cpp
     src/planner/low/AStar.cpp
     src/planner/low/DirectedAStar.cpp

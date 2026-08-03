@@ -18,6 +18,7 @@ Owns **node storage** and the search loop; does **not** own grid / heuristic / o
 | `LazyThetaStar.h` / `.cpp` | Lazy Theta\* — deferred LOS in `before_expand` |
 | `DirectedAStar.h` / `.cpp` | `AStar<DirectedSearchNode>` + heading-aware `expand` |
 | `Path.h` | Discrete cell path + `cost` |
+| `REPLAN_ROADMAP.md` | Path replan methods (re-search, stitching, …) |
 
 Related (not in this folder): `planner/open`, `planner/motion`, `heuristic/`.
 

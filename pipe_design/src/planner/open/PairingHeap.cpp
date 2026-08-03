@@ -1,12 +1,15 @@
 #include "planner/open/PairingHeap.h"
 
+#include "planner/open/LPAOpenSet.h"
+
 #include <stdexcept>
 #include <utility>
 #include <vector>
 
 namespace pipe_design::planner {
 
-void PairingHeap::clear() {
+template <typename Node, typename Compare>
+void PairingHeapBase<Node, Compare>::clear() {
     std::vector<HeapNode*> stack;
     if (root_ != nullptr) {
         stack.push_back(root_);
@@ -26,18 +29,22 @@ void PairingHeap::clear() {
     handle_.clear();
 }
 
-bool PairingHeap::contains(const SearchNode* node) const {
+template <typename Node, typename Compare>
+bool PairingHeapBase<Node, Compare>::contains(const Node* node) const {
     return handle_.find(node) != handle_.end();
 }
 
-PairingHeap::HeapNode* PairingHeap::meld(HeapNode* a, HeapNode* b) {
+template <typename Node, typename Compare>
+typename PairingHeapBase<Node, Compare>::HeapNode* PairingHeapBase<Node, Compare>::meld(
+    HeapNode* a,
+    HeapNode* b) {
     if (a == nullptr) {
         return b;
     }
     if (b == nullptr) {
         return a;
     }
-    if (worse_than(a->item, b->item)) {
+    if (this->worse_than(a->item, b->item)) {
         std::swap(a, b);
     }
     // b becomes leftmost child of a.
@@ -50,7 +57,9 @@ PairingHeap::HeapNode* PairingHeap::meld(HeapNode* a, HeapNode* b) {
     return a;
 }
 
-PairingHeap::HeapNode* PairingHeap::merge_pairs(HeapNode* first) {
+template <typename Node, typename Compare>
+typename PairingHeapBase<Node, Compare>::HeapNode* PairingHeapBase<Node, Compare>::merge_pairs(
+    HeapNode* first) {
     if (first == nullptr) {
         return nullptr;
     }
@@ -68,7 +77,8 @@ PairingHeap::HeapNode* PairingHeap::merge_pairs(HeapNode* first) {
     return meld(meld(a, b), merge_pairs(rest));
 }
 
-void PairingHeap::detach(HeapNode* node) {
+template <typename Node, typename Compare>
+void PairingHeapBase<Node, Compare>::detach(HeapNode* node) {
     if (node == root_) {
         return;
     }
@@ -85,7 +95,8 @@ void PairingHeap::detach(HeapNode* node) {
     node->prev = nullptr;
 }
 
-void PairingHeap::push(SearchNode* node) {
+template <typename Node, typename Compare>
+void PairingHeapBase<Node, Compare>::push(Node* node) {
     if (node == nullptr) {
         throw std::invalid_argument("PairingHeap::push: null node");
     }
@@ -99,12 +110,13 @@ void PairingHeap::push(SearchNode* node) {
     ++size_;
 }
 
-SearchNode* PairingHeap::pop() {
+template <typename Node, typename Compare>
+Node* PairingHeapBase<Node, Compare>::pop() {
     if (root_ == nullptr) {
         throw std::logic_error("PairingHeap::pop: empty");
     }
     HeapNode* old = root_;
-    SearchNode* item = old->item;
+    Node* item = old->item;
     handle_.erase(item);
 
     HeapNode* children = old->child;
@@ -122,14 +134,16 @@ SearchNode* PairingHeap::pop() {
     return item;
 }
 
-SearchNode* PairingHeap::top() const {
+template <typename Node, typename Compare>
+Node* PairingHeapBase<Node, Compare>::top() const {
     if (root_ == nullptr) {
         throw std::logic_error("PairingHeap::top: empty");
     }
     return root_->item;
 }
 
-bool PairingHeap::decrease_key(SearchNode* node) {
+template <typename Node, typename Compare>
+bool PairingHeapBase<Node, Compare>::decrease_key(Node* node) {
     const auto it = handle_.find(node);
     if (it == handle_.end()) {
         return false;
@@ -142,5 +156,8 @@ bool PairingHeap::decrease_key(SearchNode* node) {
     root_ = meld(root_, hn);
     return true;
 }
+
+template class PairingHeapBase<SearchNode, MinFgCompare>;
+template class PairingHeapBase<LpaSearchNode, LpaKeyCompare>;
 
 }  // namespace pipe_design::planner

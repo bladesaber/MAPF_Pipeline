@@ -12,9 +12,14 @@ LowLevelPlanner::search
     └─ OpenSet         (this folder)  ← which node to expand next
 ```
 
-Swappable via `OpenSet*`. Do not put CBS / topology / grid logic here.
+Swappable via `OpenSet*` (`OpenSet` = `OpenSetBase<SearchNode, MinFgCompare>`).
+Do not put CBS / topology / grid logic here.
 
-## Contract (`OpenSet`)
+## Contract (`OpenSet` / `OpenSetBase`)
+
+`OpenSetBase<Node, Compare>` is the generic interface; compare is a strict
+worse-than functor (default `MinFgCompare`: min `f`, tie → larger `g`).
+LPA* uses `LPAOpenSet` (lex `[k1;k2]`, remove+insert) — not an `OpenSet` backend.
 
 | Op | Meaning |
 |----|---------|
@@ -25,7 +30,7 @@ Swappable via `OpenSet*`. Do not put CBS / topology / grid logic here.
 | `decrease_key` | After `node->f` improved while on open; `true` = fixed in place, `false` = caller must `push` again |
 | `clear` / `empty` / `size` | Lifecycle |
 
-**Ordering (min-heap):** smaller `f` first; if `f` equal, prefer **larger `g`** (more progress).
+**Ordering (default min-heap):** smaller `f` first; if `f` equal, prefer **larger `g`** (more progress).
 
 **Ownership:** never delete nodes. Heap handles live in the open-set side maps — **not** on `SearchNode` (see `SearchNode.h`).
 
@@ -36,6 +41,7 @@ Swappable via `OpenSet*`. Do not put CBS / topology / grid logic here.
 | `LazyBinaryHeap` | Always `false` → re-`push`; stale skipped on pop | Fast when reopenings are rare | **Default grid A\*** |
 | `BinaryHeap` | `true` (index map + sift) | Exact, simple | Baseline / correctness |
 | `PairingHeap` | `true` (meld / detach) | Strong amortized decrease | Many decrease_keys |
+| `LPAOpenSet` | n/a — `remove` + `insert(LPAKey)` | Pairing heap; lex `[k1;k2]`; not an `OpenSet` | **LPA\* / D\* Lite U** |
 | `BucketHeap` | `true` (move between bins) | Dial-style; `bin = floor(f/delta)` | Bounded, discrete-ish `f` |
 
 ### Lazy vs true decrease
@@ -73,17 +79,19 @@ while !empty:
 ## Files
 
 ```text
-OpenSet.h           abstract interface + worse_than
+OpenSet.h           OpenSetBase<Node,Compare> + MinFgCompare + using OpenSet
 BinaryHeap.h/.cpp
 LazyBinaryHeap.h/.cpp
 PairingHeap.h/.cpp
+LPAOpenSet.h/.cpp   LPA* queue U (lex LPAKey; remove+insert)
 BucketHeap.h/.cpp
 tests/test_open_set.cpp   correctness + speed microbench
 ```
 
 ## Extending
 
-1. Subclass `OpenSet`; reuse `worse_than` for the same tie-break.
+1. Subclass `OpenSet` (i.e. `OpenSetBase<SearchNode, MinFgCompare>`), or instantiate
+   `OpenSetBase` with another `Compare` / `Node` for experiments.
 2. Keep handles off `SearchNode`.
 3. Add a deterministic unit test in `tests/test_open_set.cpp` (order, tie-break, decrease / stale).
 4. Prefer composition: planner holds `std::unique_ptr<OpenSet>`, not a hard-coded heap type.

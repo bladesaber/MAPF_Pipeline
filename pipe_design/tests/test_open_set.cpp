@@ -1,6 +1,7 @@
 #include "planner/low/SearchNode.h"
 #include "planner/open/BinaryHeap.h"
 #include "planner/open/BucketHeap.h"
+#include "planner/open/LPAOpenSet.h"
 #include "planner/open/LazyBinaryHeap.h"
 #include "planner/open/PairingHeap.h"
 
@@ -17,6 +18,9 @@
 using pipe_design::grid::CellCoord;
 using pipe_design::planner::BinaryHeap;
 using pipe_design::planner::BucketHeap;
+using pipe_design::planner::LPAKey;
+using pipe_design::planner::LPAOpenSet;
+using pipe_design::planner::LpaSearchNode;
 using pipe_design::planner::LazyBinaryHeap;
 using pipe_design::planner::NodeStatus;
 using pipe_design::planner::OpenSet;
@@ -157,6 +161,45 @@ static void test_pairing_many_pushes() {
         EXPECT_TRUE(n->f >= last);
         last = n->f;
     }
+}
+
+static void test_lpa_open_set_lex_order_and_remove() {
+    LPAOpenSet u;
+    LpaSearchNode a(CellCoord{0, 0, 0});
+    LpaSearchNode b(CellCoord{1, 0, 0});
+    LpaSearchNode c(CellCoord{2, 0, 0});
+
+    // LPAKey {k1,k2} = {min(g,rhs)+h, min(g,rhs)} → set g=rhs=k2, h=k1-k2.
+    auto set_key = [](LpaSearchNode& n, double k1, double k2) {
+        n.g = k2;
+        n.rhs = k2;
+        n.h = k1 - k2;
+    };
+
+    EXPECT_TRUE(u.top_key() == LPAKey::inf());
+
+    set_key(a, 5.0, 2.0);
+    set_key(b, 3.0, 9.0);
+    set_key(c, 3.0, 1.0);
+    u.push(&a);
+    u.push(&b);
+    u.push(&c);
+    EXPECT_TRUE(u.size() == 3);
+    EXPECT_TRUE(u.top() == &c);  // same k1, smaller k2
+    EXPECT_TRUE(u.top_key().k1 == 3.0 && u.top_key().k2 == 1.0);
+
+    EXPECT_TRUE(u.remove(&c));
+    EXPECT_TRUE(!u.contains(&c));
+    EXPECT_TRUE(u.top() == &b);
+
+    // Paper UpdateVertex: remove then push with new key (increase ok).
+    EXPECT_TRUE(u.remove(&a));
+    set_key(a, 1.0, 0.0);
+    u.push(&a);
+    EXPECT_TRUE(u.pop() == &a);
+    EXPECT_TRUE(u.pop() == &b);
+    EXPECT_TRUE(u.empty());
+    EXPECT_TRUE(u.top_key() == LPAKey::inf());
 }
 
 static void test_bucket_heap_order_and_decrease() {
@@ -328,6 +371,7 @@ int main() {
     test_top_matches_next_pop();
     test_pairing_heap_decrease();
     test_pairing_many_pushes();
+    test_lpa_open_set_lex_order_and_remove();
     test_bucket_heap_order_and_decrease();
     test_bucket_heap_same_bin_exact_order();
     test_bucket_heap_throws_on_over_limit();
