@@ -14,6 +14,7 @@ Owns **node storage** and the search loop; does **not** own grid / heuristic / o
 | `Dijkstra.h` | A\* variant: `f = g` (uniform-cost; ≠ `heuristic::Dijkstra`) |
 | `ARAStar.h` / `.cpp` | Anytime Repairing A\* — inflate ε, then repair via INCONS |
 | `ANAStar.h` / `.cpp` | Anytime Nonparametric A\* — key `(G−g)/h`, no ε schedule |
+| `FocalAStar.h` / `.cpp` | Focal A\* (`A*_ε`); OPEN by `f` + owned FOCAL (`PairingHeap` / `MinHgCompare`) |
 | `LineOfSight.h` | Cell-center LOS + Euclidean edge cost (Theta\*) |
 | `ThetaStar.h` / `.cpp` | Basic Theta\* — parent LOS on expand |
 | `LazyThetaStar.h` / `.cpp` | Lazy Theta\* — deferred LOS in `before_expand` |
@@ -80,6 +81,7 @@ Priority: `f = combine_key(g, h)` default `g + w·h` (`set_heuristic_weight`).
 | `Dijkstra` | `g` |
 | `ARAStar` | `g + ε·h` (ε decreases over repair rounds) |
 | `ANAStar` | `−(G−g)/h` after first incumbent; else `h` |
+| `FocalAStar` | OPEN `g+h`; pick from FOCAL `f ≤ w·f_min` by `h` |
 | `ThetaStar` / `LazyThetaStar` | same as A\* (`g + w·h`); differ in `expand` / LOS |
 
 ## Usage sketch
@@ -116,6 +118,12 @@ ana.reset(grid, start, goal, radius, h, open, actions);
 ana.search(50);            // incumbent via path()
 ana.search();              // optimal when Success
 
+LazyBinaryHeap open;
+FocalAStar focal;
+focal.set_focal_weight(2.0);
+focal.reset(grid, start, goal, radius, h, open, actions);
+focal.search();
+
 Euclidean eu(1.0);  // preferred for Theta*
 ThetaStar theta;
 theta.set_step_cost(1.0);
@@ -143,6 +151,7 @@ directed.search();
 | Heading-aware / Hybrid-style expand | subclass `AStar<YourNode>`, override `expand` (see `DirectedAStar`) |
 | Different f | override `combine_key` (see `GreedyBestFirst`, `Dijkstra`, `ARAStar`, `ANAStar`) |
 | Anytime / repair | `ARAStar` / `ANAStar` (own `step` / `expand`; `path()` while Running) |
+| Focal / FOCAL list | `FocalAStar` (`set_focal_weight`; FOCAL = `PairingHeapBase` + `MinHgCompare`) |
 | Theta* / any-angle | `ThetaStar` / `LazyThetaStar` (+ `LineOfSight`) |
 
 Do **not** put CBS, group scheduling, or topology in this folder.

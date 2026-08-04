@@ -38,6 +38,7 @@ public:
     SearchNode* pop() override;
     SearchNode* top() const override;
     bool contains(const SearchNode* node) const override;
+    bool remove(SearchNode* node) override;
     bool decrease_key(SearchNode* node) override;
 
 private:

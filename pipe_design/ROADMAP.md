@@ -38,9 +38,9 @@ once a pipe is routed it **permanently occupies** volume. Conflicts are therefor
 │  Scheduling     ordered Task queue (pair-level, cross-group)│
 │  + Topology     MST / Steiner / spine  (per group)          │
 ├─────────────────────────────────────────────────────────────┤
-│  Middle-level   bi-dir, weighted/focal, adaptive step, …    │
+│  Middle-level   bi-dir, adaptive step, …                    │
 ├─────────────────────────────────────────────────────────────┤
-│  Low-level      A* / Theta* / Hybrid-A* / …                 │
+│  Low-level      A* / Focal-A* / Theta* / Hybrid-A* / …      │
 ├─────────────────────────────────────────────────────────────┤
 │  Heuristic      Euclidean, true-distance, Dubins, …         │
 ├─────────────────────────────────────────────────────────────┤
@@ -72,8 +72,8 @@ pipe_design/
     planner/
       open/        # OpenSet + heap backends
       motion/      # ActionModel, Six/Eight/TwentySixConnected, …
-      low/         # A*, Theta*, Lazy Theta*, Path, SearchNode; Hybrid-A* planned
-      middle/      # (planned) bi-dir, adaptive step, …
+      low/         # A*, FocalAStar, Theta*, Lazy Theta*, Path, SearchNode; Hybrid-A* planned
+      middle/      # MiddleLevelPlanner, BidirectionalAStar; adaptive step planned
       topology/    # (planned) MST, Steiner, …
       schedule/    # (planned) Task, Scheduler
       high/        # (planned) CBS, PBS, LNS
@@ -142,6 +142,7 @@ Legend: **P0** must-have → **P4** later. ★ = preferred for this domain.
 | ★ A\* (grid, 6/26-connect) | P0 | Baseline |
 | Greedy best-first (`f=h`) | P0 | `GreedyBestFirst`; thin A\* variant |
 | Dijkstra / UCS (`f=g`) | P0 | `planner::Dijkstra`; ≠ `heuristic::Dijkstra` |
+| ★ Focal A\* (`A*_ε`) | P1 | `FocalAStar`; FOCAL by `h`; needs lazy open |
 | ★ Theta\* / Lazy Theta\* | P1 | Any-angle; good for pipes |
 | ★ Stitching replan | P1 | Anchors `a→b` on broken path; see `include/planner/low/REPLAN_ROADMAP.md` |
 | ★ Local repair replan | P1 | Invalidate only cells hit by new/removed obstacles; re-expand locally |
@@ -160,13 +161,11 @@ Legend: **P0** must-have → **P4** later. ★ = preferred for this domain.
 
 | Technique | Priority | Notes |
 |-----------|----------|-------|
-| ★ Weighted / focal search | P1 | Suboptimality for speed |
+| ★ Weighted A\* | P1 | `AStar::set_heuristic_weight` (`f=g+w·h`) |
 | ★ Bidirectional search | P1 | When both ends fixed |
 | ★ Clearance-adaptive step size | P1 | Large steps far from obstacles |
-| Path smooth + clearance re-check | P1 | Post-process |
 | Corridor / hierarchical abstraction | P3 | High-level supplies corridor |
 | Dynamic resolution | P3 | Costly; after adaptive step |
-| SIPP / time intervals | — | Not needed (no time dimension) |
 
 ### 4.4 Heuristics
 
@@ -233,7 +232,8 @@ Construction **order** may be **pair** (or segment) granularity.
 - [x] Basic heuristics (Manhattan / Euclidean / Octile)  
 - [x] True-distance heuristic on static field (`Dijkstra`)  
 - [ ] Chebyshev heuristic  
-- [ ] Weighted A\* + bidirectional (middle)  
+- [x] Weighted A\* (`set_heuristic_weight`) + bidirectional (`BidirectionalAStar`)  
+
 - [ ] Adaptive step from clearance  
 - [ ] Topology: MST → sequential pair routing (one group)  
 - [ ] Scheduler API (even if only one ordering policy)

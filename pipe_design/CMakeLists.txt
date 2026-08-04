@@ -24,6 +24,8 @@ add_library(pipe_planner
     src/planner/low/ARAStar.cpp
     src/planner/low/ANAStar.cpp
     src/planner/low/LPAStar.cpp
+    src/planner/middle/BidirectionalAStar.cpp
+    src/planner/low/FocalAStar.cpp
     src/heuristic/Dijkstra.cpp
 )
 target_include_directories(pipe_planner PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -44,6 +46,14 @@ add_test(NAME open_set_unit COMMAND test_open_set)
 add_executable(test_astar tests/test_astar.cpp)
 target_link_libraries(test_astar PRIVATE pipe_planner)
 add_test(NAME astar_unit COMMAND test_astar)
+
+add_executable(test_bidirectional tests/test_bidirectional.cpp)
+target_link_libraries(test_bidirectional PRIVATE pipe_planner)
+add_test(NAME bidirectional_unit COMMAND test_bidirectional)
+
+add_executable(test_focal tests/test_focal.cpp)
+target_link_libraries(test_focal PRIVATE pipe_planner)
+add_test(NAME focal_unit COMMAND test_focal)
 
 add_executable(test_anytime tests/test_anytime.cpp)
 target_link_libraries(test_anytime PRIVATE pipe_planner)

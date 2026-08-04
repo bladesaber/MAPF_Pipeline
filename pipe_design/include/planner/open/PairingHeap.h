@@ -24,6 +24,7 @@ public:
     Node* pop() override;
     Node* top() const override;
     bool contains(const Node* node) const override;
+    bool remove(Node* node) override;
     bool decrease_key(Node* node) override;
 
 protected:

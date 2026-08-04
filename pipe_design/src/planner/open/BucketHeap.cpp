@@ -25,6 +25,17 @@ bool BucketHeap::contains(const SearchNode* node) const {
     return bin_of_.find(node) != bin_of_.end();
 }
 
+bool BucketHeap::remove(SearchNode* node) {
+    const auto it = bin_of_.find(node);
+    if (it == bin_of_.end()) {
+        return false;
+    }
+    erase_from_bin(node, it->second);
+    bin_of_.erase(it);
+    --size_;
+    return true;
+}
+
 int BucketHeap::bin_index(double f) const {
     if (std::isnan(f) || f < 0.0) {
         throw std::out_of_range("BucketHeap: f must be finite and >= 0");
@@ -48,8 +59,8 @@ void BucketHeap::erase_from_bin(SearchNode* node, int bin) {
     if (pos == vec.end()) {
         throw std::logic_error("BucketHeap: node not found in bin");
     }
-    *pos = vec.back();
-    vec.pop_back();
+    *pos = vec.back();  // replace the node with the last node in the bin
+    vec.pop_back();  // remove the last node in the bin
     if (vec.empty()) {
         buckets_.erase(it);
     }

@@ -83,6 +83,44 @@ static void test_binary_heap_tie_break_larger_g() {
     EXPECT_TRUE(heap.pop() == &a);
 }
 
+static void test_remove_arbitrary() {
+    BinaryHeap binary;
+    PairingHeap pairing;
+    SearchNode a(CellCoord{0, 0, 0});
+    SearchNode b(CellCoord{1, 0, 0});
+    SearchNode c(CellCoord{2, 0, 0});
+    a.f = 5.0;
+    a.g = 1.0;
+    a.status = NodeStatus::Open;
+    b.f = 3.0;
+    b.g = 1.0;
+    b.status = NodeStatus::Open;
+    c.f = 4.0;
+    c.g = 1.0;
+    c.status = NodeStatus::Open;
+
+    binary.push(&a);
+    binary.push(&b);
+    binary.push(&c);
+    EXPECT_TRUE(binary.remove(&c));
+    EXPECT_TRUE(!binary.contains(&c));
+    EXPECT_TRUE(!binary.remove(&c));
+    expect_pop_order(binary, {&b, &a});
+
+    pairing.push(&a);
+    pairing.push(&b);
+    pairing.push(&c);
+    EXPECT_TRUE(pairing.remove(&a));
+    EXPECT_TRUE(!pairing.contains(&a));
+    expect_pop_order(pairing, {&b, &c});
+
+    LazyBinaryHeap lazy;
+    lazy.push(&b);
+    EXPECT_TRUE(lazy.remove(&b));
+    b.status = NodeStatus::Closed;
+    EXPECT_TRUE(lazy.empty());
+}
+
 static void test_lazy_heap_stale_entries() {
     LazyBinaryHeap heap;
     SearchNode a(CellCoord{0, 0, 0});
@@ -367,6 +405,7 @@ static void benchmark_open_set_speed() {
 int main() {
     test_binary_heap_order_and_decrease();
     test_binary_heap_tie_break_larger_g();
+    test_remove_arbitrary();
     test_lazy_heap_stale_entries();
     test_top_matches_next_pop();
     test_pairing_heap_decrease();

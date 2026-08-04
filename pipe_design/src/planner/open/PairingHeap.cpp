@@ -1,5 +1,6 @@
 #include "planner/open/PairingHeap.h"
 
+#include "planner/low/FocalAStar.h"
 #include "planner/open/LPAOpenSet.h"
 
 #include <stdexcept>
@@ -157,7 +158,42 @@ bool PairingHeapBase<Node, Compare>::decrease_key(Node* node) {
     return true;
 }
 
+template <typename Node, typename Compare>
+bool PairingHeapBase<Node, Compare>::remove(Node* node) {
+    const auto it = handle_.find(node);
+    if (it == handle_.end()) {
+        return false;
+    }
+    HeapNode* hn = it->second;
+    handle_.erase(it);
+    --size_;
+
+    if (hn == root_) {
+        HeapNode* children = hn->child;
+        delete hn;
+        for (HeapNode* c = children; c != nullptr; c = c->next) {
+            c->prev = nullptr;
+        }
+        root_ = merge_pairs(children);
+        if (root_ != nullptr) {
+            root_->prev = nullptr;
+            root_->next = nullptr;
+        }
+        return true;
+    }
+
+    detach(hn);
+    HeapNode* children = hn->child;
+    delete hn;
+    for (HeapNode* c = children; c != nullptr; c = c->next) {
+        c->prev = nullptr;
+    }
+    root_ = meld(root_, merge_pairs(children));
+    return true;
+}
+
 template class PairingHeapBase<SearchNode, MinFgCompare>;
 template class PairingHeapBase<LpaSearchNode, LpaKeyCompare>;
+template class PairingHeapBase<SearchNode, MinHgCompare>;
 
 }  // namespace pipe_design::planner

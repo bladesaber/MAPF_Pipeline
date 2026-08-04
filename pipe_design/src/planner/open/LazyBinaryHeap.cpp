@@ -50,6 +50,12 @@ bool LazyBinaryHeap::contains(const SearchNode* node) const {
     return node != nullptr && node->status == NodeStatus::Open;
 }
 
+bool LazyBinaryHeap::remove(SearchNode* node) {
+    // Cannot unlink from std::priority_queue; stale entries are skipped once
+    // the planner marks the node Closed (same contract as expand-after-pop).
+    return contains(node);
+}
+
 bool LazyBinaryHeap::decrease_key(SearchNode* node) {
     (void)node;
     // No in-place fix: caller must push(node) again with the new f/g.

@@ -14,6 +14,26 @@ bool BinaryHeap::contains(const SearchNode* node) const {
     return index_.find(node) != index_.end();
 }
 
+bool BinaryHeap::remove(SearchNode* node) {
+    const auto it = index_.find(node);
+    if (it == index_.end()) {
+        return false;
+    }
+    const std::size_t i = it->second;
+    index_.erase(it);
+    if (i + 1 == heap_.size()) {
+        heap_.pop_back();
+        return true;
+    }
+    SearchNode* moved = heap_.back();
+    heap_[i] = moved;
+    heap_.pop_back();
+    index_[moved] = i;
+    sift_down(i);
+    sift_up(i);
+    return true;
+}
+
 void BinaryHeap::swap_indices(std::size_t i, std::size_t j) {
     std::swap(heap_[i], heap_[j]);
     index_[heap_[i]] = i;

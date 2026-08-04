@@ -55,10 +55,8 @@ public:
     using Base::pop;
     using Base::top;
     using Base::contains;
+    using Base::remove;
     using Base::decrease_key;
-
-    /// Remove if present. Returns true if it was in the heap.
-    bool remove(Node* node);
 
     /// Key of current top; {inf,inf} if empty (paper TopKey).
     LPAKey top_key() const {

@@ -38,6 +38,11 @@ public:
     virtual Node* top() const = 0;
     virtual bool contains(const Node* node) const = 0;
 
+    /// Remove `node` if present. Returns true iff it was in the open set.
+    /// Does not own/delete the node. After a successful remove, the planner
+    /// typically marks the node Closed (same as after `pop`).
+    virtual bool remove(Node* node) = 0;
+
     /// After the node's key improved while already on open, restore heap order.
     /// Returns true if updated in place; false → caller must push(node) again.
     virtual bool decrease_key(Node* node) {

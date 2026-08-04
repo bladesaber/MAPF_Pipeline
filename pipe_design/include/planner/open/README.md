@@ -27,6 +27,7 @@ LPA* uses `LPAOpenSet` (lex `[k1;k2]`, remove+insert) — not an `OpenSet` backe
 | `pop` | Remove best node (undefined if empty) |
 | `top` | Best node without removing (undefined if empty) |
 | `contains` | Whether this open set tracks the node |
+| `remove` | Unlink arbitrary node if present; `true` if it was in the set |
 | `decrease_key` | After `node->f` improved while on open; `true` = fixed in place, `false` = caller must `push` again |
 | `clear` / `empty` / `size` | Lifecycle |
 
@@ -36,13 +37,13 @@ LPA* uses `LPAOpenSet` (lex `[k1;k2]`, remove+insert) — not an `OpenSet` backe
 
 ## Implementations
 
-| Class | `decrease_key` | Notes | Typical use |
-|-------|----------------|-------|-------------|
-| `LazyBinaryHeap` | Always `false` → re-`push`; stale skipped on pop | Fast when reopenings are rare | **Default grid A\*** |
-| `BinaryHeap` | `true` (index map + sift) | Exact, simple | Baseline / correctness |
-| `PairingHeap` | `true` (meld / detach) | Strong amortized decrease | Many decrease_keys |
-| `LPAOpenSet` | n/a — `remove` + `insert(LPAKey)` | Pairing heap; lex `[k1;k2]`; not an `OpenSet` | **LPA\* / D\* Lite U** |
-| `BucketHeap` | `true` (move between bins) | Dial-style; `bin = floor(f/delta)` | Bounded, discrete-ish `f` |
+| Class | `decrease_key` | `remove` | Notes | Typical use |
+|-------|----------------|----------|-------|-------------|
+| `LazyBinaryHeap` | Always `false` → re-`push`; stale skipped on pop | Logical only (caller must `Closed`) | Fast when reopenings are rare | **Default grid A\*** |
+| `BinaryHeap` | `true` (index map + sift) | True unlink | Exact, simple | Baseline / correctness |
+| `PairingHeap` | `true` (meld / detach) | True unlink | Strong amortized decrease | Many decrease_keys / Focal OPEN |
+| `LPAOpenSet` | n/a — `remove` + re-`push` | Via `PairingHeapBase` | Lex `[k1;k2]`; not an `OpenSet` | **LPA\* / D\* Lite U** |
+| `BucketHeap` | `true` (move between bins) | True unlink | Dial-style; `bin = floor(f/delta)` | Bounded, discrete-ish `f` |
 
 ### Lazy vs true decrease
 
