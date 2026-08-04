@@ -30,6 +30,10 @@ class ActionModel {
 | `SixConnected` | ±x, ±y, ±z | uniform `step_cost` |
 | `EightConnected` | planar 8 (fixed z) | face `1`, diagonal `√2` × `step_cost` |
 | `TwentySixConnected` | all 26 cube neighbors | face / edge / corner × `step_cost` |
+| `AdaptiveShell` | Chebyshev shell `max(|d|)=s` | Euclidean · `step_cost`; planner sets `s` |
+
+`AdaptiveShell::offsets_for(s)` caches shell offsets. Caller / planner sets `s` via
+`set_step_size` (e.g. from clearance); motion does not query the grid.
 
 **Soft turn cost**: `combine_edge_cost` adds cost when `in_heading` bends toward `heading`.  
 **Hard turn filter**: `accept_turn` drops edges with turn angle > `max_turn_deg` (e.g. 90 keeps straight + right angles; reverse is already excluded when max < 180).

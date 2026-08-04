@@ -15,6 +15,7 @@ Owns **node storage** and the search loop; does **not** own grid / heuristic / o
 | `ARAStar.h` / `.cpp` | Anytime Repairing A\* — inflate ε, then repair via INCONS |
 | `ANAStar.h` / `.cpp` | Anytime Nonparametric A\* — key `(G−g)/h`, no ε schedule |
 | `FocalAStar.h` / `.cpp` | Focal A\* (`A*_ε`); OPEN by `f` + owned FOCAL (`PairingHeap` / `MinHgCompare`) |
+| `AdaptiveStepAStar.h` / `.cpp` | Clearance-adaptive shell A\*; covered ball anti jump-back |
 | `LineOfSight.h` | Cell-center LOS + Euclidean edge cost (Theta\*) |
 | `ThetaStar.h` / `.cpp` | Basic Theta\* — parent LOS on expand |
 | `LazyThetaStar.h` / `.cpp` | Lazy Theta\* — deferred LOS in `before_expand` |

@@ -71,7 +71,7 @@ pipe_design/
     heuristic/     # Heuristic, Manhattan, Euclidean, Octile, Dijkstra, …
     planner/
       open/        # OpenSet + heap backends
-      motion/      # ActionModel, Six/Eight/TwentySixConnected, …
+      motion/      # ActionModel, Six/Eight/TwentySixConnected, AdaptiveShell, …
       low/         # A*, FocalAStar, Theta*, Lazy Theta*, Path, SearchNode; Hybrid-A* planned
       middle/      # MiddleLevelPlanner, BidirectionalAStar; adaptive step planned
       topology/    # (planned) MST, Steiner, …
@@ -163,7 +163,7 @@ Legend: **P0** must-have → **P4** later. ★ = preferred for this domain.
 |-----------|----------|-------|
 | ★ Weighted A\* | P1 | `AStar::set_heuristic_weight` (`f=g+w·h`) |
 | ★ Bidirectional search | P1 | When both ends fixed |
-| ★ Clearance-adaptive step size | P1 | Large steps far from obstacles |
+| ★ Clearance-adaptive step size | P1 | `AdaptiveStepAStar` + `AdaptiveShell`; planner sets `s` from clearance |
 | Corridor / hierarchical abstraction | P3 | High-level supplies corridor |
 | Dynamic resolution | P3 | Costly; after adaptive step |
 
@@ -234,7 +234,7 @@ Construction **order** may be **pair** (or segment) granularity.
 - [ ] Chebyshev heuristic  
 - [x] Weighted A\* (`set_heuristic_weight`) + bidirectional (`BidirectionalAStar`)  
 
-- [ ] Adaptive step from clearance  
+- [x] Adaptive step from clearance (`AdaptiveStepAStar`)  
 - [ ] Topology: MST → sequential pair routing (one group)  
 - [ ] Scheduler API (even if only one ordering policy)
 

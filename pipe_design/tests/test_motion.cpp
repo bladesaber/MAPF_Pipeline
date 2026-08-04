@@ -8,6 +8,7 @@
 
 using pipe_design::geom::Heading;
 using pipe_design::grid::CellCoord;
+using pipe_design::planner::motion::AdaptiveShell;
 using pipe_design::planner::motion::EightConnected;
 using pipe_design::planner::motion::SixConnected;
 using pipe_design::planner::motion::Successor;
@@ -121,6 +122,62 @@ static void test_twenty_six_costs() {
     EXPECT_TRUE(corners == 8);
 }
 
+static void test_adaptive_shell_offsets_cache() {
+    AdaptiveShell m(1.0, /*max_step=*/4);
+
+    const auto& s1 = m.offsets_for(1);
+    EXPECT_TRUE(s1.size() == 26);  // same as TwentySixConnected
+    EXPECT_TRUE(&m.offsets_for(1) == &s1);
+
+    const auto& s2 = m.offsets_for(2);
+    // (5^3 - 3^3) = 125 - 27 = 98
+    EXPECT_TRUE(s2.size() == 98);
+    EXPECT_TRUE(&m.offsets_for(2) == &s2);
+
+    bool found_21 = false;
+    for (const AdaptiveShell::Offset& o : s2) {
+        const int cheb = std::max(std::abs(o.dx), std::max(std::abs(o.dy), std::abs(o.dz)));
+        EXPECT_TRUE(cheb == 2);
+        if (o.dx == 2 && o.dy == 1 && o.dz == 0) {
+            found_21 = true;
+        }
+    }
+    EXPECT_TRUE(found_21);
+}
+
+static void test_adaptive_shell_interior_cache() {
+    AdaptiveShell m(1.0);
+    const auto& empty = m.interior_offsets_for(1);
+    EXPECT_TRUE(empty.empty());
+    EXPECT_TRUE(&m.interior_offsets_for(1) == &empty);
+
+    const auto& ball = m.interior_offsets_for(2);
+    EXPECT_TRUE(ball.size() == 27);  // [-1,1]^3
+    EXPECT_TRUE(&m.interior_offsets_for(2) == &ball);
+}
+
+static void test_adaptive_shell_successors() {
+    AdaptiveShell m(1.0);
+    m.set_step_size(2);
+    std::vector<Successor> out;
+    m.successors(CellCoord{0, 0, 0}, out);
+    EXPECT_TRUE(out.size() == 98);
+
+    bool found_21 = false;
+    for (const Successor& s : out) {
+        const CellCoord d = s.cell;
+        const int cheb = std::max(std::abs(d.x), std::max(std::abs(d.y), std::abs(d.z)));
+        EXPECT_TRUE(cheb == 2);
+        const double expect =
+            std::sqrt(static_cast<double>(d.x * d.x + d.y * d.y + d.z * d.z));
+        EXPECT_NEAR(s.cost, expect, 1e-12);
+        if (d.x == 2 && d.y == 1 && d.z == 0) {
+            found_21 = true;
+        }
+    }
+    EXPECT_TRUE(found_21);
+}
+
 static void test_six_max_turn_deg() {
     SixConnected m(1.0);
     m.set_max_turn_deg(90.0);
@@ -152,6 +209,9 @@ int main() {
     test_six_max_turn_deg();
     test_eight_costs();
     test_twenty_six_costs();
+    test_adaptive_shell_offsets_cache();
+    test_adaptive_shell_interior_cache();
+    test_adaptive_shell_successors();
 
     if (g_failures != 0) {
         std::cerr << g_failures << " assertion(s) failed.\n";

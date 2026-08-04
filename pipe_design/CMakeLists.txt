@@ -26,6 +26,7 @@ add_library(pipe_planner
     src/planner/low/LPAStar.cpp
     src/planner/middle/BidirectionalAStar.cpp
     src/planner/low/FocalAStar.cpp
+    src/planner/low/AdaptiveStepAStar.cpp
     src/heuristic/Dijkstra.cpp
 )
 target_include_directories(pipe_planner PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -54,6 +55,10 @@ add_test(NAME bidirectional_unit COMMAND test_bidirectional)
 add_executable(test_focal tests/test_focal.cpp)
 target_link_libraries(test_focal PRIVATE pipe_planner)
 add_test(NAME focal_unit COMMAND test_focal)
+
+add_executable(test_adaptive_step tests/test_adaptive_step.cpp)
+target_link_libraries(test_adaptive_step PRIVATE pipe_planner)
+add_test(NAME adaptive_step_unit COMMAND test_adaptive_step)
 
 add_executable(test_anytime tests/test_anytime.cpp)
 target_link_libraries(test_anytime PRIVATE pipe_planner)
