@@ -47,10 +47,10 @@ public:
     double suboptimality_bound() const;
 
     /// One ImprovePath expansion, or one Main repair transition (↓ε, rekey OPEN).
-    SearchStatus step();
-    SearchStatus search(std::size_t max_expansions = kUnlimited);
+    SearchStatus step() override;
+    SearchStatus search(std::size_t max_expansions = kUnlimited) override;
     /// Published incumbent path (OK while Running once a goal g is known).
-    Path path() const;
+    Path path() const override;
 
 protected:
     double combine_key(double g, double h) const override;

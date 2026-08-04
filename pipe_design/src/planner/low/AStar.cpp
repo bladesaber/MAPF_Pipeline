@@ -122,14 +122,6 @@ SearchStatus AStar<Node>::step() {
 }
 
 template <typename Node>
-SearchStatus AStar<Node>::search(std::size_t max_expansions) {
-    while (status_ == SearchStatus::Running && expansions_ < max_expansions) {
-        step();
-    }
-    return status_;
-}
-
-template <typename Node>
 Path AStar<Node>::path() const {
     if (status_ != SearchStatus::Success || goal_node_ == nullptr) {
         return {};

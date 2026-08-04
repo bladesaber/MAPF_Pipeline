@@ -7,6 +7,7 @@ Owns **node storage** and the search loop; does **not** own grid / heuristic / o
 
 | File | Role |
 |------|------|
+| `LowLevelPlanner.h` | Base: `SearchStatus`, `step` / `path` / `search`, `status_` / `expansions_` |
 | `SearchNode.h` | `SearchNode` (cell), `DirectedSearchNode` (cell + heading), state keys + hash |
 | `AStar.h` / `.cpp` | `AStar<Node>` — steppable A\* (`reset` / `step` / `search`) |
 | `GreedyBestFirst.h` | A\* variant: `f = h` (ignore g for ranking) |

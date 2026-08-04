@@ -11,9 +11,9 @@ namespace pipe_design::planner {
 /// Call `reset` as with A*. `path()` returns the incumbent while still Running.
 class ANAStar : public AStar<SearchNode> {
 public:
-    SearchStatus step();
-    SearchStatus search(std::size_t max_expansions = kUnlimited);
-    Path path() const;
+    SearchStatus step() override;
+    SearchStatus search(std::size_t max_expansions = kUnlimited) override;
+    Path path() const override;
 
     /// Incumbent solution cost G (∞ before first goal).
     double incumbent_cost() const;

@@ -4,13 +4,12 @@
 #include "grid/CompositeGrid.h"
 #include "grid/Types.h"
 #include "heuristic/Heuristic.h"
+#include "planner/low/LowLevelPlanner.h"
 #include "planner/low/Path.h"
 #include "planner/low/SearchNode.h"
 #include "planner/motion/ActionModel.h"
 #include "planner/open/OpenSet.h"
 
-#include <cstddef>
-#include <limits>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -18,28 +17,18 @@
 
 namespace pipe_design::planner {
 
-enum class SearchStatus {
-    Ready,     // reset not called, or cleared
-    Running,   // search in progress
-    Success,   // goal reached
-    Failure,   // exhausted open set / invalid setup
-};
-
 /// Templated A*: `Node` is SearchNode or DirectedSearchNode (must derive SearchNode).
 /// Map keyed by `Node::Key`. One expansion per step.
 ///
 /// Does not own grid, heuristic, open set, or action model.
 /// For heading-aware search, use DirectedAStar (overrides expand).
 template <typename Node = SearchNode>
-class AStar {
+class AStar : public LowLevelPlanner {
 public:
     using Key = typename Node::Key;
 
-    static constexpr std::size_t kUnlimited =
-        std::numeric_limits<std::size_t>::max();
-
     AStar() = default;
-    virtual ~AStar() = default;
+    ~AStar() override = default;
 
     void reset(
         const grid::CompositeGrid& grid,
@@ -59,13 +48,8 @@ public:
         OpenSet& open,
         const motion::ActionModel& actions);
 
-    SearchStatus step();
-    SearchStatus search(std::size_t max_expansions = kUnlimited);
-
-    SearchStatus status() const { return status_; }
-    std::size_t expansions() const { return expansions_; }
-
-    Path path() const;
+    SearchStatus step() override;
+    Path path() const override;
 
     const Node* last_expanded() const { return last_expanded_; }
     const Node* goal_node() const { return goal_node_; }
@@ -102,8 +86,6 @@ protected:
     std::unordered_map<Key, std::unique_ptr<Node>> nodes_;
     std::vector<motion::Successor> successor_buf_;
 
-    SearchStatus status_ = SearchStatus::Ready;
-    std::size_t expansions_ = 0;
     Node* last_expanded_ = nullptr;
     Node* goal_node_ = nullptr;
 };

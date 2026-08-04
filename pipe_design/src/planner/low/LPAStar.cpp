@@ -170,13 +170,6 @@ SearchStatus LPAStar::step() {
     return status_;
 }
 
-SearchStatus LPAStar::search(std::size_t max_expansions) {
-    while (status_ == SearchStatus::Running && expansions_ < max_expansions) {
-        step();
-    }
-    return status_;
-}
-
 void LPAStar::update_obstacles(const std::vector<grid::CellCoord>& changed) {
     if (grid_ == nullptr || open_ == nullptr || start_node_ == nullptr) {
         return;
