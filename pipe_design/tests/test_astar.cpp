@@ -1,5 +1,6 @@
 #include "geom/Types.h"
 #include "grid/CompositeGrid.h"
+#include "grid/ObstacleChain.h"
 #include "grid/StaticClearanceGrid.h"
 #include "grid/Types.h"
 #include "heuristic/Geometric.h"
@@ -7,9 +8,11 @@
 #include "planner/low/Dijkstra.h"
 #include "planner/low/DirectedAStar.h"
 #include "planner/low/GreedyBestFirst.h"
+#include "planner/low/LPAStar.h"
 #include "planner/low/LazyThetaStar.h"
 #include "planner/low/ThetaStar.h"
 #include "planner/motion/SixConnected.h"
+#include "planner/open/LPAOpenSet.h"
 #include "planner/open/LazyBinaryHeap.h"
 
 #include <cmath>
@@ -27,6 +30,8 @@ using pipe_design::planner::AStar;
 using pipe_design::planner::Dijkstra;
 using pipe_design::planner::DirectedAStar;
 using pipe_design::planner::GreedyBestFirst;
+using pipe_design::planner::LPAOpenSet;
+using pipe_design::planner::LPAStar;
 using pipe_design::planner::LazyThetaStar;
 using pipe_design::planner::SearchNode;
 using pipe_design::planner::LazyBinaryHeap;
@@ -448,6 +453,142 @@ static void test_line_of_sight_blocked() {
     EXPECT_TRUE(!ThetaStar::line_of_sight(grid, CellCoord{0, 2, 0}, CellCoord{8, 2, 0}, 0.2f));
 }
 
+static void test_lpa_straight_and_obstacle_update() {
+    StaticClearanceGrid static_grid(20, 10, 1, 1.f, 5.f);
+    static_grid.clear();
+    CompositeGrid grid(static_grid);
+    Manhattan h(1.0);
+    SixConnected actions(1.0);
+    LPAOpenSet open;
+
+    LPAStar lpa;
+    const CellCoord start{0, 0, 0};
+    const CellCoord goal{5, 0, 0};
+    lpa.reset(grid, start, goal, 0.1f, h, open, actions);
+    EXPECT_TRUE(lpa.search() == SearchStatus::Success);
+    Path p = lpa.path();
+    EXPECT_TRUE(p.cells.front() == start);
+    EXPECT_TRUE(p.cells.back() == goal);
+    EXPECT_NEAR(p.cost, 5.0, 1e-9);
+    EXPECT_TRUE(path_is_6_connected(p));
+
+    // Block the corridor; reuse LPA state.
+    std::vector<SphereObstacle> wall;
+    for (int y = 0; y <= 4; ++y) {
+        wall.push_back(SphereObstacle{Vec3{2.5f, static_cast<float>(y) + 0.5f, 0.5f}, 0.6f});
+    }
+    static_grid.bake(wall);
+    std::vector<CellCoord> changed;
+    for (int y = 0; y <= 4; ++y) {
+        changed.push_back(CellCoord{2, y, 0});
+    }
+    lpa.update_obstacles(changed);
+    EXPECT_TRUE(lpa.search() == SearchStatus::Success);
+    p = lpa.path();
+    EXPECT_TRUE(p.cells.front() == start);
+    EXPECT_TRUE(p.cells.back() == goal);
+    EXPECT_TRUE(path_is_6_connected(p));
+    EXPECT_TRUE(p.cost > 5.0);
+}
+
+/// Fresh A* cost on the same grid (for LPA incremental checks).
+static double astar_cost_on(
+    CompositeGrid& grid,
+    const CellCoord& start,
+    const CellCoord& goal,
+    float r,
+    Manhattan& h,
+    SixConnected& actions) {
+    LazyBinaryHeap open;
+    AStar<SearchNode> astar;
+    astar.reset(grid, start, goal, r, h, open, actions);
+    EXPECT_TRUE(astar.search() == SearchStatus::Success);
+    return astar.path().cost;
+}
+
+static void test_lpa_add_remove_and_readd_same_obstacle() {
+    StaticClearanceGrid static_grid(15, 10, 1, 1.f, 5.f);
+    static_grid.clear();
+    auto root = pipe_design::grid::ObstacleChain::make_root();
+    CompositeGrid grid(static_grid, root);
+    Manhattan h(1.0);
+    SixConnected actions(1.0);
+    LPAOpenSet open_lpa;
+
+    const CellCoord start{0, 2, 0};
+    const CellCoord goal{10, 2, 0};
+    const float r = 0.2f;
+
+    std::vector<SphereObstacle> wall;
+    for (int y = 0; y <= 4; ++y) {
+        wall.push_back(SphereObstacle{Vec3{5.5f, static_cast<float>(y) + 0.5f, 0.5f}, 0.6f});
+    }
+    auto with_wall = root->extend(wall, {});
+
+    std::vector<CellCoord> changed;
+    for (int y = 0; y <= 5; ++y) {
+        changed.push_back(CellCoord{5, y, 0});
+        changed.push_back(CellCoord{4, y, 0});
+        changed.push_back(CellCoord{6, y, 0});
+    }
+
+    auto check_path = [&](const Path& p, double expect_cost, bool blocked_map) {
+        EXPECT_TRUE(p.cells.front() == start);
+        EXPECT_TRUE(p.cells.back() == goal);
+        EXPECT_TRUE(path_is_6_connected(p));
+        EXPECT_NEAR(p.cost, expect_cost, 1e-9);
+        for (const CellCoord& c : p.cells) {
+            EXPECT_TRUE(grid.is_free(c, r));
+        }
+        if (blocked_map) {
+            EXPECT_TRUE(p.cost > 10.0 - 1e-9);
+        }
+    };
+
+    LPAStar lpa;
+    lpa.reset(grid, start, goal, r, h, open_lpa, actions);
+    EXPECT_TRUE(lpa.search() == SearchStatus::Success);
+    const double cost_empty = lpa.path().cost;
+    EXPECT_NEAR(cost_empty, 10.0, 1e-9);
+    EXPECT_NEAR(cost_empty, astar_cost_on(grid, start, goal, r, h, actions), 1e-9);
+
+    // --- 1) add obstacle + replan ---
+    grid.set_chain(with_wall);
+    lpa.update_obstacles(changed);
+    EXPECT_TRUE(lpa.search() == SearchStatus::Success);
+    const double cost_blocked = lpa.path().cost;
+    check_path(lpa.path(), cost_blocked, /*blocked_map=*/true);
+    EXPECT_NEAR(cost_blocked, astar_cost_on(grid, start, goal, r, h, actions), 1e-9);
+    EXPECT_TRUE(cost_blocked > cost_empty);
+
+    // --- 2) remove same obstacle + replan ---
+    grid.set_chain(root);
+    lpa.update_obstacles(changed);
+    EXPECT_TRUE(lpa.search() == SearchStatus::Success);
+    check_path(lpa.path(), cost_empty, /*blocked_map=*/false);
+    EXPECT_NEAR(lpa.path().cost, astar_cost_on(grid, start, goal, r, h, actions), 1e-9);
+
+    // --- 3) add → replan → remove (same) → replan → add (same) → replan ---
+    grid.set_chain(with_wall);
+    lpa.update_obstacles(changed);
+    EXPECT_TRUE(lpa.search() == SearchStatus::Success);
+    EXPECT_NEAR(lpa.path().cost, cost_blocked, 1e-9);
+    EXPECT_NEAR(lpa.path().cost, astar_cost_on(grid, start, goal, r, h, actions), 1e-9);
+
+    grid.set_chain(root);
+    lpa.update_obstacles(changed);
+    EXPECT_TRUE(lpa.search() == SearchStatus::Success);
+    EXPECT_NEAR(lpa.path().cost, cost_empty, 1e-9);
+    EXPECT_NEAR(lpa.path().cost, astar_cost_on(grid, start, goal, r, h, actions), 1e-9);
+
+    grid.set_chain(with_wall);
+    lpa.update_obstacles(changed);
+    EXPECT_TRUE(lpa.search() == SearchStatus::Success);
+    const Path p_final = lpa.path();
+    check_path(p_final, cost_blocked, /*blocked_map=*/true);
+    EXPECT_NEAR(p_final.cost, astar_cost_on(grid, start, goal, r, h, actions), 1e-9);
+}
+
 int main() {
     test_start_equals_goal();
     test_empty_straight_line();
@@ -465,6 +606,8 @@ int main() {
     test_theta_blocked_detour();
     test_lazy_theta_matches_theta_cost_open();
     test_line_of_sight_blocked();
+    test_lpa_straight_and_obstacle_update();
+    test_lpa_add_remove_and_readd_same_obstacle();
 
     if (g_failures != 0) {
         std::cerr << g_failures << " assertion(s) failed.\n";

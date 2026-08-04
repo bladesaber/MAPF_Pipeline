@@ -23,6 +23,7 @@ add_library(pipe_planner
     src/planner/low/LazyThetaStar.cpp
     src/planner/low/ARAStar.cpp
     src/planner/low/ANAStar.cpp
+    src/planner/low/LPAStar.cpp
     src/heuristic/Dijkstra.cpp
 )
 target_include_directories(pipe_planner PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
