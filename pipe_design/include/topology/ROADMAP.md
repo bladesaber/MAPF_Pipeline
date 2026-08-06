@@ -56,7 +56,7 @@ GlobalTopologyPlan = {
 # Optional schedulable view (+ multi result slots; priority lives outside Topology)
 Task = {
   task_id, group_id, edge_id,   # identity; u/v/radius via find_edge(edge_id)
-  status, path                  # Ready/empty from [T]; filled by multi/ step()
+  status, path                  # Ready/empty from [T]; filled by multi/ step_task()
 }
 
 GroupTopologyPlan::enumerate_tasks() -> Task[]   # all edges, edges[] order

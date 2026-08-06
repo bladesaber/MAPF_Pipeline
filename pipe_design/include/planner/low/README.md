@@ -61,6 +61,7 @@ reset(grid, starts, goals, r, h, open, actions)
     → seed open with start nodes (g=0), or Success if start ∈ goals
 step()   one expansion: pop → closed → goal? → expand
 search() step until Success / Failure / max_expansions
+         optional before/after step hooks wrap each `step()` (debug / timing)
 path()   parent chain from goal_node_ (only if Success)
 ```
 

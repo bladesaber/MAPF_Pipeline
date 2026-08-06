@@ -40,8 +40,8 @@ Without this layer, TopologyPlan edges have no session that turns them into sequ
 |-------------------------|-----------------------------|
 | `SearchStatus` | **same** enum (`Ready` / `Running` / `Success` / `Failure`) |
 | `reset(...)` | `reset(...)` — bind plan + context + low (+ open/heuristic/actions as needed) |
-| `step()` | `step()` — advance **one Task** (see below) |
-| `search(max_expansions)` | `search(max_expansions)` — loop `step` while `Running` |
+| `step()` | `step_task()` — finish **one Task**; fine `step()` planned |
+| `search(max_expansions)` | `search(max_expansions)` — loop `step_task` while `Running` |
 | `status()` / `expansions()` | same; `expansions_` = **sum of low-level expansions** |
 | `path()` | `last_path()` — last finished Task path |
 | — | derived `tasks()` copy — full Task results (reuse-safe) |
@@ -50,7 +50,8 @@ Do **not** inherit `LowLevelPlanner`: `reset` arity and `paths()` differ. Prefer
 
 ```text
 class MultiQueryPlanner {   # parallel to LowLevelPlanner
-  virtual SearchStatus step() = 0;
+  virtual SearchStatus step_task() = 0;
+  # planned: virtual SearchStatus step()  # one low.step()
   virtual Path last_path() const = 0;
   # derived: tasks() -> vector<Task> copy
   virtual SearchStatus search(max_expansions = kUnlimited);
@@ -62,15 +63,32 @@ protected:
 };
 ```
 
-### What one `step()` means
+### What `step_task()` means
 
-Default (P1): **one Task** = prepare starts/goals (and maybe ctx) → `low.reset(...)` → `low.search()` to completion → on success, commit (`after_task`: ConnectedSet / obstacles) → bump task cursor.
+**one Task** = prepare starts/goals → `low.reset(...)` → `low.search()` → on success commit (ConnectedSet / foreign obstacles) → bump cursor.
 
 - If low fails → session `Failure`.
 - If no tasks left after commit → session `Success`.
 - While tasks remain → stay `Running`.
 
-Optional later: `step_low()` / fine-grained mode that forwards a single `low.step()` for visualization; not required for CBS/PBS.
+### Planned: fine-grained `step()` (debug)
+
+```text
+step_task():
+  if no active low query: begin_task()  # reset low for current Task
+  low.search()                          # run to completion
+  commit_task()
+
+step():                                 # planned
+  if no active low query: begin_task()
+  st = low.step()                       # one expansion
+  expansions_ += 1 (or sync from low)
+  if st == Success: commit_task(); maybe start next or stay Running
+  if st == Failure: session Failure
+  if st == Running: session stays Running (mid-Task)
+```
+
+`search()` keeps calling `step_task()` (production). Debuggers / viz can loop `step()` when implemented.
 
 ### Ownership (same spirit as low)
 
@@ -92,7 +110,7 @@ GlobalTopologyPlan = { groups: GroupTopologyPlan[] }
 
 Task = {
   task_id, group_id, edge_id, # u/v/radius on TopologyEdge via find_edge
-  status, path                # [T] → Ready + empty; multi step() fills
+  status, path                # [T] → Ready + empty; multi step_task() fills
 }
 
 ConnectedSet map: TerminalId | component → cells / points
@@ -102,14 +120,14 @@ GroupSession : MultiQueryPlanner
   reset(plan: GroupTopologyPlan, grid: CompositeGrid&, low: LowLevelPlanner,
         heuristic, open, actions) -> void
   # builds Task[] from plan.ordered_tasks(); grid read-only
-  step()   # one Task: low.search → task.set_result(...); merge ConnectedSets
+  step_task()  # one Task: low.search → set_result; merge ConnectedSets
   last_path() / tasks() /* by value */ / search() / status() / expansions()
 
 # --- PrioritySequencer ---
 PrioritySequencer : MultiQueryPlanner
   reset(plans, ctx, …) | reset(plans, order, ctx, …)  # order optional → ordered_tasks()
         low, heuristic, open, actions) -> void
-  step()   # one Task in order; update ConnectedSet vs obstacles; set_result; commit
+  step_task()  # one Task; temp CompositeGrid; set_result; commit
   last_path() / tasks() / search() / status() / expansions()
 ```
 
@@ -118,7 +136,7 @@ Usage sketch (same shape as A\*):
 ```text
 GroupSession session;
 session.reset(plan, ctx, low, h, open, actions);
-session.search();                 # or while Running: session.step()
+session.search();                 # or while Running: session.step_task()
 if (session.status() == Success) {
   auto all = session.tasks();  # copy; planner may reset again
   auto last = session.last_path();

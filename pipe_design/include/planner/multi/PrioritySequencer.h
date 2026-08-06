@@ -45,7 +45,7 @@ public:
         OpenSet& open,
         const motion::ActionModel& actions);
 
-    SearchStatus step() override;
+    SearchStatus step_task() override;
     Path last_path() const override;
 
     /// Copy of current Task results (safe to keep after another `reset`).

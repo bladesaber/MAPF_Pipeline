@@ -8,8 +8,12 @@
 
 namespace pipe_design::planner {
 
-/// Parallel to `LowLevelPlanner`: steppable multi-task session.
+/// Parallel to `LowLevelPlanner`: multi-task session.
 /// Session results live on internal Tasks; take a copy via derived `tasks()`.
+///
+/// Granularity:
+///   - `step_task()` — finish one Task (calls `low.search()` today).
+///   - `step()`      — (planned) one low-level expansion for debugging; not yet.
 class MultiQueryPlanner {
 public:
     static constexpr std::size_t kUnlimited =
@@ -18,14 +22,15 @@ public:
     MultiQueryPlanner() = default;
     virtual ~MultiQueryPlanner() = default;
 
-    virtual SearchStatus step() = 0;
+    /// Complete one Task: prepare → low.search → commit ConnectedSet / obstacles.
+    virtual SearchStatus step_task() = 0;
 
     /// Path of the last finished Task (empty if none).
     virtual Path last_path() const = 0;
 
     virtual SearchStatus search(std::size_t max_expansions = kUnlimited) {
         while (status_ == SearchStatus::Running && expansions_ < max_expansions) {
-            step();
+            step_task();
         }
         return status_;
     }

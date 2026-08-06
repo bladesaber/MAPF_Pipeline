@@ -116,11 +116,4 @@ SearchStatus ANAStar::step() {
     return status_;
 }
 
-SearchStatus ANAStar::search(std::size_t max_expansions) {
-    while (status_ == SearchStatus::Running && expansions_ < max_expansions) {
-        step();
-    }
-    return status_;
-}
-
 }  // namespace pipe_design::planner

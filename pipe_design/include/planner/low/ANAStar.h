@@ -12,7 +12,6 @@ namespace pipe_design::planner {
 class ANAStar : public AStar<SearchNode> {
 public:
     SearchStatus step() override;
-    SearchStatus search(std::size_t max_expansions = kUnlimited) override;
     Path path() const override;
 
     /// Incumbent solution cost G (∞ before first goal).

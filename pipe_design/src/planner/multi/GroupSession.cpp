@@ -75,7 +75,7 @@ void GroupSession::reset(
     status_ = SearchStatus::Running;
 }
 
-SearchStatus GroupSession::step() {
+SearchStatus GroupSession::step_task() {
     if (status_ != SearchStatus::Running) {
         return status_;
     }

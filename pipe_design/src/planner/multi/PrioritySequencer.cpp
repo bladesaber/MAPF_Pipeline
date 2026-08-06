@@ -171,7 +171,7 @@ void PrioritySequencer::reset(
     status_ = SearchStatus::Running;
 }
 
-SearchStatus PrioritySequencer::step() {
+SearchStatus PrioritySequencer::step_task() {
     if (status_ != SearchStatus::Running) {
         return status_;
     }
