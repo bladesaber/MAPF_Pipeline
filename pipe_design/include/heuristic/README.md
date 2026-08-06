@@ -1,6 +1,6 @@
 # heuristic — Remaining-cost estimates for search
 
-Strategy objects used by low-level planners (`ROADMAP` §4.4).
+Strategy objects used by low-level planners (`ROADMAP` §4.3).
 Independent of open sets and CBS; A* / Theta* / Hybrid-A* take a `const Heuristic&`.
 
 ## Interface

@@ -4,8 +4,8 @@
 #include "grid/Types.h"
 #include "heuristic/Heuristic.h"
 #include "planner/low/AStar.h"
+#include "planner/low/LowLevelPlanner.h"
 #include "planner/low/SearchNode.h"
-#include "planner/middle/MiddleLevelPlanner.h"
 #include "planner/motion/ActionModel.h"
 #include "planner/open/OpenSet.h"
 
@@ -19,7 +19,7 @@ namespace pipe_design::planner {
 /// forwarded to both via `AStar::set_heuristic_weight`. Caller owns both open sets.
 ///
 /// Assumes undirected / reversible grid edges (6/26-connect).
-class BidirectionalAStar : public MiddleLevelPlanner {
+class BidirectionalAStar : public LowLevelPlanner {
 public:
     BidirectionalAStar() = default;
     ~BidirectionalAStar() override = default;

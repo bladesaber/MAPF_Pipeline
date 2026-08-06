@@ -3,7 +3,7 @@
 #include "grid/StaticClearanceGrid.h"
 #include "grid/Types.h"
 #include "heuristic/Geometric.h"
-#include "planner/middle/BidirectionalAStar.h"
+#include "planner/low/BidirectionalAStar.h"
 #include "planner/motion/SixConnected.h"
 #include "planner/open/LazyBinaryHeap.h"
 

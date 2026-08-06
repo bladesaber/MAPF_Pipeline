@@ -24,9 +24,11 @@ add_library(pipe_planner
     src/planner/low/ARAStar.cpp
     src/planner/low/ANAStar.cpp
     src/planner/low/LPAStar.cpp
-    src/planner/middle/BidirectionalAStar.cpp
+    src/planner/low/BidirectionalAStar.cpp
     src/planner/low/FocalAStar.cpp
     src/planner/low/AdaptiveStepAStar.cpp
+    src/planner/multi/GroupSession.cpp
+    src/planner/multi/PrioritySequencer.cpp
     src/heuristic/Dijkstra.cpp
 )
 target_include_directories(pipe_planner PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -75,3 +77,7 @@ add_test(NAME motion_unit COMMAND test_motion)
 add_executable(test_heading tests/test_heading.cpp)
 target_link_libraries(test_heading PRIVATE pipe_planner)
 add_test(NAME heading_unit COMMAND test_heading)
+
+add_executable(test_multi tests/test_multi.cpp)
+target_link_libraries(test_multi PRIVATE pipe_planner)
+add_test(NAME multi_unit COMMAND test_multi)

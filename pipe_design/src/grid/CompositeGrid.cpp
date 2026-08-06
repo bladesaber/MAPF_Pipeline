@@ -1,7 +1,6 @@
 #include "grid/CompositeGrid.h"
 
 #include <algorithm>
-#include <cmath>
 
 namespace pipe_design::grid {
 
@@ -21,12 +20,7 @@ float CompositeGrid::clearance(const CellCoord& cell) const {
 }
 
 float CompositeGrid::clearance(const geom::Vec3& point) const {
-    const float inv = 1.f / static_grid_->resolution();
-    const CellCoord cell{
-        static_cast<int>(std::floor(point.x * inv)),
-        static_cast<int>(std::floor(point.y * inv)),
-        static_cast<int>(std::floor(point.z * inv)),
-    };
+    const CellCoord cell = world_to_cell(point);
     const float static_clr = static_grid_->clearance(cell);
 
     if (!chain_ || chain_->total_count() == 0) {
@@ -47,12 +41,7 @@ bool CompositeGrid::is_free(const CellCoord& cell, float pipe_radius) const {
 }
 
 bool CompositeGrid::is_free(const geom::Vec3& point, float pipe_radius) const {
-    const float inv = 1.f / static_grid_->resolution();
-    const CellCoord cell{
-        static_cast<int>(std::floor(point.x * inv)),
-        static_cast<int>(std::floor(point.y * inv)),
-        static_cast<int>(std::floor(point.z * inv)),
-    };
+    const CellCoord cell = world_to_cell(point);
     if (static_grid_->clearance(cell) < pipe_radius) {
         return false;
     }

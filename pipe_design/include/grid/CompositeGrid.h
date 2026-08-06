@@ -34,6 +34,10 @@ public:
         return static_grid_->cell_center(cell);
     }
 
+    CellCoord world_to_cell(const geom::Vec3& point) const {
+        return static_grid_->world_to_cell(point);
+    }
+
     /// Combined clearance at a grid cell.
     float clearance(const CellCoord& cell) const;
 

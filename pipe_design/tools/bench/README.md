@@ -1,8 +1,8 @@
 # tools/bench
 
-Low / middle-level **search** performance (pandas).
+Low-level **search** performance (pandas).
 
-Aligned with `pipe_design/ROADMAP.md`: low-level (A\*/…) + middle-level wrappers.
+Aligned with `pipe_design/ROADMAP.md`: low-level planners (A\*/bi-dir/…).
 Not for high-level / multi-group **design** (`DesignInstance` — future).
 
 | Script | Role |

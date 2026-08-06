@@ -16,6 +16,7 @@ Owns **node storage** and the search loop; does **not** own grid / heuristic / o
 | `ANAStar.h` / `.cpp` | Anytime Nonparametric A\* — key `(G−g)/h`, no ε schedule |
 | `FocalAStar.h` / `.cpp` | Focal A\* (`A*_ε`); OPEN by `f` + owned FOCAL (`PairingHeap` / `MinHgCompare`) |
 | `AdaptiveStepAStar.h` / `.cpp` | Clearance-adaptive shell A\*; covered ball anti jump-back |
+| `BidirectionalAStar.h` / `.cpp` | Bi-dir A\* (two `AStar` + two opens); weight via `set_heuristic_weight` |
 | `LineOfSight.h` | Cell-center LOS + Euclidean edge cost (Theta\*) |
 | `ThetaStar.h` / `.cpp` | Basic Theta\* — parent LOS on expand |
 | `LazyThetaStar.h` / `.cpp` | Lazy Theta\* — deferred LOS in `before_expand` |
@@ -140,6 +141,12 @@ DirectedAStar directed;
 directed.set_heading_bins(8, 1);
 directed.reset(grid, start, goal, radius, h, open, actions);
 directed.search();
+
+LazyBinaryHeap open_fwd, open_bwd;
+BidirectionalAStar bi;
+bi.set_heuristic_weight(1.0);
+bi.reset(grid, start, goal, radius, h, open_fwd, open_bwd, actions);
+bi.search();
 ```
 
 ## Extending

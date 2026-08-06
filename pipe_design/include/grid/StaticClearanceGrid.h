@@ -3,6 +3,7 @@
 #include "geom/Types.h"
 #include "grid/Types.h"
 
+#include <cmath>
 #include <cstddef>
 #include <vector>
 
@@ -33,8 +34,18 @@ public:
 
     bool in_bounds(const CellCoord& cell) const;
 
-    /// World-space center of a cell.
+    /// World-space center of a cell: `((i+0.5)*res, …)`.
     geom::Vec3 cell_center(const CellCoord& cell) const;
+
+    /// Inverse of `cell_center` indexing: `floor(x / resolution)` (may be out of bounds).
+    CellCoord world_to_cell(const geom::Vec3& point) const {
+        const float inv = 1.f / resolution_;
+        return {
+            static_cast<int32_t>(std::floor(point.x * inv)),
+            static_cast<int32_t>(std::floor(point.y * inv)),
+            static_cast<int32_t>(std::floor(point.z * inv)),
+        };
+    }
 
     /// O(1) lookup. Out-of-bounds returns 0 (treated as blocked).
     float clearance(const CellCoord& cell) const;

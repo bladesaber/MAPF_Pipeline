@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Low/mid search bench: run all tasks under a batch tree and write all_reports.csv.
+"""Low-level search bench: run all tasks under a batch tree and write all_reports.csv.
 
-Scope: SearchInstance / SearchReport only (pipe_design low- + middle-level).
+Scope: SearchInstance / SearchReport only (pipe_design low-level).
 Not for high-level / multi-group DesignInstance (see pipe_design/ROADMAP.md).
 
 Batch layout (from gen/batch_movingai_grids.py):

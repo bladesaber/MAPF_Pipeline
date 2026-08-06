@@ -3,7 +3,7 @@
 Visualization, benchmarks, and statistics for `pipe_design` planners.
 **Core libraries stay clean:** planners emit data + stats; this folder owns I/O, viz, and batch runs.
 
-Parent catalog: [`../ROADMAP.md`](../ROADMAP.md) (§4.2 low-level, §4.3 middle, §4.4 heuristics).
+Parent catalog: [`../ROADMAP.md`](../ROADMAP.md) (§4.2 low-level, §4.3 heuristics).
 
 ---
 
@@ -11,7 +11,7 @@ Parent catalog: [`../ROADMAP.md`](../ROADMAP.md) (§4.2 low-level, §4.3 middle,
 
 | Goal | Deliverable / criterion |
 |------|-------------------------|
-| Low/mid SOTA compare | Same MovingAI `.map`/`.scen` (P0) + voxels (P1); report success rate, time, expansions, path cost vs `reference_cost` when present |
+| Low-level SOTA compare | Same MovingAI `.map`/`.scen` (P0) + voxels (P1); report success rate, time, expansions, path cost vs `reference_cost` when present |
 | Search-shape debug | Path + heading overlay; closed-set colored by expansion order — catch “search away from goal” before merging a new planner |
 | Heuristic correctness | Heatmap of `h` and `h − true_dist`; fail CI/sample checks if `h > true` (inadmissible) |
 | Perf / memory profile | Per-run `SearchReport`: wall time, open peak, closed/nodes, reexpansions, bytes estimate — compare algos on identical queries |
@@ -107,7 +107,7 @@ Keep schemas versioned and small. Prefer JSON for interchange; binary optional l
 
 ### 5.1 `SearchInstance` JSON (low / mid) — `tools/formats/SearchInstance`
 
-Canonical file-bridge input for **low- and middle-level** grid search.
+Canonical file-bridge input for **low-level** grid search.
 Implemented by `pipe_design::tools::SearchInstance`.
 Python writes; C++ loads. Defaults for degraded 2D grid search: `resolution=1`,
 `pipe_radius=0.1`, sphere `cell_radius=0.1`, `size_z=1`.
@@ -264,7 +264,7 @@ Legend: **P0** first → **P3** later.
 
 | Component | Priority | Lang | Notes |
 |-----------|----------|------|-------|
-| ★ `SearchInstance` + `SearchReport` schemas | P0 | Py + C++ | Low/mid (§5.1 / §5.3); `DesignInstance` / `DesignReport` later |
+| ★ `SearchInstance` + `SearchReport` schemas | P0 | Py + C++ | Low-level (§5.1 / §5.3); `DesignInstance` / `DesignReport` later |
 | ★ C++ thin runner | P0 | C++ | `pipe_run_low`: instance → A* → `reports.jsonl` (+ optional closed/trace) |
 | ★ C++ heuristic dump | P1 | C++ | `pipe_dump_heuristic`: `estimate` heatmap JSON (no search) |
 | ★ Path + obstacle grid visualizer | P0 | Py | Mark blocked cells; draw path; show heading per step |

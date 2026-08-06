@@ -22,7 +22,7 @@ struct SearchQuery {
     std::optional<double> reference_cost;
 };
 
-/// Low/mid file-bridge input (`SearchInstance`). Not for high-level design —
+/// Low-level file-bridge input (`SearchInstance`). Not for high-level design —
 /// see ROADMAP §5.2 `DesignInstance` (future).
 /// Python writes this; C++ loads it. Does not modify planner APIs.
 ///
