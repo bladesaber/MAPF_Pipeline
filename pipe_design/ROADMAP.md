@@ -21,6 +21,10 @@ once a pipe is routed it **permanently occupies** volume. Conflicts are therefor
    may connect via multi-terminal topology — MST / spine / Steiner).
 5. **Geometry:** obstacles and pipes have radii. Shapes are approximated by **spheres** and
    **capsules** (sphere swept along a segment). Blocked iff `clearance < pipe_radius`.
+   Cross-group **conflicts** are therefore **not** classical MAPF same-cell clashes: two pipes
+   may collide at **different** world positions (see `conflict/ROADMAP.md`). Each `Conflict`
+   records both witness points + radii; optional TopologyPlan **Task** ids help `[T]` / LNS
+   replan clashing edges when known.
 6. **Kinematics (when used):** no reverse gear — prefer **Dubins**, not Reeds-Shepp
    (relevant for Hybrid A* / minimum turning radius).
 
@@ -54,6 +58,7 @@ once a pipe is routed it **permanently occupies** volume. Conflicts are therefor
 | `grid/` | Domain occupancy query | Paths, groups |
 | Low-level | One start→goal path (incl. bi-dir, weighted, adaptive step) | Multi-query session state |
 | Topology `[T]` | Terminals → `TopologyPlan`(s) (edges + intra-group `grow_order`) | Grid search, group conflicts |
+| `conflict/` | Detect / rank group–group geometric conflicts (`[V]`) | Constraint tree, replan |
 | `planner/multi/` | Multi-query drivers: ConnectedSets / obstacle updates across rounds | Conflict tree (CBS/PBS) |
 | High-level | Resolve residual group conflicts (chain / priority / LNS) | Cell rasterization |
 | Outer `[W]` | Grow `active_set` of Tasks; soft warm-start | Inner conflict proof |
@@ -68,13 +73,14 @@ pipe_design/
     geom/          # types + geometry utilities
     grid/          # StaticClearanceGrid, ObstacleChain, CompositeGrid
     heuristic/     # Heuristic, Manhattan, Euclidean, Octile, Dijkstra, …
-    topology/      # (planned) MST, RadiusSpine — see topology/ROADMAP.md
+    topology/      # Terminal, TopologyEdge, GroupTopologyPlan, … — see topology/ROADMAP.md
+    conflict/      # Conflict, ConflictCluster, SampledPath — see conflict/ROADMAP.md
     planner/
       open/        # OpenSet + heap backends
       motion/      # ActionModel, Six/Eight/TwentySixConnected, AdaptiveShell, …
       low/         # A*, BidirectionalAStar, FocalAStar, Theta*, AdaptiveStepAStar, …
       multi/       # GroupSession, PrioritySequencer — see multi/ROADMAP.md
-      high/        # (planned) CBS, PBS, LNS
+      high/        # HighLevelPlanner; CBS, PBS, LNS — see high/ROADMAP.md
       window/      # (planned) Incremental Task Expansion [W]
   src/…            # mirrors include/
   tests/
@@ -103,10 +109,15 @@ GroupSession::reset(GroupTopologyPlan, CompositeGrid&, low, …)
 PrioritySequencer::reset(GlobalTopologyPlan, order?, CompositeGrid&, low, …)  # temp view per step
 # Same-group paths → ConnectedSet (starts/goals); other-group (PBS) → obstacles
 
-# High-level
-HighLevelPlanner::solve(...) -> Solution | failure
+# Conflict [V] (conflict/ — on TopologyPlan Tasks; dual-point witnesses)
+Conflict = { group_a, point_a, radius_a, group_b, point_b, radius_b, deficit, task_a?, task_b?, … }
+# Not MAPF same-cell: point_a and point_b may differ (pipe radii). task_* optional for [T] replan.
+
+# High-level (planner/high/ — parallel to LowLevelPlanner)
+HighLevelPlanner::reset(...) ; step() / search() -> solution(): vector<Task>
 # CBS: mutate ObstacleChain → re-run GroupSession for affected group(s)
 # PBS: mutate priority / order → re-run PrioritySequencer
+# (`solve` in prose = reset + search; same steppable contract as low/multi)
 
 # Outer window (optional scale / anytime)
 WindowDriver::solve(...) -> Solution | failure
@@ -114,6 +125,7 @@ WindowDriver::solve(...) -> Solution | failure
 ```
 
 **Collision model (everywhere):** blocked iff `clearance < pipe_radius`.
+Group–group `[V]`: see `conflict::Conflict` / `ConflictCluster` — sphere witnesses; Task ids optional.
 
 **CBS dynamic constraints:** store as `ObstacleChain` (`parent` + local delta). Do **not** deep-copy dense clearance fields per tree node.
 
@@ -236,6 +248,7 @@ Conflict **rules** stay at **group** granularity.
 - [x] True-distance heuristic on static field (`Dijkstra`; landed with P1 heuristics)  
 - [x] Theta\* or smooth+recheck  
 - [ ] `PrioritySequencer` (cross-group order → obstacles)  
+- [x] `HighLevelPlanner` base (steppable; parallel to low/multi)  
 - [ ] CBS with `ObstacleChain` + `GroupSession` replan + disjoint split  
 - [ ] PBS via `PrioritySequencer`  
 
@@ -283,6 +296,8 @@ cd pipe_design/build && cmake .. && cmake --build . -j && ctest --output-on-fail
 | `GroupTopologyPlan` | One group’s `[T]` result: terminals, edges, `grow_order` |
 | `GlobalTopologyPlan` | Aggregate of per-group plans (for sequencers / window) |
 | Task | Schedulable unit derived from a `TopologyEdge` + `group_id` |
+| Conflict | Group–group sphere–sphere clash evidence; optional Task ids |
+| ConflictCluster | Connected Conflicts; `groups` may be >2; pick-via-Scorer |
 | ConnectedSet | Session map: prior same-group geometry used as later starts/goals |
 | `GroupSession` | Multi-query driver for one group; obstacles fixed |
 | `PrioritySequencer` | Multi-query driver; cross-group order updates obstacles |

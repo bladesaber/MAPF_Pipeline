@@ -29,6 +29,8 @@ add_library(pipe_planner
     src/planner/low/AdaptiveStepAStar.cpp
     src/planner/multi/GroupSession.cpp
     src/planner/multi/PrioritySequencer.cpp
+    src/conflict/PathGraph.cpp
+    src/conflict/ConflictAnalyzer.cpp
     src/heuristic/Dijkstra.cpp
 )
 target_include_directories(pipe_planner PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

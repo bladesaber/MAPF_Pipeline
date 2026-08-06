@@ -1,7 +1,8 @@
 # topology — Connection Plan (per group)
 
 Detail companion to [`../ROADMAP.md`](../ROADMAP.md) §4.4.  
-Consumers: [`planner/multi/`](../planner/multi/ROADMAP.md) (`GroupSession`, `PrioritySequencer`).
+Consumers: [`planner/multi/`](../planner/multi/ROADMAP.md), [`conflict/`](../conflict/ROADMAP.md)
+(optional Task ids on `Conflict` for `[T]` replan feedback).
 
 ---
 
