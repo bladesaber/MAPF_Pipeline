@@ -31,6 +31,7 @@ add_library(pipe_planner
     src/planner/multi/PrioritySequencer.cpp
     src/conflict/PathGraph.cpp
     src/conflict/ConflictAnalyzer.cpp
+    src/conflict/SampleKdTree.cpp
     src/heuristic/Dijkstra.cpp
 )
 target_include_directories(pipe_planner PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -83,3 +84,23 @@ add_test(NAME heading_unit COMMAND test_heading)
 add_executable(test_multi tests/test_multi.cpp)
 target_link_libraries(test_multi PRIVATE pipe_planner)
 add_test(NAME multi_unit COMMAND test_multi)
+
+add_executable(test_sample_kdtree tests/test_sample_kdtree.cpp)
+target_link_libraries(test_sample_kdtree PRIVATE pipe_planner)
+add_test(NAME sample_kdtree_unit COMMAND test_sample_kdtree)
+
+find_package(Boost REQUIRED)
+add_executable(bench_path_graph tests/bench_path_graph.cpp)
+target_link_libraries(bench_path_graph PRIVATE pipe_planner Boost::boost)
+
+find_path(FLANN_INCLUDE_DIR flann/flann.hpp)
+find_library(FLANN_CPP_LIBRARY NAMES flann_cpp)
+find_library(LZ4_LIBRARY NAMES lz4)
+if(FLANN_INCLUDE_DIR AND FLANN_CPP_LIBRARY AND LZ4_LIBRARY)
+  add_executable(bench_sample_kdtree tests/bench_sample_kdtree.cpp)
+  target_include_directories(bench_sample_kdtree PRIVATE ${FLANN_INCLUDE_DIR})
+  target_link_libraries(bench_sample_kdtree PRIVATE pipe_planner ${FLANN_CPP_LIBRARY} ${LZ4_LIBRARY})
+else()
+  message(WARNING "FLANN/LZ4 not found; bench_sample_kdtree skipped")
+endif()
+

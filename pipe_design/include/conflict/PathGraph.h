@@ -47,11 +47,11 @@ public:
     void set_eps(float eps);
     float eps() const { return eps_; }
 
-    /// Reuse `NodeId` if quantized key already exists; else create.
-    /// On reuse, `radius` becomes `max(existing, incoming)`.
-    NodeId add_node(SampledPoint node);
+    /// Reuse `NodeId` if quantized key already exists; else copy-insert.
+    /// On reuse, stored `radius` becomes `max(existing, incoming)` (geometry unchanged).
+    NodeId add_node(const SampledPoint& node);
 
-    /// Lookup by quantized key of `point.center`. `kInvalidNode` if absent (no insert).
+    /// Lookup by quantized key of `point.center`. Throws if absent.
     NodeId find_node(const SampledPoint& point) const;
 
     bool add_edge(NodeId a, NodeId b, float weight);
@@ -69,7 +69,6 @@ public:
     bool valid(NodeId id) const { return id < nodes_.size(); }
 
     const SampledPoint& node(NodeId id) const { return nodes_[id]; }
-    SampledPoint& node(NodeId id) { return nodes_[id]; }
     const std::vector<SampledPoint>& nodes() const { return nodes_; }
 
     std::size_t degree(NodeId id) const;

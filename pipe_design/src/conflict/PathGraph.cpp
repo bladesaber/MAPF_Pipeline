@@ -52,7 +52,7 @@ PathGraph::CellKey PathGraph::cell_key(const geom::Vec3& p) const {
     };
 }
 
-NodeId PathGraph::add_node(SampledPoint node) {
+NodeId PathGraph::add_node(const SampledPoint& node) {
     const CellKey key = cell_key(node.center);
     const auto it = spatial_.find(key);
     if (it != spatial_.end()) {
@@ -64,7 +64,7 @@ NodeId PathGraph::add_node(SampledPoint node) {
     }
 
     const NodeId id = nodes_.size();
-    nodes_.push_back(std::move(node));
+    nodes_.push_back(node);
     adj_.emplace_back();
     spatial_.emplace(key, id);
     dijkstra_cache_.clear();

@@ -91,9 +91,10 @@ ConflictCluster = {
 |-------|----------|-------|
 | `Types.h` (`Conflict`, `ConflictCluster`, `SampledPath`) | P0 | Sphere-centric evidence |
 | `PathGraph` | P0 | `NodeId` adj list + Dijkstra; no Boost |
+| `SampleKdTree` | P0 | Exact KD-tree on `SampledPoint` (+ radius weight); radius/knn search |
 | `ConflictAnalyzer` | P0 | Required: `score(Conflict)`, `select_conflict`; optional cluster score/select |
 | Line-discrete `normalize` | P1 | Independent `SampledPath` |
-| `find_conflicts` / `find_clusters` | P1 | Sphere–sphere + graph adjacency |
+| `find_conflicts` / `find_clusters` | P1 | Sphere–sphere via KD radius search + graph adjacency |
 | Constraint hint (cluster → chain sphere) | P2 | CBS `ObstacleChain` |
 
 ---
@@ -105,9 +106,11 @@ include/conflict/
   ROADMAP.md
   Types.h
   PathGraph.h
+  SampleKdTree.h
   ConflictAnalyzer.h
 
 src/conflict/
   PathGraph.cpp
+  SampleKdTree.cpp
   ConflictAnalyzer.cpp
 ```
