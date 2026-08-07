@@ -31,6 +31,7 @@ add_library(pipe_planner
     src/planner/multi/PrioritySequencer.cpp
     src/conflict/PathGraph.cpp
     src/conflict/ConflictAnalyzer.cpp
+    src/conflict/NearTerminalAnalyzer.cpp
     src/conflict/SampleKdTree.cpp
     src/heuristic/Dijkstra.cpp
 )
@@ -97,6 +98,10 @@ add_test(NAME sample_kdtree_unit COMMAND test_sample_kdtree)
 add_executable(test_conflict_normalize tests/test_conflict_normalize.cpp)
 target_link_libraries(test_conflict_normalize PRIVATE pipe_planner)
 add_test(NAME conflict_normalize_unit COMMAND test_conflict_normalize)
+
+add_executable(test_near_terminal tests/test_near_terminal.cpp)
+target_link_libraries(test_near_terminal PRIVATE pipe_planner)
+add_test(NAME near_terminal_unit COMMAND test_near_terminal)
 
 find_package(Boost REQUIRED)
 add_executable(bench_path_graph tests/bench_path_graph.cpp)

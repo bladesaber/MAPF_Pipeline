@@ -88,7 +88,8 @@ Tasks (paths)
 | `Conflict` | Atomic sphere–sphere evidence |
 | `ConflictCluster` | Connected conflicts; may touch >2 groups |
 | `PathGraph` | Per-group undirected network (`NodeId`); cluster + near-end |
-| `ConflictAnalyzer` | `[V]` driver; required `score(Conflict)` / `select_conflict`; optional cluster variants |
+| `ConflictAnalyzer` | `[V]` driver; required scores + `select_conflict` |
+| `NearTerminalAnalyzer` | Pipe-terminal ranks; rank-0 `candidates_`; HeadConflictSelector-style |
 
 ### Why cluster + graph
 
@@ -134,7 +135,8 @@ ConflictCluster = {
 | `Types.h` (`Conflict`, `ConflictCluster`, `SampledPath`) | P0 | Sphere-centric evidence |
 | `PathGraph` | P0 | `NodeId` adj list + Dijkstra; no Boost |
 | `SampleKdTree` | P0 | Exact KD-tree on `SampledPoint` (+ radius weight); radius/knn search |
-| `ConflictAnalyzer` | P0 | Required: `score(Conflict)`, `select_conflict`; optional cluster score/select |
+| `ConflictAnalyzer` | P0 | Required: `score(Conflict)`, `score(ConflictCluster)`, `select_conflict` |
+| `NearTerminalAnalyzer` | P1 | Python HeadConflictSelector-style; pipe terminals; rank-0 candidates |
 | Line-discrete `normalize` | P1 | Independent `SampledPath` |
 | `find_conflicts` / `find_clusters` | P1 | Sphere–sphere via KD radius search + graph adjacency |
 | Constraint hint (cluster → chain sphere) | P2 | CBS `ObstacleChain` |
@@ -150,9 +152,11 @@ include/conflict/
   PathGraph.h
   SampleKdTree.h
   ConflictAnalyzer.h
+  NearTerminalAnalyzer.h
 
 src/conflict/
   PathGraph.cpp
   SampleKdTree.cpp
   ConflictAnalyzer.cpp
+  NearTerminalAnalyzer.cpp
 ```

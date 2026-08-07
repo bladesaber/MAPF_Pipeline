@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <queue>
+#include <stdexcept>
 #include <utility>
 
 namespace pipe_design::conflict {
@@ -74,7 +75,7 @@ NodeId PathGraph::add_node(const SampledPoint& node) {
 NodeId PathGraph::find_node(const SampledPoint& point) const {
     const auto it = spatial_.find(cell_key(point.center));
     if (it == spatial_.end()) {
-        throw std::runtime_error("Node not found");
+        throw std::runtime_error("PathGraph::find_node: node not found");
     }
     return it->second;
 }
