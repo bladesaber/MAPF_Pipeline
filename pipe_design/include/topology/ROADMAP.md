@@ -86,13 +86,13 @@ Alias: in prose, “topology plan” for one group means `GroupTopologyPlan` unl
 
 ## Default algorithm: Radius-spine
 
-Preferred P1 builder (`RadiusSpineTopology`), aligned with legacy `HyperRadiusGrowthTree`:
+Preferred P1 builder (`RadiusSpineMSTBuilder`), aligned with legacy `HyperRadiusGrowthTree`:
 
 1. **Bin by radius** — discrete levels; largest radius = spine level.
 2. **Within level** — MST / Prim on that level’s terminals (`cost_fn`).
-3. **Bridge to previous** — attach each new component to the already-connected set (`main_leaf` / prior levels): nearest terminal–terminal pair (P1); optionally tap onto routed trunk geometry later (P2).
-4. **Emit** `GroupTopologyPlan`: `edges` + `grow_order` (level descending).
-
+3. **Bridge to previous bin** — nearest terminal–terminal pair vs the **previous** radius bin only; append **before** within-bin MST edges (`grow_order`) so `GroupSession` ConnectedSets see the prior layer first.
+4. **Emit** `GroupTopologyPlan`: `edges` + `grow_order` (bridge then within-bin, thick → thin).
+5. **Singleton bins** — size-1 bins merge into the next (thinner) bin; trailing singleton merges backward.
 Same-group branching / sharing follows ROADMAP §1.4; topology only proposes the multi-terminal graph.
 
 ---
@@ -105,7 +105,7 @@ Same-group branching / sharing follows ROADMAP §1.4; topology only proposes the
 | `Mst.h` util | P0 | Dense Prim: cost map → `MstEdge[]` |
 | `TopologyBuilder` | P0 | Owns `GlobalTopologyPlan`; `build` / `replan` |
 | `PureMST` | P0 | Baseline builder; `CostType`: Euclidean / Dijkstra / Volume |
-| ★ `RadiusSpineTopology` | P1 | Levels + MST + bridge; default |
+| ★ `RadiusSpineMSTBuilder` | P1 | Levels + MST + bridge; `: PureMST` |
 | Cost: `dist` / `dist·r²` (volume) | P0 | On `PureMST` via `CostType` |
 | Cost: Dijkstra on `Problem::static_grid` | P0 | Via `heuristic::Dijkstra` |
 | Bridge: terminal–terminal | P1 | Match current Python behavior |
@@ -125,7 +125,7 @@ include/topology/
   Mst.h                # dense Prim util (cost map → edges)
   TopologyBuilder.h    # base; owns GlobalTopologyPlan
   PureMST.h            # baseline: one MST per group; virtual cost_map
-  # RadiusSpineTopology.h (planned)
+  RadiusSpineMSTBuilder.h  # hybrid: radius bins + MST + bridge
 
 src/topology/          # mirrors headers (builders later)
 ```
