@@ -92,14 +92,14 @@ Fine-grained “one multi `step_task` inside a leaf” stays inside the multi dr
 ### Ownership
 
 ```text
-Caller owns:  GlobalTopologyPlan (or Group plans), CompositeGrid / static field,
+Caller owns:  TopologyBuilder (holds GlobalTopologyPlan), CompositeGrid / static field,
               LowLevelPlanner, OpenSet, Heuristic, ActionModel, multi drivers (or high owns them)
 High owns:    conflict-tree / priority state / LNS neighborhood, incumbent Tasks,
               status_ / expansions_
 ```
 
 Topology is usually **frozen** for one high-level episode (CBS / PBS). LNS may call
-`GroupTopologyPlan::replan` / `GlobalTopologyPlan::replan` or rebuild `[T]`.
+`TopologyBuilder::replan()` or rebuild via `build()`.
 
 ---
 

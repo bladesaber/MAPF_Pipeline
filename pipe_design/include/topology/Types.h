@@ -112,7 +112,7 @@ inline std::string make_task_id(const GroupId& group_id, const EdgeId& edge_id) 
     return group_id + ":" + edge_id;
 }
 
-/// One group's `[T]` result. Subclass to customize ordering / replan.
+/// One group's `[T]` result (data only; generation lives on `TopologyBuilder`).
 ///
 /// `edges` is the unordered connection set; `grow_order` is an intra-group lay hint.
 class GroupTopologyPlan {
@@ -181,12 +181,9 @@ public:
         }
         return out;
     }
-
-    /// Hook for LNS / retopologize. Default: no-op.
-    virtual void replan() {}
 };
 
-/// Aggregate of per-group plans. Subclass to customize cross-group `ordered_tasks` / `replan`.
+/// Aggregate of per-group plans (owned by `TopologyBuilder` for CBS / PBS).
 class GlobalTopologyPlan {
 public:
     std::vector<GroupTopologyPlan> groups;
@@ -225,9 +222,6 @@ public:
         }
         return out;
     }
-
-    /// Hook for global retopologize / LNS. Default no-op (not a loop over group::replan).
-    virtual void replan() {}
 };
 
 }  // namespace pipe_design::topology

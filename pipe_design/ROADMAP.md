@@ -72,6 +72,7 @@ pipe_design/
   include/
     geom/          # types + geometry utilities
     grid/          # StaticClearanceGrid, ObstacleChain, CompositeGrid
+    problem/       # Problem (frozen input): GridParams, obstacles, groups, StaticClearanceGrid
     heuristic/     # Heuristic, Manhattan, Euclidean, Octile, Dijkstra, …
     topology/      # Terminal, TopologyEdge, GroupTopologyPlan, … — see topology/ROADMAP.md
     conflict/      # Conflict, ConflictCluster, SampledPath — see conflict/ROADMAP.md
@@ -97,12 +98,17 @@ Keep these stable; implement algorithms against them.
 CompositeGrid::is_free(cell|point, pipe_radius) -> bool
 CompositeGrid::clearance(cell|point) -> float          # full min; hot path prefers is_free
 
+# Frozen user input (problem/)
+Problem = { grid, spheres[], capsules[], groups[], static_grid }  # all private; const getters
+PipeGroup = { id, terminals: Terminal[] }   # Terminal = pipe endpoint / port
+# construct (+ bake in ctor) → immutable; no TopologyPlan / Path / ObstacleChain here
+
 # Single-path low-level
 LowLevelPlanner::search(grid, start, goal, pipe_radius, heuristic) -> Path | failure
 
 # Topology [T] (per group → GroupTopologyPlan; assemble → GlobalTopologyPlan)
 Terminal / TopologyEdge / GroupTopologyPlan / GlobalTopologyPlan
-TopologyBuilder::build(terminals, cost_fn) -> GroupTopologyPlan
+TopologyBuilder owns GlobalTopologyPlan; build(const Problem&) from groups
 
 # Multi-query drivers (planner/multi/)
 GroupSession::reset(GroupTopologyPlan, CompositeGrid&, low, …)
@@ -290,8 +296,10 @@ cd pipe_design/build && cmake .. && cmake --build . -j && ctest --output-on-fail
 
 | Term | Meaning |
 |------|---------|
+| `Problem` | Frozen user input: grid params, static obstacles, pipe groups; owns baked `StaticClearanceGrid` |
+| `PipeGroup` | One group’s terminals (pipe endpoints) inside `Problem` |
 | Group | Set of pipes that must not conflict with other groups |
-| Terminal | Endpoint / port (`id`, pos, radius, optional role) |
+| Terminal | Endpoint / port (`id`, pos, radius, optional role); aka pipe end |
 | TopologyEdge | Proposed segment (`u`, `v`, radius, level/kind) |
 | `GroupTopologyPlan` | One group’s `[T]` result: terminals, edges, `grow_order` |
 | `GlobalTopologyPlan` | Aggregate of per-group plans (for sequencers / window) |

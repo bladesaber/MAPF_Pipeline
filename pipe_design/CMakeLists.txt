@@ -103,6 +103,10 @@ add_executable(test_near_terminal tests/test_near_terminal.cpp)
 target_link_libraries(test_near_terminal PRIVATE pipe_planner)
 add_test(NAME near_terminal_unit COMMAND test_near_terminal)
 
+add_executable(test_mst tests/test_mst.cpp)
+target_include_directories(test_mst PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_test(NAME mst_unit COMMAND test_mst)
+
 find_package(Boost REQUIRED)
 add_executable(bench_path_graph tests/bench_path_graph.cpp)
 target_link_libraries(bench_path_graph PRIVATE pipe_planner Boost::boost)

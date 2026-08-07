@@ -62,19 +62,23 @@ Task = {
 
 GroupTopologyPlan::enumerate_tasks() -> Task[]   # all edges, edges[] order
 GroupTopologyPlan::ordered_tasks()  -> Task[]   # grow_order then remaining (overrideable)
-GroupTopologyPlan::replan()                     # default no-op; LNS hook
 
 GlobalTopologyPlan::enumerate_tasks() -> Task[]  # concat groups' enumerate
 GlobalTopologyPlan::ordered_tasks()  -> Task[]  # concat groups' ordered (overrideable)
-GlobalTopologyPlan::replan()                    # default no-op (not group::replan loop)
 
-TopologyBuilder::build(terminals, cost_fn) -> GroupTopologyPlan
-# Assemble: GlobalTopologyPlan{ groups: [plan_A, plan_B, …] }
+# [T] generator — owns GlobalTopologyPlan for CBS / PBS / …
+TopologyBuilder {
+  plan_: GlobalTopologyPlan
+  build(problem: Problem)         # fill plan_ from problem.groups()
+  replan()                        # default no-op; LNS / retopologize
+  plan() -> GlobalTopologyPlan&
+}
 ```
 
-- `cost_fn` — abstract weight only (`dist`, `dist·r²`, …); never a full A\* call.
+- `cost_fn` — abstract weight only (`dist`, `dist·r²`, …); never a full A\* call; lives on concrete builders.
 - **`GroupSession`** uses `plan.ordered_tasks()`; writes each Task’s `status`/`path`.
 - **`PrioritySequencer`** uses `enumerate_tasks()` for the job set; schedule from `order` or `ordered_tasks()` if `order` empty.
+- **CBS / PBS** read `TopologyBuilder::plan()`; do not own the plan.
 
 Alias: in prose, “topology plan” for one group means `GroupTopologyPlan` unless “global” is stated.
 
@@ -98,9 +102,12 @@ Same-group branching / sharing follows ROADMAP §1.4; topology only proposes the
 | Builder / piece | Priority | Notes |
 |-----------------|----------|-------|
 | Types: `Terminal`, `TopologyEdge`, `GroupTopologyPlan`, `GlobalTopologyPlan` | P0 | Stable contracts |
-| `PureMST` | P0 | Baseline; all terminals, one MST |
+| `Mst.h` util | P0 | Dense Prim: cost map → `MstEdge[]` |
+| `TopologyBuilder` | P0 | Owns `GlobalTopologyPlan`; `build` / `replan` |
+| `PureMST` | P0 | Baseline builder; `CostType`: Euclidean / Dijkstra / Volume |
 | ★ `RadiusSpineTopology` | P1 | Levels + MST + bridge; default |
-| Cost: `dist` / `dist·r²` (volume) | P1 | Volume often better for thick pipes |
+| Cost: `dist` / `dist·r²` (volume) | P0 | On `PureMST` via `CostType` |
+| Cost: Dijkstra on `Problem::static_grid` | P0 | Via `heuristic::Dijkstra` |
 | Bridge: terminal–terminal | P1 | Match current Python behavior |
 | Bridge: attach to trunk path | P2 | Shorter trees; needs soft geometry |
 | Steiner / RSMT-style | P2 | Better topology, heavier |
@@ -115,7 +122,10 @@ Same-group branching / sharing follows ROADMAP §1.4; topology only proposes the
 include/topology/
   ROADMAP.md           # this file
   Types.h              # Terminal, TopologyEdge, GroupTopologyPlan, GlobalTopologyPlan, Task
-  # TopologyBuilder.h, PureMST.h, RadiusSpineTopology.h (planned)
+  Mst.h                # dense Prim util (cost map → edges)
+  TopologyBuilder.h    # base; owns GlobalTopologyPlan
+  PureMST.h            # baseline: one MST per group; virtual cost_map
+  # RadiusSpineTopology.h (planned)
 
 src/topology/          # mirrors headers (builders later)
 ```
