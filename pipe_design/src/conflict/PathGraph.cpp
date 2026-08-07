@@ -235,4 +235,40 @@ std::vector<NodeId> PathGraph::terminal_nodes() const {
     return out;
 }
 
+std::size_t PathGraph::component_count() const {
+    return components().size();
+}
+
+std::vector<std::vector<NodeId>> PathGraph::components() const {
+    const std::size_t n = nodes_.size();
+    std::vector<std::vector<NodeId>> out;
+    if (n == 0) {
+        return out;
+    }
+    std::vector<char> seen(n, 0);
+    std::vector<NodeId> stack;
+    for (NodeId s = 0; s < n; ++s) {
+        if (seen[s]) {
+            continue;
+        }
+        std::vector<NodeId> comp;
+        stack.clear();
+        stack.push_back(s);
+        seen[s] = 1;
+        while (!stack.empty()) {
+            const NodeId u = stack.back();
+            stack.pop_back();
+            comp.push_back(u);
+            for (const PathEdge& e : adj_[u]) {
+                if (!seen[e.to]) {
+                    seen[e.to] = 1;
+                    stack.push_back(e.to);
+                }
+            }
+        }
+        out.push_back(std::move(comp));
+    }
+    return out;
+}
+
 }  // namespace pipe_design::conflict

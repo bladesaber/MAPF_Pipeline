@@ -21,6 +21,48 @@ Same-group paths are **not** conflicts (sharing / ConnectedSets allowed).
 
 ---
 
+## Critical rule — detection must not be stricter than occupancy
+
+Three places decide “blocked / conflict” in the stack:
+
+| Layer | Code | Role |
+|-------|------|------|
+| High-level `[V]` | `ConflictAnalyzer::find_conflicts` | Declare group–group conflicts → CBS/PBS `[F]` |
+| Low-level search | `CompositeGrid::is_free` | Accept / reject cells while routing |
+| Path → obstacle | `chain_with_path` (multi/) | Bake a routed path into `ObstacleChain` |
+
+**Rule (mandatory):** `ConflictAnalyzer` must follow the **most relaxed** detection rule
+among these three — never stricter than what `CompositeGrid` + `chain_with_path` can
+enforce.
+
+Formally:
+
+```text
+Conflicts reported by Analyzer  ⊆  configurations that chain / is_free treat as illegal
+```
+
+Equivalently: if Analyzer flags a clash, applying the corresponding constraint /
+occupancy must make low-level search reject that geometry.
+
+**Why:** If Analyzer is **stricter** than occupancy:
+
+1. Analyzer reports a conflict → high-level adds a constraint / extends the chain  
+2. Low-level replan still sees the region as free (`is_free` / chain geometry disagree)  
+3. Search returns essentially the same path  
+4. Analyzer reports the **same** conflict again → **infinite CBS/PBS loop**
+
+If Analyzer is **relaxed** (or aligned) relative to occupancy, every reported conflict
+is enforceable → replan can make progress.
+
+**Prefer alignment over arbitrary looseness:** use the same clearance predicate
+(`dist < r_a + r_b` / `clearance < pipe_radius`) and compatible sphere–capsule
+geometry. Sparse line-sampling in Analyzer is naturally no stricter than continuous
+capsules in `chain_with_path`; do **not** add tighter margins only on the Analyzer
+side. Constraint witnesses written to `ObstacleChain` must be strong enough that
+`is_free` fails at those witnesses.
+
+---
+
 ## Design (agreed, keep simple)
 
 **Sphere-centric pipeline.** Normalize every path to an ordered sphere list by

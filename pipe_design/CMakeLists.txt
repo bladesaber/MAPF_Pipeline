@@ -37,6 +37,11 @@ add_library(pipe_planner
 target_include_directories(pipe_planner PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(pipe_planner PUBLIC pipe_grid)
 
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+  target_link_libraries(pipe_planner PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
 add_subdirectory(tools)
 
 enable_testing()
@@ -88,6 +93,10 @@ add_test(NAME multi_unit COMMAND test_multi)
 add_executable(test_sample_kdtree tests/test_sample_kdtree.cpp)
 target_link_libraries(test_sample_kdtree PRIVATE pipe_planner)
 add_test(NAME sample_kdtree_unit COMMAND test_sample_kdtree)
+
+add_executable(test_conflict_normalize tests/test_conflict_normalize.cpp)
+target_link_libraries(test_conflict_normalize PRIVATE pipe_planner)
+add_test(NAME conflict_normalize_unit COMMAND test_conflict_normalize)
 
 find_package(Boost REQUIRED)
 add_executable(bench_path_graph tests/bench_path_graph.cpp)

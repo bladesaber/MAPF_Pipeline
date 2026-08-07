@@ -78,6 +78,12 @@ public:
     std::vector<NodeId> shortest_path(NodeId from, NodeId to) const;
     std::vector<NodeId> terminal_nodes() const;
 
+    /// Number of connected components (isolated subgraphs). Isolated nodes count as 1 each.
+    std::size_t component_count() const;
+
+    /// Each entry is one connected component (node ids). Order of components / nodes is unspecified.
+    std::vector<std::vector<NodeId>> components() const;
+
     void set_dijkstra_cache_limit(std::size_t limit);
     std::size_t dijkstra_cache_limit() const { return dijkstra_cache_limit_; }
     void clear_dijkstra_cache() const { dijkstra_cache_.clear(); }
