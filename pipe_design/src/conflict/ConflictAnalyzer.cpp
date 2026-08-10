@@ -25,7 +25,7 @@ void ConflictAnalyzer::clear() {
     clusters_.clear();
 }
 
-void ConflictAnalyzer::analyze(const std::vector<topology::Task>& tasks) {
+void ConflictAnalyzer::analyze(const std::vector<const topology::Task*>& tasks) {
     clear();
     normalize(tasks);
     build_graphs();
@@ -34,7 +34,7 @@ void ConflictAnalyzer::analyze(const std::vector<topology::Task>& tasks) {
     score_all();
 }
 
-void ConflictAnalyzer::normalize(const std::vector<topology::Task>& tasks) {
+void ConflictAnalyzer::normalize(const std::vector<const topology::Task*>& tasks) {
     sampled_paths_.clear();
     if (grid_ == nullptr || plans_ == nullptr) {
         return;
@@ -42,7 +42,11 @@ void ConflictAnalyzer::normalize(const std::vector<topology::Task>& tasks) {
 
     const float min_step = 2.f * PathGraph::kDefaultEps;
 
-    for (const topology::Task& task : tasks) {
+    for (const topology::Task* task_ptr : tasks) {
+        if (task_ptr == nullptr) {
+            continue;
+        }
+        const topology::Task& task = *task_ptr;
         if (!task.succeeded()) {
             continue;
         }

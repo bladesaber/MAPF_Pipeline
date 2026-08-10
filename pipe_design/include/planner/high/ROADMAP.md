@@ -113,11 +113,12 @@ Task               = { task_id, group_id, edge_id, status, path }
 HighLevelPlanner
   step() / search() / status() / expansions() / solution()
 
-# --- CBS (planned) ---
+# --- CBS ---
 CBS : HighLevelPlanner
-  reset(plans: GlobalTopologyPlan, grid, low, heuristic, open, actions,
-        group_session: GroupSession&) -> void
-  step()  # CT expand + GroupSession replan for constrained group(s)
+  reset(plans, grid: CompositeGrid, low, heuristic, open, actions,
+        session: GroupSession&, analyzer: ConflictAnalyzer&) -> void
+  step()  # pop CT → [V] → branch constrain() + GroupSession for one group
+  constrain(chain, conflict, group)  # virtual; default = other witness sphere
   solution()
 
 # --- PBS (planned) ---
@@ -151,14 +152,14 @@ if (cbs.status() == Success) {
 | Piece | Priority | Notes |
 |-------|----------|-------|
 | `HighLevelPlanner` base | P0 | Align with `LowLevelPlanner` control API |
-| ★ CBS + geometric constraints | P2 | Constraint = sphere/capsule on `ObstacleChain` |
-| ★ Disjoint splitting | P2 | Stronger CBS branching |
+| ★ CBS + geometric constraints | P2 | Constraint = other witness sphere on `ObstacleChain` |
+| ★ Disjoint splitting | P2 | Override `CBS::constrain` |
 | ECBS | P2 | Bounded suboptimal |
 | ★ PBS | P2 | Replan via `PrioritySequencer` |
 | ★ LNS / ALNS | P3 | Scale-out when CBS explodes |
 | ICTS | P3 | Porting cost high for permanent occupancy |
 | ILP / SAT on candidates | P4 | Small instances only |
-| README + unit tests (two-group conflict) | P2 | With CBS / PBS |
+| README + unit tests (two-group conflict) | P2 | `test_cbs` |
 
 ---
 
@@ -168,12 +169,12 @@ if (cbs.status() == Success) {
 include/planner/high/
   ROADMAP.md
   HighLevelPlanner.h
-  CBS.h            # planned
+  CBS.h
   PBS.h            # planned
   LNS.h            # planned
 
 src/planner/high/
-  CBS.cpp          # planned
+  CBS.cpp
   PBS.cpp          # planned
   LNS.cpp          # planned
 ```

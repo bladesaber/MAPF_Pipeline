@@ -74,7 +74,7 @@ int main() {
     az.set_grid(&grid);
     az.set_plans(&plans);
     az.set_sample_step_factor(1.f);
-    az.normalize({a, b});
+    az.normalize({&a, &b});
 
     if (az.sampled_paths().size() != 2) {
         std::fprintf(stderr, "normalize groups=%zu\n", az.sampled_paths().size());
@@ -133,7 +133,7 @@ int main() {
     az.clear();
     az.set_grid(&grid);
     az.set_plans(&plans);
-    az.normalize({a, a});
+    az.normalize({&a, &a});
     az.build_graphs();
     az.find_conflicts();
     az.find_clusters();

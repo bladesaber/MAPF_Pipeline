@@ -39,10 +39,11 @@ public:
     virtual void clear();
 
     /// Default: clear → normalize → build_graphs → find_conflicts → find_clusters → score_all.
-    virtual void analyze(const std::vector<topology::Task>& tasks);
+    /// Pointers must remain valid for the call; null entries are skipped.
+    virtual void analyze(const std::vector<const topology::Task*>& tasks);
 
     /// Line-discretize Task paths into `sampled_paths_` (does not mutate `tasks`).
-    virtual void normalize(const std::vector<topology::Task>& tasks);
+    virtual void normalize(const std::vector<const topology::Task*>& tasks);
 
     /// Build per-group `PathGraph` from `sampled_paths_`.
     /// Shared terminals merge via `PathGraph` quantized keys (`eps`).

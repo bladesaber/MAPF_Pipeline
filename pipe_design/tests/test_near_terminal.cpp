@@ -55,7 +55,7 @@ int main() {
     NearTerminalAnalyzer az(std::move(terminals));
     az.set_grid(&grid);
     az.set_plans(&plans);
-    az.analyze({a, b});
+    az.analyze({&a, &b});
 
     if (az.conflicts().empty()) {
         std::fprintf(stderr, "no conflicts\n");
