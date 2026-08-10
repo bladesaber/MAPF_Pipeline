@@ -86,7 +86,7 @@ Alias: in prose, “topology plan” for one group means `GroupTopologyPlan` unl
 
 ## Default algorithm: Radius-spine
 
-Preferred P1 builder (`RadiusSpineMSTBuilder`), aligned with legacy `HyperRadiusGrowthTree`:
+Preferred P1 hybrid (`RadiusSpineMSTBuilder`). Legacy Python greedy merge is `RadiusPriorityMergeBuilder` (`HyperRadiusGrowthTree`).
 
 1. **Bin by radius** — discrete levels; largest radius = spine level.
 2. **Within level** — MST / Prim on that level’s terminals (`cost_fn`).
@@ -121,7 +121,8 @@ Same-group branching / sharing follows ROADMAP §1.4; topology only proposes the
 
 ```text
 include/topology/
-  ROADMAP.md           # this file
+  README.md            # developer quick start (this folder)
+  ROADMAP.md           # design detail / backlog
   Types.h              # Terminal, TopologyEdge, GroupTopologyPlan, GlobalTopologyPlan, Task
   Mst.h                # dense Prim util (cost map → edges)
   TopologyBuilder.h    # base; owns GlobalTopologyPlan

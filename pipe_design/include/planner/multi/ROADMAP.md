@@ -171,6 +171,7 @@ It **does** matter for `PrioritySequencer` (PBS-style).
 
 ```text
 include/planner/multi/
+  README.md            # developer quick start
   ROADMAP.md
   MultiQueryPlanner.h
   GroupSession.h
