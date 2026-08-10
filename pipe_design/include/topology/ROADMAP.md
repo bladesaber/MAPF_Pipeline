@@ -75,7 +75,7 @@ TopologyBuilder {
 }
 ```
 
-- `cost_fn` — abstract weight only (`dist`, `dist·r²`, …); never a full A\* call; lives on concrete builders.
+- `cost_fn` — abstract weight only (`dist`, `dist/r²`, …); never a full A\* call; lives on concrete builders.
 - **`GroupSession`** uses `plan.ordered_tasks()`; writes each Task’s `status`/`path`.
 - **`PrioritySequencer`** uses `enumerate_tasks()` for the job set; schedule from `order` or `ordered_tasks()` if `order` empty.
 - **CBS / PBS** read `TopologyBuilder::plan()`; do not own the plan.
@@ -90,9 +90,9 @@ Preferred P1 builder (`RadiusSpineMSTBuilder`), aligned with legacy `HyperRadius
 
 1. **Bin by radius** — discrete levels; largest radius = spine level.
 2. **Within level** — MST / Prim on that level’s terminals (`cost_fn`).
-3. **Bridge to previous bin** — nearest terminal–terminal pair vs the **previous** radius bin only; append **before** within-bin MST edges (`grow_order`) so `GroupSession` ConnectedSets see the prior layer first.
+3. **Bridge to all prior bins** — nearest terminal–terminal pair vs the **union** of thicker layers; append **before** within-bin MST edges (`grow_order`) so `GroupSession` ConnectedSets see prior layers first.
 4. **Emit** `GroupTopologyPlan`: `edges` + `grow_order` (bridge then within-bin, thick → thin).
-5. **Singleton bins** — size-1 bins merge into the next (thinner) bin; trailing singleton merges backward.
+5. **Singleton bins** — size-1 bins skip within-bin MST; only a Bridge to prior layers (first bin alone waits for the next bridge).
 Same-group branching / sharing follows ROADMAP §1.4; topology only proposes the multi-terminal graph.
 
 ---
@@ -106,7 +106,8 @@ Same-group branching / sharing follows ROADMAP §1.4; topology only proposes the
 | `TopologyBuilder` | P0 | Owns `GlobalTopologyPlan`; `build` / `replan` |
 | `PureMST` | P0 | Baseline builder; `CostType`: Euclidean / Dijkstra / Volume |
 | ★ `RadiusSpineMSTBuilder` | P1 | Levels + MST + bridge; `: PureMST` |
-| Cost: `dist` / `dist·r²` (volume) | P0 | On `PureMST` via `CostType` |
+| ★ `RadiusPriorityMergeBuilder` | P1 | Python `HyperRadiusGrowthTree` greedy merge |
+| Cost: `dist` / `dist/r²` (volume-priority) | P0 | On `PureMST` via `CostType::Volume` |
 | Cost: Dijkstra on `Problem::static_grid` | P0 | Via `heuristic::Dijkstra` |
 | Bridge: terminal–terminal | P1 | Match current Python behavior |
 | Bridge: attach to trunk path | P2 | Shorter trees; needs soft geometry |
@@ -126,6 +127,7 @@ include/topology/
   TopologyBuilder.h    # base; owns GlobalTopologyPlan
   PureMST.h            # baseline: one MST per group; virtual cost_map
   RadiusSpineMSTBuilder.h  # hybrid: radius bins + MST + bridge
+  RadiusPriorityMergeBuilder.h  # Python HyperRadiusGrowthTree greedy merge
 
 src/topology/          # mirrors headers (builders later)
 ```

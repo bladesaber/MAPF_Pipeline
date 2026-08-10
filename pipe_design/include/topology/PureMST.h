@@ -6,8 +6,10 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace pipe_design::topology {
@@ -23,7 +25,7 @@ enum class RadiusMerge : std::uint8_t {
 enum class CostType : std::uint8_t {
     Euclidean = 0,  // ||p_i - p_j||
     Dijkstra,       // true distance on Problem::static_grid() (6-connect)
-    Volume,         // ||p_i - p_j|| * max(r_i, r_j)^2
+    Volume,         // ||p_i - p_j|| / r^2  (larger radius → cheaper / preferred)
 };
 
 /// Baseline `[T]` builder: one MST per `PipeGroup` (all terminals, no radius bins).
@@ -42,6 +44,7 @@ public:
 
     void build(const problem::Problem& problem) override {
         problem_ = &problem;
+        clear_dijkstra_cache();
         plan_.groups.clear();
         plan_.groups.reserve(problem.groups().size());
 
@@ -94,6 +97,55 @@ protected:
         return std::min(a, b);
     }
 
+    void clear_dijkstra_cache() const { dijkstra_cache_.clear(); }
+
+    /// Cached multi-source field from `src` (prepare once per cell).
+    heuristic::Dijkstra& get_dijkstra(const grid::CellCoord& src) const {
+        if (problem_ == nullptr) {
+            throw std::logic_error("PureMST: Dijkstra requires build(problem) first");
+        }
+        auto it = dijkstra_cache_.find(src);
+        if (it != dijkstra_cache_.end()) {
+            return *it->second;
+        }
+        auto dijk = std::make_unique<heuristic::Dijkstra>(problem_->static_grid());
+        dijk->prepare(src);
+        heuristic::Dijkstra& ref = *dijk;
+        dijkstra_cache_.emplace(src, std::move(dijk));
+        return ref;
+    }
+
+    /// Single pairwise weight (Euclidean / Volume / Dijkstra with cache).
+    float pair_cost(const Terminal& a, const Terminal& b) const {
+        switch (cost_type_) {
+        case CostType::Dijkstra: {
+            if (problem_ == nullptr) {
+                throw std::logic_error("PureMST: Dijkstra requires build(problem) first");
+            }
+            const grid::StaticClearanceGrid& grid = problem_->static_grid();
+            heuristic::Dijkstra& dijk = get_dijkstra(grid.world_to_cell(a.pos));
+            const double d = dijk.distance(grid.world_to_cell(b.pos));
+            if (!(d < heuristic::Dijkstra::kUnreachable)) {
+                throw std::logic_error(
+                    "PureMST: unreachable terminals on static grid (" + a.id +
+                    " -> " + b.id + ")");
+            }
+            return static_cast<float>(d);
+        }
+        case CostType::Volume: {
+            const float dist = (a.pos - b.pos).norm();
+            const float r = merge_radius(a.radius, b.radius);
+            if (!(r > 0.f)) {
+                throw std::logic_error("PureMST: Volume cost requires positive radius");
+            }
+            return dist / (r * r);
+        }
+        case CostType::Euclidean:
+        default:
+            return (a.pos - b.pos).norm();
+        }
+    }
+
     std::vector<float> cost_map_euclidean(const std::vector<Terminal>& terminals) const {
         const std::size_t n = terminals.size();
         std::vector<float> cost(n * n, 0.f);
@@ -107,7 +159,7 @@ protected:
         return cost;
     }
 
-    /// Euclidean * max(r_i, r_j)^2 (Python MinimumVolumeTree-style).
+    /// Euclidean / r^2 (larger merged radius → lower cost → preferred by MST).
     std::vector<float> cost_map_volume(const std::vector<Terminal>& terminals) const {
         const std::size_t n = terminals.size();
         std::vector<float> cost(n * n, 0.f);
@@ -115,7 +167,10 @@ protected:
             for (std::size_t j = i + 1; j < n; ++j) {
                 const float dist = (terminals[i].pos - terminals[j].pos).norm();
                 const float r = merge_radius(terminals[i].radius, terminals[j].radius);
-                const float w = dist * r * r;
+                if (!(r > 0.f)) {
+                    throw std::logic_error("PureMST: Volume cost requires positive radius");
+                }
+                const float w = dist / (r * r);
                 cost[i * n + j] = w;
                 cost[j * n + i] = w;
             }
@@ -123,23 +178,17 @@ protected:
         return cost;
     }
 
-    /// True distance on `Problem::static_grid()` via `heuristic::Dijkstra` (6-connect).
+    /// True distance on `Problem::static_grid()` via cached `get_dijkstra`.
     std::vector<float> cost_map_dijkstra(const std::vector<Terminal>& terminals) const {
-        if (problem_ == nullptr) {
-            throw std::logic_error("PureMST: Dijkstra cost requires build(problem) first");
-        }
         const grid::StaticClearanceGrid& grid = problem_->static_grid();
-        heuristic::Dijkstra dijk(grid);
-
         const std::size_t n = terminals.size();
         std::vector<float> cost(n * n, 0.f);
 
         for (std::size_t i = 0; i < n; ++i) {
-            const grid::CellCoord src = grid.world_to_cell(terminals[i].pos);
-            dijk.prepare(src);
+            heuristic::Dijkstra& dijk =
+                get_dijkstra(grid.world_to_cell(terminals[i].pos));
             for (std::size_t j = i + 1; j < n; ++j) {
-                const grid::CellCoord dst = grid.world_to_cell(terminals[j].pos);
-                const double d = dijk.distance(dst);
+                const double d = dijk.distance(grid.world_to_cell(terminals[j].pos));
                 if (!(d < heuristic::Dijkstra::kUnreachable)) {
                     throw std::logic_error(
                         "PureMST: unreachable terminals on static grid (" +
@@ -155,6 +204,11 @@ protected:
 
     RadiusMerge radius_merge_ = RadiusMerge::Min;
     CostType cost_type_ = CostType::Euclidean;
+
+private:
+    mutable std::unordered_map<grid::CellCoord,
+                               std::unique_ptr<heuristic::Dijkstra>>
+        dijkstra_cache_;
 };
 
 }  // namespace pipe_design::topology
