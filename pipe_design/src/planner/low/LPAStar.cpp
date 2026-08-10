@@ -56,7 +56,8 @@ void LPAStar::update_vertex(LpaSearchNode* u) {
 }
 
 double LPAStar::edge_cost(const grid::CellCoord& from, const grid::CellCoord& to) const {
-    if (!grid_->is_free(from, pipe_radius_) || !grid_->is_free(to, pipe_radius_)) {
+    if (!grid_->in_bounds(to) ||
+        !grid_->is_move_free(from, to, pipe_radius_)) {
         return LpaSearchNode::kInf;
     }
     std::vector<motion::Successor> local;

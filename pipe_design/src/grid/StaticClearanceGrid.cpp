@@ -133,9 +133,6 @@ bool StaticClearanceGrid::is_move_free(
     const geom::Vec3& from,
     const geom::Vec3& to,
     float pipe_radius) const {
-    if (!in_bounds(from) || !in_bounds(to)) {
-        return false;
-    }
     for (const auto& sphere : spheres_) {
         if (geom::signed_clearance(from, to, sphere) < pipe_radius) {
             return false;

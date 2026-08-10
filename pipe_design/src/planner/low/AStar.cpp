@@ -202,7 +202,8 @@ void AStar<Node>::expand(Node* current) {
     actions_->successors(current->coord, geom::Heading{}, successor_buf_);
 
     for (const motion::Successor& succ : successor_buf_) {
-        if (!grid_->in_bounds(succ.cell) || !grid_->is_free(succ.cell, pipe_radius_)) {
+        if (!grid_->in_bounds(succ.cell) ||
+            !grid_->is_move_free(current->coord, succ.cell, pipe_radius_)) {
             continue;
         }
 

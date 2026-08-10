@@ -68,7 +68,7 @@ path()   parent chain from goal_node_ (only if Success)
 `expand` (virtual):
 
 1. `actions_->successors(from, in_heading, buf)` — connectivity + turn soft/hard cost live in motion
-2. skip out-of-bounds / blocked (`is_free`)
+2. skip out-of-bounds / blocked edges (`in_bounds` + `is_move_free`)
 3. `ensure_node(key)` → relax g / parent / f → `push` or `decrease_key` (+ re-`push` if false)
 
 Default `AStar::expand`: `in_heading = none` → no turn filter/penalty.  

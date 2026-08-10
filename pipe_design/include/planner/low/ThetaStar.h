@@ -18,7 +18,7 @@ public:
     void set_step_cost(double step_cost);
     double step_cost() const { return step_cost_; }
 
-    /// Line-of-sight between cell centers (samples segment with `is_free`).
+    /// Line-of-sight between cell centers via analytic `is_move_free(Vec3)`.
     static bool line_of_sight(
         const grid::CompositeGrid& grid,
         grid::CellCoord a,

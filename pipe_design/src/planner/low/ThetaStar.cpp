@@ -1,9 +1,7 @@
 #include "planner/low/ThetaStar.h"
 
 #include "geom/Heading.h"
-#include "geom/Types.h"
 
-#include <algorithm>
 #include <cmath>
 
 namespace pipe_design::planner {
@@ -17,34 +15,13 @@ bool ThetaStar::line_of_sight(
     grid::CellCoord a,
     grid::CellCoord b,
     float pipe_radius) {
-    if (!grid.in_bounds(a) || !grid.is_free(a, pipe_radius)) {
+    if (!grid.in_bounds(a) || !grid.in_bounds(b)) {
         return false;
     }
     if (a == b) {
-        return true;
+        return grid.is_free(a, pipe_radius);
     }
-    if (!grid.in_bounds(b) || !grid.is_free(b, pipe_radius)) {
-        return false;
-    }
-
-    const geom::Vec3 pa = grid.cell_center(a);
-    const geom::Vec3 pb = grid.cell_center(b);
-    const geom::Vec3 delta = pb - pa;
-    const float len = delta.norm();
-    if (len < 1e-9f) {
-        return true;
-    }
-
-    const float res = grid.static_grid().resolution();
-    const float step = std::max(1e-6f, 0.25f * res);
-    const int n = std::max(1, static_cast<int>(std::ceil(static_cast<double>(len / step))));
-    for (int i = 1; i < n; ++i) {
-        const float t = static_cast<float>(i) / static_cast<float>(n);
-        if (!grid.is_free(pa + delta * t, pipe_radius)) {
-            return false;
-        }
-    }
-    return true;
+    return grid.is_move_free(grid.cell_center(a), grid.cell_center(b), pipe_radius);
 }
 
 double ThetaStar::euclidean_cell_cost(
@@ -95,7 +72,8 @@ void ThetaStar::expand(SearchNode* current) {
     actions_->successors(current->coord, geom::Heading{}, successor_buf_);
 
     for (const motion::Successor& succ : successor_buf_) {
-        if (!grid_->in_bounds(succ.cell) || !grid_->is_free(succ.cell, pipe_radius_)) {
+        if (!grid_->in_bounds(succ.cell) ||
+            !grid_->is_move_free(current->coord, succ.cell, pipe_radius_)) {
             continue;
         }
 

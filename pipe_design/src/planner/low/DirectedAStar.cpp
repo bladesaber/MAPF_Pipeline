@@ -12,7 +12,8 @@ void DirectedAStar::expand(DirectedSearchNode* current) {
     actions_->successors(current->coord, current->in_dir, successor_buf_);
 
     for (const motion::Successor& succ : successor_buf_) {
-        if (!grid_->in_bounds(succ.cell) || !grid_->is_free(succ.cell, pipe_radius_)) {
+        if (!grid_->in_bounds(succ.cell) ||
+            !grid_->is_move_free(current->coord, succ.cell, pipe_radius_)) {
             continue;
         }
 

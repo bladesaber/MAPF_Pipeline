@@ -82,7 +82,7 @@ public:
         float pipe_radius) const;
 
     /// Continuous edge freeness via analytic segment–obstacle signed clearance.
-    /// Suitable for any-length moves / Theta*-style LOS.
+    /// Does not check domain bounds — caller must ensure endpoints are valid.
     bool is_move_free(
         const geom::Vec3& from,
         const geom::Vec3& to,
