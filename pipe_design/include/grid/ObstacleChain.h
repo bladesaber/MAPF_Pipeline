@@ -51,6 +51,12 @@ public:
     /// Early-exits on the first obstacle with clearance < pipe_radius.
     bool collides(const geom::Vec3& point, float pipe_radius) const;
 
+    /// True if segment `from`→`to` comes within `pipe_radius` of any chain obstacle.
+    bool collides(
+        const geom::Vec3& from,
+        const geom::Vec3& to,
+        float pipe_radius) const;
+
 private:
     ObstacleChain() = default;
 

@@ -68,4 +68,23 @@ bool ObstacleChain::collides(const geom::Vec3& point, float pipe_radius) const {
     return false;
 }
 
+bool ObstacleChain::collides(
+    const geom::Vec3& from,
+    const geom::Vec3& to,
+    float pipe_radius) const {
+    for (const ObstacleChain* node = this; node != nullptr; node = node->parent_.get()) {
+        for (const auto& sphere : node->spheres_) {
+            if (geom::signed_clearance(from, to, sphere) < pipe_radius) {
+                return true;
+            }
+        }
+        for (const auto& capsule : node->capsules_) {
+            if (geom::signed_clearance(from, to, capsule) < pipe_radius) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 }  // namespace pipe_design::grid

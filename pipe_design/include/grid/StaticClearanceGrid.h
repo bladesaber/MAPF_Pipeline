@@ -9,12 +9,15 @@
 
 namespace pipe_design::grid {
 
-/// Dense truncated clearance field for static obstacles.
+/// Dense truncated clearance field for static obstacles, plus retained bake geometry.
 ///
 /// Each cell stores clearance to the nearest static obstacle surface,
 /// clamped to [0, clearance_cap]. Cells far from all obstacles keep
 /// clearance_cap, so bake only needs to touch a local neighborhood of
 /// each obstacle (radius ≈ obstacle_r + clearance_cap).
+///
+/// `bake` also keeps the source spheres/capsules for analytic world-point
+/// queries (LOS / continuous samples) — cell lookups stay on the dense field.
 ///
 /// Shared read-only across the entire CBS tree.
 class StaticClearanceGrid {
@@ -32,7 +35,14 @@ public:
     float resolution() const { return resolution_; }
     float clearance_cap() const { return clearance_cap_; }
 
+    const std::vector<geom::SphereObstacle>& spheres() const { return spheres_; }
+    const std::vector<geom::CapsuleObstacle>& capsules() const { return capsules_; }
+
     bool in_bounds(const CellCoord& cell) const;
+
+    /// True if `point` lies in the continuous domain
+    /// `[0, size_x*res) × [0, size_y*res) × [0, size_z*res)`.
+    bool in_bounds(const geom::Vec3& point) const;
 
     /// World-space center of a cell: `((i+0.5)*res, …)`.
     geom::Vec3 cell_center(const CellCoord& cell) const;
@@ -47,12 +57,36 @@ public:
         };
     }
 
-    /// O(1) lookup. Out-of-bounds returns 0 (treated as blocked).
+    /// O(1) field lookup. Out-of-bounds returns 0 (treated as blocked).
     float clearance(const CellCoord& cell) const;
+
+    /// Analytic clearance at a world point from retained bake geometry.
+    /// Upper-bounded by clearance_cap; may be negative inside obstacles.
+    /// Out-of-domain points return 0.
+    float clearance(const geom::Vec3& point) const;
 
     bool is_free(const CellCoord& cell, float pipe_radius) const {
         return clearance(cell) >= pipe_radius;
     }
+
+    /// Analytic freeness at a world point (retained spheres/capsules).
+    bool is_free(const geom::Vec3& point, float pipe_radius) const;
+
+    /// Discrete edge freeness for 8/26-connected unit steps only
+    /// (Chebyshev distance `max(|dx|,|dy|,|dz|)` must be exactly 1).
+    /// Checks every other cell in the from→to AABB — blocks corner cutting.
+    /// Throws if `from == to` or the step is not a unit neighbor.
+    bool is_move_free(
+        const CellCoord& from,
+        const CellCoord& to,
+        float pipe_radius) const;
+
+    /// Continuous edge freeness via analytic segment–obstacle signed clearance.
+    /// Suitable for any-length moves / Theta*-style LOS.
+    bool is_move_free(
+        const geom::Vec3& from,
+        const geom::Vec3& to,
+        float pipe_radius) const;
 
     /// Row-major index: x + y*size_x + z*size_x*size_y. Cell must be in_bounds.
     std::size_t flat_index(const CellCoord& cell) const;
@@ -62,13 +96,13 @@ public:
         return field_.size();
     }
 
-    /// Rebuild the whole field from static geometry.
+    /// Rebuild the dense field and retain source geometry for analytic queries.
     /// clearance_cap should be >= max_obstacle_radius + max_pipe_radius.
     void bake(
         const std::vector<geom::SphereObstacle>& spheres,
         const std::vector<geom::CapsuleObstacle>& capsules = {});
 
-    /// Reset every cell to clearance_cap (empty domain).
+    /// Reset field to clearance_cap and drop retained geometry.
     void clear();
 
 private:
@@ -83,6 +117,8 @@ private:
     float clearance_cap_ = 1.f;
     int slice_size_ = 0;
     std::vector<float> field_;
+    std::vector<geom::SphereObstacle> spheres_;
+    std::vector<geom::CapsuleObstacle> capsules_;
 };
 
 }  // namespace pipe_design::grid
