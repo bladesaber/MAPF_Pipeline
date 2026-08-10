@@ -80,7 +80,7 @@ One **high-level iteration**, not one cell and not necessarily one Task:
 | Algorithm | Typical `step()` |
 |-----------|------------------|
 | CBS | Pop CT node → `[V]` → if conflict, branch (extend chains) + `GroupSession` children; else Success |
-| PBS | Expand priority / order → `PrioritySequencer` → `[V]` → update precedence on conflict |
+| PBS | Route → on Task failure, `SequenceReplanner` + `PrioritySequencer` |
 | LNS | Destroy subset → optional `[T]` → repair via multi/ → accept/reject |
 
 - If a leaf is conflict-free → high `Success`; `solution()` holds that leaf’s Tasks.
@@ -124,12 +124,13 @@ CBS : HighLevelPlanner
 # --- PBS ---
 PBS : HighLevelPlanner
   reset(plans, grid, low, heuristic, open, actions,
-        sequencer, analyzer, replanner: SequenceReplanner&) -> void
-  step()  # [V] → SequenceReplanner::replan(task order) → PrioritySequencer
+        sequencer, replanner: SequenceReplanner&) -> void
+  step()  # Task failure → SequenceReplanner::replan → PrioritySequencer
   solution()
 
 SequenceReplanner
-  replan(order, conflicts) -> new task_id order   # default: swap max-deficit task pair
+  replan(order, tasks) -> new task_id order
+  # default: keep intra-group order; move failed group's block before last foreign prior
 
 # --- LNS (planned) ---
 LNS : HighLevelPlanner
@@ -159,7 +160,7 @@ if (cbs.status() == Success) {
 | ★ CBS + geometric constraints | P2 | Constraint = other witness sphere on `ObstacleChain` |
 | ★ Disjoint splitting | P2 | Override `CBS::constrain` |
 | ECBS | P2 | Bounded suboptimal |
-| ★ PBS | P2 | Task-order repair via `SequenceReplanner` + `PrioritySequencer`; `test_pbs` |
+| ★ PBS | P2 | Failure-driven task-order repair; no ConflictAnalyzer; `test_pbs` |
 | ★ LNS / ALNS | P3 | Scale-out when CBS explodes |
 | ICTS | P3 | Porting cost high for permanent occupancy |
 | ILP / SAT on candidates | P4 | Small instances only |
@@ -175,12 +176,14 @@ include/planner/high/
   HighLevelPlanner.h
   CBS.h
   PBS.h
-  SequenceReplanner.h
+  sequence/
+    SequenceReplanner.h
   LNS.h            # planned
 
 src/planner/high/
   CBS.cpp
   PBS.cpp
-  SequenceReplanner.cpp
+  sequence/
+    SequenceReplanner.cpp
   LNS.cpp          # planned
 ```

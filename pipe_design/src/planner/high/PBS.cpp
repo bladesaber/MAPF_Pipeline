@@ -12,7 +12,6 @@ void PBS::reset(
     OpenSet& open,
     const motion::ActionModel& actions,
     PrioritySequencer& sequencer,
-    conflict::ConflictAnalyzer& analyzer,
     SequenceReplanner& replanner) {
     plans_ = &plans;
     grid_ = &grid;
@@ -21,7 +20,6 @@ void PBS::reset(
     open_set_ = &open;
     actions_ = &actions;
     sequencer_ = &sequencer;
-    analyzer_ = &analyzer;
     replanner_ = &replanner;
 
     order_.clear();
@@ -30,11 +28,10 @@ void PBS::reset(
     expansions_ = 0;
     depth_ = 0;
     cost_ = 0.0;
-    last_conflict_count_ = 0;
 
     if (plans_ == nullptr || grid_ == nullptr || low_ == nullptr || heuristic_ == nullptr ||
         open_set_ == nullptr || actions_ == nullptr || sequencer_ == nullptr ||
-        analyzer_ == nullptr || replanner_ == nullptr) {
+        replanner_ == nullptr) {
         status_ = SearchStatus::Failure;
         return;
     }
@@ -56,24 +53,13 @@ SearchStatus PBS::step() {
 
     ++expansions_;
 
-    std::vector<const topology::Task*> refs;
-    refs.reserve(tasks_.size());
-    for (const topology::Task& t : tasks_) {
-        refs.push_back(&t);
-    }
-
-    analyzer_->set_grid(&grid_->static_grid());
-    analyzer_->set_plans(plans_);
-    analyzer_->analyze(refs);
-    last_conflict_count_ = analyzer_->conflicts().size();
-
-    if (analyzer_->conflicts().empty()) {
+    if (!sequencer_->any_failure()) {
         solution_ = tasks_;
         status_ = SearchStatus::Success;
         return status_;
     }
 
-    std::vector<std::string> next = replanner_->replan(order_, analyzer_->conflicts());
+    std::vector<std::string> next = replanner_->replan(order_, tasks_);
     if (next == order_) {
         status_ = SearchStatus::Failure;
         return status_;

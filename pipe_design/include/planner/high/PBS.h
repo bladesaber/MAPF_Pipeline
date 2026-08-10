@@ -1,10 +1,9 @@
 #pragma once
 
-#include "conflict/ConflictAnalyzer.h"
 #include "grid/CompositeGrid.h"
 #include "heuristic/Heuristic.h"
 #include "planner/high/HighLevelPlanner.h"
-#include "planner/high/SequenceReplanner.h"
+#include "planner/high/sequence/SequenceReplanner.h"
 #include "planner/low/AStar.h"
 #include "planner/low/SearchNode.h"
 #include "planner/motion/ActionModel.h"
@@ -18,10 +17,8 @@
 
 namespace pipe_design::planner {
 
-/// Iterative priority repair (task-level), not a CBS-style search tree.
-///
-/// Each `step()`: `[V]` on current Tasks → if conflicts, `SequenceReplanner` updates
-/// the task order → `PrioritySequencer` re-routes. No `select_conflict` / PTNode / open set.
+/// Iterative priority repair (task-level). Priority planning has no residual
+/// geometric conflicts — only Task failures drive `SequenceReplanner`.
 class PBS : public HighLevelPlanner {
 public:
     PBS() = default;
@@ -36,7 +33,6 @@ public:
         OpenSet& open,
         const motion::ActionModel& actions,
         PrioritySequencer& sequencer,
-        conflict::ConflictAnalyzer& analyzer,
         SequenceReplanner& replanner);
 
     SearchStatus step() override;
@@ -49,11 +45,9 @@ public:
     std::size_t depth() const { return depth_; }
     /// Sum of Task path costs after the last successful `route()`.
     double cost() const { return cost_; }
-    /// Conflict count from the last `analyze` in `step()` (0 before first step).
-    std::size_t last_conflict_count() const { return last_conflict_count_; }
 
 protected:
-    /// Run PrioritySequencer under `order_`; fills `tasks_` / `cost_`. False on failure.
+    /// Run PrioritySequencer under `order_`; fills `tasks_` / `cost_`. False on setup failure.
     bool route();
 
 private:
@@ -64,7 +58,6 @@ private:
     OpenSet* open_set_ = nullptr;
     const motion::ActionModel* actions_ = nullptr;
     PrioritySequencer* sequencer_ = nullptr;
-    conflict::ConflictAnalyzer* analyzer_ = nullptr;
     SequenceReplanner* replanner_ = nullptr;
 
     std::vector<std::string> order_;
@@ -72,7 +65,6 @@ private:
     std::vector<topology::Task> solution_;
     std::size_t depth_ = 0;
     double cost_ = 0.0;
-    std::size_t last_conflict_count_ = 0;
 };
 
 }  // namespace pipe_design::planner

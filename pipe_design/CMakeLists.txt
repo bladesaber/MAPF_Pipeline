@@ -31,7 +31,7 @@ add_library(pipe_planner
     src/planner/multi/PrioritySequencer.cpp
     src/planner/high/CBS.cpp
     src/planner/high/PBS.cpp
-    src/planner/high/SequenceReplanner.cpp
+    src/planner/high/sequence/SequenceReplanner.cpp
     src/conflict/PathGraph.cpp
     src/conflict/ConflictAnalyzer.cpp
     src/conflict/NearTerminalAnalyzer.cpp
