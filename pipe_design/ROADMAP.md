@@ -150,7 +150,7 @@ Legend: **P0** must-have → **P4** later. ★ = preferred for this domain.
 | `ObstacleChain` (parent + delta) | Done | CBS-friendly COW |
 | `CompositeGrid` (`min` static ⋈ chain) | Done | Hot path: short-circuit `is_free` |
 | Multi-resolution / corridor extraction | P3–P4 | Optional acceleration |
-| KD-tree accelerate chain queries | P2 | When dynamic obstacle count is large |
+| Accelerate `ObstacleChain` queries | P2–P3 | See §9 — long COW chain, one obstacle per node |
 
 ### 4.2 Low-level planners
 
@@ -264,7 +264,7 @@ Conflict **rules** stay at **group** granularity.
 - [x] Anytime search (`ARAStar`, `ANAStar`)  
 - [ ] LNS over pairs/groups  
 - [ ] Outer `[W]` incremental task expansion (soft reference, heuristic window growth)  
-- [ ] KD-tree or local patches for large dynamic sets  
+- [ ] `ObstacleChain` whole-chain spatial index (see §9)  
 
 ### Phase P4 — Advanced
 
@@ -562,3 +562,15 @@ inner_solve:
 ### 8.8 One-line summary
 
 > **`[T]` builds TopologyPlan(s). Route with `GroupSession` (CBS / single-group) or `PrioritySequencer` (PBS). Outer `[W]` only grows `active_set` with a soft incumbent.**
+
+---
+
+## 9. Future Plan & Problems
+
+Open issues deferred until core CBS / low-level is stable enough to profile.
+
+### 9.1 `ObstacleChain` query cost
+
+Each CBS `extend` adds **one** obstacle per node → a long COW list (`local_count ≈ 1`). Today `collides` / `clearance` walk **all ancestors** (O(N) per A\* check). Per-link BVH is useless.
+
+**Later:** profile first; if N is large, give each node a BVH over the **full effective set**, COW-updated on `extend`, so queries hit one index (not the parent chain). Harder than static bake because parents stay immutable.

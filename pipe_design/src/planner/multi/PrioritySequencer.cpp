@@ -172,9 +172,6 @@ void PrioritySequencer::reset(
 }
 
 SearchStatus PrioritySequencer::step_task() {
-    if (status_ != SearchStatus::Running) {
-        return status_;
-    }
     if (cursor_ >= tasks_.size()) {
         status_ = SearchStatus::Success;
         return status_;
@@ -217,7 +214,8 @@ SearchStatus PrioritySequencer::step_task() {
 
     if (low_->status() != SearchStatus::Success) {
         task.set_result(SearchStatus::Failure, {});
-        status_ = SearchStatus::Failure;
+        ++cursor_;
+        status_ = (cursor_ >= tasks_.size()) ? SearchStatus::Success : SearchStatus::Running;
         return status_;
     }
 

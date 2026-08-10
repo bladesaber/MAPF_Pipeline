@@ -51,6 +51,16 @@ public:
     /// Copy of current Task results (safe to keep after another `reset`).
     std::vector<topology::Task> tasks() const { return tasks_; }
 
+    /// True if any Task finished with `SearchStatus::Failure` (session may still be Success).
+    bool any_failure() const {
+        for (const topology::Task& t : tasks_) {
+            if (t.status == SearchStatus::Failure) {
+                return true;
+            }
+        }
+        return false;
+    }
+
 private:
     const topology::GroupTopologyPlan* group_of(const topology::GroupId& id) const;
     const std::vector<grid::CellCoord>& set_of(const topology::TerminalId& id) const;

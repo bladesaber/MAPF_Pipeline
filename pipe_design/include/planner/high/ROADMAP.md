@@ -121,11 +121,15 @@ CBS : HighLevelPlanner
   constrain(chain, conflict, group)  # virtual; default = other witness sphere
   solution()
 
-# --- PBS (planned) ---
+# --- PBS ---
 PBS : HighLevelPlanner
-  reset(plans, grid, low, …, sequencer: PrioritySequencer&) -> void
-  step()  # priority expand + PrioritySequencer replan
+  reset(plans, grid, low, heuristic, open, actions,
+        sequencer, analyzer, replanner: SequenceReplanner&) -> void
+  step()  # [V] → SequenceReplanner::replan(task order) → PrioritySequencer
   solution()
+
+SequenceReplanner
+  replan(order, conflicts) -> new task_id order   # default: swap max-deficit task pair
 
 # --- LNS (planned) ---
 LNS : HighLevelPlanner
@@ -155,7 +159,7 @@ if (cbs.status() == Success) {
 | ★ CBS + geometric constraints | P2 | Constraint = other witness sphere on `ObstacleChain` |
 | ★ Disjoint splitting | P2 | Override `CBS::constrain` |
 | ECBS | P2 | Bounded suboptimal |
-| ★ PBS | P2 | Replan via `PrioritySequencer` |
+| ★ PBS | P2 | Task-order repair via `SequenceReplanner` + `PrioritySequencer`; `test_pbs` |
 | ★ LNS / ALNS | P3 | Scale-out when CBS explodes |
 | ICTS | P3 | Porting cost high for permanent occupancy |
 | ILP / SAT on candidates | P4 | Small instances only |
@@ -170,11 +174,13 @@ include/planner/high/
   ROADMAP.md
   HighLevelPlanner.h
   CBS.h
-  PBS.h            # planned
+  PBS.h
+  SequenceReplanner.h
   LNS.h            # planned
 
 src/planner/high/
   CBS.cpp
-  PBS.cpp          # planned
+  PBS.cpp
+  SequenceReplanner.cpp
   LNS.cpp          # planned
 ```

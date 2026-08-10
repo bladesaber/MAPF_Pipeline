@@ -92,6 +92,7 @@ SearchStatus CBS::step() {
     // Child: constrain group_a (avoid sample_b). Shares parent's Task ptrs until route_group.
     {
         CTNode child = node;
+        child.depth = node.depth + 1;
         child.chains[conflict->group_a] =
             constrain(chain_for(child, conflict->group_a), *conflict, conflict->group_a);
         if (route_group(child, conflict->group_a)) {
@@ -103,6 +104,7 @@ SearchStatus CBS::step() {
     // Child: constrain group_b (avoid sample_a).
     {
         CTNode child = node;
+        child.depth = node.depth + 1;
         child.chains[conflict->group_b] =
             constrain(chain_for(child, conflict->group_b), *conflict, conflict->group_b);
         if (route_group(child, conflict->group_b)) {

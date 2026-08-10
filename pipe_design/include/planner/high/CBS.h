@@ -11,6 +11,7 @@
 #include "planner/open/OpenSet.h"
 #include "topology/Types.h"
 
+#include <cstddef>
 #include <memory>
 #include <queue>
 #include <unordered_map>
@@ -52,6 +53,7 @@ protected:
         /// Per-Task COW: children share unchanged Tasks; `route_group` replaces one group.
         std::vector<std::shared_ptr<const topology::Task>> tasks;
         double cost = 0.0;
+        std::size_t depth = 0;  // root = 0; child = parent + 1
     };
 
     /// Add a constraint so `group` must avoid `c` on its side.
@@ -73,7 +75,10 @@ protected:
 private:
     struct CTNodeGreater {
         bool operator()(const CTNode& a, const CTNode& b) const {
-            return a.cost > b.cost;
+            if (a.cost != b.cost) {
+                return a.cost > b.cost;
+            }
+            return a.depth > b.depth;  // equal cost → prefer shallower
         }
     };
 
