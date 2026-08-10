@@ -64,12 +64,27 @@ float StaticClearanceGrid::clearance(const geom::Vec3& point) const {
     if (!in_bounds(point)) {
         return 0.f;
     }
-    float best = clearance_cap_;
-    for (const auto& sphere : spheres_) {
-        best = std::min(best, geom::signed_clearance(point, sphere));
+    if (bvh_.empty()) {
+        return clearance_cap_;
     }
-    for (const auto& capsule : capsules_) {
-        best = std::min(best, geom::signed_clearance(point, capsule));
+
+    geom::Aabb box{point, point};
+    box.expand(clearance_cap_);
+
+    std::vector<geom::Bvh::Ref> hits;
+    bvh_.query(box, hits);
+
+    float best = clearance_cap_;
+    for (const geom::Bvh::Ref& ref : hits) {
+        if (ref.kind == geom::Bvh::Kind::Sphere) {
+            best = std::min(
+                best,
+                geom::signed_clearance(point, spheres_[static_cast<std::size_t>(ref.index)]));
+        } else {
+            best = std::min(
+                best,
+                geom::signed_clearance(point, capsules_[static_cast<std::size_t>(ref.index)]));
+        }
     }
     return best;
 }
@@ -78,13 +93,25 @@ bool StaticClearanceGrid::is_free(const geom::Vec3& point, float pipe_radius) co
     if (!in_bounds(point)) {
         return false;
     }
-    for (const auto& sphere : spheres_) {
-        if (geom::signed_clearance(point, sphere) < pipe_radius) {
-            return false;
-        }
+    if (bvh_.empty()) {
+        return true;
     }
-    for (const auto& capsule : capsules_) {
-        if (geom::signed_clearance(point, capsule) < pipe_radius) {
+
+    geom::Aabb box{point, point};
+    box.expand(pipe_radius);
+
+    std::vector<geom::Bvh::Ref> hits;
+    bvh_.query(box, hits);
+
+    for (const geom::Bvh::Ref& ref : hits) {
+        if (ref.kind == geom::Bvh::Kind::Sphere) {
+            if (geom::signed_clearance(point, spheres_[static_cast<std::size_t>(ref.index)]) <
+                pipe_radius) {
+                return false;
+            }
+        } else if (
+            geom::signed_clearance(point, capsules_[static_cast<std::size_t>(ref.index)]) <
+            pipe_radius) {
             return false;
         }
     }
@@ -102,9 +129,9 @@ bool StaticClearanceGrid::is_move_free(
     const int32_t adx = std::abs(to.x - from.x);
     const int32_t ady = std::abs(to.y - from.y);
     const int32_t adz = std::abs(to.z - from.z);
-    if (std::max(adx, std::max(ady, adz)) != 1) {
-        throw std::invalid_argument(
-            "StaticClearanceGrid::is_move_free: requires Chebyshev distance == 1");
+    const int32_t cheb = std::max(adx, std::max(ady, adz));
+    if (cheb > 1) {
+        return is_move_free(cell_center(from), cell_center(to), pipe_radius);
     }
 
     const int32_t x0 = std::min(from.x, to.x);
@@ -133,14 +160,39 @@ bool StaticClearanceGrid::is_move_free(
     const geom::Vec3& from,
     const geom::Vec3& to,
     float pipe_radius) const {
-    for (const auto& sphere : spheres_) {
-        if (geom::signed_clearance(from, to, sphere) < pipe_radius) {
-            return false;
-        }
+    if (bvh_.empty()) {
+        return true;
     }
-    for (const auto& capsule : capsules_) {
-        if (geom::signed_clearance(from, to, capsule) < pipe_radius) {
-            return false;
+
+    const geom::Vec3 delta = to - from;
+    const float len = delta.norm();
+    // Long segments get a huge query AABB; split so each piece stays local in the BVH.
+    const float max_piece = std::max(4.f * resolution_, 1e-3f);
+    const int pieces = (len <= max_piece)
+        ? 1
+        : std::max(2, static_cast<int>(std::ceil(static_cast<double>(len / max_piece))));
+
+    std::vector<geom::Bvh::Ref> hits;
+    for (int i = 0; i < pieces; ++i) {
+        const float t0 = static_cast<float>(i) / static_cast<float>(pieces);
+        const float t1 = static_cast<float>(i + 1) / static_cast<float>(pieces);
+        const geom::Vec3 a = from + delta * t0;
+        const geom::Vec3 b = from + delta * t1;
+
+        hits.clear();
+        bvh_.query(geom::aabb_of_segment(a, b, pipe_radius), hits);
+
+        for (const geom::Bvh::Ref& ref : hits) {
+            if (ref.kind == geom::Bvh::Kind::Sphere) {
+                if (geom::signed_clearance(a, b, spheres_[static_cast<std::size_t>(ref.index)]) <
+                    pipe_radius) {
+                    return false;
+                }
+            } else if (
+                geom::signed_clearance(a, b, capsules_[static_cast<std::size_t>(ref.index)]) <
+                pipe_radius) {
+                return false;
+            }
         }
     }
     return true;
@@ -150,6 +202,7 @@ void StaticClearanceGrid::clear() {
     std::fill(field_.begin(), field_.end(), clearance_cap_);
     spheres_.clear();
     capsules_.clear();
+    bvh_.clear();
 }
 
 void StaticClearanceGrid::bake(
@@ -164,6 +217,7 @@ void StaticClearanceGrid::bake(
     for (const auto& capsule : capsules_) {
         stamp_capsule(capsule);
     }
+    bvh_.build(spheres_, capsules_);
 }
 
 std::size_t StaticClearanceGrid::flat_index(const CellCoord& cell) const {

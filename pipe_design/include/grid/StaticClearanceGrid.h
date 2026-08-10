@@ -1,5 +1,6 @@
 #pragma once
 
+#include "geom/Bvh.h"
 #include "geom/Types.h"
 #include "grid/Types.h"
 
@@ -15,6 +16,7 @@ namespace pipe_design::grid {
 /// clamped to [0, clearance_cap]. Cells far from all obstacles keep
 /// clearance_cap, so bake only needs to touch a local neighborhood of
 /// each obstacle (radius ≈ obstacle_r + clearance_cap).
+/// Set clearance_cap >= max pipe radius (usually equal to it).
 ///
 /// `bake` also keeps the source spheres/capsules for analytic world-point
 /// queries (LOS / continuous samples) — cell lookups stay on the dense field.
@@ -72,10 +74,10 @@ public:
     /// Analytic freeness at a world point (retained spheres/capsules).
     bool is_free(const geom::Vec3& point, float pipe_radius) const;
 
-    /// Discrete edge freeness for 8/26-connected unit steps only
-    /// (Chebyshev distance `max(|dx|,|dy|,|dz|)` must be exactly 1).
-    /// Checks every other cell in the from→to AABB — blocks corner cutting.
-    /// Throws if `from == to` or the step is not a unit neighbor.
+    /// Edge freeness between cells:
+    ///   Chebyshev == 1 → discrete AABB via `is_free`
+    ///   Chebyshev  > 1 → analytic `is_move_free` between cell centers
+    /// Throws if `from == to`.
     bool is_move_free(
         const CellCoord& from,
         const CellCoord& to,
@@ -96,13 +98,13 @@ public:
         return field_.size();
     }
 
-    /// Rebuild the dense field and retain source geometry for analytic queries.
-    /// clearance_cap should be >= max_obstacle_radius + max_pipe_radius.
+    /// Rebuild the dense field, retain geometry, and rebuild the obstacle BVH.
+    /// `clearance_cap` should be >= max pipe radius (see `clearance_cap_`).
     void bake(
         const std::vector<geom::SphereObstacle>& spheres,
         const std::vector<geom::CapsuleObstacle>& capsules = {});
 
-    /// Reset field to clearance_cap and drop retained geometry.
+    /// Reset field to clearance_cap and drop retained geometry / BVH.
     void clear();
 
 private:
@@ -114,11 +116,20 @@ private:
     int size_y_ = 0;
     int size_z_ = 0;
     float resolution_ = 1.f;
+    /// Truncation upper bound for the dense clearance field and analytic
+    /// `clearance(point)`. Cells farther from obstacles than this keep this
+    /// value; bake only stamps a neighborhood of radius ≈ obstacle_r + cap.
+    ///
+    /// NOTE: Must be >= the maximum pipe radius used with this grid
+    /// (`is_free(..., pipe_radius)` / planning). Typical choice: set equal to
+    /// that max pipe radius. It is NOT obstacle radius — field stores distance
+    /// to obstacle surface, then compares against pipe_radius.
     float clearance_cap_ = 1.f;
     int slice_size_ = 0;
     std::vector<float> field_;
     std::vector<geom::SphereObstacle> spheres_;
     std::vector<geom::CapsuleObstacle> capsules_;
+    geom::Bvh bvh_;
 };
 
 }  // namespace pipe_design::grid

@@ -52,6 +52,10 @@ add_executable(test_grid tests/test_grid.cpp)
 target_link_libraries(test_grid PRIVATE pipe_grid)
 add_test(NAME grid_unit COMMAND test_grid)
 
+add_executable(test_bvh tests/test_bvh.cpp)
+target_link_libraries(test_bvh PRIVATE pipe_grid)
+add_test(NAME bvh_unit COMMAND test_bvh)
+
 add_executable(test_open_set tests/test_open_set.cpp)
 target_link_libraries(test_open_set PRIVATE pipe_planner)
 add_test(NAME open_set_unit COMMAND test_open_set)

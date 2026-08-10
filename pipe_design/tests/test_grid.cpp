@@ -149,13 +149,9 @@ void test_is_move_free_corner_cut() {
     EXPECT_TRUE(!grid.is_move_free(from, to, r));
     EXPECT_TRUE(grid.is_move_free(from, CellCoord{1, 2, 0}, r));
 
-    bool threw = false;
-    try {
-        grid.is_move_free(from, CellCoord{3, 1, 0}, r);
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    EXPECT_TRUE(threw);
+    // Longer step falls back to analytic segment check.
+    EXPECT_TRUE(!grid.is_move_free(CellCoord{0, 1, 0}, CellCoord{4, 1, 0}, r));
+    EXPECT_TRUE(grid.is_move_free(CellCoord{0, 3, 0}, CellCoord{4, 3, 0}, r));
 }
 
 void test_is_move_free_continuous() {
