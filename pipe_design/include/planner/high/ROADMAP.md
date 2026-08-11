@@ -129,7 +129,7 @@ PBS : HighLevelPlanner
   solution()
 
 SequenceReplanner          # base: history / status; replan() pure virtual
-FailureBlockReplanner      # default: move failed group block before last foreign prior
+GroupLayerSwapReplanner  # group-layer: swap failed-layer prefix with prev-layer suffix
 
 # --- LNS (planned) ---
 LNS : HighLevelPlanner
@@ -177,7 +177,7 @@ include/planner/high/
   PBS.h
   sequence/
     SequenceReplanner.h
-    FailureBlockReplanner.h
+    GroupLayerSwapReplanner.h
   LNS.h            # planned
 
 src/planner/high/
@@ -185,6 +185,6 @@ src/planner/high/
   PBS.cpp
   sequence/
     SequenceReplanner.cpp
-    FailureBlockReplanner.cpp
+    GroupLayerSwapReplanner.cpp
   LNS.cpp          # planned
 ```

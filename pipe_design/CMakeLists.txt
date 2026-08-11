@@ -32,7 +32,7 @@ add_library(pipe_planner
     src/planner/high/CBS.cpp
     src/planner/high/PBS.cpp
     src/planner/high/sequence/SequenceReplanner.cpp
-    src/planner/high/sequence/FailureBlockReplanner.cpp
+    src/planner/high/sequence/GroupLayerSwapReplanner.cpp
     src/conflict/PathGraph.cpp
     src/conflict/ConflictAnalyzer.cpp
     src/conflict/NearTerminalAnalyzer.cpp
