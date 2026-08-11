@@ -331,8 +331,69 @@ void ConflictAnalyzer::score_all() {
     }
 }
 
+double ConflictAnalyzer::estimate_cluster_max_deficit() const {
+    double h = 0.0;
+    for (const ConflictCluster& cl : clusters_) {
+        h += static_cast<double>(cl.max_deficit());
+    }
+    return h * 2.0;
+}
+
+double ConflictAnalyzer::estimate_conflict_length() const {
+    // group → conflict-touched node marks (index = NodeId)
+    std::unordered_map<topology::GroupId, std::vector<char>> marked;
+    for (const Conflict& c : conflicts_) {
+        const auto git_a = graphs_.find(c.group_a);
+        const auto git_b = graphs_.find(c.group_b);
+        if (git_a == graphs_.end() || git_b == graphs_.end()) {
+            continue;
+        }
+        auto mark = [&](const topology::GroupId& gid, const PathGraph& g, const SampledPoint& p) {
+            std::vector<char>& m = marked[gid];
+            if (m.size() != g.node_count()) {
+                m.assign(g.node_count(), 0);
+            }
+            m[g.find_node(p)] = 1;
+        };
+        mark(c.group_a, git_a->second, c.sample_a);
+        mark(c.group_b, git_b->second, c.sample_b);
+    }
+
+    double length = 0.0;
+    for (const auto& gkv : marked) {
+        const auto git = graphs_.find(gkv.first);
+        if (git == graphs_.end()) {
+            continue;
+        }
+        const PathGraph& g = git->second;
+        const std::vector<char>& mark = gkv.second;
+        // Traverse each undirected edge once.
+        for (NodeId u = 0; u < g.node_count(); ++u) {
+            if (!mark[u]) {
+                continue;
+            }
+            for (const PathEdge& e : g.neighbors(u)) {
+                // Undirected adj stores each edge twice; keep only to > u (also skips self-loops).
+                if (e.to <= u) {
+                    continue;
+                }
+                if (mark[e.to]) {
+                    length += static_cast<double>(e.weight);
+                }
+            }
+        }
+    }
+    return length;
+}
+
 double ConflictAnalyzer::estimate_heuristic() const {
-    return 0.0;
+    switch (heuristic_mode_) {
+        case HeuristicMode::ClusterMaxDeficit:
+            return estimate_cluster_max_deficit();
+        case HeuristicMode::ConflictLength:
+        default:
+            return estimate_conflict_length();
+    }
 }
 
 const ConflictCluster* ConflictAnalyzer::select_cluster() const {

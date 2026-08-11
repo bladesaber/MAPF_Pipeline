@@ -87,7 +87,7 @@ private:
             if (fa != fb) {
                 return fa > fb;
             }
-            return a.depth > b.depth;  // equal f → prefer shallower
+            return a.h > b.h;  // equal f → prefer smaller h
         }
     };
 

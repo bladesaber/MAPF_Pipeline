@@ -5,11 +5,20 @@
 #include "grid/StaticClearanceGrid.h"
 #include "topology/Types.h"
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace pipe_design::conflict {
+
+/// High-level heuristic used by `ConflictAnalyzer::estimate_heuristic`.
+enum class HeuristicMode : std::uint8_t {
+    /// Sum of PathGraph edge weights with both endpoints conflict-touched.
+    ConflictLength = 0,
+    /// Sum of per-cluster `max_deficit`.
+    ClusterMaxDeficit = 1,
+};
 
 /// Base driver for group–group `[V]` analysis
 /// (normalize → graph → conflicts → clusters → score → heuristic → select).
@@ -33,6 +42,9 @@ public:
     /// Sample spacing along a segment ≈ `factor * pipe_radius` (clamped above PathGraph eps).
     void set_sample_step_factor(float factor) { sample_step_factor_ = factor; }
     float sample_step_factor() const { return sample_step_factor_; }
+
+    void set_heuristic_mode(HeuristicMode mode) { heuristic_mode_ = mode; }
+    HeuristicMode heuristic_mode() const { return heuristic_mode_; }
 
     const grid::StaticClearanceGrid* grid() const { return grid_; }
     const topology::GlobalTopologyPlan* plans() const { return plans_; }
@@ -69,9 +81,15 @@ public:
     virtual void score_all();
 
     /// High-level remaining-cost estimate for the current analyzed plan set.
-    /// Default: 0. Override in subclasses (e.g. conflict / cluster count).
+    /// Dispatches on `heuristic_mode_` (default: ConflictLength). Override to replace.
     /// Called by `analyze` after `score_all`; result is cached in `heuristic_`.
     virtual double estimate_heuristic() const;
+
+    /// Sum of per-cluster `max_deficit` (penetration severity).
+    virtual double estimate_cluster_max_deficit() const;
+
+    /// Sum of PathGraph edge weights whose **both** endpoints witness a conflict.
+    virtual double estimate_conflict_length() const;
 
     /// Cached result of the last `estimate_heuristic` (written by `analyze`).
     double heuristic() const { return heuristic_; }
@@ -93,6 +111,7 @@ protected:
     const grid::StaticClearanceGrid* grid_ = nullptr;
     const topology::GlobalTopologyPlan* plans_ = nullptr;
     float sample_step_factor_ = 1.f;
+    HeuristicMode heuristic_mode_ = HeuristicMode::ConflictLength;
     double heuristic_ = 0.0;
 
     /// Per-group normalized paths (one SampledPath per succeeded Task).
