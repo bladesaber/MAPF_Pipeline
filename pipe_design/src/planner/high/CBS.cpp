@@ -45,7 +45,7 @@ void CBS::reset(
             return;
         }
     }
-    root.cost = path_cost(root);
+    evaluate(root);
     open_.push(std::move(root));
     status_ = SearchStatus::Running;
 }
@@ -63,6 +63,52 @@ SearchStatus CBS::step() {
     open_.pop();
     ++expansions_;
 
+    if (!node.conflict.has_value()) {
+        solution_.clear();
+        solution_.reserve(node.tasks.size());
+        for (const std::shared_ptr<const topology::Task>& t : node.tasks) {
+            solution_.push_back(*t);
+        }
+        status_ = SearchStatus::Success;
+        return status_;
+    }
+
+    const conflict::Conflict& conflict = *node.conflict;
+
+    // Child: constrain group_a (avoid sample_b). Shares parent's Task ptrs until route_group.
+    {
+        CTNode child = node;
+        child.depth = node.depth + 1;
+        child.conflict.reset();
+        child.chains[conflict.group_a] =
+            constrain(chain_for(child, conflict.group_a), conflict, conflict.group_a);
+        if (route_group(child, conflict.group_a)) {
+            evaluate(child);
+            open_.push(std::move(child));
+        }
+    }
+
+    // Child: constrain group_b (avoid sample_a).
+    {
+        CTNode child = node;
+        child.depth = node.depth + 1;
+        child.conflict.reset();
+        child.chains[conflict.group_b] =
+            constrain(chain_for(child, conflict.group_b), conflict, conflict.group_b);
+        if (route_group(child, conflict.group_b)) {
+            evaluate(child);
+            open_.push(std::move(child));
+        }
+    }
+
+    return status_;
+}
+
+void CBS::evaluate(CTNode& node) {
+    node.cost = path_cost(node);
+    node.h = 0.0;
+    node.conflict.reset();
+
     std::vector<const topology::Task*> refs;
     refs.reserve(node.tasks.size());
     for (const std::shared_ptr<const topology::Task>& t : node.tasks) {
@@ -73,47 +119,17 @@ SearchStatus CBS::step() {
     analyzer_->set_plans(plans_);
     analyzer_->analyze(refs);
 
+    node.h = analyzer_->heuristic();
     if (analyzer_->conflicts().empty()) {
-        solution_.clear();
-        solution_.reserve(node.tasks.size());
-        for (const std::shared_ptr<const topology::Task>& t : node.tasks) {
-            solution_.push_back(*t);
-        }
-        status_ = SearchStatus::Success;
-        return status_;
+        return;
     }
 
-    const conflict::Conflict* conflict = analyzer_->select_conflict();
-    if (conflict == nullptr) {
+    const conflict::Conflict* selected = analyzer_->select_conflict();
+    if (selected == nullptr) {
         throw std::runtime_error(
             "CBS: ConflictAnalyzer::select_conflict returned null with non-empty conflicts");
     }
-
-    // Child: constrain group_a (avoid sample_b). Shares parent's Task ptrs until route_group.
-    {
-        CTNode child = node;
-        child.depth = node.depth + 1;
-        child.chains[conflict->group_a] =
-            constrain(chain_for(child, conflict->group_a), *conflict, conflict->group_a);
-        if (route_group(child, conflict->group_a)) {
-            child.cost = path_cost(child);
-            open_.push(std::move(child));
-        }
-    }
-
-    // Child: constrain group_b (avoid sample_a).
-    {
-        CTNode child = node;
-        child.depth = node.depth + 1;
-        child.chains[conflict->group_b] =
-            constrain(chain_for(child, conflict->group_b), *conflict, conflict->group_b);
-        if (route_group(child, conflict->group_b)) {
-            child.cost = path_cost(child);
-            open_.push(std::move(child));
-        }
-    }
-
-    return status_;
+    node.conflict = *selected;
 }
 
 std::shared_ptr<const grid::ObstacleChain> CBS::constrain(

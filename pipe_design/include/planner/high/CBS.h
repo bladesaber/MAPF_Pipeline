@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <unordered_map>
 #include <vector>
@@ -22,8 +23,8 @@ namespace pipe_design::planner {
 /// Constraint-tree high-level search (geometric CBS).
 ///
 /// Topology frozen. Each CT node holds per-group `ObstacleChain` constraints + Tasks.
-/// `[V]` via injected `ConflictAnalyzer`; branch adds the other side's witness sphere
-/// to the constrained group's chain, then re-runs `GroupSession` for that group only.
+/// `[V]` runs at **generation** (`evaluate`): caches `h` + one selected `conflict`.
+/// Expansion uses the cached conflict; OPEN orders by `f = cost + h`.
 ///
 /// Other groups are **not** baked as low-level obstacles (constraint-centric CBS).
 /// Override `constrain` for disjoint split / stronger branching later.
@@ -52,7 +53,10 @@ protected:
         std::unordered_map<topology::GroupId, std::shared_ptr<const grid::ObstacleChain>> chains;
         /// Per-Task COW: children share unchanged Tasks; `route_group` replaces one group.
         std::vector<std::shared_ptr<const topology::Task>> tasks;
-        double cost = 0.0;
+        double cost = 0.0;  // g = sum of path costs
+        double h = 0.0;     // analyzer heuristic (filled at generation)
+        /// Selected conflict at generation; nullopt = conflict-free.
+        std::optional<conflict::Conflict> conflict;
         std::size_t depth = 0;  // root = 0; child = parent + 1
     };
 
@@ -70,15 +74,20 @@ protected:
     /// Re-route one group into `node` (COW-replace `tasks`). False on failure.
     bool route_group(CTNode& node, const topology::GroupId& group);
 
+    /// After paths are set: write `cost` / `h` / `conflict` via analyzer (generation-time).
+    void evaluate(CTNode& node);
+
     static double path_cost(const CTNode& node);
 
 private:
     struct CTNodeGreater {
         bool operator()(const CTNode& a, const CTNode& b) const {
-            if (a.cost != b.cost) {
-                return a.cost > b.cost;
+            const double fa = a.cost + a.h;
+            const double fb = b.cost + b.h;
+            if (fa != fb) {
+                return fa > fb;
             }
-            return a.depth > b.depth;  // equal cost → prefer shallower
+            return a.depth > b.depth;  // equal f → prefer shallower
         }
     };
 
