@@ -1,28 +1,31 @@
+#include "conflict/ConflictAnalyzer.h"
 #include "geom/Types.h"
 #include "grid/CompositeGrid.h"
 #include "grid/StaticClearanceGrid.h"
 #include "heuristic/Geometric.h"
 #include "planner/high/PBS.h"
-#include "planner/high/sequence/GroupLayerSwapReplanner.h"
 #include "planner/low/AStar.h"
 #include "planner/motion/SixConnected.h"
-#include "planner/multi/PrioritySequencer.h"
+#include "planner/multi/PartialOrderSequencer.h"
 #include "planner/open/LazyBinaryHeap.h"
 #include "topology/Types.h"
 
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
+using pipe_design::conflict::Conflict;
+using pipe_design::conflict::ConflictAnalyzer;
+using pipe_design::conflict::ConflictCluster;
 using pipe_design::geom::Vec3;
 using pipe_design::grid::CompositeGrid;
 using pipe_design::grid::StaticClearanceGrid;
 using pipe_design::heuristic::Manhattan;
 using pipe_design::planner::AStar;
-using pipe_design::planner::GroupLayerSwapReplanner;
 using pipe_design::planner::LazyBinaryHeap;
 using pipe_design::planner::PBS;
-using pipe_design::planner::PrioritySequencer;
+using pipe_design::planner::PartialOrderSequencer;
 using pipe_design::planner::SearchNode;
 using pipe_design::planner::SearchStatus;
 using pipe_design::planner::motion::SixConnected;
@@ -42,6 +45,27 @@ static int g_failures = 0;
         }                                                                          \
     } while (0)
 
+class MaxDeficitAnalyzer : public ConflictAnalyzer {
+public:
+    void score(Conflict& conflict) const override { conflict.score = conflict.deficit; }
+
+    void score(ConflictCluster& cluster) const override {
+        cluster.score = cluster.max_deficit();
+    }
+
+    const Conflict* select_conflict() const override {
+        const Conflict* best = nullptr;
+        float best_score = -std::numeric_limits<float>::infinity();
+        for (const Conflict& c : conflicts_) {
+            if (best == nullptr || c.score > best_score) {
+                best = &c;
+                best_score = c.score;
+            }
+        }
+        return best;
+    }
+};
+
 static GroupTopologyPlan make_pair_group(
     const std::string& gid,
     Vec3 a,
@@ -59,7 +83,7 @@ static GroupTopologyPlan make_pair_group(
     return plan;
 }
 
-static void test_parallel_ok() {
+static void test_parallel_no_conflict() {
     StaticClearanceGrid sg(12, 6, 4, 1.f, 2.f);
     sg.clear();
     CompositeGrid grid(sg);
@@ -68,15 +92,16 @@ static void test_parallel_ok() {
     SixConnected actions(1.0);
     LazyBinaryHeap open;
     AStar<SearchNode> low;
-    PrioritySequencer sequencer;
-    GroupLayerSwapReplanner replanner;
+    PartialOrderSequencer sequencer;
+    MaxDeficitAnalyzer analyzer;
 
     GlobalTopologyPlan plans;
     plans.groups.push_back(make_pair_group("A", Vec3{0.5f, 1.5f, 0.5f}, Vec3{10.5f, 1.5f, 0.5f}));
     plans.groups.push_back(make_pair_group("B", Vec3{0.5f, 4.5f, 0.5f}, Vec3{10.5f, 4.5f, 0.5f}));
 
     PBS pbs;
-    pbs.reset(plans, grid, low, h, open, actions, sequencer, replanner);
+    pbs.set_search_mode(pipe_design::planner::PBSSearchMode::DepthFirst);
+    pbs.reset(plans, grid, low, h, open, actions, sequencer, analyzer);
     EXPECT_TRUE(pbs.status() == SearchStatus::Running);
     EXPECT_TRUE(pbs.search() == SearchStatus::Success);
     EXPECT_TRUE(pbs.solution().size() == 2);
@@ -85,8 +110,7 @@ static void test_parallel_ok() {
     }
 }
 
-static void test_crossing_ok() {
-    // Later group dodges earlier under priority planning — no Task failure expected.
+static void test_crossing_resolves() {
     StaticClearanceGrid sg(11, 11, 5, 1.f, 2.f);
     sg.clear();
     CompositeGrid grid(sg);
@@ -95,15 +119,16 @@ static void test_crossing_ok() {
     SixConnected actions(1.0);
     LazyBinaryHeap open;
     AStar<SearchNode> low;
-    PrioritySequencer sequencer;
-    GroupLayerSwapReplanner replanner;
+    PartialOrderSequencer sequencer;
+    MaxDeficitAnalyzer analyzer;
 
     GlobalTopologyPlan plans;
     plans.groups.push_back(make_pair_group("A", Vec3{0.5f, 5.5f, 0.5f}, Vec3{10.5f, 5.5f, 0.5f}));
     plans.groups.push_back(make_pair_group("B", Vec3{5.5f, 0.5f, 0.5f}, Vec3{5.5f, 10.5f, 0.5f}));
 
     PBS pbs;
-    pbs.reset(plans, grid, low, h, open, actions, sequencer, replanner);
+    pbs.set_search_mode(pipe_design::planner::PBSSearchMode::DepthFirst);
+    pbs.reset(plans, grid, low, h, open, actions, sequencer, analyzer);
     EXPECT_TRUE(pbs.status() == SearchStatus::Running);
     const SearchStatus st = pbs.search(/*max_expansions=*/64);
     EXPECT_TRUE(st == SearchStatus::Success);
@@ -112,12 +137,13 @@ static void test_crossing_ok() {
         for (const auto& t : pbs.solution()) {
             EXPECT_TRUE(t.succeeded());
         }
+        EXPECT_TRUE(pbs.expansions() >= 1);
     }
 }
 
 int main() {
-    test_parallel_ok();
-    test_crossing_ok();
+    test_parallel_no_conflict();
+    test_crossing_resolves();
     if (g_failures == 0) {
         std::cout << "ok\n";
         return 0;

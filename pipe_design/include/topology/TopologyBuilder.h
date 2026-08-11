@@ -8,7 +8,7 @@ namespace pipe_design::topology {
 /// Base for `[T]` generators (PureMST, RadiusSpine, …).
 ///
 /// Owns the `GlobalTopologyPlan` consumed by multi-group high-level
-/// (CBS / PBS / …). Derived `build(problem)` fills `plan_` from frozen input;
+/// (CBS / PP / …). Derived `build(problem)` fills `plan_` from frozen input;
 /// `replan()` is the LNS hook (may reuse `problem_`).
 class TopologyBuilder {
 public:

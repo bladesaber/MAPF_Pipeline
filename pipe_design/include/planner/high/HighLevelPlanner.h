@@ -9,7 +9,7 @@
 
 namespace pipe_design::planner {
 
-/// Thin base for high-level group-conflict resolvers (CBS, PBS, LNS, …).
+/// Thin base for high-level group-conflict resolvers (CBS, PP, LNS, …).
 ///
 /// Parallel control surface to `LowLevelPlanner` / `MultiQueryPlanner`:
 ///   - `step()`     — one high-level iteration (conflict-tree expand / priority fix / …)

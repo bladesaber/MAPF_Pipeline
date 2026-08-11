@@ -1,7 +1,7 @@
 # planner/multi — Multi-query session drivers
 
 Runs **many** start→goal queries from a TopologyPlan while updating session state.  
-Not high-level conflict resolution (CBS / PBS / LNS → `planner/high/`).
+Not high-level conflict resolution (CBS / PP / LNS → `planner/high/`).
 
 Detail / backlog: [`ROADMAP.md`](ROADMAP.md). Plans: [`topology/`](../../topology/README.md). Grid: [`grid/`](../../grid/README.md).
 
@@ -32,7 +32,7 @@ GroupSession   PrioritySequencer
 | Other group | unchanged (already in entry grid) | → obstacles for later tasks |
 
 Cross-group **Task order** is irrelevant for a lone `GroupSession` (CBS leaf).  
-It **defines** the solution for `PrioritySequencer` (PBS).
+It **defines** the solution for `PrioritySequencer` (PP).
 
 ---
 
@@ -60,7 +60,7 @@ It **defines** the solution for `PrioritySequencer` (PBS).
 
 1. Resolve edge `u`/`v` → ConnectedSet cells as starts/goals  
 2. `low.reset(...)` → `low.search()`  
-3. On success: write `Task.status` / `Task.path`, commit (merge ConnectedSet; PBS also records foreign obstacles)  
+3. On success: write `Task.status` / `Task.path`, commit (merge ConnectedSet; PP also records foreign obstacles)  
 4. Advance cursor → `Running` / `Success` / `Failure`
 
 Fine-grained `step()` (one low expansion) is planned for debug/viz only.
@@ -103,11 +103,11 @@ Typical caller: CBS node replan / single-group solve.
 
 ```cpp
 PrioritySequencer seq;
-seq.reset(plans, /*order=*/pbs_task_ids, grid, low, heuristic, open, actions);
+seq.reset(plans, /*order=*/pp_task_ids, grid, low, heuristic, open, actions);
 seq.search();
 ```
 
-Typical caller: PBS / priority sequential design.
+Typical caller: PP / priority sequential design.
 
 ---
 
@@ -116,7 +116,7 @@ Typical caller: PBS / priority sequential design.
 ```text
 Caller owns:  TopologyPlan(s), CompositeGrid, LowLevelPlanner, OpenSet, Heuristic, ActionModel
 Multi owns:   task cursor, ConnectedSets, Task results, status_ / expansions_
-              (PBS: committed_ list for foreign obstacle rebuild)
+              (PP: committed_ list for foreign obstacle rebuild)
 ```
 
 Terminal IDs must be unique across groups in a `PrioritySequencer` session.
@@ -126,6 +126,6 @@ Terminal IDs must be unique across groups in a `PrioritySequencer` session.
 ## Extension tips
 
 - New driver: inherit `MultiQueryPlanner`, implement `reset` / `step_task` / `last_path` (+ `tasks()`).  
-- Keep entry grid immutable; PBS-style extras go on a temp `ObstacleChain` / `CompositeGrid` view.  
+- Keep entry grid immutable; PP-style extras go on a temp `ObstacleChain` / `CompositeGrid` view.  
 - `expansions_` should accumulate `low.expansions()` after each search.  
-- High-level (CBS/PBS) should **re-invoke** multi after changing chain or task order — not reinvent ConnectedSets inside high/.
+- High-level (CBS/PP) should **re-invoke** multi after changing chain or task order — not reinvent ConnectedSets inside high/.

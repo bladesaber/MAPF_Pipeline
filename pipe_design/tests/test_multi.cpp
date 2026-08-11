@@ -6,10 +6,12 @@
 #include "planner/low/AStar.h"
 #include "planner/motion/SixConnected.h"
 #include "planner/multi/GroupSession.h"
+#include "planner/multi/PartialOrderSequencer.h"
 #include "planner/multi/PrioritySequencer.h"
 #include "planner/open/LazyBinaryHeap.h"
 #include "topology/Types.h"
 
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -24,6 +26,9 @@ using pipe_design::heuristic::Manhattan;
 using pipe_design::planner::AStar;
 using pipe_design::planner::GroupSession;
 using pipe_design::planner::LazyBinaryHeap;
+using pipe_design::planner::PartialOrderPast;
+using pipe_design::planner::PartialOrderSequencer;
+using pipe_design::planner::PriorityConstraint;
 using pipe_design::planner::PrioritySequencer;
 using pipe_design::planner::SearchNode;
 using pipe_design::planner::SearchStatus;
@@ -109,7 +114,7 @@ static void test_group_session_preserves_grid() {
 static void test_priority_sequencer_preserves_grid() {
     StaticClearanceGrid sg(10, 5, 3, 1.f, 2.f);
     sg.clear();
-    // Non-empty entry chain: must survive multi-group PBS-style routing.
+    // Non-empty entry chain: must survive multi-group PP-style routing.
     auto base = ObstacleChain::make_root()->extend(SphereObstacle{Vec3{9.5f, 4.5f, 2.5f}, 0.25f});
     CompositeGrid grid(sg, base);
     const GridSnapshot before = snapshot_grid(grid);
@@ -136,9 +141,81 @@ static void test_priority_sequencer_preserves_grid() {
     expect_grid_unchanged(grid, before);
 }
 
+static void test_partial_order_topo_and_route() {
+    // Constraints: B before A (B higher). Seed enumerate order is A then B.
+    const std::vector<std::string> seed = {"A:e0", "A:e1", "B:e0", "B:e1"};
+    const std::vector<PriorityConstraint> cons = {
+        {"B:e0", "A:e0"},
+        {"B:e1", "A:e0"},
+        {"A:e0", "A:e1"},
+        {"B:e0", "B:e1"},
+    };
+    const auto order = PartialOrderSequencer::topological_sort(seed, cons);
+    EXPECT_TRUE(order.size() == 4);
+    // B block before A block; intra order preserved.
+    EXPECT_TRUE(order[0] == "B:e0");
+    EXPECT_TRUE(order[1] == "B:e1");
+    EXPECT_TRUE(order[2] == "A:e0");
+    EXPECT_TRUE(order[3] == "A:e1");
+
+    StaticClearanceGrid sg(10, 5, 3, 1.f, 2.f);
+    sg.clear();
+    CompositeGrid grid(sg);
+
+    Manhattan h(1.0);
+    SixConnected actions(1.0);
+    LazyBinaryHeap open;
+    AStar<SearchNode> low;
+
+    GlobalTopologyPlan global;
+    global.groups.push_back(make_line_group("A", 0.5f));
+    global.groups.push_back(make_line_group("B", 2.5f));
+
+    PartialOrderSequencer seq;
+    seq.reset(global, cons, grid, low, h, open, actions);
+    EXPECT_TRUE(seq.status() == SearchStatus::Running);
+    EXPECT_TRUE(seq.order() == order);
+
+    const auto higher = seq.higher_of("A:e1");
+    EXPECT_TRUE(higher.count("A:e0") != 0);
+    EXPECT_TRUE(higher.count("B:e0") != 0);
+
+    EXPECT_TRUE(seq.search() == SearchStatus::Success);
+    EXPECT_TRUE(seq.tasks().size() == 4);
+    for (const auto& t : seq.tasks()) {
+        EXPECT_TRUE(t.succeeded());
+    }
+
+    const PartialOrderPast past = seq.snapshot();
+    EXPECT_TRUE(past.by_id.size() == 4);
+    const auto& a1 = past.by_id.at("A:e1");
+    EXPECT_TRUE(a1.foreign_higher.count("B:e0") != 0);
+    EXPECT_TRUE(a1.foreign_higher.count("B:e1") != 0);
+    EXPECT_TRUE(a1.foreign_higher.count("A:e0") == 0);
+    EXPECT_TRUE(a1.same_group_prev.count("A:e0") != 0);
+    EXPECT_TRUE(a1.task.succeeded());
+    EXPECT_TRUE(seq.replanned_ids().size() == 4);
+
+    PartialOrderSequencer seq2;
+    seq2.reset(global, cons, grid, low, h, open, actions, past);
+    EXPECT_TRUE(seq2.can_reuse("B:e0", past));
+    EXPECT_TRUE(seq2.can_reuse("A:e1", past));
+    EXPECT_TRUE(seq2.search() == SearchStatus::Success);
+    EXPECT_TRUE(seq2.replanned_ids().empty());
+    for (const auto& t : seq2.tasks()) {
+        EXPECT_TRUE(t.succeeded());
+    }
+
+    // Cycle → Failure
+    PartialOrderSequencer bad;
+    bad.reset(global, {{"A:e0", "B:e0"}, {"B:e0", "A:e0"}}, grid, low, h, open, actions);
+    EXPECT_TRUE(bad.status() == SearchStatus::Failure);
+}
+
 int main() {
     test_group_session_preserves_grid();
     test_priority_sequencer_preserves_grid();
+    test_partial_order_topo_and_route();
     if (g_failures == 0) {
         std::cout << "ok\n";
         return 0;

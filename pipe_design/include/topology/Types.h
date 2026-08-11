@@ -183,7 +183,7 @@ public:
     }
 };
 
-/// Aggregate of per-group plans (owned by `TopologyBuilder` for CBS / PBS).
+/// Aggregate of per-group plans (owned by `TopologyBuilder` for CBS / PP).
 class GlobalTopologyPlan {
 public:
     std::vector<GroupTopologyPlan> groups;

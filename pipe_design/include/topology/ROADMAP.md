@@ -66,7 +66,7 @@ GroupTopologyPlan::ordered_tasks()  -> Task[]   # grow_order then remaining (ove
 GlobalTopologyPlan::enumerate_tasks() -> Task[]  # concat groups' enumerate
 GlobalTopologyPlan::ordered_tasks()  -> Task[]  # concat groups' ordered (overrideable)
 
-# [T] generator — owns GlobalTopologyPlan for CBS / PBS / …
+# [T] generator — owns GlobalTopologyPlan for CBS / PP / …
 TopologyBuilder {
   plan_: GlobalTopologyPlan
   build(problem: Problem)         # fill plan_ from problem.groups()
@@ -78,7 +78,7 @@ TopologyBuilder {
 - `cost_fn` — abstract weight only (`dist`, `dist/r²`, …); never a full A\* call; lives on concrete builders.
 - **`GroupSession`** uses `plan.ordered_tasks()`; writes each Task’s `status`/`path`.
 - **`PrioritySequencer`** uses `enumerate_tasks()` for the job set; schedule from `order` or `ordered_tasks()` if `order` empty.
-- **CBS / PBS** read `TopologyBuilder::plan()`; do not own the plan.
+- **CBS / PP** read `TopologyBuilder::plan()`; do not own the plan.
 
 Alias: in prose, “topology plan” for one group means `GroupTopologyPlan` unless “global” is stated.
 

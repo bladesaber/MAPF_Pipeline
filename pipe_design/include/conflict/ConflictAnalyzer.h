@@ -11,7 +11,8 @@
 
 namespace pipe_design::conflict {
 
-/// Base driver for group–group `[V]` analysis (normalize → graph → conflicts → clusters → score → select).
+/// Base driver for group–group `[V]` analysis
+/// (normalize → graph → conflicts → clusters → score → heuristic → select).
 ///
 /// Named Analyzer (not Validator / Resolver): it **detects and ranks** clashes; it does
 /// not mutate `ObstacleChain` or replan — that stays in `planner/high/`.
@@ -19,6 +20,7 @@ namespace pipe_design::conflict {
 /// Before `normalize` / `analyze`, set `grid` (cell centers) and `plans` (edge radii).
 ///
 /// Ranking is stored on `Conflict::score` / `ConflictCluster::score`.
+/// High-level remaining-cost estimate is stored on `heuristic_` (via `estimate_heuristic`).
 /// Required overrides: `score(Conflict&)`, `score(ConflictCluster&)`, `select_conflict`.
 class ConflictAnalyzer {
 public:
@@ -35,10 +37,11 @@ public:
     const grid::StaticClearanceGrid* grid() const { return grid_; }
     const topology::GlobalTopologyPlan* plans() const { return plans_; }
 
-    /// Clear normalized paths, graphs, conflicts, clusters.
+    /// Clear normalized paths, graphs, conflicts, clusters, heuristic.
     virtual void clear();
 
-    /// Default: clear → normalize → build_graphs → find_conflicts → find_clusters → score_all.
+    /// Default: clear → normalize → build_graphs → find_conflicts → find_clusters →
+    /// score_all → estimate_heuristic.
     /// Pointers must remain valid for the call; null entries are skipped.
     virtual void analyze(const std::vector<const topology::Task*>& tasks);
 
@@ -65,6 +68,14 @@ public:
     /// Score every conflict, then every cluster (writes `.score` fields).
     virtual void score_all();
 
+    /// High-level remaining-cost estimate for the current analyzed plan set.
+    /// Default: 0. Override in subclasses (e.g. conflict / cluster count).
+    /// Called by `analyze` after `score_all`; result is cached in `heuristic_`.
+    virtual double estimate_heuristic() const;
+
+    /// Cached result of the last `estimate_heuristic` (written by `analyze`).
+    double heuristic() const { return heuristic_; }
+
     /// Pick one conflict using stored `.score`. Subclass must implement.
     virtual const Conflict* select_conflict() const = 0;
 
@@ -82,6 +93,7 @@ protected:
     const grid::StaticClearanceGrid* grid_ = nullptr;
     const topology::GlobalTopologyPlan* plans_ = nullptr;
     float sample_step_factor_ = 1.f;
+    double heuristic_ = 0.0;
 
     /// Per-group normalized paths (one SampledPath per succeeded Task).
     std::unordered_map<topology::GroupId, std::vector<SampledPath>> sampled_paths_;

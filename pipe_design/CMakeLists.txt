@@ -29,7 +29,9 @@ add_library(pipe_planner
     src/planner/low/AdaptiveStepAStar.cpp
     src/planner/multi/GroupSession.cpp
     src/planner/multi/PrioritySequencer.cpp
+    src/planner/multi/PartialOrderSequencer.cpp
     src/planner/high/CBS.cpp
+    src/planner/high/PP.cpp
     src/planner/high/PBS.cpp
     src/planner/high/sequence/SequenceReplanner.cpp
     src/planner/high/sequence/GroupLayerSwapReplanner.cpp
@@ -102,6 +104,10 @@ add_test(NAME multi_unit COMMAND test_multi)
 add_executable(test_cbs tests/test_cbs.cpp)
 target_link_libraries(test_cbs PRIVATE pipe_planner)
 add_test(NAME cbs_unit COMMAND test_cbs)
+
+add_executable(test_pp tests/test_pp.cpp)
+target_link_libraries(test_pp PRIVATE pipe_planner)
+add_test(NAME pp_unit COMMAND test_pp)
 
 add_executable(test_pbs tests/test_pbs.cpp)
 target_link_libraries(test_pbs PRIVATE pipe_planner)

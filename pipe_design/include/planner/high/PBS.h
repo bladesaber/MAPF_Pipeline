@@ -1,30 +1,44 @@
 #pragma once
 
+#include "conflict/ConflictAnalyzer.h"
 #include "grid/CompositeGrid.h"
 #include "heuristic/Heuristic.h"
 #include "planner/high/HighLevelPlanner.h"
-#include "planner/high/sequence/SequenceReplanner.h"
 #include "planner/low/AStar.h"
 #include "planner/low/SearchNode.h"
 #include "planner/motion/ActionModel.h"
-#include "planner/multi/PrioritySequencer.h"
+#include "planner/multi/PartialOrderSequencer.h"
 #include "planner/open/OpenSet.h"
 #include "topology/Types.h"
 
 #include <cstddef>
-#include <string>
+#include <cstdint>
+#include <queue>
 #include <vector>
 
 namespace pipe_design::planner {
 
-/// Iterative priority repair (task-level). Priority planning has no residual
-/// geometric conflicts — only Task failures drive `SequenceReplanner`.
+/// Open-set policy for the PBS priority tree.
+enum class PBSSearchMode : std::uint8_t {
+    /// Prefer lower `cost`, then shallower `depth` (CBS-like).
+    BestFirst = 0,
+    /// Prefer deeper `depth`, then lower `cost` (classic PBS-style).
+    DepthFirst = 1,
+};
+
+/// Priority-tree high-level search (Ma-style PBS).
+///
+/// Topology frozen. Each PT node holds a `PriorityConstraint` set + leaf Tasks.
+/// Leaf routing via `PartialOrderSequencer` (warm-start from parent `snapshot`).
+/// `[V]` via injected `ConflictAnalyzer`; branch adds `task_a ≺ task_b` / reverse.
 class PBS : public HighLevelPlanner {
 public:
-    PBS() = default;
+    PBS() : open_(PTNodeGreater{PBSSearchMode::DepthFirst}) {}
     ~PBS() override = default;
 
-    /// Initial order = `plans.ordered_tasks()` ids; routes once (`depth` = 0).
+    void set_search_mode(PBSSearchMode mode) { search_mode_ = mode; }
+    PBSSearchMode search_mode() const { return search_mode_; }
+
     void reset(
         const topology::GlobalTopologyPlan& plans,
         const grid::CompositeGrid& grid,
@@ -32,41 +46,59 @@ public:
         const heuristic::Heuristic& heuristic,
         OpenSet& open,
         const motion::ActionModel& actions,
-        PrioritySequencer& sequencer,
-        SequenceReplanner& replanner);
+        PartialOrderSequencer& sequencer,
+        conflict::ConflictAnalyzer& analyzer);
 
     SearchStatus step() override;
     std::vector<topology::Task> solution() const override { return solution_; }
 
-    const std::vector<std::string>& order() const { return order_; }
-    const std::vector<topology::Task>& tasks() const { return tasks_; }
-    bool any_failure() const { return sequencer_->any_failure(); }
-
-    /// Successful sequence repairs so far (root route = 0).
-    std::size_t depth() const { return depth_; }
-    /// Sum of Task path costs when every Task succeeded; otherwise +infinity
-    /// (partial / early-stop schedules must not look cheaper).
-    double cost() const { return cost_; }
-
 protected:
-    /// Run PrioritySequencer under `order_`; fills `tasks_` / `cost_`.
-    void route();
+    struct PTNode {
+        std::vector<PriorityConstraint> constraints;
+        PartialOrderPast past;
+        std::vector<topology::Task> tasks;
+        double cost = 0.0;
+        std::size_t depth = 0;
+    };
+
+    /// Route `node` with `PartialOrderSequencer` (+ `node.past` reuse). False on failure.
+    bool route(PTNode& node);
 
 private:
+    struct PTNodeGreater {
+        PBSSearchMode mode = PBSSearchMode::DepthFirst;
+
+        bool operator()(const PTNode& a, const PTNode& b) const {
+            if (mode == PBSSearchMode::DepthFirst) {
+                if (a.depth != b.depth) {
+                    return a.depth < b.depth;  // deeper first
+                }
+                return a.cost > b.cost;
+            }
+            if (a.cost != b.cost) {
+                return a.cost > b.cost;  // cheaper first
+            }
+            return a.depth > b.depth;  // shallower first
+        }
+    };
+
+    static bool has_constraint(
+        const std::vector<PriorityConstraint>& cons,
+        const std::string& higher_id,
+        const std::string& lower_id);
+
     const topology::GlobalTopologyPlan* plans_ = nullptr;
     const grid::CompositeGrid* grid_ = nullptr;
     AStar<SearchNode>* low_ = nullptr;
     const heuristic::Heuristic* heuristic_ = nullptr;
     OpenSet* open_set_ = nullptr;
     const motion::ActionModel* actions_ = nullptr;
-    PrioritySequencer* sequencer_ = nullptr;
-    SequenceReplanner* replanner_ = nullptr;
+    PartialOrderSequencer* sequencer_ = nullptr;
+    conflict::ConflictAnalyzer* analyzer_ = nullptr;
 
-    std::vector<std::string> order_;
-    std::vector<topology::Task> tasks_;
+    PBSSearchMode search_mode_ = PBSSearchMode::DepthFirst;
+    std::priority_queue<PTNode, std::vector<PTNode>, PTNodeGreater> open_;
     std::vector<topology::Task> solution_;
-    std::size_t depth_ = 0;
-    double cost_ = 0.0;
 };
 
 }  // namespace pipe_design::planner

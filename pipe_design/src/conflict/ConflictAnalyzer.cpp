@@ -23,6 +23,7 @@ void ConflictAnalyzer::clear() {
     graphs_.clear();
     conflicts_.clear();
     clusters_.clear();
+    heuristic_ = 0.0;
 }
 
 void ConflictAnalyzer::analyze(const std::vector<const topology::Task*>& tasks) {
@@ -32,6 +33,7 @@ void ConflictAnalyzer::analyze(const std::vector<const topology::Task*>& tasks) 
     find_conflicts();
     find_clusters();
     score_all();
+    heuristic_ = estimate_heuristic();
 }
 
 void ConflictAnalyzer::normalize(const std::vector<const topology::Task*>& tasks) {
@@ -327,6 +329,10 @@ void ConflictAnalyzer::score_all() {
     for (ConflictCluster& cl : clusters_) {
         score(cl);
     }
+}
+
+double ConflictAnalyzer::estimate_heuristic() const {
+    return 0.0;
 }
 
 const ConflictCluster* ConflictAnalyzer::select_cluster() const {

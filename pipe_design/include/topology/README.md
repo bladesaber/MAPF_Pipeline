@@ -3,7 +3,7 @@
 Turns multi-terminal **groups** into which pairs to route and in what order.  
 Does **not** run grid search or resolve group–group conflicts.
 
-Detail / backlog: [`ROADMAP.md`](ROADMAP.md). Input: [`problem/Problem.h`](../problem/Problem.h). Consumers: `planner/multi/` (`GroupSession`, `PrioritySequencer`), `planner/high/` (CBS / PBS).
+Detail / backlog: [`ROADMAP.md`](ROADMAP.md). Input: [`problem/Problem.h`](../problem/Problem.h). Consumers: `planner/multi/` (`GroupSession`, `PrioritySequencer`), `planner/high/` (CBS / PP).
 
 ---
 

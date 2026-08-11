@@ -36,7 +36,7 @@ once a pipe is routed it **permanently occupies** volume. Conflicts are therefor
 ┌─────────────────────────────────────────────────────────────┐
 │  Outer [W]      Incremental Task Expansion (active_set)     │
 ├─────────────────────────────────────────────────────────────┤
-│  High-level     CBS / PBS / LNS / disjoint splitting        │
+│  High-level     CBS / PP / LNS / disjoint splitting        │
 │                 (group-level conflict resolution)           │
 ├─────────────────────────────────────────────────────────────┤
 │  Topology [T]   GroupTopologyPlan / GlobalTopologyPlan      │
@@ -59,11 +59,11 @@ once a pipe is routed it **permanently occupies** volume. Conflicts are therefor
 | Low-level | One start→goal path (incl. bi-dir, weighted, adaptive step) | Multi-query session state |
 | Topology `[T]` | Terminals → `TopologyPlan`(s) (edges + intra-group `grow_order`) | Grid search, group conflicts |
 | `conflict/` | Detect / rank group–group geometric conflicts (`[V]`) | Constraint tree, replan |
-| `planner/multi/` | Multi-query drivers: ConnectedSets / obstacle updates across rounds | Conflict tree (CBS/PBS) |
+| `planner/multi/` | Multi-query drivers: ConnectedSets / obstacle updates across rounds | Conflict tree (CBS/PP) |
 | High-level | Resolve residual group conflicts (chain / priority / LNS) | Cell rasterization |
 | Outer `[W]` | Grow `active_set` of Tasks; soft warm-start | Inner conflict proof |
 
-Cross-group **Task order** matters for PBS (`PrioritySequencer`), not for a lone CBS `GroupSession` (obstacles fixed; only intra-group `grow_order` shapes the tree).
+Cross-group **Task order** matters for PP (`PrioritySequencer`), not for a lone CBS `GroupSession` (obstacles fixed; only intra-group `grow_order` shapes the tree).
 
 ### Suggested package layout
 
@@ -81,7 +81,7 @@ pipe_design/
       motion/      # ActionModel, Six/Eight/TwentySixConnected, AdaptiveShell, …
       low/         # A*, BidirectionalAStar, FocalAStar, Theta*, AdaptiveStepAStar, …
       multi/       # GroupSession, PrioritySequencer — see multi/ROADMAP.md
-      high/        # HighLevelPlanner; CBS, PBS, LNS — see high/ROADMAP.md
+      high/        # HighLevelPlanner; CBS, PP, LNS — see high/ROADMAP.md
       window/      # (planned) Incremental Task Expansion [W]
   src/…            # mirrors include/
   tests/
@@ -113,7 +113,7 @@ TopologyBuilder owns GlobalTopologyPlan; build(const Problem&) from groups
 # Multi-query drivers (planner/multi/)
 GroupSession::reset(GroupTopologyPlan, CompositeGrid&, low, …)
 PrioritySequencer::reset(GlobalTopologyPlan, order?, CompositeGrid&, low, …)  # temp view per step
-# Same-group paths → ConnectedSet (starts/goals); other-group (PBS) → obstacles
+# Same-group paths → ConnectedSet (starts/goals); other-group (PP) → obstacles
 
 # Conflict [V] (conflict/ — on TopologyPlan Tasks; dual-point witnesses)
 Conflict = { group_a, point_a, radius_a, group_b, point_b, radius_b, deficit, task_a?, task_b?, … }
@@ -122,7 +122,7 @@ Conflict = { group_a, point_a, radius_a, group_b, point_b, radius_b, deficit, ta
 # High-level (planner/high/ — parallel to LowLevelPlanner)
 HighLevelPlanner::reset(...) ; step() / search() -> solution(): vector<Task>
 # CBS: mutate ObstacleChain → re-run GroupSession for affected group(s)
-# PBS: mutate priority / order → re-run PrioritySequencer
+# PP: mutate priority / order → re-run PrioritySequencer
 # (`solve` in prose = reset + search; same steppable contract as low/multi)
 
 # Outer window (optional scale / anytime)
@@ -204,12 +204,12 @@ Two products from `[T]`, then two drivers in `planner/multi/` — do **not** col
 | ★ `GroupTopologyPlan` / `GlobalTopologyPlan` | P0 | See `topology/ROADMAP.md` |
 | MST / Radius-spine / Steiner builders | P1–P2 | Topology catalog |
 | ★ `GroupSession` | P1 | CBS / single-group; order = intra-group only |
-| ★ `PrioritySequencer` | P1–P2 | PBS; cross-group order matters |
+| ★ `PrioritySequencer` | P1–P2 | PP; cross-group order matters |
 | ★ Outer `[W]` incremental task expansion | P2–P3 | Grow `active_set`; soft incumbent (see §8.6) |
 
 Conflict **rules** stay at **group** granularity.  
 **Intra-group** lay order ∈ `grow_order` / `GroupSession`.  
-**Cross-group** lay order ∈ PBS / `PrioritySequencer` only.  
+**Cross-group** lay order ∈ PP / `PrioritySequencer` only.  
 **Window** controls **which Tasks are considered** in one inner solve.
 
 ### 4.5 High-level conflict resolution
@@ -219,7 +219,7 @@ Conflict **rules** stay at **group** granularity.
 | ★ CBS + geometric constraints | P2 | Constraint = sphere/capsule on `ObstacleChain`; replan via `GroupSession` |
 | ★ Disjoint splitting | P2 | Stronger CBS branching |
 | ECBS | P2 | Bounded suboptimal |
-| ★ PBS | P2 | Replan via `PrioritySequencer` |
+| ★ PP | P2 | Replan via `PrioritySequencer` |
 | ★ LNS / ALNS | P3 | Scale-out when CBS explodes |
 | ICTS | P3 | Porting cost high for permanent occupancy |
 | ILP / SAT on candidates | P4 | Small instances only |
@@ -256,7 +256,7 @@ Conflict **rules** stay at **group** granularity.
 - [ ] `PrioritySequencer` (cross-group order → obstacles)  
 - [x] `HighLevelPlanner` base (steppable; parallel to low/multi)  
 - [ ] CBS with `ObstacleChain` + `GroupSession` replan + disjoint split  
-- [ ] PBS via `PrioritySequencer`  
+- [ ] PP via `PrioritySequencer`  
 
 ### Phase P3 — Quality & scale
 
@@ -320,10 +320,10 @@ cd pipe_design/build && cmake .. && cmake --build . -j && ctest --output-on-fail
 
 ## 8. Reference Flow & Mental Model
 
-**Thesis:** `[T]` builds **TopologyPlan(s)**; **`planner/multi/`** turns plans into paths via multi-round low-level search; **high-level** only mutates constraints or priority and re-invokes the right driver. CBS and PBS are **not** the same `[S]→[R]` loop.
+**Thesis:** `[T]` builds **TopologyPlan(s)**; **`planner/multi/`** turns plans into paths via multi-round low-level search; **high-level** only mutates constraints or priority and re-invokes the right driver. CBS and PP are **not** the same `[S]→[R]` loop.
 
 - **`[T]`** → `GroupTopologyPlan` / `GlobalTopologyPlan` (usually frozen inside one high-level episode).
-- **Route** → `GroupSession` **or** `PrioritySequencer` (never a single shared “schedule stage” for both CBS and PBS).
+- **Route** → `GroupSession` **or** `PrioritySequencer` (never a single shared “schedule stage” for both CBS and PP).
 - **Outer `[W]`:** grow `active_set`, soft incumbent.
 
 ### 8.1 Shared pipeline
@@ -333,7 +333,7 @@ terminals per group
     → [T] TopologyBuilder → GroupTopologyPlan(s) → GlobalTopologyPlan
     → route via planner/multi/:
          GroupSession(plan_g, ctx)              # CBS / single-group
-         OR PrioritySequencer(global, order)  # PBS
+         OR PrioritySequencer(global, order)  # PP
     → [V] group–group geometric conflicts
     → [F] high-level fix → re-invoke the matching driver (or rebuild [T])
 
@@ -342,7 +342,7 @@ terminals per group
  [R_g] GroupSession      one group; fixed obstacles; ConnectedSets
  [R_p] PrioritySequencer mixed groups; order updates obstacles
  [V] Validate            paths → OK | group–group conflicts
- [F] Fix                 CBS chain | PBS priority | LNS destroy…
+ [F] Fix                 CBS chain | PP priority | LNS destroy…
 ```
 
 ### 8.2 Two route drivers (do not unify)
@@ -357,7 +357,7 @@ GroupSession (CBS-style leaf)
       merge path → ConnectedSets
   Cross-group Task order: irrelevant here
 
-PrioritySequencer (PBS-style)
+PrioritySequencer (PP-style)
 ─────────────────────────────
   for task in global_order:
       same-group priors → ConnectedSets (starts/goals)
@@ -392,14 +392,14 @@ PrioritySequencer (PBS-style)
                 │                 └─ expand active_set ──────────────────┘
                 │
                 ├─ CBS → re-run [R_g] for affected group(s)
-                ├─ PBS → re-run [R_p] with new order
+                ├─ PP → re-run [R_p] with new order
                 └─ LNS → optional [T], then [R_g] and/or [R_p]
 ```
 
 | Method | Primary state mutated in `[F]` | Re-invoke |
 |--------|-------------------------------|-----------|
 | **CBS** | `ObstacleChain` per group | **`GroupSession`** for constrained group(s) |
-| **PBS** | priority / Task order | **`PrioritySequencer`** |
+| **PP** | priority / Task order | **`PrioritySequencer`** |
 | **LNS** | destroy Paths; optional retopologize / reorder | **`[T]`** and/or `[R_g]`/`[R_p]` |
 | **`[W]`** | grow `active_set`; soft incumbent | inner solve again |
 
@@ -433,7 +433,7 @@ flowchart TD
   F -->|re-run| Rg
 ```
 
-### 8.4 PBS (order-centric → PrioritySequencer)
+### 8.4 PP (priority planning) (order-centric → PrioritySequencer)
 
 Priority = who may claim space first. Fixing a conflict changes order, then **`PrioritySequencer`** runs again.
 
@@ -493,7 +493,7 @@ flowchart TD
 
 Partial solutions help **conditionally**: early infeasibility, anytime output, soft warm-start — **not** if paths are frozen or the window order is wrong.
 
-Keep `[W]` **minimal**: only grow `active_set` and pass a soft incumbent. Recovery (reshuffle / destroy–repair) belongs to **LNS** or PBS inside the inner solve.
+Keep `[W]` **minimal**: only grow `active_set` and pass a soft incumbent. Recovery (reshuffle / destroy–repair) belongs to **LNS** or PP inside the inner solve.
 
 ```text
 Outer Loop: Incremental Task Expansion
@@ -529,7 +529,7 @@ flowchart TD
 |----|--------|
 | Select window by spine / large radius / bottleneck pairs | Blind “first k in list” |
 | Treat incumbent as soft reference; allow full re-route in window | Freeze early paths as hard obstacles for later Tasks |
-| On window failure: stop (leave recovery to LNS/PBS if desired later) | Reshuffle / retry subsets inside `[W]` |
+| On window failure: stop (leave recovery to LNS/PP if desired later) | Reshuffle / retry subsets inside `[W]` |
 | Expand by layers (trunk → branches → tips) | Grow by arbitrary +m with no structure |
 
 **When partial solutions help:** early infeasibility pruning; structural prior; anytime UX; warm-start.  
@@ -555,13 +555,13 @@ inner_solve:
 | Strategy | Marks dirty | Next |
 |----------|-------------|------|
 | CBS | affected group + chain | `GroupSession` |
-| PBS | priority / order | `PrioritySequencer` |
+| PP | priority / order | `PrioritySequencer` |
 | LNS | destroyed Tasks (± topology) | `[T]` and/or multi/ drivers |
 | Window expand | new Tasks + soft incumbent | `[W]` → inner again |
 
 ### 8.8 One-line summary
 
-> **`[T]` builds TopologyPlan(s). Route with `GroupSession` (CBS / single-group) or `PrioritySequencer` (PBS). Outer `[W]` only grows `active_set` with a soft incumbent.**
+> **`[T]` builds TopologyPlan(s). Route with `GroupSession` (CBS / single-group) or `PrioritySequencer` (PP). Outer `[W]` only grows `active_set` with a soft incumbent.**
 
 ---
 

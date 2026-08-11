@@ -1,64 +1,10 @@
 #include "planner/multi/PrioritySequencer.h"
 
-#include "geom/Types.h"
 #include "grid/CompositeGrid.h"
 
-#include <algorithm>
-#include <cstdlib>
-#include <memory>
 #include <utility>
 
 namespace pipe_design::planner {
-
-namespace {
-
-std::shared_ptr<const grid::ObstacleChain> chain_with_path(
-    std::shared_ptr<const grid::ObstacleChain> chain,
-    const grid::StaticClearanceGrid& sg,
-    const Path& path,
-    float radius) {
-    if (path.cells.empty()) {
-        return chain;
-    }
-    if (!chain) {
-        chain = grid::ObstacleChain::make_root();
-    }
-
-    std::vector<geom::SphereObstacle> spheres;
-    std::vector<geom::CapsuleObstacle> capsules;
-
-    if (path.cells.size() == 1) {
-        spheres.push_back({sg.cell_center(path.cells[0]), radius});
-        return chain->extend(spheres, capsules);
-    }
-
-    // Merge maximal constant-direction runs, then:
-    //   Chebyshev-adjacent endpoints → sphere (grid neighborhood; any-angle safe)
-    //   otherwise → one capsule (covers long / any-angle hops)
-    std::size_t i = 0;
-    while (i + 1 < path.cells.size()) {
-        const grid::CellCoord dir = path.cells[i + 1] - path.cells[i];
-        std::size_t j = i + 1;
-        while (j + 1 < path.cells.size() &&
-               (path.cells[j + 1] - path.cells[j]) == dir) {
-            ++j;
-        }
-        const geom::Vec3 a = sg.cell_center(path.cells[i]);
-        const geom::Vec3 b = sg.cell_center(path.cells[j]);
-        const grid::CellCoord d = path.cells[j] - path.cells[i];
-        const int cheb = std::max({std::abs(d.x), std::abs(d.y), std::abs(d.z)});
-        if (cheb == 1) {
-            spheres.push_back({b, radius});
-        } else {
-            capsules.push_back({a, b, radius});
-        }
-        i = j;
-    }
-
-    return chain->extend(spheres, capsules);
-}
-
-}  // namespace
 
 const topology::GroupTopologyPlan* PrioritySequencer::group_of(const topology::GroupId& id) const {
     return plans_->find_group(id);
@@ -105,6 +51,22 @@ void PrioritySequencer::reset(
         order.push_back(t.task_id);
     }
     reset(plans, order, grid, low, heuristic, open, actions, stop_on_failure);
+}
+
+void PrioritySequencer::reset(
+    const topology::GlobalTopologyPlan& plans,
+    const grid::CompositeGrid& grid,
+    AStar<SearchNode>& low,
+    const heuristic::Heuristic& heuristic,
+    OpenSet& open,
+    const motion::ActionModel& actions,
+    const std::vector<topology::Task>& past,
+    bool stop_on_failure) {
+    std::vector<std::string> order;
+    for (const topology::Task& t : plans.ordered_tasks()) {
+        order.push_back(t.task_id);
+    }
+    reset(plans, order, grid, low, heuristic, open, actions, past, stop_on_failure);
 }
 
 void PrioritySequencer::reset(
@@ -172,6 +134,47 @@ void PrioritySequencer::reset(
         return;
     }
     status_ = SearchStatus::Running;
+}
+
+void PrioritySequencer::reset(
+    const topology::GlobalTopologyPlan& plans,
+    const std::vector<std::string>& order,
+    const grid::CompositeGrid& grid,
+    AStar<SearchNode>& low,
+    const heuristic::Heuristic& heuristic,
+    OpenSet& open,
+    const motion::ActionModel& actions,
+    const std::vector<topology::Task>& past,
+    bool stop_on_failure) {
+    reset(plans, order, grid, low, heuristic, open, actions, stop_on_failure);
+    if (status_ != SearchStatus::Running) {
+        return;
+    }
+
+    // Replay common successful prefix; cursor_ skips re-search.
+    const std::size_t n = std::min(tasks_.size(), past.size());
+    for (std::size_t i = 0; i < n; ++i) {
+        if (tasks_[i].task_id != past[i].task_id || !past[i].succeeded()) {
+            break;
+        }
+        const topology::GroupTopologyPlan* gplan = group_of(tasks_[i].group_id);
+        if (gplan == nullptr) {
+            break;
+        }
+        const topology::TopologyEdge* edge = gplan->find_edge(tasks_[i].edge_id);
+        if (edge == nullptr || term_comp_.count(edge->u) == 0 || term_comp_.count(edge->v) == 0) {
+            break;
+        }
+        tasks_[i].set_result(SearchStatus::Success, past[i].path);
+        merge_path(edge->u, edge->v, tasks_[i].path);
+        committed_.push_back(Committed{tasks_[i].group_id, i, edge->radius});
+        last_finished_ = i;
+        cursor_ = i + 1;
+    }
+
+    if (cursor_ >= tasks_.size()) {
+        status_ = SearchStatus::Success;
+    }
 }
 
 SearchStatus PrioritySequencer::step_task() {

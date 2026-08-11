@@ -4,7 +4,7 @@ Detail companion to [`../../ROADMAP.md`](../../ROADMAP.md) §2 / §8.
 
 Drivers that wrap a `LowLevelPlanner` and run **many** start–goal queries while mutating
 session state (connected sets, obstacles). They are still planners — not high-level conflict
-resolution (CBS/PBS/LNS live in `planner/high/`).
+resolution (CBS/PP/LNS live in `planner/high/`).
 
 Legacy analogy: `pathSearch_pkg(legacy)` `SetPlanner` / `SetPairNodePlanner` (logic only).
 
@@ -12,10 +12,10 @@ Legacy analogy: `pathSearch_pkg(legacy)` `SetPlanner` / `SetPairNodePlanner` (lo
 
 ## Why multi/
 
-Low-level answers **one** query. A group (or PBS schedule) needs **many** queries where:
+Low-level answers **one** query. A group (or PP schedule) needs **many** queries where:
 
 - **Same-group** previous paths update **starts / goals** (connected sets → tree / sharing).
-- **Other-group** previous paths become **obstacles** (PBS), or stay fixed in the grid view (CBS group replan).
+- **Other-group** previous paths become **obstacles** (PP), or stay fixed in the grid view (CBS group replan).
 
 Without this layer, TopologyPlan edges have no session that turns them into sequenced searches.
 
@@ -26,7 +26,7 @@ Without this layer, TopologyPlan edges have no session that turns them into sequ
 | Driver | Scope | Typical caller |
 |--------|--------|----------------|
 | ★ `GroupSession` | One group; obstacles **fixed** for the session | CBS node replan; single-group solve |
-| ★ `PrioritySequencer` | Mix of groups; after each path, update context by group | PBS; priority-based sequential design |
+| ★ `PrioritySequencer` | Mix of groups; after each path, update context by group | PP; priority-based sequential design |
 
 **Contract line:** `[T]` builds `TopologyPlan`(s); **multi/** routes them; **high/** resolves residual group conflicts by changing chain / priority and re-invoking multi/.
 
@@ -97,7 +97,7 @@ Caller owns:  TopologyPlan(s), CompositeGrid (read-only entry), LowLevelPlanner,
 Multi owns:   session cursor, ConnectedSets, Task list (results on Task), status_/expansions_
 ```
 
-Per-Task geometry lives on **`Task.status` / `Task.path`**. PBS builds a temporary `CompositeGrid(static, chain)` per step — entry grid is never mutated.
+Per-Task geometry lives on **`Task.status` / `Task.path`**. PP builds a temporary `CompositeGrid(static, chain)` per step — entry grid is never mutated.
 
 ---
 
@@ -125,10 +125,16 @@ GroupSession : MultiQueryPlanner
 
 # --- PrioritySequencer ---
 PrioritySequencer : MultiQueryPlanner
-  reset(plans, ctx, …) | reset(plans, order, ctx, …)  # order optional → ordered_tasks()
-        low, heuristic, open, actions) -> void
-  step_task()  # one Task; temp CompositeGrid; set_result; commit
-  last_path() / tasks() / search() / status() / expansions()
+  reset(plans, order?, …) -> void
+  step_task()  # foreign committed → obstacles
+
+# --- PartialOrderSequencer (PBS leaf) ---
+PriorityConstraint = { higher_id, lower_id }   # higher ≺ lower
+PartialOrderSequencer : MultiQueryPlanner
+  reset(plans, constraints[], …) -> void      # topo_sort → order
+  topological_sort(seed, constraints) static
+  higher_of(task_id) -> set of task_id   # transitive
+  step_task()  # obstacles = foreign ∩ higher_of(current); fail → stop
 ```
 
 Usage sketch (same shape as A\*):
@@ -151,7 +157,7 @@ if (session.status() == Success) {
 | Other-group path | Already in `ctx` obstacles; **unchanged** during session | → **obstacles** for later lower-priority tasks |
 
 Cross-group Task order does **not** matter inside a lone `GroupSession` (CBS-style).  
-It **does** matter for `PrioritySequencer` (PBS-style).
+It **does** matter for `PrioritySequencer` (PP-style).
 
 ---
 
@@ -161,7 +167,8 @@ It **does** matter for `PrioritySequencer` (PBS-style).
 |-------|----------|-------|
 | `MultiQueryPlanner` base | P0 | Align with `LowLevelPlanner` control API |
 | `GroupSession` | P1 | SetPlanner-like; ★ for CBS / single group |
-| `PrioritySequencer` | P1–P2 | PBS sequential; owns cross-group order application |
+| `PrioritySequencer` | P1–P2 | PP sequential; owns cross-group order application |
+| `PartialOrderSequencer` | P2 | PBS leaf; `PriorityConstraint` set → topo + `higher_of` |
 | Task view from `TopologyEdge` | P0 | Export helper; priority table separate |
 | README + unit tests (toy grids) | P1 | Steppable session like `test_astar` |
 
@@ -176,8 +183,10 @@ include/planner/multi/
   MultiQueryPlanner.h
   GroupSession.h
   PrioritySequencer.h
+  PartialOrderSequencer.h
 
 src/planner/multi/
   GroupSession.cpp
   PrioritySequencer.cpp
+  PartialOrderSequencer.cpp
 ```

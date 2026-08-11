@@ -6,7 +6,7 @@ Resolvers that detect **group–group** geometric conflicts and fix them by muta
 constraints / priorities / neighborhoods, then **re-invoke** `planner/multi/` drivers.
 They do **not** own cell search or TopologyPlan construction.
 
-Legacy analogy: classical CBS / PBS / LNS outer loops (logic only; occupancy is permanent).
+Legacy analogy: classical CBS / PP / LNS outer loops (logic only; occupancy is permanent).
 
 ---
 
@@ -18,7 +18,8 @@ priority order). Residual **cross-group** conflicts need a search over those lea
 | Method | State mutated in `[F]` | Re-invoke |
 |--------|------------------------|-----------|
 | CBS | `ObstacleChain` (sphere/capsule constraints) | `GroupSession` for affected group(s) |
-| PBS | priority / Task order | `PrioritySequencer` |
+| PP | priority / Task order | `PrioritySequencer` |
+| PBS | `PriorityConstraint` DAG | `PartialOrderSequencer` |
 | LNS / ALNS | destroy Task subset; optional retopologize | `[T]` and/or `GroupSession` / sequencer |
 
 Without this layer, multi/ can only produce a single schedule; it cannot branch or repair.
@@ -32,7 +33,7 @@ Without this layer, multi/ can only produce a single schedule; it cannot branch 
 | ★ `HighLevelPlanner` | Steppable base (status / expansions / hooks) | tools, window `[W]`, benches |
 | ★ CBS (+ disjoint split) | Constraint tree; geometric `ObstacleChain` | `GroupSession` |
 | ECBS | Bounded-suboptimal CBS | `GroupSession` |
-| ★ PBS | Priority DAG / order search | `PrioritySequencer` |
+| ★ PP | Priority planning + SequenceReplanner | `PrioritySequencer` |
 | ★ LNS / ALNS | Destroy–repair neighborhoods | multi/ ± `[T]` |
 | ICTS / ILP-SAT | Later / small instances | — |
 
@@ -80,7 +81,7 @@ One **high-level iteration**, not one cell and not necessarily one Task:
 | Algorithm | Typical `step()` |
 |-----------|------------------|
 | CBS | Pop CT node → `[V]` → if conflict, branch (extend chains) + `GroupSession` children; else Success |
-| PBS | Route → on Task failure, `SequenceReplanner` + `PrioritySequencer` |
+| PP | Route → on Task failure, `SequenceReplanner` + `PrioritySequencer` |
 | LNS | Destroy subset → optional `[T]` → repair via multi/ → accept/reject |
 
 - If a leaf is conflict-free → high `Success`; `solution()` holds that leaf’s Tasks.
@@ -98,7 +99,7 @@ High owns:    conflict-tree / priority state / LNS neighborhood, incumbent Tasks
               status_ / expansions_
 ```
 
-Topology is usually **frozen** for one high-level episode (CBS / PBS). LNS may call
+Topology is usually **frozen** for one high-level episode (CBS / PP). LNS may call
 `TopologyBuilder::replan()` or rebuild via `build()`.
 
 ---
@@ -121,8 +122,8 @@ CBS : HighLevelPlanner
   constrain(chain, conflict, group)  # virtual; default = other witness sphere
   solution()
 
-# --- PBS ---
-PBS : HighLevelPlanner
+# --- PP ---
+PP : HighLevelPlanner
   reset(plans, grid, low, heuristic, open, actions,
         sequencer, replanner: SequenceReplanner&) -> void
   step()  # Task failure → SequenceReplanner::replan → PrioritySequencer
@@ -130,6 +131,13 @@ PBS : HighLevelPlanner
 
 SequenceReplanner          # base: history / status; replan() pure virtual
 GroupLayerSwapReplanner  # group-layer: swap failed-layer prefix with prev-layer suffix
+
+# --- PBS ---
+PBS : HighLevelPlanner
+  reset(plans, grid, low, heuristic, open, actions,
+        sequencer: PartialOrderSequencer&, analyzer: ConflictAnalyzer&) -> void
+  step()  # pop PT → [V] → branch PriorityConstraint + PartialOrderSequencer
+  solution()
 
 # --- LNS (planned) ---
 LNS : HighLevelPlanner
@@ -159,7 +167,8 @@ if (cbs.status() == Success) {
 | ★ CBS + geometric constraints | P2 | Constraint = other witness sphere on `ObstacleChain` |
 | ★ Disjoint splitting | P2 | Override `CBS::constrain` |
 | ECBS | P2 | Bounded suboptimal |
-| ★ PBS | P2 | Failure-driven task-order repair; no ConflictAnalyzer; `test_pbs` |
+| ★ PP | P2 | Failure-driven task-order repair; no ConflictAnalyzer; `test_pp` |
+| ★ PBS | P2 | Priority tree; `PartialOrderSequencer` + `ConflictAnalyzer`; `test_pbs` |
 | ★ LNS / ALNS | P3 | Scale-out when CBS explodes |
 | ICTS | P3 | Porting cost high for permanent occupancy |
 | ILP / SAT on candidates | P4 | Small instances only |
@@ -174,6 +183,7 @@ include/planner/high/
   ROADMAP.md
   HighLevelPlanner.h
   CBS.h
+  PP.h
   PBS.h
   sequence/
     SequenceReplanner.h
@@ -182,6 +192,7 @@ include/planner/high/
 
 src/planner/high/
   CBS.cpp
+  PP.cpp
   PBS.cpp
   sequence/
     SequenceReplanner.cpp

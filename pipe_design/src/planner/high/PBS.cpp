@@ -1,9 +1,42 @@
 #include "planner/high/PBS.h"
 
-#include <limits>
 #include <utility>
 
 namespace pipe_design::planner {
+
+bool PBS::has_constraint(
+    const std::vector<PriorityConstraint>& cons,
+    const std::string& higher_id,
+    const std::string& lower_id) {
+    for (const PriorityConstraint& c : cons) {
+        if (c.higher_id == higher_id && c.lower_id == lower_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool PBS::route(PTNode& node) {
+    sequencer_->reset(
+        *plans_,
+        node.constraints,
+        *grid_,
+        *low_,
+        *heuristic_,
+        *open_set_,
+        *actions_,
+        node.past);
+    if (sequencer_->search() != SearchStatus::Success || sequencer_->any_failure()) {
+        return false;
+    }
+    node.tasks = sequencer_->tasks();
+    node.past = sequencer_->snapshot();
+    node.cost = 0.0;
+    for (const topology::Task& t : node.tasks) {
+        node.cost += t.path.cost;
+    }
+    return true;
+}
 
 void PBS::reset(
     const topology::GlobalTopologyPlan& plans,
@@ -12,8 +45,8 @@ void PBS::reset(
     const heuristic::Heuristic& heuristic,
     OpenSet& open,
     const motion::ActionModel& actions,
-    PrioritySequencer& sequencer,
-    SequenceReplanner& replanner) {
+    PartialOrderSequencer& sequencer,
+    conflict::ConflictAnalyzer& analyzer) {
     plans_ = &plans;
     grid_ = &grid;
     low_ = &low;
@@ -21,26 +54,34 @@ void PBS::reset(
     open_set_ = &open;
     actions_ = &actions;
     sequencer_ = &sequencer;
-    replanner_ = &replanner;
+    analyzer_ = &analyzer;
 
-    order_.clear();
-    tasks_.clear();
     solution_.clear();
+    open_ = std::priority_queue<PTNode, std::vector<PTNode>, PTNodeGreater>(
+        PTNodeGreater{search_mode_});
     expansions_ = 0;
-    depth_ = 0;
-    cost_ = 0.0;
 
     if (plans_ == nullptr || grid_ == nullptr || low_ == nullptr || heuristic_ == nullptr ||
         open_set_ == nullptr || actions_ == nullptr || sequencer_ == nullptr ||
-        replanner_ == nullptr) {
+        analyzer_ == nullptr) {
         status_ = SearchStatus::Failure;
         return;
     }
 
-    for (const topology::Task& t : plans_->ordered_tasks()) {
-        order_.push_back(t.task_id);
+    PTNode root;
+    // Intra-group grow_order as priority edges (higher = earlier).
+    for (const topology::GroupTopologyPlan& g : plans_->groups) {
+        const std::vector<topology::Task> ordered = g.ordered_tasks();
+        for (std::size_t i = 1; i < ordered.size(); ++i) {
+            root.constraints.emplace_back(ordered[i - 1].task_id, ordered[i].task_id);
+        }
     }
-    route();
+
+    if (!route(root)) {
+        status_ = SearchStatus::Failure;
+        return;
+    }
+    open_.push(std::move(root));
     status_ = SearchStatus::Running;
 }
 
@@ -48,47 +89,57 @@ SearchStatus PBS::step() {
     if (status_ != SearchStatus::Running) {
         return status_;
     }
+    if (open_.empty()) {
+        status_ = SearchStatus::Failure;
+        return status_;
+    }
 
+    PTNode node = open_.top();
+    open_.pop();
     ++expansions_;
 
-    if (!sequencer_->any_failure()) {
-        solution_ = tasks_;
+    std::vector<const topology::Task*> refs;
+    refs.reserve(node.tasks.size());
+    for (const topology::Task& t : node.tasks) {
+        refs.push_back(&t);
+    }
+
+    analyzer_->set_grid(&grid_->static_grid());
+    analyzer_->set_plans(plans_);
+    analyzer_->analyze(refs);
+
+    if (analyzer_->conflicts().empty()) {
+        solution_ = node.tasks;
         status_ = SearchStatus::Success;
         return status_;
     }
 
-    std::vector<std::string> next = replanner_->replan(order_, tasks_);
-    if (next.empty() || replanner_->status() == ReplanStatus::Failure) {
-        status_ = SearchStatus::Failure;
-        return status_;
+    const conflict::Conflict* conflict = analyzer_->select_conflict();
+    if (conflict == nullptr || conflict->task_a.empty() || conflict->task_b.empty()) {
+        throw std::runtime_error("PBS: ConflictAnalyzer::select_conflict returned null or empty task ids");
     }
-    order_ = std::move(next);
 
-    route();
-    ++depth_;
-    return status_;
-}
-
-void PBS::route() {
-    sequencer_->reset(
-        *plans_,
-        order_,
-        *grid_,
-        *low_,
-        *heuristic_,
-        *open_set_,
-        *actions_,
-        replanner_->stop_on_failure());
-    sequencer_->search();
-    tasks_ = sequencer_->tasks();
-    cost_ = 0.0;
-    for (const topology::Task& t : tasks_) {
-        if (!t.succeeded()) {
-            cost_ = std::numeric_limits<double>::infinity();
-            return;
+    // Child: task_a ≺ task_b (a plans first).
+    if (!has_constraint(node.constraints, conflict->task_a, conflict->task_b)) {
+        PTNode child = node;
+        child.depth = node.depth + 1;
+        child.constraints.emplace_back(conflict->task_a, conflict->task_b);
+        if (route(child)) {
+            open_.push(std::move(child));
         }
-        cost_ += t.path.cost;
     }
+
+    // Child: task_b ≺ task_a.
+    if (!has_constraint(node.constraints, conflict->task_b, conflict->task_a)) {
+        PTNode child = node;
+        child.depth = node.depth + 1;
+        child.constraints.emplace_back(conflict->task_b, conflict->task_a);
+        if (route(child)) {
+            open_.push(std::move(child));
+        }
+    }
+
+    return status_;
 }
 
 }  // namespace pipe_design::planner

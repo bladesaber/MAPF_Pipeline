@@ -27,7 +27,7 @@ Three places decide “blocked / conflict” in the stack:
 
 | Layer | Code | Role |
 |-------|------|------|
-| High-level `[V]` | `ConflictAnalyzer::find_conflicts` | Declare group–group conflicts → CBS/PBS `[F]` |
+| High-level `[V]` | `ConflictAnalyzer::find_conflicts` | Declare group–group conflicts → CBS/PP `[F]` |
 | Low-level search | `CompositeGrid::is_free` | Accept / reject cells while routing |
 | Path → obstacle | `chain_with_path` (multi/) | Bake a routed path into `ObstacleChain` |
 
@@ -49,7 +49,7 @@ occupancy must make low-level search reject that geometry.
 1. Analyzer reports a conflict → high-level adds a constraint / extends the chain  
 2. Low-level replan still sees the region as free (`is_free` / chain geometry disagree)  
 3. Search returns essentially the same path  
-4. Analyzer reports the **same** conflict again → **infinite CBS/PBS loop**
+4. Analyzer reports the **same** conflict again → **infinite CBS/PP loop**
 
 If Analyzer is **relaxed** (or aligned) relative to occupancy, every reported conflict
 is enforceable → replan can make progress.

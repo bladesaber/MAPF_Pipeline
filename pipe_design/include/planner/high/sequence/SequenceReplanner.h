@@ -22,7 +22,7 @@ struct PlanRecord {
     std::vector<SearchStatus> statuses;
 };
 
-/// Base for failure-driven Task-order repair (PBS).
+/// Base for failure-driven Task-order repair (PP).
 ///
 /// Owns current `order_`, replan `status_`, and `history_`. Policy lives in subclasses;
 /// `replan` is pure virtual. Intra-group relative order should stay fixed in all policies.
