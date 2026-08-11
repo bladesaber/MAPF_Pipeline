@@ -1,5 +1,6 @@
 #include "planner/high/PBS.h"
 
+#include <limits>
 #include <utility>
 
 namespace pipe_design::planner {
@@ -39,10 +40,7 @@ void PBS::reset(
     for (const topology::Task& t : plans_->ordered_tasks()) {
         order_.push_back(t.task_id);
     }
-    if (!route()) {
-        status_ = SearchStatus::Failure;
-        return;
-    }
+    route();
     status_ = SearchStatus::Running;
 }
 
@@ -60,32 +58,37 @@ SearchStatus PBS::step() {
     }
 
     std::vector<std::string> next = replanner_->replan(order_, tasks_);
-    if (next == order_) {
+    if (next.empty() || replanner_->status() == ReplanStatus::Failure) {
         status_ = SearchStatus::Failure;
         return status_;
     }
     order_ = std::move(next);
 
-    if (!route()) {
-        status_ = SearchStatus::Failure;
-        return status_;
-    }
+    route();
     ++depth_;
     return status_;
 }
 
-bool PBS::route() {
+void PBS::route() {
     sequencer_->reset(
-        *plans_, order_, *grid_, *low_, *heuristic_, *open_set_, *actions_);
-    if (sequencer_->search() != SearchStatus::Success) {
-        return false;
-    }
+        *plans_,
+        order_,
+        *grid_,
+        *low_,
+        *heuristic_,
+        *open_set_,
+        *actions_,
+        replanner_->stop_on_failure());
+    sequencer_->search();
     tasks_ = sequencer_->tasks();
     cost_ = 0.0;
     for (const topology::Task& t : tasks_) {
+        if (!t.succeeded()) {
+            cost_ = std::numeric_limits<double>::infinity();
+            return;
+        }
         cost_ += t.path.cost;
     }
-    return true;
 }
 
 }  // namespace pipe_design::planner

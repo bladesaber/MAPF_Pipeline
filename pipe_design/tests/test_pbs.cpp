@@ -3,7 +3,7 @@
 #include "grid/StaticClearanceGrid.h"
 #include "heuristic/Geometric.h"
 #include "planner/high/PBS.h"
-#include "planner/high/sequence/SequenceReplanner.h"
+#include "planner/high/sequence/FailureBlockReplanner.h"
 #include "planner/low/AStar.h"
 #include "planner/motion/SixConnected.h"
 #include "planner/multi/PrioritySequencer.h"
@@ -19,12 +19,12 @@ using pipe_design::grid::CompositeGrid;
 using pipe_design::grid::StaticClearanceGrid;
 using pipe_design::heuristic::Manhattan;
 using pipe_design::planner::AStar;
+using pipe_design::planner::FailureBlockReplanner;
 using pipe_design::planner::LazyBinaryHeap;
 using pipe_design::planner::PBS;
 using pipe_design::planner::PrioritySequencer;
 using pipe_design::planner::SearchNode;
 using pipe_design::planner::SearchStatus;
-using pipe_design::planner::SequenceReplanner;
 using pipe_design::planner::motion::SixConnected;
 using pipe_design::topology::EdgeKind;
 using pipe_design::topology::GlobalTopologyPlan;
@@ -69,7 +69,7 @@ static void test_parallel_ok() {
     LazyBinaryHeap open;
     AStar<SearchNode> low;
     PrioritySequencer sequencer;
-    SequenceReplanner replanner;
+    FailureBlockReplanner replanner;
 
     GlobalTopologyPlan plans;
     plans.groups.push_back(make_pair_group("A", Vec3{0.5f, 1.5f, 0.5f}, Vec3{10.5f, 1.5f, 0.5f}));
@@ -96,7 +96,7 @@ static void test_crossing_ok() {
     LazyBinaryHeap open;
     AStar<SearchNode> low;
     PrioritySequencer sequencer;
-    SequenceReplanner replanner;
+    FailureBlockReplanner replanner;
 
     GlobalTopologyPlan plans;
     plans.groups.push_back(make_pair_group("A", Vec3{0.5f, 5.5f, 0.5f}, Vec3{10.5f, 5.5f, 0.5f}));

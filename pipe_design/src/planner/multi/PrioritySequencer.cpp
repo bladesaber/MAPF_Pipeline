@@ -98,12 +98,13 @@ void PrioritySequencer::reset(
     AStar<SearchNode>& low,
     const heuristic::Heuristic& heuristic,
     OpenSet& open,
-    const motion::ActionModel& actions) {
+    const motion::ActionModel& actions,
+    bool stop_on_failure) {
     std::vector<std::string> order;
     for (const topology::Task& t : plans.ordered_tasks()) {
         order.push_back(t.task_id);
     }
-    reset(plans, order, grid, low, heuristic, open, actions);
+    reset(plans, order, grid, low, heuristic, open, actions, stop_on_failure);
 }
 
 void PrioritySequencer::reset(
@@ -113,7 +114,8 @@ void PrioritySequencer::reset(
     AStar<SearchNode>& low,
     const heuristic::Heuristic& heuristic,
     OpenSet& open,
-    const motion::ActionModel& actions) {
+    const motion::ActionModel& actions,
+    bool stop_on_failure) {
     plans_ = &plans;
     static_grid_ = &grid.static_grid();
     base_chain_ = grid.chain();
@@ -124,6 +126,7 @@ void PrioritySequencer::reset(
     expansions_ = 0;
     cursor_ = 0;
     last_finished_ = static_cast<std::size_t>(-1);
+    stop_on_failure_ = stop_on_failure;
     tasks_.clear();
     term_comp_.clear();
     comps_.clear();
@@ -215,6 +218,10 @@ SearchStatus PrioritySequencer::step_task() {
     if (low_->status() != SearchStatus::Success) {
         task.set_result(SearchStatus::Failure, {});
         ++cursor_;
+        if (stop_on_failure_) {
+            status_ = SearchStatus::Failure;
+            return status_;
+        }
         status_ = (cursor_ >= tasks_.size()) ? SearchStatus::Success : SearchStatus::Running;
         return status_;
     }

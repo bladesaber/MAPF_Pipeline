@@ -1,92 +1,43 @@
 #include "planner/high/sequence/SequenceReplanner.h"
 
-#include "planner/low/LowLevelPlanner.h"
-
-#include <algorithm>
 #include <unordered_map>
-#include <utility>
 
 namespace pipe_design::planner {
 
-namespace {
-
-std::vector<std::string> move_group_before(
-    const std::vector<std::string>& order,
-    const topology::GroupId& late_group,
-    const std::string& early_task,
-    const std::unordered_map<std::string, topology::GroupId>& group_of) {
-    std::vector<std::string> late_tasks;
-    std::vector<std::string> rest;
-    late_tasks.reserve(order.size());
-    rest.reserve(order.size());
-    for (const std::string& id : order) {
-        const auto it = group_of.find(id);
-        if (it != group_of.end() && it->second == late_group) {
-            late_tasks.push_back(id);
-        } else {
-            rest.push_back(id);
-        }
-    }
-    if (late_tasks.empty()) {
-        return order;
-    }
-
-    const auto insert_at = std::find(rest.begin(), rest.end(), early_task);
-    if (insert_at == rest.end()) {
-        return order;
-    }
-
-    std::vector<std::string> out;
-    out.reserve(order.size());
-    out.insert(out.end(), rest.begin(), insert_at);
-    out.insert(out.end(), late_tasks.begin(), late_tasks.end());
-    out.insert(out.end(), insert_at, rest.end());
-    return out;
+void SequenceReplanner::clear() {
+    order_.clear();
+    history_.clear();
+    status_ = ReplanStatus::Ready;
+    // keep stop_on_failure_ (policy preference)
 }
 
-}  // namespace
+bool SequenceReplanner::order_used(const std::vector<std::string>& order) const {
+    for (const PlanRecord& record : history_) {
+        if (record.order == order) {
+            return true;
+        }
+    }
+    return false;
+}
 
-std::vector<std::string> SequenceReplanner::replan(
+PlanRecord SequenceReplanner::make_plan_record(
     const std::vector<std::string>& order,
-    const std::vector<topology::Task>& tasks) const {
-    std::unordered_map<std::string, const topology::Task*> by_id;
-    std::unordered_map<std::string, topology::GroupId> group_of;
-    by_id.reserve(tasks.size());
-    group_of.reserve(tasks.size());
+    const std::vector<topology::Task>& tasks) {
+    std::unordered_map<std::string, SearchStatus> status_of;
+    status_of.reserve(tasks.size());
     for (const topology::Task& t : tasks) {
-        by_id[t.task_id] = &t;
-        group_of[t.task_id] = t.group_id;
+        status_of[t.task_id] = t.status;
     }
 
-    std::string early_task;
-    std::string late_task;
-
+    PlanRecord record;
+    record.order = order;
+    record.statuses.reserve(order.size());
     for (const std::string& id : order) {
-        const auto it = by_id.find(id);
-        if (it == by_id.end() || it->second->status != SearchStatus::Failure) {
-            continue;
-        }
-        late_task = id;
-        for (const std::string& prev : order) {
-            if (prev == id) {
-                break;
-            }
-            const auto pit = group_of.find(prev);
-            if (pit != group_of.end() && pit->second != group_of[id]) {
-                early_task = prev;
-            }
-        }
-        break;
+        const auto it = status_of.find(id);
+        record.statuses.push_back(
+            it != status_of.end() ? it->second : SearchStatus::Ready);
     }
-
-    if (early_task.empty() || late_task.empty()) {
-        return order;
-    }
-    if (group_of[early_task] == group_of[late_task]) {
-        return order;
-    }
-
-    return move_group_before(order, group_of[late_task], early_task, group_of);
+    return record;
 }
 
 }  // namespace pipe_design::planner

@@ -27,13 +27,16 @@ public:
 
     /// Schedule from `plans.ordered_tasks()`.
     /// `grid` is read-only: only its static field + entry chain are used as base.
+    /// `stop_on_failure`: if true, pathfinding failure sets session Failure and stops;
+    /// otherwise continue remaining Tasks (PBS default; inspect via `any_failure()`).
     void reset(
         const topology::GlobalTopologyPlan& plans,
         const grid::CompositeGrid& grid,
         AStar<SearchNode>& low,
         const heuristic::Heuristic& heuristic,
         OpenSet& open,
-        const motion::ActionModel& actions);
+        const motion::ActionModel& actions,
+        bool stop_on_failure = false);
 
     /// Explicit task_id order (e.g. PBS priority list).
     void reset(
@@ -43,7 +46,8 @@ public:
         AStar<SearchNode>& low,
         const heuristic::Heuristic& heuristic,
         OpenSet& open,
-        const motion::ActionModel& actions);
+        const motion::ActionModel& actions,
+        bool stop_on_failure = false);
 
     SearchStatus step_task() override;
     Path last_path() const override;
@@ -83,6 +87,7 @@ private:
     std::vector<topology::Task> tasks_;
     std::size_t cursor_ = 0;
     std::size_t last_finished_ = static_cast<std::size_t>(-1);
+    bool stop_on_failure_ = false;
 
     std::unordered_map<topology::TerminalId, std::size_t> term_comp_;
     std::vector<std::vector<grid::CellCoord>> comps_;

@@ -40,15 +40,17 @@ public:
 
     const std::vector<std::string>& order() const { return order_; }
     const std::vector<topology::Task>& tasks() const { return tasks_; }
+    bool any_failure() const { return sequencer_->any_failure(); }
 
     /// Successful sequence repairs so far (root route = 0).
     std::size_t depth() const { return depth_; }
-    /// Sum of Task path costs after the last successful `route()`.
+    /// Sum of Task path costs when every Task succeeded; otherwise +infinity
+    /// (partial / early-stop schedules must not look cheaper).
     double cost() const { return cost_; }
 
 protected:
-    /// Run PrioritySequencer under `order_`; fills `tasks_` / `cost_`. False on setup failure.
-    bool route();
+    /// Run PrioritySequencer under `order_`; fills `tasks_` / `cost_`.
+    void route();
 
 private:
     const topology::GlobalTopologyPlan* plans_ = nullptr;

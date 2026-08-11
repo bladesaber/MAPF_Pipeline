@@ -128,9 +128,8 @@ PBS : HighLevelPlanner
   step()  # Task failure → SequenceReplanner::replan → PrioritySequencer
   solution()
 
-SequenceReplanner
-  replan(order, tasks) -> new task_id order
-  # default: keep intra-group order; move failed group's block before last foreign prior
+SequenceReplanner          # base: history / status; replan() pure virtual
+FailureBlockReplanner      # default: move failed group block before last foreign prior
 
 # --- LNS (planned) ---
 LNS : HighLevelPlanner
@@ -178,6 +177,7 @@ include/planner/high/
   PBS.h
   sequence/
     SequenceReplanner.h
+    FailureBlockReplanner.h
   LNS.h            # planned
 
 src/planner/high/
@@ -185,5 +185,6 @@ src/planner/high/
   PBS.cpp
   sequence/
     SequenceReplanner.cpp
+    FailureBlockReplanner.cpp
   LNS.cpp          # planned
 ```
