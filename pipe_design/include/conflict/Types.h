@@ -16,6 +16,8 @@ struct SampledPoint {
     geom::Vec3 center;
     float radius = 0.f;
 
+    /// TODO: add one more parameter to indicate whether its sampled or cell center, so we need to change name of this class
+
     SampledPoint() = default;
     SampledPoint(geom::Vec3 center_, float radius_) : center(center_), radius(radius_) {}
 };

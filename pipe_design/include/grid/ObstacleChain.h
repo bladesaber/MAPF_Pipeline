@@ -6,6 +6,10 @@
 #include <memory>
 #include <vector>
 
+/// TODO: change class to Dynamic Constraint Chain
+/// std::vector<geom::SphereObstacle> spheres_, std::vector<geom::CapsuleObstacle> capsules_ is not enough,
+/// we need new classes which contain SphereObstacle, type[positive, negative], step_length(the time axis in normal mapf)
+
 namespace pipe_design::grid {
 
 /// Immutable constraint list with parent sharing (CBS-friendly COW).

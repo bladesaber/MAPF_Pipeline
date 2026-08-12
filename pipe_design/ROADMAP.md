@@ -217,11 +217,12 @@ Conflict **rules** stay at **group** granularity.
 | Algorithm | Priority | Notes |
 |-----------|----------|-------|
 | ★ CBS + geometric constraints | P2 | Constraint = sphere/capsule on `ObstacleChain`; replan via `GroupSession` |
-| ★ Disjoint splitting | P2 | Stronger CBS branching |
+| ★ Disjoint splitting | P2 | Classic idea; continuous witnesses make it hard — see below |
 | ECBS | P2 | Bounded suboptimal |
 | ★ PP | P2 | Replan via `PrioritySequencer` |
 | ★ LNS / ALNS | P3 | Scale-out when CBS explodes |
-| ICTS | P3 | Porting cost high for permanent occupancy |
+| ICTS / MDD | — | **Reject** — see §10 |
+| ★ CAT (geometric) | P2 | Soft avoid other groups' current paths; see §10 |
 | ILP / SAT on candidates | P4 | Small instances only |
 
 ---
@@ -574,3 +575,19 @@ Open issues deferred until core CBS / low-level is stable enough to profile.
 Each CBS `extend` adds **one** obstacle per node → a long COW list (`local_count ≈ 1`). Today `collides` / `clearance` walk **all ancestors** (O(N) per A\* check). Per-link BVH is useless.
 
 **Later:** profile first; if N is large, give each node a BVH over the **full effective set**, COW-updated on `extend`, so queries hit one index (not the parent chain). Harder than static bake because parents stay immutable.
+
+---
+
+## 10. Technique triage
+
+Classical MAPF gadgets checked against our rules (§1: permanent occupancy, radii, geometric conflicts).  
+Status: **reject** | **defer** | **adapt**. Add entries as ideas come up; one bullet per technique.
+
+- **MDD / ICTS — reject.** Layer = step (not time) does not fix the mismatch. Conflicts are whole-path sphere/capsule hits, not same-layer vertex clashes, so MDD joint matching is the wrong model. Radius clearance turns one constraint into a large neighborhood (often most of a layer), so the diagram loses sparse local pruning and mostly duplicates `ObstacleChain` + A\*. Prefer constraint indexing / ICBS-style conflict ranking without building MDDs.
+
+- **CAT (Conflict Avoidance Table) — adapt.** Soft occupancy from **other groups' current paths** (geometric clearance / distance penalty, not `(v,t)`). Low-level keeps hard freespace = static + `ObstacleChain`; among equal-cost (or focal) paths, prefer fewer soft conflicts. High value for constraint-centric CBS/PBS (others not baked as obstacles); little gain for PP where prior groups are already hard.
+
+- **Disjoint splitting — adapt / hard.** Classic grid×time MAPF: positive ⊕ negative on a *vertex* (`must visit v` vs `must avoid v`) → mutually exclusive, covering CT children. Our `[V]` witnesses are **continuous sampled spheres**, and `ObstacleChain` only stores **negative** geometry (avoid sphere/capsule) — there is no grid-cell “occupy this point” atom, so a literal disjoint split does not transfer. Naive “must pass near sample” is neither exclusive nor covering (paths can miss the sample center yet still collide nearby). Default stay dual-negative (`constrain` = other witness). True disjoint needs a continuous partition (e.g. PathGraph node / corridor must-use vs forbid) beyond today’s chain API; treat as research, not drop-in.
+
+- **WDG / EWMVC high-level \(h\) — adapt.** True CBSH-WDG: edge weight \(\Delta_{ij}\) = 2-agent opt cost under \(N\)'s constraints minus current \(\mathrm{cost}_i+\mathrm{cost}_j\); \(h\) = edge-weighted MVC. We already have all pairwise conflicts per CT node → cheap conflict graph (vertices = groups). Do **not** treat raw `2·deficit` as admissible \(\Delta\) (path length can rise much less via lateral shift, or much more around a large witness sphere). Use EWMVC for guidance / ECBS-style; for optimal CBS prefer real 2-group \(\Delta\) or unweighted DG. **NOTE:** better cheap weights should combine **deficit + constraint shape** (witness sphere/capsule geometry) to lower-bound the unavoidable detour cost, not deficit alone. Aggregate per pair (e.g. max over the band), not sum of every atomic hit.
+

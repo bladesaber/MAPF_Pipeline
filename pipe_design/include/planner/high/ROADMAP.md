@@ -170,7 +170,8 @@ if (cbs.status() == Success) {
 | ★ PP | P2 | Failure-driven task-order repair; no ConflictAnalyzer; `test_pp` |
 | ★ PBS | P2 | Priority tree; `PartialOrderSequencer` + `ConflictAnalyzer`; `test_pbs` |
 | ★ LNS / ALNS | P3 | Scale-out when CBS explodes |
-| ICTS | P3 | Porting cost high for permanent occupancy |
+| ICTS / MDD | — | **Reject** — see main `ROADMAP.md` §10 |
+| ★ CAT (geometric) | P2 | Soft avoid other paths; see main §10 |
 | ILP / SAT on candidates | P4 | Small instances only |
 | README + unit tests (two-group conflict) | P2 | `test_cbs` |
 

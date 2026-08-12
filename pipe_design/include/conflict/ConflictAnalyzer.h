@@ -111,7 +111,7 @@ protected:
     const grid::StaticClearanceGrid* grid_ = nullptr;
     const topology::GlobalTopologyPlan* plans_ = nullptr;
     float sample_step_factor_ = 1.f;
-    HeuristicMode heuristic_mode_ = HeuristicMode::ConflictLength;
+    HeuristicMode heuristic_mode_ = HeuristicMode::ClusterMaxDeficit;
     double heuristic_ = 0.0;
 
     /// Per-group normalized paths (one SampledPath per succeeded Task).

@@ -1,2 +1,6 @@
 1. in multi-terminals path search condition, in order to generate topology like tree / branch rather than connect single long chain (this is usually caused by sequence path planning), after we setting past path as goals. we need to add different additional cost to different points of this past path goals. Such as adding higher additional cost to terminal point while encourage path search algorithm connect middle points of past path, then structure be more like tree.
 
+2. improvements
+   - meta-agents: ICBS
+   - Cardinal / bypass no tree grow  ??
+   

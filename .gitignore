@@ -34,3 +34,6 @@ pipe_design/tools/data/movingai/**/*.7z
 pipe_design/tools/data/movingai/**/*.png
 pipe_design/tools/data/movingai/**/instance/**
 pipe_design/tools/data/movingai/**/report/**
+
+# temporary files
+/temporary_ref_code
