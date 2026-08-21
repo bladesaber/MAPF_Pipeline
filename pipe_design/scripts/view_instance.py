@@ -15,6 +15,7 @@ Depends (use ONE Qt stack — conda recommended):
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import sys
 from pathlib import Path
@@ -74,12 +75,18 @@ class MainWindow(QMainWindow):
         self.next_btn = QPushButton("Next")
         self.prev_btn.clicked.connect(self.prev_instance)
         self.next_btn.clicked.connect(self.next_instance)
+        self.shell_cb = QCheckBox("Shell")
+        self.shell_cb.setChecked(True)
+        self.shell_cb.setEnabled(False)
+        self.shell_cb.stateChanged.connect(self._on_shell_toggled)
+        self._shell_actor = None
         self.status = QLabel("File → Open Folder…")
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)  # type: ignore
 
         top = QHBoxLayout()
         top.addWidget(self.prev_btn)
         top.addWidget(self.next_btn)
+        top.addWidget(self.shell_cb)
         top.addWidget(self.status, stretch=1)
 
         self.plotter = QtInteractor(self)  # type: ignore
@@ -105,6 +112,12 @@ class MainWindow(QMainWindow):
     def _set_nav_enabled(self, on: bool) -> None:
         self.prev_btn.setEnabled(on)
         self.next_btn.setEnabled(on)
+
+    def _on_shell_toggled(self, state: int) -> None:
+        if self._shell_actor is None:
+            return
+        self._shell_actor.SetVisibility(state == Qt.Checked)  # type: ignore
+        self.plotter.render()
 
     def open_folder(self) -> None:
         d = QFileDialog.getExistingDirectory(self, "Select instance folder")
@@ -159,16 +172,46 @@ class MainWindow(QMainWindow):
 
         grid = data["grid"]
         sx, sy, sz = int(grid["size_x"]), int(grid["size_y"]), int(grid["size_z"])
-        radius = float(data.get("meta", {}).get("radius", 0.5))
+        meta = data.get("meta") or {}
+        radius = float(meta.get("radius", 0.5))
+        res = float(grid.get("resolution", meta.get("resolution", 1.0)))
+        shell_margin = float(meta.get("shell_margin", 0.0))
+        if "shell_cells" in meta:
+            shell_m = int(meta["shell_cells"])
+        else:
+            shell_m = int(math.ceil((shell_margin + radius) / res))
         groups = data.get("groups") or []
         solution = {g["id"]: g for g in (data.get("solution") or [])}
         obstacles = data.get("obstacles") or {}
 
+        # Full domain outline.
         self.plotter.add_mesh(
-            pv.Box(bounds=(0, sx, 0, sy, 0, sz)).extract_feature_edges(),
+            pv.Box(bounds=(0, sx * res, 0, sy * res, 0, sz * res)).extract_feature_edges(),
             color="black",
             line_width=1,
         )
+        # Core planning box (inside shell); empty when shell_m == 0.
+        self._shell_actor = None
+        has_shell = (
+            shell_m > 0 and sx > 2 * shell_m and sy > 2 * shell_m and sz > 2 * shell_m
+        )
+        self.shell_cb.setEnabled(has_shell)
+        if has_shell:
+            self._shell_actor = self.plotter.add_mesh(
+                pv.Box(
+                    bounds=(
+                        shell_m * res,
+                        (sx - shell_m) * res,
+                        shell_m * res,
+                        (sy - shell_m) * res,
+                        shell_m * res,
+                        (sz - shell_m) * res,
+                    )
+                ).extract_feature_edges(),
+                color="dimgray",
+                line_width=2,
+            )
+            self._shell_actor.SetVisibility(self.shell_cb.isChecked())
 
         for gi, g in enumerate(groups):
             gid = g["id"]
@@ -180,7 +223,10 @@ class MainWindow(QMainWindow):
                 if len(cells) < 2:
                     continue
                 pts = np.array(
-                    [[c[0] + 0.5, c[1] + 0.5, c[2] + 0.5] for c in cells],
+                    [
+                        [(c[0] + 0.5) * res, (c[1] + 0.5) * res, (c[2] + 0.5) * res]
+                        for c in cells
+                    ],
                     dtype=float,
                 )
                 line = pv.lines_from_points(pts)
@@ -225,13 +271,15 @@ class MainWindow(QMainWindow):
                 opacity=0.45,
             )
 
-        meta = data.get("meta") or {}
         self.plotter.show_bounds(
-            bounds=(0, sx, 0, sy, 0, sz), location="outer", color="gray"
+            bounds=(0, sx * res, 0, sy * res, 0, sz * res),
+            location="outer",
+            color="gray",
         )
         self.status.setText(
             f"[{self.index + 1}/{len(self.files)}] {path}  |  "
-            f"{meta.get('generator', '?')}  groups={len(groups)}  r={radius}"
+            f"{meta.get('generator', '?')}  groups={len(groups)}  "
+            f"r={radius}  shell_m={shell_m} (margin={shell_margin})"
         )
         self.setWindowTitle(f"bench: {path.name}")
         self.plotter.reset_camera()

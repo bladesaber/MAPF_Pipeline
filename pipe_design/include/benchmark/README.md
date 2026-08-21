@@ -95,9 +95,13 @@ chmod +x ../include/benchmark/gen_robust.sh
 ../include/benchmark/gen_robust.sh ./bench_out 100              # both
 ../include/benchmark/gen_robust.sh ./bench_out 100 axis_ray    # one generator
 ../include/benchmark/gen_robust.sh ./bench_out 100 plane_slice
+
+# optional 4th arg: shell_margin (else main_gen default 0)
+../include/benchmark/gen_robust.sh ./bench_out 100 axis_ray 1.0
 ```
 
 `GENERATOR`: `axis_ray` | `plane_slice` | `all` (default).
+`SHELL_MARGIN`: optional 4th positional argument.
 
 Layout: `bench_out/<axis_ray|plane_slice>/<easy|middle|hard>/instance_*.yaml`  
 plus `bench_out/robust_summary.txt` (exit codes / yaml counts).

@@ -10,8 +10,9 @@
 #     (interior segs = waypoints_num - 2 >= 1 when waypoints_num >= 3; we use > 3)
 #
 # Usage:
-#   ./gen_robust.sh [OUT_DIR] [NUM] [GENERATOR]
+#   ./gen_robust.sh [OUT_DIR] [NUM] [GENERATOR] [SHELL_MARGIN]
 # GENERATOR: axis_ray | plane_slice | all   (default: all)
+# SHELL_MARGIN: optional float; if omitted, main_gen default (0)
 # Defaults: OUT_DIR=./bench_out  NUM=100  GENERATOR=all
 set -euo pipefail
 
@@ -19,13 +20,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="${1:-./bench_out}"
 NUM="${2:-100}"
 GENERATOR="${3:-all}"
+SHELL_MARGIN="${4:-}"
 MAIN_GEN="${MAIN_GEN:-./main_gen}"
 
 case "${GENERATOR}" in
   axis_ray|plane_slice|all) ;;
   *)
     echo "error: GENERATOR must be axis_ray | plane_slice | all (got '${GENERATOR}')" >&2
-    echo "usage: $0 [OUT_DIR] [NUM] [GENERATOR]" >&2
+    echo "usage: $0 [OUT_DIR] [NUM] [GENERATOR] [SHELL_MARGIN]" >&2
     exit 1
     ;;
 esac
@@ -59,9 +61,14 @@ run_one() {
   shift 3
   local dest="${OUT_DIR}/${gen}/${level}"
   mkdir -p "${dest}"
+  local shell_args=()
+  if [[ -n "${SHELL_MARGIN:-}" ]]; then
+    shell_args=(--shell_margin "${SHELL_MARGIN}")
+  fi
   log "=== ${gen} / ${level}  seed=${seed}  num=${NUM}  out=${dest} ==="
   set +e
-  "${MAIN_GEN}" --generator "${gen}" --out "${dest}" --num "${NUM}" --seed "${seed}" "$@"
+  "${MAIN_GEN}" --generator "${gen}" --out "${dest}" --num "${NUM}" --seed "${seed}" \
+    "$@" "${shell_args[@]}"
   local rc=$?
   set -e
   local nfiles
@@ -120,7 +127,7 @@ SIZE=32
 PATH_GAP=2
 BRANCH_GAP=3
 
-log "generator=${GENERATOR}  out=${OUT_DIR}  num=${NUM}"
+log "generator=${GENERATOR}  out=${OUT_DIR}  num=${NUM}  shell_margin=${SHELL_MARGIN:-(default)}"
 
 case "${GENERATOR}" in
   axis_ray)    run_axis_ray ;;
