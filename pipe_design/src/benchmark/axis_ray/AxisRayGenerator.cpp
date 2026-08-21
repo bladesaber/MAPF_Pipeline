@@ -335,51 +335,54 @@ bool AxisRayGenerator::edge_axis_at(std::size_t g, const CellCoord& p, int& axis
 }
 
 bool AxisRayGenerator::attach_branch(std::size_t g) {
-    for (int attempt = 0; attempt < params_.max_attempts; ++attempt) {
-        const auto occ_snap = occupied_;
-        const auto wp_snap = waypoints_[g];
-        const auto paths_snap = groups_[g].paths;
-        const auto term_snap = groups_[g].terminals;
-        const int axis_snap = last_axis_[g];
+    const int interior = params_.attach_waypoints_num - 2;
 
+    for (int attempt = 0; attempt < params_.max_attempts; ++attempt) {
         std::vector<CellCoord> candidates;
         for (const Path& path : groups_[g].paths) {
             for (const CellCoord& c : path.cells) {
                 bool far = true;
                 for (const CellCoord& w : waypoints_[g]) {
-                if (chebyshev(c, w) <= params_.branch_center_gap()) {
-                    far = false;
-                    break;
-                }
+                    if (chebyshev(c, w) <= params_.branch_center_gap()) {
+                        far = false;
+                        break;
+                    }
                 }
                 if (far) {
                     candidates.push_back(c);
                 }
             }
         }
+        // No split far enough from waypoints — further attempts cannot help.
         if (candidates.empty()) {
             return false;
         }
         std::shuffle(candidates.begin(), candidates.end(), rng_);
-        const CellCoord split = candidates.front();
 
-        // Candidates are already > branch_center_gap from every waypoint, so
+        const auto occ_snap = occupied_;
+        const auto wp_snap = waypoints_[g];
+        const auto paths_snap = groups_[g].paths;
+        const auto term_snap = groups_[g].terminals;
+        const int axis_snap = last_axis_[g];
+
+        // Try every candidate this attempt (not only candidates.front()).
+        // Candidates are already > branch_center_gap from every waypoint, so each
         // split lies on an edge interior — forbid that edge's axis (side exit).
-        int forbid = -1;
-        if (!edge_axis_at(g, split, forbid)) {
-            continue;
-        }
+        for (const CellCoord& split : candidates) {
+            int forbid = -1;
+            edge_axis_at(g, split, forbid);
 
-        const int interior = params_.attach_waypoints_num - 2;
-        if (grow_chain(g, split, forbid, interior, /*record_split=*/true, &split)) {
-            return true;
-        }
+            if (grow_chain(g, split, forbid, interior, /*record_split=*/true,
+                           &split)) {
+                return true;
+            }
 
-        occupied_ = occ_snap;
-        waypoints_[g] = wp_snap;
-        groups_[g].paths = paths_snap;
-        groups_[g].terminals = term_snap;
-        last_axis_[g] = axis_snap;
+            occupied_ = occ_snap;
+            waypoints_[g] = wp_snap;
+            groups_[g].paths = paths_snap;
+            groups_[g].terminals = term_snap;
+            last_axis_[g] = axis_snap;
+        }
     }
     return false;
 }

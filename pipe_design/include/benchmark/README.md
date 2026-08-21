@@ -79,23 +79,24 @@ Exit: `0` all ok, `2` if any generate failed (unless only `--keep_failed` writes
 
 ### Robust batch (easy / middle / hard × 100)
 
-Script: [`gen_robust.sh`](gen_robust.sh) — both generators, three levels, `NUM`
-instances each (default 100).
+Script: [`gen_robust.sh`](gen_robust.sh) — `{easy,middle,hard}` × `NUM` instances
+(default 100). Third argument selects the generator.
 
-| Level | groups | terminals / group | axis_ray init / attach |
-|-------|--------|-------------------|-------------------------|
-| easy | 2 | 3 | 5 / 4 (both > 3) |
-| middle | 4 | 4 | 6 / 5 |
-| hard | 6 | 5 | 8 / 6 |
-
-Shared for all levels: `--size 48`, `path_gap=2`, `branch_gap=3` (`axis_ray`);
-`radius=0.5`. Difficulty comes from groups / terminals / waypoints only.
+| Level | `axis_ray` groups × terms | init / attach | `plane_slice` groups × terms |
+|-------|---------------------------|---------------|------------------------------|
+| easy | 2 × 3 | 4 / 3 | 3 × 3 |
+| middle | 4 × 4 | 5 / 4 | 6 × 4 |
+| hard | 6 × 5 | 5 / 4 | 9 × 6 |
 
 ```bash
 # from pipe_design/build (or set MAIN_GEN)
 chmod +x ../include/benchmark/gen_robust.sh
-../include/benchmark/gen_robust.sh ./bench_out 100
+../include/benchmark/gen_robust.sh ./bench_out 100              # both
+../include/benchmark/gen_robust.sh ./bench_out 100 axis_ray    # one generator
+../include/benchmark/gen_robust.sh ./bench_out 100 plane_slice
 ```
+
+`GENERATOR`: `axis_ray` | `plane_slice` | `all` (default).
 
 Layout: `bench_out/<axis_ray|plane_slice>/<easy|middle|hard>/instance_*.yaml`  
 plus `bench_out/robust_summary.txt` (exit codes / yaml counts).
