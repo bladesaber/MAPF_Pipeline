@@ -1,5 +1,6 @@
 #include "benchmark/axis_ray/AxisRayGenerator.h"
 
+#include <cmath>
 #include <iostream>
 
 using pipe_design::benchmark::Instance;
@@ -41,6 +42,14 @@ static void test_seed_two_groups() {
     for (const auto& g : out.groups) {
         CHECK(g.terminals.size() == 2);
         CHECK(!g.paths.empty());
+        for (const auto& t : g.terminals) {
+            const int x = static_cast<int>(std::floor(t.pos.x));
+            const int y = static_cast<int>(std::floor(t.pos.y));
+            const int z = static_cast<int>(std::floor(t.pos.z));
+            const bool face = x == 0 || x == p.size_x - 1 || y == 0 ||
+                              y == p.size_y - 1 || z == 0 || z == p.size_z - 1;
+            CHECK(face);
+        }
     }
 }
 
@@ -70,7 +79,7 @@ static void test_attach() {
 
 static void test_attach_large_path_gap() {
     GenParams p;
-    p.size_x = p.size_y = p.size_z = 36;
+    p.size_x = p.size_y = p.size_z = 40;
     p.radius = 0.4f;
     p.terminal_gap = 2;
     p.num_groups = 1;

@@ -20,6 +20,10 @@ struct GenParams {
     static constexpr float resolution = 1.f;
     int subdomain_n = 3;       // 3, 4, or 5
     float radius = 0.5f;       // uniform terminal / pipe radius
+    /// Extra world clearance beyond `radius` for the outer shell (see `shell_cells`).
+    /// Planning uses core size `size_* - 2*shell_cells()`; terminals are extended
+    /// to the full-domain face afterward.
+    float shell_margin = 0.f;
     /// Extra Chebyshev slack (cells) beyond `2*radius/resolution`.
     int terminal_gap = 2;
     int num_groups = 1;
@@ -28,6 +32,11 @@ struct GenParams {
     std::uint32_t seed = 0;
     /// Cap on outer round-robin grow loops (seed / attach rounds).
     int max_iterations = 256;
+
+    /// Shell thickness in cells: ceil((shell_margin + radius) / resolution).
+    int shell_cells() const {
+        return static_cast<int>(std::ceil((shell_margin + radius) / resolution));
+    }
 
     /// ceil(2 * radius / resolution) — pipe diameter in cells.
     int radius_diameter_cells() const {

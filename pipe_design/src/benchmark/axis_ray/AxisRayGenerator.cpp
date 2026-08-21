@@ -150,7 +150,6 @@ void AxisRayGenerator::commit_segment(std::size_t g,
         occupied_.insert(path.cells[i]);
     }
 
-    // TODO: i think we should add start point, because start point is in the part of a path
     if (add_end_waypoint && !path.cells.empty()) {
         waypoints_[g].push_back(path.cells.back());
     }
@@ -389,7 +388,20 @@ bool AxisRayGenerator::attach_branch(std::size_t g) {
 
 bool AxisRayGenerator::generate(Instance& out) {
     out = Instance{};
-    out.params = params_;
+
+    const int full_x = params_.size_x;
+    const int full_y = params_.size_y;
+    const int full_z = params_.size_z;
+    const int m = params_.shell_cells();
+    if (full_x < 2 * m + 3 || full_y < 2 * m + 3 || full_z < 2 * m + 3) {
+        out.params = params_;
+        out.success = false;
+        out.reason = "domain too small for shell (need size >= 2*shell_cells+3)";
+        return false;
+    }
+    params_.size_x = full_x - 2 * m;
+    params_.size_y = full_y - 2 * m;
+    params_.size_z = full_z - 2 * m;
 
     const std::size_t n = static_cast<std::size_t>(params_.num_groups);
     groups_.assign(n, GroupCorridors{});
@@ -405,37 +417,44 @@ bool AxisRayGenerator::generate(Instance& out) {
         GenParams::resolution, /*clearance_cap=*/params_.radius);
     grid_->clear();
 
+    bool ok = false;
+    std::string reason = "max_iterations exceeded before all groups reached terminal targets";
     for (int iter = 0; iter < params_.max_iterations; ++iter) {
         bool any_needed = false;
+        bool step_ok = true;
         for (std::size_t g = 0; g < n; ++g) {
             const int target = params_.terminals_per_group[g];
             if (static_cast<int>(groups_[g].terminals.size()) >= target) {
                 continue;
             }
             any_needed = true;
-            const bool ok = groups_[g].terminals.empty() ? seed_group(g)
-                                                           : attach_branch(g);
-            if (!ok) {
-                out.groups = groups_;
-                out.success = false;
-                out.reason = groups_[g].terminals.empty()
-                                 ? ("seed_group failed for " + groups_[g].id)
-                                 : ("attach_branch failed for " + groups_[g].id);
-                return false;
+            if (groups_[g].terminals.empty() ? !seed_group(g) : !attach_branch(g)) {
+                reason = groups_[g].terminals.empty()
+                             ? ("seed_group failed for " + groups_[g].id)
+                             : ("attach_branch failed for " + groups_[g].id);
+                step_ok = false;
+                break;
             }
         }
+        if (!step_ok) {
+            break;
+        }
         if (!any_needed) {
-            out.groups = groups_;
-            out.success = true;
-            out.reason.clear();
-            return true;
+            ok = true;
+            reason.clear();
+            break;
         }
     }
 
+    params_.size_x = full_x;
+    params_.size_y = full_y;
+    params_.size_z = full_z;
+    out.params = params_;
     out.groups = groups_;
-    out.success = false;
-    out.reason = "max_iterations exceeded before all groups reached terminal targets";
-    return false;
+    out.success = ok;
+    out.reason = reason;
+    expand_shell(out, m);
+    return ok;
 }
 
 }  // namespace pipe_design::benchmark::axis_ray

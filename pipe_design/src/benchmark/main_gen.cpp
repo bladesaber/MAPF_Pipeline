@@ -28,6 +28,8 @@ void usage(const char* argv0) {
         << "  --size <int>           cubic domain size_x=y=z (default 32)\n"
         << "  --size_x/y/z <int>     override one axis\n"
         << "  --radius <float>       pipe radius (default 0.5)\n"
+        << "  --shell_margin <float> extra shell beyond radius (default 0;\n"
+        << "                         shell_cells=ceil((shell_margin+radius)/res))\n"
         << "  --terminal_gap <int>   slack beyond diameter (default 2)\n"
         << "  --num_groups <int>     (default 1)\n"
         << "  --terminals <list>     per-group counts, e.g. 3 or 2,2,3 (default 2 each)\n"
@@ -68,6 +70,7 @@ int main(int argc, char** argv) {
     int size = 32;
     int size_x = -1, size_y = -1, size_z = -1;
     float radius = 0.5f;
+    float shell_margin = 0.f;
     int terminal_gap = 2;
     int num_groups = 1;
     std::vector<int> terminals;
@@ -113,6 +116,8 @@ int main(int argc, char** argv) {
                 size_z = std::stoi(require_arg(argc, argv, i, a.c_str()));
             } else if (a == "--radius") {
                 radius = std::stof(require_arg(argc, argv, i, a.c_str()));
+            } else if (a == "--shell_margin") {
+                shell_margin = std::stof(require_arg(argc, argv, i, a.c_str()));
             } else if (a == "--terminal_gap") {
                 terminal_gap = std::stoi(require_arg(argc, argv, i, a.c_str()));
             } else if (a == "--num_groups") {
@@ -202,6 +207,7 @@ int main(int argc, char** argv) {
             p.size_y = size_y;
             p.size_z = size_z;
             p.radius = radius;
+            p.shell_margin = shell_margin;
             p.terminal_gap = terminal_gap;
             p.num_groups = num_groups;
             p.terminals_per_group = terminals;
@@ -232,6 +238,7 @@ int main(int argc, char** argv) {
             p.size_y = size_y;
             p.size_z = size_z;
             p.radius = radius;
+            p.shell_margin = shell_margin;
             p.terminal_gap = terminal_gap;
             p.num_groups = num_groups;
             p.terminals_per_group = terminals;

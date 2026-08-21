@@ -55,6 +55,7 @@ types) and one generator class. Shared corridor result shape lives in
 |------|-----------------|
 | Pipe radius | **Uniform** — every terminal uses the same `r` |
 | Grid resolution | `1.0` |
+| Shell | `shell_cells = ceil((shell_margin + radius) / res)`; plan on core `size-2m`, then extend face terminals to the full surface |
 | Terminal placement | On domain face: at least one of `{x,y,z}` equals `0` or `max` |
 | Terminal gap | Face terminals: Chebyshev `> terminal_center_gap()` where
 | | `terminal_center_gap = ceil(2r/res) + terminal_gap` (`terminal_gap` = slack) |

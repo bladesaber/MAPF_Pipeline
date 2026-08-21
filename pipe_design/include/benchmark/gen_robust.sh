@@ -78,7 +78,7 @@ run_axis_ray() {
     --init_waypoints_num 4 --attach_waypoints_num 3 \
     --min_path_size 6 --max_path_size 15 \
     --path_gap "${PATH_GAP}" --branch_gap "${BRANCH_GAP}" \
-    --max_attempts 256 --max_iterations 512
+    --max_attempts 256 --max_iterations 128
 
   # middle: 4 groups × 4 terminals
   run_one axis_ray middle 3000 \
@@ -86,7 +86,7 @@ run_axis_ray() {
     --init_waypoints_num 5 --attach_waypoints_num 4 \
     --min_path_size 6 --max_path_size 20 \
     --path_gap "${PATH_GAP}" --branch_gap "${BRANCH_GAP}" \
-    --max_attempts 512 --max_iterations 1024
+    --max_attempts 512 --max_iterations 128
 
   # hard: 6 groups × 5 terminals
   run_one axis_ray hard 3000 \
@@ -94,29 +94,29 @@ run_axis_ray() {
     --init_waypoints_num 5 --attach_waypoints_num 4 \
     --min_path_size 6 --max_path_size 20 \
     --path_gap "${PATH_GAP}" --branch_gap "${BRANCH_GAP}" \
-    --max_attempts 1024 --max_iterations 2048
+    --max_attempts 1024 --max_iterations 128
 }
 
 run_plane_slice() {
   # easy: 3 groups × 3 terminals
   run_one plane_slice easy 11000 \
     --size "${SIZE}" --radius 0.5 --num_groups 3 --terminals 3,3,3 \
-    --subdomain_n 3 --plane_gap 3 --max_iterations 256
+    --subdomain_n 3 --plane_gap 3 --max_iterations 128
 
   # middle: 6 groups × 4 terminals
   run_one plane_slice middle 12000 \
     --size "${SIZE}" --radius 0.5 --num_groups 6 --terminals 4,4,4,4,4,4 \
-    --subdomain_n 3 --plane_gap 3 --max_iterations 512
+    --subdomain_n 3 --plane_gap 3 --max_iterations 128
 
   # hard: 9 groups × 5 terminals
   run_one plane_slice hard 13000 \
     --size "${SIZE}" --radius 0.5 --num_groups 9 --terminals 6,6,6,6,6,6,6,6,6 \
-    --subdomain_n 4 --plane_gap 3 --max_iterations 512
+    --subdomain_n 4 --plane_gap 3 --max_iterations 128
 }
 
 # Shared across levels (difficulty from groups / terminals / waypoints only).
 # Must keep BRANCH_GAP > PATH_GAP (AxisRayGenerator: branch_center_gap > path_center_gap).
-SIZE=30
+SIZE=32
 PATH_GAP=2
 BRANCH_GAP=3
 

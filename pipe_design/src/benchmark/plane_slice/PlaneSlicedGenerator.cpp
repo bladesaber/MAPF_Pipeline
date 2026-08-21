@@ -130,7 +130,24 @@ PlaneSlicedGenerator::PlaneSlicedGenerator(GenParams params)
 
 bool PlaneSlicedGenerator::generate(Instance& out) {
     out = Instance{};
-    out.params = params_;
+
+    const int full_x = params_.size_x;
+    const int full_y = params_.size_y;
+    const int full_z = params_.size_z;
+    const int m = params_.shell_cells();
+    const int core_x = full_x - 2 * m;
+    const int core_y = full_y - 2 * m;
+    const int core_z = full_z - 2 * m;
+    if (core_x < params_.subdomain_n || core_y < params_.subdomain_n ||
+        core_z < params_.subdomain_n) {
+        out.params = params_;
+        out.success = false;
+        out.reason = "core domain too small for shell (need size-2*shell_cells >= subdomain_n)";
+        return false;
+    }
+    params_.size_x = core_x;
+    params_.size_y = core_y;
+    params_.size_z = core_z;
 
     const std::size_t n = static_cast<std::size_t>(params_.num_groups);
     groups_.assign(n, GroupCorridors{});
@@ -146,43 +163,45 @@ bool PlaneSlicedGenerator::generate(Instance& out) {
     subdomains_ = make_subdomains(params_.subdomain_n, params_.size_x,
                                   params_.size_y, params_.size_z);
 
-    bool finished = false;
+    bool ok = false;
+    std::string reason =
+        "max_iterations exceeded (" + std::to_string(params_.max_iterations) + ")";
     for (int iter = 0; iter < params_.max_iterations; ++iter) {
         bool any_needed = false;
+        bool step_ok = true;
         for (std::size_t g = 0; g < n; ++g) {
             const int target = params_.terminals_per_group[g];
             if (static_cast<int>(groups_[g].terminals.size()) >= target) {
                 continue;
             }
             any_needed = true;
-            const bool ok = groups_[g].terminals.empty() ? seed_group(g)
-                                                         : attach_terminal(g);
-            if (!ok) {
-                out.groups = groups_;
-                out.success = false;
-                out.reason = groups_[g].terminals.empty()
-                                 ? ("seed_group failed for " + groups_[g].id)
-                                 : ("attach_terminal failed for " + groups_[g].id);
-                return false;
+            if (groups_[g].terminals.empty() ? !seed_group(g) : !attach_terminal(g)) {
+                reason = groups_[g].terminals.empty()
+                             ? ("seed_group failed for " + groups_[g].id)
+                             : ("attach_terminal failed for " + groups_[g].id);
+                step_ok = false;
+                break;
             }
         }
+        if (!step_ok) {
+            break;
+        }
         if (!any_needed) {
-            finished = true;
+            ok = true;
+            reason.clear();
             break;
         }
     }
-    if (!finished) {
-        out.groups = groups_;
-        out.success = false;
-        out.reason = "max_iterations exceeded (" +
-                     std::to_string(params_.max_iterations) + ")";
-        return false;
-    }
 
+    params_.size_x = full_x;
+    params_.size_y = full_y;
+    params_.size_z = full_z;
+    out.params = params_;
     out.groups = groups_;
-    out.success = true;
-    out.reason.clear();
-    return true;
+    out.success = ok;
+    out.reason = reason;
+    expand_shell(out, m);
+    return ok;
 }
 
 bool PlaneSlicedGenerator::collect_plane_candidates(

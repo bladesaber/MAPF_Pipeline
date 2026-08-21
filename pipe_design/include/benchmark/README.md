@@ -43,6 +43,7 @@ Batch-generate YAML instances.
 | `--size` | cubic `size_x=y=z` | `32` |
 | `--size_x/y/z` | override one axis | — |
 | `--radius` | uniform pipe radius | `0.5` |
+| `--shell_margin` | extra shell beyond radius; `shell_cells=ceil((shell_margin+radius)/res)`; plan on core `size-2m`, then extend terminals to full face | `0` |
 | `--terminal_gap` | slack beyond diameter (cells) | `2` |
 | `--num_groups` | group count | `1` |
 | `--terminals` | counts per group: `3` or `2,2,3` | `2` each |

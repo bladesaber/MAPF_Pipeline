@@ -43,6 +43,8 @@ bool write_instance_yaml(const std::string& path,
     meta["size_z"] = p.size_z;
     meta["resolution"] = GenParams::resolution;
     meta["radius"] = p.radius;
+    meta["shell_margin"] = p.shell_margin;
+    meta["shell_cells"] = p.shell_cells();
     meta["terminal_gap"] = p.terminal_gap;
     meta["num_groups"] = p.num_groups;
     meta["terminals_per_group"] = p.terminals_per_group;
