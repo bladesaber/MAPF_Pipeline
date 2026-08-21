@@ -438,7 +438,7 @@ std::vector<SearchReport> run_queries(
 
 std::vector<SearchReport> LowLevelRunner::run(const SearchInstance& instance) const {
     auto static_grid = instance.make_static_grid();
-    static_grid.bake(instance.bake_spheres(), instance.bake_capsules());
+    static_grid.bake(instance.bake_spheres(), instance.bake_capsules(), instance.bake_aabbs());
     CompositeGrid grid(static_grid);
 
     auto actions = make_action_model(instance);

@@ -22,12 +22,20 @@ std::shared_ptr<ObstacleChain> ObstacleChain::extend(const geom::CapsuleObstacle
     return child;
 }
 
+std::shared_ptr<ObstacleChain> ObstacleChain::extend(const geom::AabbObstacle& aabb) const {
+    auto child = std::shared_ptr<ObstacleChain>(new ObstacleChain(shared_from_this()));
+    child->aabbs_.push_back(aabb);
+    return child;
+}
+
 std::shared_ptr<ObstacleChain> ObstacleChain::extend(
     const std::vector<geom::SphereObstacle>& spheres,
-    const std::vector<geom::CapsuleObstacle>& capsules) const {
+    const std::vector<geom::CapsuleObstacle>& capsules,
+    const std::vector<geom::AabbObstacle>& aabbs) const {
     auto child = std::shared_ptr<ObstacleChain>(new ObstacleChain(shared_from_this()));
     child->spheres_ = spheres;
     child->capsules_ = capsules;
+    child->aabbs_ = aabbs;
     return child;
 }
 
@@ -48,6 +56,9 @@ float ObstacleChain::clearance(const geom::Vec3& point) const {
         for (const auto& capsule : node->capsules_) {
             best = std::min(best, geom::signed_clearance(point, capsule));
         }
+        for (const auto& aabb : node->aabbs_) {
+            best = std::min(best, geom::signed_clearance(point, aabb));
+        }
     }
     return best;
 }
@@ -61,6 +72,11 @@ bool ObstacleChain::collides(const geom::Vec3& point, float pipe_radius) const {
         }
         for (const auto& capsule : node->capsules_) {
             if (geom::signed_clearance(point, capsule) < pipe_radius) {
+                return true;
+            }
+        }
+        for (const auto& aabb : node->aabbs_) {
+            if (geom::signed_clearance(point, aabb) < pipe_radius) {
                 return true;
             }
         }
@@ -80,6 +96,11 @@ bool ObstacleChain::collides(
         }
         for (const auto& capsule : node->capsules_) {
             if (geom::signed_clearance(from, to, capsule) < pipe_radius) {
+                return true;
+            }
+        }
+        for (const auto& aabb : node->aabbs_) {
+            if (geom::signed_clearance(from, to, aabb) < pipe_radius) {
                 return true;
             }
         }

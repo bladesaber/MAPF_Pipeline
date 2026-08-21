@@ -18,7 +18,7 @@ namespace pipe_design::grid {
 /// each obstacle (radius ≈ obstacle_r + clearance_cap).
 /// Set clearance_cap >= max pipe radius (usually equal to it).
 ///
-/// `bake` also keeps the source spheres/capsules for analytic world-point
+/// `bake` also keeps the source spheres/capsules/aabbs for analytic world-point
 /// queries (LOS / continuous samples) — cell lookups stay on the dense field.
 ///
 /// Shared read-only across the entire CBS tree.
@@ -39,6 +39,7 @@ public:
 
     const std::vector<geom::SphereObstacle>& spheres() const { return spheres_; }
     const std::vector<geom::CapsuleObstacle>& capsules() const { return capsules_; }
+    const std::vector<geom::AabbObstacle>& aabbs() const { return aabbs_; }
 
     bool in_bounds(const CellCoord& cell) const;
 
@@ -71,7 +72,7 @@ public:
         return clearance(cell) >= pipe_radius;
     }
 
-    /// Analytic freeness at a world point (retained spheres/capsules).
+    /// Analytic freeness at a world point (retained bake geometry).
     bool is_free(const geom::Vec3& point, float pipe_radius) const;
 
     /// Edge freeness between cells:
@@ -102,7 +103,8 @@ public:
     /// `clearance_cap` should be >= max pipe radius (see `clearance_cap_`).
     void bake(
         const std::vector<geom::SphereObstacle>& spheres,
-        const std::vector<geom::CapsuleObstacle>& capsules = {});
+        const std::vector<geom::CapsuleObstacle>& capsules = {},
+        const std::vector<geom::AabbObstacle>& aabbs = {});
 
     /// Reset field to clearance_cap and drop retained geometry / BVH.
     void clear();
@@ -110,6 +112,7 @@ public:
 private:
     void stamp_sphere(const geom::SphereObstacle& sphere);
     void stamp_capsule(const geom::CapsuleObstacle& capsule);
+    void stamp_aabb(const geom::AabbObstacle& aabb);
     void lower_clearance(const CellCoord& cell, float value);
 
     int size_x_ = 0;
@@ -129,6 +132,7 @@ private:
     std::vector<float> field_;
     std::vector<geom::SphereObstacle> spheres_;
     std::vector<geom::CapsuleObstacle> capsules_;
+    std::vector<geom::AabbObstacle> aabbs_;
     geom::Bvh bvh_;
 };
 

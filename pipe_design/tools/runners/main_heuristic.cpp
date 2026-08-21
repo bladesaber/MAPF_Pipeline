@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
         fs::create_directories(out_dir);
 
         auto static_grid = instance.make_static_grid();
-        static_grid.bake(instance.bake_spheres(), instance.bake_capsules());
+        static_grid.bake(instance.bake_spheres(), instance.bake_capsules(), instance.bake_aabbs());
         pipe_design::grid::CompositeGrid grid(static_grid);
 
         for (const auto& q : instance.queries) {

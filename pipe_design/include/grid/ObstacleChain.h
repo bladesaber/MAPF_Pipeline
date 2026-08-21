@@ -7,8 +7,8 @@
 #include <vector>
 
 /// TODO: change class to Dynamic Constraint Chain
-/// std::vector<geom::SphereObstacle> spheres_, std::vector<geom::CapsuleObstacle> capsules_ is not enough,
-/// we need new classes which contain SphereObstacle, type[positive, negative], step_length(the time axis in normal mapf)
+/// std::vector of typed obstacles is not enough,
+/// we need new classes which contain obstacle, type[positive, negative], step_length(the time axis in normal mapf)
 
 namespace pipe_design::grid {
 
@@ -32,17 +32,24 @@ public:
     /// Fork a child that inherits this chain and appends one capsule.
     std::shared_ptr<ObstacleChain> extend(const geom::CapsuleObstacle& capsule) const;
 
+    /// Fork a child that inherits this chain and appends one AABB.
+    std::shared_ptr<ObstacleChain> extend(const geom::AabbObstacle& aabb) const;
+
     /// Fork a child that inherits this chain and appends several obstacles.
     std::shared_ptr<ObstacleChain> extend(
         const std::vector<geom::SphereObstacle>& spheres,
-        const std::vector<geom::CapsuleObstacle>& capsules) const;
+        const std::vector<geom::CapsuleObstacle>& capsules,
+        const std::vector<geom::AabbObstacle>& aabbs = {}) const;
 
     const ObstacleChain* parent() const { return parent_.get(); }
     const std::vector<geom::SphereObstacle>& local_spheres() const { return spheres_; }
     const std::vector<geom::CapsuleObstacle>& local_capsules() const { return capsules_; }
+    const std::vector<geom::AabbObstacle>& local_aabbs() const { return aabbs_; }
 
     /// Number of obstacles stored on this node only (not ancestors).
-    std::size_t local_count() const { return spheres_.size() + capsules_.size(); }
+    std::size_t local_count() const {
+        return spheres_.size() + capsules_.size() + aabbs_.size();
+    }
 
     /// Total obstacles along the chain (root → this).
     std::size_t total_count() const;
@@ -70,6 +77,7 @@ private:
     std::shared_ptr<const ObstacleChain> parent_;
     std::vector<geom::SphereObstacle> spheres_;
     std::vector<geom::CapsuleObstacle> capsules_;
+    std::vector<geom::AabbObstacle> aabbs_;
 };
 
 }  // namespace pipe_design::grid

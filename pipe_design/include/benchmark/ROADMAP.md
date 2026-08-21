@@ -260,38 +260,50 @@ or retries / stack exhausted.
 
 ## 2. Obstacle generation
 
-**Goal:** paint static obstacles in cells **outside** the union of all groups’
-thickened corridor volumes so witnesses stay feasible. Two knobs, same stage:
+**Goal:** fill **eligible** space (domain minus thickened witness corridors) with
+static obstacles; witnesses stay feasible.
 
-- **Layout family** — *pattern* of obstacles (where structure sits).
-- **Density** — *how much* of the non-corridor volume is blocked.
+**Rules:**
 
-**Invariant:** never block a witness corridor cell (or its `r`-neighborhood required
-by occupancy).
+- Prefer **few large** obstacles over many small ones.
+- **Density** \(\rho = V_{\mathrm{obstacle}} / V_{\mathrm{eligible0}}\) (eligible volume
+  fixed at the start of paint). Sweep e.g. `{0.2, 0.4, 0.6, 0.8}`.
+- **Invariant:** never invade thickened corridors (`clearance ≥ r` on witness).
+- Geometry today: `Sphere` / `Capsule`. **AABB** planned as a first-class type;
+  generators may author boxes first and emit/bake via existing types until AABB lands.
 
 ### 2.1 Layout family
 
-Structural obstacle pattern (draft; fill in later):
+| Family | Intent | Freeness knob |
+|--------|--------|---------------|
+| `PillarField` | Large **AABB** blocks in free space (not thin beams) | \(\rho\) |
+| `CorridorRack` | Dilate witness tubes by `k` steps; complement = obstacle | `dilate_steps` (\(\rho\) derived) |
 
-| Family (draft names) | Intent |
-|----------------------|--------|
-| `EmptyBox` | No / minimal structural obstacles (density may still add clutter) |
-| `PillarField` | Vertical pillars |
-| `CorridorRack` | Parallel racks / layer channels |
-| `ManifoldEnvelope` | Equipment blocks; ports remain on domain faces |
+No empty main suite. Optional smoke-only empty layout is out of band.
 
-Family parameters (pillar count, rack spacing, …) are separate from density.
+### 2.2 `PillarField` (primary)
 
-### 2.2 Density
+Treat candidates as **AABB**; score by volume (optional chunkiness). Loop until \(\rho\):
 
-How aggressively to fill eligible (non-corridor) cells after the family pattern is
-applied (draft; fill in later):
+```text
+0. Extent field: each eligible cell stores 6 longest free runs
+   (+x,-x,+y,-y,+z,-z) to corridor / boundary / accepted obstacles.
+1. Sample seed in eligible space (weight ≈ neighbourhood mean of extents; v1 OK).
+2. Grow AABB from seed (greedy 6-face expand, or extent upper bound + validate
+   full box free). Reject if min edge < s_min (avoid needle boxes).
+3. Repeat → candidate set.
+4. score = dx·dy·dz (optionally × min/max edge ratio); accept best.
+5. Commit obstacle; refresh field (full or incremental).
+6. If ρ < ρ_target and progress remains → goto 1; else stop.
+```
 
-| Topic | Options / questions |
-|-------|---------------------|
-| Definition | Fraction of **non-corridor** cells blocked, vs whole domain |
-| Sweep | Discrete levels e.g. `{0, 0.2, 0.4, 0.6}` |
-| Interaction | Family places structured obstacles; density adds residual clutter (or scales family) |
+### 2.3 `CorridorRack` (secondary)
+
+```text
+free = dilate(witness, k);  obstacle = complement(free) as large AABBs
+```
+
+Primary param is `k`; report \(\rho\) in meta. Emit merged boxes (never per-cell spheres).
 
 ---
 

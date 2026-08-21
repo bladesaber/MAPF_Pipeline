@@ -59,6 +59,10 @@ inline Aabb aabb_of(const CapsuleObstacle& c) {
     };
 }
 
+inline Aabb aabb_of(const AabbObstacle& b) {
+    return {b.mn, b.mx};
+}
+
 inline Aabb aabb_of_segment(const Vec3& a, const Vec3& b, float inflate = 0.f) {
     Aabb box{
         {std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z)},
@@ -70,13 +74,11 @@ inline Aabb aabb_of_segment(const Vec3& a, const Vec3& b, float inflate = 0.f) {
     return box;
 }
 
-/// Binary BVH over sphere/capsule AABBs. Leaf stores obstacle refs; narrowphase is caller's job.
+/// Binary BVH over sphere/capsule/AABB solids. Leaf stores refs; narrowphase is caller's job.
 class Bvh {
 public:
-    enum class Kind : std::uint8_t { Sphere = 0, Capsule = 1 };
-
     struct Ref {
-        Kind kind = Kind::Sphere;
+        ObstacleKind kind = ObstacleKind::Sphere;
         int index = 0;
     };
 
@@ -88,16 +90,21 @@ public:
 
     void build(
         const std::vector<SphereObstacle>& spheres,
-        const std::vector<CapsuleObstacle>& capsules) {
+        const std::vector<CapsuleObstacle>& capsules,
+        const std::vector<AabbObstacle>& aabbs = {}) {
         clear();
-        items_.reserve(spheres.size() + capsules.size());
+        items_.reserve(spheres.size() + capsules.size() + aabbs.size());
         for (int i = 0; i < static_cast<int>(spheres.size()); ++i) {
             items_.push_back(
-                Item{Kind::Sphere, i, aabb_of(spheres[static_cast<std::size_t>(i)])});
+                Item{ObstacleKind::Sphere, i, aabb_of(spheres[static_cast<std::size_t>(i)])});
         }
         for (int i = 0; i < static_cast<int>(capsules.size()); ++i) {
             items_.push_back(
-                Item{Kind::Capsule, i, aabb_of(capsules[static_cast<std::size_t>(i)])});
+                Item{ObstacleKind::Capsule, i, aabb_of(capsules[static_cast<std::size_t>(i)])});
+        }
+        for (int i = 0; i < static_cast<int>(aabbs.size()); ++i) {
+            items_.push_back(
+                Item{ObstacleKind::Aabb, i, aabb_of(aabbs[static_cast<std::size_t>(i)])});
         }
         if (items_.empty()) {
             return;
@@ -127,7 +134,7 @@ private:
     };
 
     struct Item {
-        Kind kind = Kind::Sphere;
+        ObstacleKind kind = ObstacleKind::Sphere;
         int index = 0;
         Aabb box{};
     };

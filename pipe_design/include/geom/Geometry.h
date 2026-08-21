@@ -2,6 +2,7 @@
 
 #include "geom/Types.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace pipe_design::geom {
@@ -39,6 +40,24 @@ inline float point_to_segment_distance(const Vec3& point, const Vec3& a, const V
 
 inline float signed_clearance(const Vec3& point, const CapsuleObstacle& obs) {
     return point_to_segment_distance(point, obs.a, obs.b) - obs.radius;
+}
+
+/// Signed clearance from a point to an AABB surface.
+inline float signed_clearance(const Vec3& point, const AabbObstacle& obs) {
+    const float cx = std::clamp(point.x, obs.mn.x, obs.mx.x);
+    const float cy = std::clamp(point.y, obs.mn.y, obs.mx.y);
+    const float cz = std::clamp(point.z, obs.mn.z, obs.mx.z);
+    const float ox = point.x - cx;
+    const float oy = point.y - cy;
+    const float oz = point.z - cz;
+    const float d2 = ox * ox + oy * oy + oz * oz;
+    if (d2 > 0.f) {
+        return std::sqrt(d2);
+    }
+    const float ix = std::min(point.x - obs.mn.x, obs.mx.x - point.x);
+    const float iy = std::min(point.y - obs.mn.y, obs.mx.y - point.y);
+    const float iz = std::min(point.z - obs.mn.z, obs.mx.z - point.z);
+    return -std::min(ix, std::min(iy, iz));
 }
 
 /// Closest distance between segments p0→p1 and q0→q1 (3D).
@@ -139,6 +158,38 @@ inline float signed_clearance(
     const Vec3& to,
     const CapsuleObstacle& obs) {
     return segment_to_segment_distance(from, to, obs.a, obs.b) - obs.radius;
+}
+
+/// Signed clearance from segment `from`→`to` to an AABB.
+/// Minimizes point–AABB clearance along the segment (convex → ternary search).
+inline float signed_clearance(
+    const Vec3& from,
+    const Vec3& to,
+    const AabbObstacle& obs) {
+    auto at = [&](float t) {
+        return signed_clearance(
+            Vec3{
+                from.x + (to.x - from.x) * t,
+                from.y + (to.y - from.y) * t,
+                from.z + (to.z - from.z) * t},
+            obs);
+    };
+    float lo = 0.f;
+    float hi = 1.f;
+    constexpr float kTEps = 1e-5f;
+    while (true) {
+        const float m1 = lo + (hi - lo) * (1.f / 3.f);
+        const float m2 = lo + (hi - lo) * (2.f / 3.f);
+        if (std::fabs(m1 - m2) < kTEps) {
+            break;
+        }
+        if (at(m1) > at(m2)) {
+            lo = m1;
+        } else {
+            hi = m2;
+        }
+    }
+    return at(0.5f * (lo + hi));
 }
 
 }  // namespace pipe_design::geom

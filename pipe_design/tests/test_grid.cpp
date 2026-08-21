@@ -41,6 +41,7 @@ static int g_failures = 0;
 void test_segment_capsule_signed_clearance() {
     using pipe_design::geom::signed_clearance;
     using pipe_design::geom::segment_to_segment_distance;
+    using pipe_design::geom::AabbObstacle;
 
     // Parallel skew: query segment along x at y=2, capsule along x at y=0, r=0.5
     // → distance 2, signed clearance 1.5
@@ -70,6 +71,16 @@ void test_segment_capsule_signed_clearance() {
         signed_clearance(Vec3{0.f, 3.f, 0.f}, Vec3{0.f, 5.f, 0.f}, sph),
         2.f,
         1e-4f);
+
+    // Point outside AABB
+    const AabbObstacle box{Vec3{0.f, 0.f, 0.f}, Vec3{2.f, 2.f, 2.f}};
+    EXPECT_NEAR(signed_clearance(Vec3{4.f, 1.f, 1.f}, box), 2.f, 1e-4f);
+    EXPECT_TRUE(signed_clearance(Vec3{1.f, 1.f, 1.f}, box) < 0.f);
+    // Segment grazing past face at y=3 (box ends at y=2) → clearance 1
+    EXPECT_NEAR(
+        signed_clearance(Vec3{-1.f, 3.f, 1.f}, Vec3{3.f, 3.f, 1.f}, box),
+        1.f,
+        1e-3f);
 }
 
 void test_obstacle_chain_sharing() {
@@ -79,10 +90,13 @@ void test_obstacle_chain_sharing() {
     auto child_a = root->extend(SphereObstacle{Vec3{5.f, 5.f, 5.f}, 1.f});
     auto child_b = root->extend(SphereObstacle{Vec3{8.f, 5.f, 5.f}, 1.f});
     auto child_a2 = child_a->extend(CapsuleObstacle{Vec3{0.f, 0.f, 0.f}, Vec3{2.f, 0.f, 0.f}, 0.5f});
+    auto child_box = root->extend(
+        pipe_design::geom::AabbObstacle{Vec3{10.f, 10.f, 10.f}, Vec3{12.f, 12.f, 12.f}});
 
     EXPECT_TRUE(child_a->total_count() == 1);
     EXPECT_TRUE(child_b->total_count() == 1);
     EXPECT_TRUE(child_a2->total_count() == 2);
+    EXPECT_TRUE(child_box->total_count() == 1);
     EXPECT_TRUE(child_a->parent() == root.get());
     EXPECT_TRUE(child_a2->parent() == child_a.get());
 
@@ -93,6 +107,8 @@ void test_obstacle_chain_sharing() {
 
     EXPECT_TRUE(child_a2->collides(Vec3{5.f, 5.f, 5.f}, 0.1f));
     EXPECT_TRUE(child_a2->collides(Vec3{1.f, 0.f, 0.f}, 0.1f));
+    EXPECT_TRUE(child_box->collides(Vec3{11.f, 11.f, 11.f}, 0.1f));
+    EXPECT_TRUE(!child_box->collides(Vec3{5.f, 5.f, 5.f}, 0.1f));
 }
 
 void test_static_clearance_bake() {
@@ -101,6 +117,7 @@ void test_static_clearance_bake() {
 
     EXPECT_TRUE(grid.spheres().size() == 1);
     EXPECT_TRUE(grid.capsules().empty());
+    EXPECT_TRUE(grid.aabbs().empty());
     EXPECT_TRUE(!grid.is_free(CellCoord{10, 10, 0}, 0.5f));
     EXPECT_NEAR(grid.clearance(CellCoord{0, 0, 0}), 3.f, 1e-4f);
     EXPECT_TRUE(grid.is_free(CellCoord{0, 0, 0}, 1.f));
@@ -114,6 +131,15 @@ void test_static_clearance_bake() {
     grid.clear();
     EXPECT_TRUE(grid.spheres().empty());
     EXPECT_NEAR(grid.clearance(near_obs), 3.f, 1e-4f);
+
+    StaticClearanceGrid grid_box(20, 20, 1, 1.f, 3.f);
+    grid_box.bake(
+        {},
+        {},
+        {pipe_design::geom::AabbObstacle{Vec3{8.f, 8.f, 0.f}, Vec3{12.f, 12.f, 1.f}}});
+    EXPECT_TRUE(grid_box.aabbs().size() == 1);
+    EXPECT_TRUE(!grid_box.is_free(CellCoord{10, 10, 0}, 0.1f));
+    EXPECT_TRUE(grid_box.is_free(CellCoord{0, 0, 0}, 0.1f));
 }
 
 void test_analytic_point_beats_cell_sample() {

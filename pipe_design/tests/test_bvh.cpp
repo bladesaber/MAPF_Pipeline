@@ -7,6 +7,7 @@
 using pipe_design::geom::Aabb;
 using pipe_design::geom::Bvh;
 using pipe_design::geom::CapsuleObstacle;
+using pipe_design::geom::ObstacleKind;
 using pipe_design::geom::SphereObstacle;
 using pipe_design::geom::Vec3;
 using pipe_design::geom::aabb_of_segment;
@@ -43,13 +44,13 @@ static void test_bvh_query_filters() {
     bool saw_far = false;
     bool saw_capsule = false;
     for (const Bvh::Ref& r : hits) {
-        if (r.kind == Bvh::Kind::Sphere && r.index == 0) {
+        if (r.kind == ObstacleKind::Sphere && r.index == 0) {
             saw0 = true;
         }
-        if (r.kind == Bvh::Kind::Sphere && (r.index == 1 || r.index == 2)) {
+        if (r.kind == ObstacleKind::Sphere && (r.index == 1 || r.index == 2)) {
             saw_far = true;
         }
-        if (r.kind == Bvh::Kind::Capsule && r.index == 0) {
+        if (r.kind == ObstacleKind::Capsule && r.index == 0) {
             saw_capsule = true;
         }
     }
@@ -61,11 +62,25 @@ static void test_bvh_query_filters() {
     bvh.query(aabb_of_segment(Vec3{0.f, 5.f, 0.f}, Vec3{1.f, 5.f, 0.f}, 0.1f), hits);
     saw_capsule = false;
     for (const Bvh::Ref& r : hits) {
-        if (r.kind == Bvh::Kind::Capsule && r.index == 0) {
+        if (r.kind == ObstacleKind::Capsule && r.index == 0) {
             saw_capsule = true;
         }
     }
     EXPECT_TRUE(saw_capsule);
+
+    std::vector<pipe_design::geom::AabbObstacle> aabbs = {
+        pipe_design::geom::AabbObstacle{Vec3{50.f, 50.f, 0.f}, Vec3{52.f, 52.f, 1.f}},
+    };
+    bvh.build(spheres, capsules, aabbs);
+    hits.clear();
+    bvh.query(Aabb{{49.f, 49.f, 0.f}, {51.f, 51.f, 1.f}}, hits);
+    bool saw_aabb = false;
+    for (const Bvh::Ref& r : hits) {
+        if (r.kind == ObstacleKind::Aabb && r.index == 0) {
+            saw_aabb = true;
+        }
+    }
+    EXPECT_TRUE(saw_aabb);
 }
 
 static void test_bvh_empty() {

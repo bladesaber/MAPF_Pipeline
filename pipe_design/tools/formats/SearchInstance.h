@@ -117,6 +117,7 @@ struct SearchInstance {
 
     std::vector<geom::SphereObstacle> spheres;
     std::vector<geom::CapsuleObstacle> capsules;
+    std::vector<geom::AabbObstacle> aabbs;
     std::vector<SearchQuery> queries;
 
     static SearchInstance from_file(const std::string& path);
@@ -129,6 +130,7 @@ struct SearchInstance {
 
     const std::vector<geom::SphereObstacle>& bake_spheres() const { return spheres; }
     const std::vector<geom::CapsuleObstacle>& bake_capsules() const { return capsules; }
+    const std::vector<geom::AabbObstacle>& bake_aabbs() const { return aabbs; }
 };
 
 }  // namespace pipe_design::tools

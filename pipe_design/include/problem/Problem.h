@@ -60,10 +60,12 @@ public:
     Problem(GridParams grid,
             std::vector<geom::SphereObstacle> spheres,
             std::vector<geom::CapsuleObstacle> capsules,
-            std::vector<PipeGroup> groups)
+            std::vector<PipeGroup> groups,
+            std::vector<geom::AabbObstacle> aabbs = {})
         : grid_(std::move(grid))
         , spheres_(std::move(spheres))
         , capsules_(std::move(capsules))
+        , aabbs_(std::move(aabbs))
         , groups_(std::move(groups)) {
         max_pipe_radius_ = compute_max_pipe_radius(groups_);
         if (max_pipe_radius_ <= 0.f) {
@@ -78,7 +80,7 @@ public:
         static_grid_ = std::make_unique<grid::StaticClearanceGrid>(
             grid_.size_x, grid_.size_y, grid_.size_z,
             grid_.resolution, clearance_cap);
-        static_grid_->bake(spheres_, capsules_);
+        static_grid_->bake(spheres_, capsules_, aabbs_);
     }
 
     Problem(const Problem&) = delete;
@@ -89,6 +91,7 @@ public:
     const GridParams& grid() const { return grid_; }
     const std::vector<geom::SphereObstacle>& spheres() const { return spheres_; }
     const std::vector<geom::CapsuleObstacle>& capsules() const { return capsules_; }
+    const std::vector<geom::AabbObstacle>& aabbs() const { return aabbs_; }
     const std::vector<PipeGroup>& groups() const { return groups_; }
 
     /// Max terminal radius over all groups (before clearance_relax).
@@ -110,6 +113,7 @@ private:
     GridParams grid_;
     std::vector<geom::SphereObstacle> spheres_;
     std::vector<geom::CapsuleObstacle> capsules_;
+    std::vector<geom::AabbObstacle> aabbs_;
     std::vector<PipeGroup> groups_;
     float max_pipe_radius_ = 0.f;
     /// Owned by Problem; fixed after construction (CompositeGrid holds a const ref).

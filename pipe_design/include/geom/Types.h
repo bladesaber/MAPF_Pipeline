@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <cstdint>
 #include <ostream>
 
 namespace pipe_design::geom {
@@ -26,6 +27,9 @@ struct Vec3 {
     }
 };
 
+/// Discriminator for solid obstacle types (BVH refs, loaders, …).
+enum class ObstacleKind : std::uint8_t { Sphere = 0, Capsule = 1, Aabb = 2 };
+
 /// Spherical obstacle: any shape can be approximated by a set of these.
 struct SphereObstacle {
     Vec3 center;
@@ -43,6 +47,16 @@ struct CapsuleObstacle {
 
     CapsuleObstacle() = default;
     CapsuleObstacle(Vec3 a_, Vec3 b_, float radius_) : a(a_), b(b_), radius(radius_) {}
+};
+
+/// Axis-aligned box obstacle: closed world-space slab \([mn, mx]\).
+/// Distinct from BVH query `Aabb` in `Bvh.h` (bounding volume, not a solid).
+struct AabbObstacle {
+    Vec3 mn;
+    Vec3 mx;
+
+    AabbObstacle() = default;
+    AabbObstacle(Vec3 mn_, Vec3 mx_) : mn(mn_), mx(mx_) {}
 };
 
 }  // namespace pipe_design::geom

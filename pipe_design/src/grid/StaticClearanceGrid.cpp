@@ -76,14 +76,18 @@ float StaticClearanceGrid::clearance(const geom::Vec3& point) const {
 
     float best = clearance_cap_;
     for (const geom::Bvh::Ref& ref : hits) {
-        if (ref.kind == geom::Bvh::Kind::Sphere) {
+        if (ref.kind == geom::ObstacleKind::Sphere) {
             best = std::min(
                 best,
                 geom::signed_clearance(point, spheres_[static_cast<std::size_t>(ref.index)]));
-        } else {
+        } else if (ref.kind == geom::ObstacleKind::Capsule) {
             best = std::min(
                 best,
                 geom::signed_clearance(point, capsules_[static_cast<std::size_t>(ref.index)]));
+        } else {
+            best = std::min(
+                best,
+                geom::signed_clearance(point, aabbs_[static_cast<std::size_t>(ref.index)]));
         }
     }
     return best;
@@ -104,13 +108,18 @@ bool StaticClearanceGrid::is_free(const geom::Vec3& point, float pipe_radius) co
     bvh_.query(box, hits);
 
     for (const geom::Bvh::Ref& ref : hits) {
-        if (ref.kind == geom::Bvh::Kind::Sphere) {
+        if (ref.kind == geom::ObstacleKind::Sphere) {
             if (geom::signed_clearance(point, spheres_[static_cast<std::size_t>(ref.index)]) <
                 pipe_radius) {
                 return false;
             }
+        } else if (ref.kind == geom::ObstacleKind::Capsule) {
+            if (geom::signed_clearance(point, capsules_[static_cast<std::size_t>(ref.index)]) <
+                pipe_radius) {
+                return false;
+            }
         } else if (
-            geom::signed_clearance(point, capsules_[static_cast<std::size_t>(ref.index)]) <
+            geom::signed_clearance(point, aabbs_[static_cast<std::size_t>(ref.index)]) <
             pipe_radius) {
             return false;
         }
@@ -183,13 +192,18 @@ bool StaticClearanceGrid::is_move_free(
         bvh_.query(geom::aabb_of_segment(a, b, pipe_radius), hits);
 
         for (const geom::Bvh::Ref& ref : hits) {
-            if (ref.kind == geom::Bvh::Kind::Sphere) {
+            if (ref.kind == geom::ObstacleKind::Sphere) {
                 if (geom::signed_clearance(a, b, spheres_[static_cast<std::size_t>(ref.index)]) <
                     pipe_radius) {
                     return false;
                 }
+            } else if (ref.kind == geom::ObstacleKind::Capsule) {
+                if (geom::signed_clearance(a, b, capsules_[static_cast<std::size_t>(ref.index)]) <
+                    pipe_radius) {
+                    return false;
+                }
             } else if (
-                geom::signed_clearance(a, b, capsules_[static_cast<std::size_t>(ref.index)]) <
+                geom::signed_clearance(a, b, aabbs_[static_cast<std::size_t>(ref.index)]) <
                 pipe_radius) {
                 return false;
             }
@@ -202,22 +216,28 @@ void StaticClearanceGrid::clear() {
     std::fill(field_.begin(), field_.end(), clearance_cap_);
     spheres_.clear();
     capsules_.clear();
+    aabbs_.clear();
     bvh_.clear();
 }
 
 void StaticClearanceGrid::bake(
     const std::vector<geom::SphereObstacle>& spheres,
-    const std::vector<geom::CapsuleObstacle>& capsules) {
+    const std::vector<geom::CapsuleObstacle>& capsules,
+    const std::vector<geom::AabbObstacle>& aabbs) {
     clear();
     spheres_ = spheres;
     capsules_ = capsules;
+    aabbs_ = aabbs;
     for (const auto& sphere : spheres_) {
         stamp_sphere(sphere);
     }
     for (const auto& capsule : capsules_) {
         stamp_capsule(capsule);
     }
-    bvh_.build(spheres_, capsules_);
+    for (const auto& aabb : aabbs_) {
+        stamp_aabb(aabb);
+    }
+    bvh_.build(spheres_, capsules_, aabbs_);
 }
 
 std::size_t StaticClearanceGrid::flat_index(const CellCoord& cell) const {
@@ -288,6 +308,38 @@ void StaticClearanceGrid::stamp_capsule(const geom::CapsuleObstacle& capsule) {
                     continue;
                 }
                 const float clr = geom::signed_clearance(cell_center(cell), capsule);
+                if (clr < clearance_cap_) {
+                    lower_clearance(cell, std::min(clearance_cap_, std::max(0.f, clr)));
+                }
+            }
+        }
+    }
+}
+
+void StaticClearanceGrid::stamp_aabb(const geom::AabbObstacle& aabb) {
+    const float influence = clearance_cap_;
+
+    const int min_x =
+        static_cast<int>(std::floor((aabb.mn.x - influence) / resolution_));
+    const int max_x =
+        static_cast<int>(std::floor((aabb.mx.x + influence) / resolution_));
+    const int min_y =
+        static_cast<int>(std::floor((aabb.mn.y - influence) / resolution_));
+    const int max_y =
+        static_cast<int>(std::floor((aabb.mx.y + influence) / resolution_));
+    const int min_z =
+        static_cast<int>(std::floor((aabb.mn.z - influence) / resolution_));
+    const int max_z =
+        static_cast<int>(std::floor((aabb.mx.z + influence) / resolution_));
+
+    for (int z = min_z; z <= max_z; ++z) {
+        for (int y = min_y; y <= max_y; ++y) {
+            for (int x = min_x; x <= max_x; ++x) {
+                const CellCoord cell{x, y, z};
+                if (!in_bounds(cell)) {
+                    continue;
+                }
+                const float clr = geom::signed_clearance(cell_center(cell), aabb);
                 if (clr < clearance_cap_) {
                     lower_clearance(cell, std::min(clearance_cap_, std::max(0.f, clr)));
                 }
