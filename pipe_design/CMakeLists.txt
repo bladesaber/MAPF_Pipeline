@@ -44,6 +44,13 @@ add_library(pipe_planner
 target_include_directories(pipe_planner PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(pipe_planner PUBLIC pipe_grid)
 
+add_library(pipe_benchmark
+    src/benchmark/Subdomain.cpp
+    src/benchmark/axis_ray/AxisRayGenerator.cpp
+)
+target_include_directories(pipe_benchmark PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(pipe_benchmark PUBLIC pipe_planner)
+
 find_package(OpenMP)
 if(OpenMP_CXX_FOUND)
   target_link_libraries(pipe_planner PUBLIC OpenMP::OpenMP_CXX)
@@ -128,6 +135,10 @@ add_test(NAME near_terminal_unit COMMAND test_near_terminal)
 add_executable(test_mst tests/test_mst.cpp)
 target_include_directories(test_mst PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_test(NAME mst_unit COMMAND test_mst)
+
+add_executable(test_axis_ray tests/test_axis_ray.cpp)
+target_link_libraries(test_axis_ray PRIVATE pipe_benchmark)
+add_test(NAME axis_ray_unit COMMAND test_axis_ray)
 
 find_package(Boost REQUIRED)
 add_executable(bench_path_graph tests/bench_path_graph.cpp)
