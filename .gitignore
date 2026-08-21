@@ -37,3 +37,4 @@ pipe_design/tools/data/movingai/**/report/**
 
 # temporary files
 /temporary_ref_code
+/bench_out

@@ -307,29 +307,31 @@ bool AxisRayGenerator::seed_group(std::size_t g) {
 }
 
 bool AxisRayGenerator::edge_axis_at(std::size_t g, const CellCoord& p, int& axis) const {
+    // Each Path is one axis-aligned straight segment (make_segment).
     for (const Path& path : groups_[g].paths) {
-        for (std::size_t i = 0; i + 1 < path.cells.size(); ++i) {
-            const CellCoord& a = path.cells[i];
-            const CellCoord& b = path.cells[i + 1];
-            if (p != a && p != b) {
-                continue;
-            }
-            const CellCoord d = b - a;
-            if (d.x != 0) {
-                axis = 0;
-                return true;
-            }
-            if (d.y != 0) {
-                axis = 1;
-                return true;
-            }
-            if (d.z != 0) {
-                axis = 2;
-                return true;
-            }
+        if (path.cells.size() < 2) {
+            throw std::logic_error("AxisRayGenerator: path with <2 cells");
+        }
+        const CellCoord& a = path.cells.front();
+        const CellCoord& b = path.cells.back();
+        // O(1): p on the axis-aligned segment a—b?
+        if (a.y == b.y && a.z == b.z && p.y == a.y && p.z == a.z &&
+            p.x >= std::min(a.x, b.x) && p.x <= std::max(a.x, b.x)) {
+            axis = 0;
+            return true;
+        }
+        if (a.x == b.x && a.z == b.z && p.x == a.x && p.z == a.z &&
+            p.y >= std::min(a.y, b.y) && p.y <= std::max(a.y, b.y)) {
+            axis = 1;
+            return true;
+        }
+        if (a.x == b.x && a.y == b.y && p.x == a.x && p.y == a.y &&
+            p.z >= std::min(a.z, b.z) && p.z <= std::max(a.z, b.z)) {
+            axis = 2;
+            return true;
         }
     }
-    return false;
+    throw std::logic_error("AxisRayGenerator: p not on any axis-aligned segment");
 }
 
 bool AxisRayGenerator::attach_branch(std::size_t g) {
@@ -361,14 +363,11 @@ bool AxisRayGenerator::attach_branch(std::size_t g) {
         std::shuffle(candidates.begin(), candidates.end(), rng_);
         const CellCoord split = candidates.front();
 
-        const bool is_wp =
-            std::find(waypoints_[g].begin(), waypoints_[g].end(), split) !=
-            waypoints_[g].end();
+        // Candidates are already > branch_center_gap from every waypoint, so
+        // split lies on an edge interior — forbid that edge's axis (side exit).
         int forbid = -1;
-        if (!is_wp) {
-            if (!edge_axis_at(g, split, forbid)) {
-                continue;
-            }
+        if (!edge_axis_at(g, split, forbid)) {
+            continue;
         }
 
         const int interior = params_.attach_waypoints_num - 2;

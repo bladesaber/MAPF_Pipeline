@@ -46,10 +46,18 @@ target_link_libraries(pipe_planner PUBLIC pipe_grid)
 
 add_library(pipe_benchmark
     src/benchmark/Subdomain.cpp
+    src/benchmark/YamlUtils.cpp
     src/benchmark/axis_ray/AxisRayGenerator.cpp
+    src/benchmark/plane_slice/PlaneSlicedGenerator.cpp
 )
 target_include_directories(pipe_benchmark PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(pipe_benchmark PUBLIC pipe_planner)
+
+find_package(yaml-cpp REQUIRED)
+target_link_libraries(pipe_benchmark PUBLIC yaml-cpp)
+
+add_executable(main_gen src/benchmark/main_gen.cpp)
+target_link_libraries(main_gen PRIVATE pipe_benchmark)
 
 find_package(OpenMP)
 if(OpenMP_CXX_FOUND)
