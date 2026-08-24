@@ -16,13 +16,13 @@ struct Plane {
 
 /// Plane-slice generator input: shared knobs + `plane_gap` slack.
 struct GenParams : benchmark::GenParams {
-    /// Extra cell slack beyond `radius_diameter_cells()` for parallel planes.
+    /// Extra cell slack beyond `diameter_cells()` for parallel planes.
     int plane_gap = 2;
 
     /// Effective min |fixed_i - fixed_j| (same group, same axis).
     /// Reject when `|fixed_i - fixed_j| <= plane_center_gap()`.
     int plane_center_gap() const {
-        return radius_diameter_cells() + plane_gap;
+        return diameter_cells() + plane_gap;
     }
 };
 

@@ -49,6 +49,7 @@ add_library(pipe_benchmark
     src/benchmark/YamlUtils.cpp
     src/benchmark/axis_ray/AxisRayGenerator.cpp
     src/benchmark/plane_slice/PlaneSlicedGenerator.cpp
+    src/benchmark/pillar_field/PillarFieldGenerator.cpp
 )
 target_include_directories(pipe_benchmark PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(pipe_benchmark PUBLIC pipe_planner)
@@ -147,6 +148,10 @@ add_test(NAME mst_unit COMMAND test_mst)
 add_executable(test_axis_ray tests/test_axis_ray.cpp)
 target_link_libraries(test_axis_ray PRIVATE pipe_benchmark)
 add_test(NAME axis_ray_unit COMMAND test_axis_ray)
+
+add_executable(test_pillar_field tests/test_pillar_field.cpp)
+target_link_libraries(test_pillar_field PRIVATE pipe_benchmark)
+add_test(NAME pillar_field_unit COMMAND test_pillar_field)
 
 find_package(Boost REQUIRED)
 add_executable(bench_path_graph tests/bench_path_graph.cpp)

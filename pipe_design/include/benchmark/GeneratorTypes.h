@@ -1,5 +1,6 @@
 #pragma once
 
+#include "geom/Types.h"
 #include "planner/low/Path.h"
 #include "topology/Types.h"
 
@@ -38,16 +39,33 @@ struct GenParams {
         return static_cast<int>(std::ceil((shell_margin + radius) / resolution));
     }
 
-    /// ceil(2 * radius / resolution) — pipe diameter in cells.
-    int radius_diameter_cells() const {
+    /// ceil(radius / resolution) — pipe radius in cells (obstacle keep-out scale).
+    int radius_cells() const {
+        return static_cast<int>(std::ceil(radius / resolution));
+    }
+
+    /// ceil(2 * radius / resolution) — pipe diameter in cells (pipe–pipe gaps).
+    int diameter_cells() const {
         return static_cast<int>(std::ceil(2.f * radius / resolution));
     }
 
     /// Effective min Chebyshev between terminal centers: diameter + slack.
     /// Call sites reject when `chebyshev <= terminal_center_gap()`.
     int terminal_center_gap() const {
-        return radius_diameter_cells() + terminal_gap;
+        return diameter_cells() + terminal_gap;
     }
+};
+
+/// Shared knobs for all obstacle layout generators (PillarField, CorridorRack, …).
+/// Family-specific fields extend this in each obstacle folder's `Types.h`.
+struct ObstacleGenParams {
+    float density_target = 0.4f;
+    /// Chebyshev thicken of witness paths → ineligible for obstacles.
+    /// Pipe center must keep clearance ≥ r to obstacle surfaces, so the floor is
+    /// ~radius (not diameter). If < 0, use `GenParams::radius_cells()`.
+    int corridor_margin = -1;
+    std::uint32_t seed = 0;
+    int max_rounds = 256;
 };
 
 /// One group's terminals + witness corridor segments (shared across methods).
@@ -57,10 +75,15 @@ struct GroupCorridors {
     std::vector<planner::Path> paths;  // witness segments in grow order
 };
 
-/// Constructive corridor result shared by all generators (before obstacle / YAML).
+/// Constructive corridor result shared by all generators (before / after obstacle paint).
+/// Obstacle paint may fill any of sphere / capsule / AABB (same set as `problem::Problem`).
 struct Instance {
     GenParams params;
+    ObstacleGenParams obstacle_params;
     std::vector<GroupCorridors> groups;
+    std::vector<geom::SphereObstacle> spheres;
+    std::vector<geom::CapsuleObstacle> capsules;
+    std::vector<geom::AabbObstacle> aabbs;
     bool success = false;
     std::string reason;
 };

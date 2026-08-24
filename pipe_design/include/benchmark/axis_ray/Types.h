@@ -11,7 +11,7 @@ struct GenParams : benchmark::GenParams {
     /// Interior segment length as multiples of pipe diameter (cells via accessors).
     int min_path_size = 4;
     int max_path_size = 16;        // interior only; last face seg ignores max
-    /// Extra Chebyshev slack beyond `radius_diameter_cells()` vs occupied paths.
+    /// Extra Chebyshev slack beyond `diameter_cells()` vs occupied paths.
     int path_gap = 2;
     /// Extra Chebyshev slack beyond diameter vs waypoints (must exceed path slack
     /// so that `branch_center_gap() > path_center_gap()`).
@@ -20,24 +20,24 @@ struct GenParams : benchmark::GenParams {
 
     /// Effective min steps (excluding start): diameter * min_path_size.
     int min_path_length() const {
-        return radius_diameter_cells() * min_path_size;
+        return diameter_cells() * min_path_size;
     }
 
     /// Effective max interior steps: diameter * max_path_size.
     int max_path_length() const {
-        return radius_diameter_cells() * max_path_size;
+        return diameter_cells() * max_path_size;
     }
 
     /// Effective min Chebyshev to occupied path cells.
     /// Reject when `chebyshev <= path_center_gap()`.
     int path_center_gap() const {
-        return radius_diameter_cells() + path_gap;
+        return diameter_cells() + path_gap;
     }
 
     /// Effective min Chebyshev to existing waypoints when picking a split.
     /// Reject when `chebyshev <= branch_center_gap()`.
     int branch_center_gap() const {
-        return radius_diameter_cells() + branch_gap;
+        return diameter_cells() + branch_gap;
     }
 };
 

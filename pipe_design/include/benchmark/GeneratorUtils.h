@@ -203,4 +203,43 @@ inline std::shared_ptr<const grid::ObstacleChain> bake_path(
     return chain->extend(spheres, capsules);
 }
 
+/// Mark Chebyshev-thickened witness corridor cells as blocked (shared by
+/// PillarField / CorridorRack obstacle paint). `blocked` must already be sized
+/// `size_x * size_y * size_z` (index `(z * size_y + y) * size_x + x`).
+inline void mark_corridors_blocked(const std::vector<GroupCorridors>& groups,
+                                   int margin,
+                                   int size_x,
+                                   int size_y,
+                                   int size_z,
+                                   std::vector<std::uint8_t>& blocked) {
+    const auto in_bounds = [&](int x, int y, int z) {
+        return x >= 0 && x < size_x && y >= 0 && y < size_y && z >= 0 &&
+               z < size_z;
+    };
+    const auto flat = [&](int x, int y, int z) {
+        return static_cast<std::size_t>((z * size_y + y) * size_x + x);
+    };
+    for (const GroupCorridors& g : groups) {
+        for (const planner::Path& path : g.paths) {
+            for (const grid::CellCoord& c : path.cells) {
+                for (int dz = -margin; dz <= margin; ++dz) {
+                    for (int dy = -margin; dy <= margin; ++dy) {
+                        for (int dx = -margin; dx <= margin; ++dx) {
+                            if (chebyshev(grid::CellCoord{dx, dy, dz}) > margin) {
+                                continue;
+                            }
+                            const int x = c.x + dx;
+                            const int y = c.y + dy;
+                            const int z = c.z + dz;
+                            if (in_bounds(x, y, z)) {
+                                blocked[flat(x, y, z)] = 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 }  // namespace pipe_design::benchmark

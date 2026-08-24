@@ -225,7 +225,7 @@ Grow an axis-aligned polyline tree by **line-of-sight (LOS) scans**. Params:
    segment: any direction).
 3. **Interior length:** longest free LOS = `L`; reject if `L < min_path_length()`;
    else pick length ∈ `[min_path_length(), min(L, max_path_length())]`
-   (`*_path_length()` = `radius_diameter_cells() * *_path_size`).
+   (`*_path_length()` = `diameter_cells() * *_path_size`).
 4. **Last segment** (seed or attach): **no** `max_path_length()`; extend to a domain
    **face**; still check radius / `path_gap` along the segment.
 5. **Branch point:** on the current tree; distance to every existing **waypoint**
@@ -283,20 +283,19 @@ No empty main suite. Optional smoke-only empty layout is out of band.
 
 ### 2.2 `PillarField` (primary)
 
-Treat candidates as **AABB**; score by volume (optional chunkiness). Loop until \(\rho\):
+Treat candidates as **AABB**; score by volume. Loop until \(\rho\):
 
 ```text
-0. Extent field: each eligible cell stores 6 longest free runs
-   (+x,-x,+y,-y,+z,-z) to corridor / boundary / accepted obstacles.
-1. Sample seed in eligible space (weight ≈ neighbourhood mean of extents; v1 OK).
-2. Grow AABB from seed (greedy 6-face expand, or extent upper bound + validate
-   full box free). Reject if min edge < s_min (avoid needle boxes).
-3. Repeat → candidate set.
-4. score = dx·dy·dz (optionally × min/max edge ratio); accept best.
-5. Commit obstacle; refresh field (full or incremental).
-6. If ρ < ρ_target and progress remains → goto 1; else stop.
+0. Mark thickened corridors as blocked; Chebyshev DT → dist_ (to nearest blocked).
+1. Sample seed ∝ min(dist, dist_cap) on free cells.
+2. Grow AABB (greedy 6-face maximal, or isometric). Reject if min edge < s_min.
+3. Repeat → candidate set; accept best by volume.
+4. Commit box into blocked_; incremental DT update from new cells.
+5. If ρ < ρ_target and progress remains → goto 1; else stop.
 ```
 
+Sampling uses discrete distance on `blocked_` (not six-axis runs / not unbounded
+`StaticClearanceGrid` cap). Expand still uses `blocked_` occupancy only.
 ### 2.3 `CorridorRack` (secondary)
 
 ```text

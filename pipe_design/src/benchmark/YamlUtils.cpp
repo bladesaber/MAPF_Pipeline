@@ -50,6 +50,15 @@ bool write_instance_yaml(const std::string& path,
     meta["terminals_per_group"] = p.terminals_per_group;
     meta["max_iterations"] = p.max_iterations;
     meta["subdomain_n"] = p.subdomain_n;
+    {
+        const ObstacleGenParams& op = instance.obstacle_params;
+        YAML::Node obst;
+        obst["density_target"] = op.density_target;
+        obst["corridor_margin"] = op.corridor_margin;
+        obst["seed"] = op.seed;
+        obst["max_rounds"] = op.max_rounds;
+        meta["obstacle"] = obst;
+    }
     for (auto it = generator_params.begin(); it != generator_params.end(); ++it) {
         meta[it->first] = it->second;
     }
@@ -63,8 +72,31 @@ bool write_instance_yaml(const std::string& path,
     root["grid"] = grid;
 
     YAML::Node obstacles;
-    obstacles["spheres"] = YAML::Node(YAML::NodeType::Sequence);
-    obstacles["capsules"] = YAML::Node(YAML::NodeType::Sequence);
+    YAML::Node spheres;
+    for (const geom::SphereObstacle& s : instance.spheres) {
+        YAML::Node sn;
+        sn["center"] = vec3_node(s.center);
+        sn["radius"] = s.radius;
+        spheres.push_back(sn);
+    }
+    obstacles["spheres"] = spheres;
+    YAML::Node capsules;
+    for (const geom::CapsuleObstacle& c : instance.capsules) {
+        YAML::Node cn;
+        cn["a"] = vec3_node(c.a);
+        cn["b"] = vec3_node(c.b);
+        cn["radius"] = c.radius;
+        capsules.push_back(cn);
+    }
+    obstacles["capsules"] = capsules;
+    YAML::Node aabbs;
+    for (const geom::AabbObstacle& box : instance.aabbs) {
+        YAML::Node bn;
+        bn["mn"] = vec3_node(box.mn);
+        bn["mx"] = vec3_node(box.mx);
+        aabbs.push_back(bn);
+    }
+    obstacles["aabbs"] = aabbs;
     root["obstacles"] = obstacles;
 
     YAML::Node groups;
