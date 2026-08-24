@@ -28,7 +28,6 @@ bool PillarFieldGenerator::generate(Instance& out) {
     density_ = 0.f;
     blocked_vol_ = 0;
     eligible0_ = 0;
-    out.aabbs.clear();
 
     if (sx_ <= 0 || sy_ <= 0 || sz_ <= 0) {
         out.reason = "pillar_field: empty domain";
@@ -43,9 +42,11 @@ bool PillarFieldGenerator::generate(Instance& out) {
         return false;
     }
 
-    const int margin = params_.corridor_margin >= 0
-                           ? params_.corridor_margin
-                           : out.params.radius_cells();
+    const int margin = params_.corridor_margin;
+    if (margin < 0) {
+        out.reason = "pillar_field: corridor_margin < 0";
+        return false;
+    }
 
     const std::size_t n =
         static_cast<std::size_t>(sx_) * static_cast<std::size_t>(sy_) *
@@ -53,6 +54,7 @@ bool PillarFieldGenerator::generate(Instance& out) {
     blocked_.assign(n, 0);
     dist_.assign(n, 0);
     mark_corridors_blocked(out.groups, margin, sx_, sy_, sz_, blocked_);
+    mark_obstacles_blocked(out, sx_, sy_, sz_, blocked_);
 
     for (std::uint8_t v : blocked_) {
         if (v == 0) {

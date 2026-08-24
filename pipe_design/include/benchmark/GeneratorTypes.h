@@ -4,6 +4,7 @@
 #include "planner/low/Path.h"
 #include "topology/Types.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -25,6 +26,9 @@ struct GenParams {
     /// Planning uses core size `size_* - 2*shell_cells()`; terminals are extended
     /// to the full-domain face afterward.
     float shell_margin = 0.f;
+    /// Chebyshev carve of witness tunnels through shell AABBs (cells).
+    /// Must be `>= 0` (`append_shell_aabbs` throws otherwise). Typical: `radius_cells()`.
+    int carve_margin = 0;
     /// Extra Chebyshev slack (cells) beyond `2*radius/resolution`.
     int terminal_gap = 2;
     int num_groups = 1;
@@ -34,9 +38,16 @@ struct GenParams {
     /// Cap on outer round-robin grow loops (seed / attach rounds).
     int max_iterations = 256;
 
-    /// Shell thickness in cells: ceil((shell_margin + radius) / resolution).
+    /// Full shell band for planning: ceil((shell_margin + radius) / resolution).
     int shell_cells() const {
         return static_cast<int>(std::ceil((shell_margin + radius) / resolution));
+    }
+
+    /// Solid shell obstacles export thickness (cells): `floor(shell_margin / resolution)`.
+    /// Planning shell still uses `shell_cells()` (= margin + radius). When this is 0,
+    /// `append_shell_aabbs` still emits a 1-cell face layer (planar domain wall).
+    int shell_obstacle_cells() const {
+        return static_cast<int>(std::floor(shell_margin / resolution));
     }
 
     /// ceil(radius / resolution) — pipe radius in cells (obstacle keep-out scale).

@@ -16,7 +16,7 @@ class PillarFieldGenerator {
 public:
     explicit PillarFieldGenerator(GenParams params);
 
-    /// Clears `out.aabbs` only, paints until `density_target` or no progress.
+    /// Appends painted AABBs; preserves existing `out.{aabbs,spheres,capsules}`.
     /// Writes base knobs into `out.obstacle_params`. Returns false only on bad input.
     bool generate(Instance& out);
 

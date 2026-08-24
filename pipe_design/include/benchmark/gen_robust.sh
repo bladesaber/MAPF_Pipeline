@@ -13,6 +13,7 @@
 #   ./gen_robust.sh [OUT_DIR] [NUM] [GENERATOR] [SHELL_MARGIN]
 # GENERATOR: axis_ray | plane_slice | all   (default: all)
 # SHELL_MARGIN: optional float; if omitted, main_gen default (0)
+# Obstacle: edit WITH_OBSTACLE / OBSTACLE_TYPE / … below (default off)
 # Defaults: OUT_DIR=./bench_out  NUM=100  GENERATOR=all
 set -euo pipefail
 
@@ -56,6 +57,56 @@ SUMMARY="${OUT_DIR}/robust_summary.txt"
 
 log() { echo "$@" | tee -a "${SUMMARY}"; }
 
+# Shared across levels (difficulty from groups / terminals / waypoints only).
+# Must keep BRANCH_GAP > PATH_GAP (AxisRayGenerator: branch_center_gap > path_center_gap).
+SIZE=32
+PATH_GAP=2
+BRANCH_GAP=3
+
+# Obstacle paint (after corridor + shell). Set WITH_OBSTACLE=true to enable.
+WITH_OBSTACLE=true
+OBSTACLE_TYPE=pillar_field          # pillar_field | corridor_rack
+OBSTACLE_DENSITY=0.4                # pillar_field target ρ
+CORRIDOR_MARGIN=1                   # Chebyshev keep-out (>=0); -1 → radius_cells
+OBSTACLE_MAX_ROUNDS=256             # pillar_field
+S_MIN=2
+CANDIDATES_PER_ROUND=32
+ISOMETRIC=true                     # pillar_field isometric expand
+DIST_CAP=16
+DILATE_STEPS=2                      # corridor_rack k; -1 → CORRIDOR_MARGIN
+
+obstacle_args() {
+  if [[ "${WITH_OBSTACLE}" != "true" ]]; then
+    return 0
+  fi
+  local args=(
+    --obstacle "${OBSTACLE_TYPE}"
+    --corridor_margin "${CORRIDOR_MARGIN}"
+    --obstacle_max_rounds "${OBSTACLE_MAX_ROUNDS}"
+  )
+  case "${OBSTACLE_TYPE}" in
+    pillar_field)
+      args+=(
+        --obstacle_density "${OBSTACLE_DENSITY}"
+        --s_min "${S_MIN}"
+        --candidates_per_round "${CANDIDATES_PER_ROUND}"
+        --dist_cap "${DIST_CAP}"
+      )
+      if [[ "${ISOMETRIC}" == "true" ]]; then
+        args+=(--isometric)
+      fi
+      ;;
+    corridor_rack)
+      args+=(--dilate_steps "${DILATE_STEPS}")
+      ;;
+    *)
+      echo "error: OBSTACLE_TYPE must be pillar_field | corridor_rack (got '${OBSTACLE_TYPE}')" >&2
+      exit 1
+      ;;
+  esac
+  printf '%s\n' "${args[@]}"
+}
+
 run_one() {
   local gen="$1" level="$2" seed="$3"
   shift 3
@@ -65,10 +116,17 @@ run_one() {
   if [[ -n "${SHELL_MARGIN:-}" ]]; then
     shell_args=(--shell_margin "${SHELL_MARGIN}")
   fi
+  local obst_args=()
+  if [[ "${WITH_OBSTACLE}" == "true" ]]; then
+    mapfile -t obst_args < <(obstacle_args)
+  fi
   log "=== ${gen} / ${level}  seed=${seed}  num=${NUM}  out=${dest} ==="
+  if [[ "${WITH_OBSTACLE}" == "true" ]]; then
+    log "obstacle=${OBSTACLE_TYPE}  corridor_margin=${CORRIDOR_MARGIN}"
+  fi
   set +e
   "${MAIN_GEN}" --generator "${gen}" --out "${dest}" --num "${NUM}" --seed "${seed}" \
-    "$@" "${shell_args[@]}"
+    "$@" "${shell_args[@]}" "${obst_args[@]}"
   local rc=$?
   set -e
   local nfiles
@@ -78,6 +136,7 @@ run_one() {
   return 0
 }
 
+# Shared runners (use SIZE / PATH_GAP / BRANCH_GAP / obstacle_* above).
 run_axis_ray() {
   # easy: 2 groups × 3 terminals
   run_one axis_ray easy 3000 \
@@ -121,13 +180,8 @@ run_plane_slice() {
     --subdomain_n 4 --plane_gap 3 --max_iterations 128
 }
 
-# Shared across levels (difficulty from groups / terminals / waypoints only).
-# Must keep BRANCH_GAP > PATH_GAP (AxisRayGenerator: branch_center_gap > path_center_gap).
-SIZE=32
-PATH_GAP=2
-BRANCH_GAP=3
-
 log "generator=${GENERATOR}  out=${OUT_DIR}  num=${NUM}  shell_margin=${SHELL_MARGIN:-(default)}"
+log "with_obstacle=${WITH_OBSTACLE}  obstacle_type=${OBSTACLE_TYPE}"
 
 case "${GENERATOR}" in
   axis_ray)    run_axis_ray ;;

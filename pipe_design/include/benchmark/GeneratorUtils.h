@@ -1,6 +1,7 @@
 #pragma once
 
 #include "benchmark/GeneratorTypes.h"
+#include "geom/Geometry.h"
 #include "geom/Types.h"
 #include "grid/ObstacleChain.h"
 #include "grid/StaticClearanceGrid.h"
@@ -11,6 +12,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
 namespace pipe_design::benchmark {
@@ -237,6 +239,216 @@ inline void mark_corridors_blocked(const std::vector<GroupCorridors>& groups,
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// Mark cells occupied by existing instance obstacles (shell AABBs, etc.).
+/// Call after `mark_corridors_blocked` so witness tubes stay protected.
+inline void mark_obstacles_blocked(const Instance& inst,
+                                   int size_x,
+                                   int size_y,
+                                   int size_z,
+                                   std::vector<std::uint8_t>& blocked) {
+    const float res = GenParams::resolution;
+    const auto in_bounds = [&](int x, int y, int z) {
+        return x >= 0 && x < size_x && y >= 0 && y < size_y && z >= 0 &&
+               z < size_z;
+    };
+    const auto flat = [&](int x, int y, int z) {
+        return static_cast<std::size_t>((z * size_y + y) * size_x + x);
+    };
+    const auto mark_cell = [&](int x, int y, int z) {
+        if (in_bounds(x, y, z)) {
+            blocked[flat(x, y, z)] = 1;
+        }
+    };
+    const auto cell_center = [&](int x, int y, int z) {
+        return geom::Vec3{(static_cast<float>(x) + 0.5f) * res,
+                          (static_cast<float>(y) + 0.5f) * res,
+                          (static_cast<float>(z) + 0.5f) * res};
+    };
+
+    for (const geom::AabbObstacle& box : inst.aabbs) {
+        const int x0 = std::max(
+            0, static_cast<int>(std::floor(box.mn.x / res)));
+        const int x1 = std::min(
+            size_x - 1, static_cast<int>(std::ceil(box.mx.x / res)) - 1);
+        const int y0 = std::max(
+            0, static_cast<int>(std::floor(box.mn.y / res)));
+        const int y1 = std::min(
+            size_y - 1, static_cast<int>(std::ceil(box.mx.y / res)) - 1);
+        const int z0 = std::max(
+            0, static_cast<int>(std::floor(box.mn.z / res)));
+        const int z1 = std::min(
+            size_z - 1, static_cast<int>(std::ceil(box.mx.z / res)) - 1);
+        for (int z = z0; z <= z1; ++z) {
+            for (int y = y0; y <= y1; ++y) {
+                for (int x = x0; x <= x1; ++x) {
+                    if (geom::signed_clearance(cell_center(x, y, z), box) <=
+                        0.f) {
+                        mark_cell(x, y, z);
+                    }
+                }
+            }
+        }
+    }
+
+    for (const geom::SphereObstacle& s : inst.spheres) {
+        const float reach = s.radius;
+        const int x0 = std::max(
+            0, static_cast<int>(std::floor((s.center.x - reach) / res)));
+        const int x1 = std::min(
+            size_x - 1,
+            static_cast<int>(std::ceil((s.center.x + reach) / res)) - 1);
+        const int y0 = std::max(
+            0, static_cast<int>(std::floor((s.center.y - reach) / res)));
+        const int y1 = std::min(
+            size_y - 1,
+            static_cast<int>(std::ceil((s.center.y + reach) / res)) - 1);
+        const int z0 = std::max(
+            0, static_cast<int>(std::floor((s.center.z - reach) / res)));
+        const int z1 = std::min(
+            size_z - 1,
+            static_cast<int>(std::ceil((s.center.z + reach) / res)) - 1);
+        for (int z = z0; z <= z1; ++z) {
+            for (int y = y0; y <= y1; ++y) {
+                for (int x = x0; x <= x1; ++x) {
+                    if (geom::signed_clearance(cell_center(x, y, z), s) <= 0.f) {
+                        mark_cell(x, y, z);
+                    }
+                }
+            }
+        }
+    }
+
+    for (const geom::CapsuleObstacle& c : inst.capsules) {
+        const float reach = c.radius;
+        const int x0 = std::max(
+            0, static_cast<int>(
+                   std::floor((std::min(c.a.x, c.b.x) - reach) / res)));
+        const int x1 = std::min(
+            size_x - 1,
+            static_cast<int>(
+                std::ceil((std::max(c.a.x, c.b.x) + reach) / res)) - 1);
+        const int y0 = std::max(
+            0, static_cast<int>(
+                   std::floor((std::min(c.a.y, c.b.y) - reach) / res)));
+        const int y1 = std::min(
+            size_y - 1,
+            static_cast<int>(
+                std::ceil((std::max(c.a.y, c.b.y) + reach) / res)) - 1);
+        const int z0 = std::max(
+            0, static_cast<int>(
+                   std::floor((std::min(c.a.z, c.b.z) - reach) / res)));
+        const int z1 = std::min(
+            size_z - 1,
+            static_cast<int>(
+                std::ceil((std::max(c.a.z, c.b.z) + reach) / res)) - 1);
+        for (int z = z0; z <= z1; ++z) {
+            for (int y = y0; y <= y1; ++y) {
+                for (int x = x0; x <= x1; ++x) {
+                    if (geom::signed_clearance(cell_center(x, y, z), c) <= 0.f) {
+                        mark_cell(x, y, z);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Append shell keep-out as few AABBs.
+/// Solid band = outer `shell_obstacle_cells()`; if that is 0 (`shell_margin==0`),
+/// still use a 1-cell face layer (planar domain wall) so pipe radius cannot
+/// leave the domain. Carve Chebyshev `carve_margin` (must be `>= 0`). Appends
+/// to `out`.
+inline void append_shell_aabbs(const std::vector<GroupCorridors>& groups,
+                               const GenParams& params,
+                               std::vector<geom::AabbObstacle>& out) {
+    if (params.carve_margin < 0) {
+        throw std::invalid_argument(
+            "append_shell_aabbs: carve_margin must be >= 0");
+    }
+    const int carve_margin = params.carve_margin;
+    // m==0 → planar boundary: outermost cell layer (degraded shell).
+    const int m = std::max(params.shell_obstacle_cells(), 1);
+    const int size_x = params.size_x;
+    const int size_y = params.size_y;
+    const int size_z = params.size_z;
+    const float resolution = GenParams::resolution;
+    if (size_x <= 0 || size_y <= 0 || size_z <= 0) {
+        return;
+    }
+    const std::size_t n = static_cast<std::size_t>(size_x) *
+                          static_cast<std::size_t>(size_y) *
+                          static_cast<std::size_t>(size_z);
+    // 0 = shell cell still to cover; 1 = core / carved / already meshed.
+    std::vector<std::uint8_t> remain(n, 1);
+    const auto flat = [&](int x, int y, int z) {
+        return static_cast<std::size_t>((z * size_y + y) * size_x + x);
+    };
+    for (int z = 0; z < size_z; ++z) {
+        for (int y = 0; y < size_y; ++y) {
+            for (int x = 0; x < size_x; ++x) {
+                if (x < m || x >= size_x - m || y < m || y >= size_y - m ||
+                    z < m || z >= size_z - m) {
+                    remain[flat(x, y, z)] = 0;
+                }
+            }
+        }
+    }
+    // Carve into remain directly (sets corridor cells to 1).
+    mark_corridors_blocked(groups, carve_margin, size_x, size_y, size_z, remain);
+
+    // TODO: improve the performance of this function in the future
+    auto solid = [&](int x0, int x1, int y0, int y1, int z0, int z1) {
+        for (int z = z0; z <= z1; ++z) {
+            for (int y = y0; y <= y1; ++y) {
+                for (int x = x0; x <= x1; ++x) {
+                    if (remain[flat(x, y, z)]) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    };
+
+    // Greedy: seed → max x-run → grow y → grow z; mark covered as 1.
+    // Single-cell extent on an axis → 1-cell-thick slab (planar keep-out).
+    for (int z = 0; z < size_z; ++z) {
+        for (int y = 0; y < size_y; ++y) {
+            for (int x = 0; x < size_x; ++x) {
+                if (remain[flat(x, y, z)]) {
+                    continue;
+                }
+                int x1 = x;
+                while (x1 + 1 < size_x && !remain[flat(x1 + 1, y, z)]) {
+                    ++x1;
+                }
+                int y1 = y;
+                while (y1 + 1 < size_y && solid(x, x1, y, y1 + 1, z, z)) {
+                    ++y1;
+                }
+                int z1 = z;
+                while (z1 + 1 < size_z && solid(x, x1, y, y1, z, z1 + 1)) {
+                    ++z1;
+                }
+                for (int zz = z; zz <= z1; ++zz) {
+                    for (int yy = y; yy <= y1; ++yy) {
+                        for (int xx = x; xx <= x1; ++xx) {
+                            remain[flat(xx, yy, zz)] = 1;
+                        }
+                    }
+                }
+                out.push_back(geom::AabbObstacle{
+                    geom::Vec3{static_cast<float>(x) * resolution,
+                               static_cast<float>(y) * resolution,
+                               static_cast<float>(z) * resolution},
+                    geom::Vec3{static_cast<float>(x1 + 1) * resolution,
+                               static_cast<float>(y1 + 1) * resolution,
+                               static_cast<float>(z1 + 1) * resolution}});
             }
         }
     }

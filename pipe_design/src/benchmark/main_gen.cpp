@@ -1,5 +1,7 @@
 #include "benchmark/YamlUtils.h"
 #include "benchmark/axis_ray/AxisRayGenerator.h"
+#include "benchmark/corridor_rack/CorridorRackGenerator.h"
+#include "benchmark/pillar_field/PillarFieldGenerator.h"
 #include "benchmark/plane_slice/PlaneSlicedGenerator.h"
 
 #include <cstdint>
@@ -30,12 +32,23 @@ void usage(const char* argv0) {
         << "  --radius <float>       pipe radius (default 0.5)\n"
         << "  --shell_margin <float> extra shell beyond radius (default 0;\n"
         << "                         shell_cells=ceil((shell_margin+radius)/res))\n"
+        << "  --carve_margin <int>   Chebyshev carve through shell AABBs (default 0)\n"
         << "  --terminal_gap <int>   slack beyond diameter (default 2)\n"
         << "  --num_groups <int>     (default 1)\n"
         << "  --terminals <list>     per-group counts, e.g. 3 or 2,2,3 (default 2 each)\n"
         << "  --max_iterations <int> (default 256)\n"
         << "  --subdomain_n <int>    plane_slice only: 3|4|5 (default 3)\n"
         << "  --keep_failed          still write YAML when generate() fails\n"
+        << "\nObstacle (optional; runs after corridor + shell):\n"
+        << "  --obstacle <name>      none | pillar_field | corridor_rack (default none)\n"
+        << "  --obstacle_density <float>     pillar_field target rho (default 0.4)\n"
+        << "  --corridor_margin <int>        Chebyshev corridor keep-out (default -1 → radius_cells)\n"
+        << "  --obstacle_max_rounds <int>    pillar_field rounds (default 256)\n"
+        << "  --s_min <int>                  pillar_field min box edge (default 2)\n"
+        << "  --candidates_per_round <int>   pillar_field (default 32)\n"
+        << "  --isometric                    pillar_field isometric expand\n"
+        << "  --dist_cap <int>               pillar_field sampling cap (default 16)\n"
+        << "  --dilate_steps <int>           corridor_rack k (default -1 → corridor_margin)\n"
         << "\naxis_ray:\n"
         << "  --init_waypoints_num --attach_waypoints_num\n"
         << "  --min_path_size --max_path_size --path_gap --branch_gap --max_attempts\n"
@@ -60,6 +73,87 @@ const char* require_arg(int argc, char** argv, int& i, const char* flag) {
     return argv[++i];
 }
 
+struct ObstacleCliConfig {
+    std::string type;  // empty = disabled
+    float density_target = 0.4f;
+    int corridor_margin = -1;
+    int max_rounds = 256;
+    int s_min = 2;
+    int candidates_per_round = 32;
+    bool isometric = false;
+    int dist_cap = 16;
+    int dilate_steps = -1;
+};
+
+bool run_obstacle_gen(const ObstacleCliConfig& cfg,
+                      std::uint32_t seed,
+                      pipe_design::benchmark::Instance& inst,
+                      YAML::Node& gen_params) {
+    if (cfg.type.empty() || cfg.type == "none") {
+        return true;
+    }
+
+    const int corridor_margin =
+        cfg.corridor_margin >= 0 ? cfg.corridor_margin : inst.params.radius_cells();
+
+    if (cfg.type == "pillar_field") {
+        pipe_design::benchmark::pillar_field::GenParams op;
+        op.density_target = cfg.density_target;
+        op.corridor_margin = corridor_margin;
+        op.seed = seed;
+        op.max_rounds = cfg.max_rounds;
+        op.s_min = cfg.s_min;
+        op.candidates_per_round = cfg.candidates_per_round;
+        op.isometric = cfg.isometric;
+        op.dist_cap = cfg.dist_cap;
+
+        gen_params["obstacle_type"] = "pillar_field";
+        gen_params["obstacle_density"] = op.density_target;
+        gen_params["corridor_margin"] = op.corridor_margin;
+        gen_params["obstacle_max_rounds"] = op.max_rounds;
+        gen_params["s_min"] = op.s_min;
+        gen_params["candidates_per_round"] = op.candidates_per_round;
+        gen_params["isometric"] = op.isometric;
+        gen_params["dist_cap"] = op.dist_cap;
+
+        pipe_design::benchmark::pillar_field::PillarFieldGenerator gen(op);
+        if (!gen.generate(inst)) {
+            inst.success = false;
+            if (inst.reason.empty()) {
+                inst.reason = "pillar_field: generate failed";
+            }
+            return false;
+        }
+        return true;
+    }
+
+    if (cfg.type == "corridor_rack") {
+        pipe_design::benchmark::corridor_rack::GenParams op;
+        op.corridor_margin = corridor_margin;
+        op.seed = seed;
+        op.max_rounds = cfg.max_rounds;
+        op.dilate_steps = cfg.dilate_steps;
+
+        gen_params["obstacle_type"] = "corridor_rack";
+        gen_params["corridor_margin"] = op.corridor_margin;
+        gen_params["obstacle_max_rounds"] = op.max_rounds;
+        gen_params["dilate_steps"] = op.dilate_steps;
+
+        pipe_design::benchmark::corridor_rack::CorridorRackGenerator gen(op);
+        if (!gen.generate(inst)) {
+            inst.success = false;
+            if (inst.reason.empty()) {
+                inst.reason = "corridor_rack: generate failed";
+            }
+            return false;
+        }
+        gen_params["obstacle_density"] = inst.obstacle_params.density_target;
+        return true;
+    }
+
+    throw std::runtime_error("unknown obstacle type: " + cfg.type);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -71,6 +165,7 @@ int main(int argc, char** argv) {
     int size_x = -1, size_y = -1, size_z = -1;
     float radius = 0.5f;
     float shell_margin = 0.f;
+    int carve_margin = 0;
     int terminal_gap = 2;
     int num_groups = 1;
     std::vector<int> terminals;
@@ -89,6 +184,8 @@ int main(int argc, char** argv) {
 
     // plane_slice
     int plane_gap = 2;
+
+    ObstacleCliConfig obstacle_cfg;
 
     try {
         for (int i = 1; i < argc; ++i) {
@@ -118,6 +215,8 @@ int main(int argc, char** argv) {
                 radius = std::stof(require_arg(argc, argv, i, a.c_str()));
             } else if (a == "--shell_margin") {
                 shell_margin = std::stof(require_arg(argc, argv, i, a.c_str()));
+            } else if (a == "--carve_margin") {
+                carve_margin = std::stoi(require_arg(argc, argv, i, a.c_str()));
             } else if (a == "--terminal_gap") {
                 terminal_gap = std::stoi(require_arg(argc, argv, i, a.c_str()));
             } else if (a == "--num_groups") {
@@ -146,6 +245,29 @@ int main(int argc, char** argv) {
                 max_attempts = std::stoi(require_arg(argc, argv, i, a.c_str()));
             } else if (a == "--plane_gap") {
                 plane_gap = std::stoi(require_arg(argc, argv, i, a.c_str()));
+            } else if (a == "--obstacle") {
+                obstacle_cfg.type = require_arg(argc, argv, i, a.c_str());
+            } else if (a == "--obstacle_density") {
+                obstacle_cfg.density_target =
+                    std::stof(require_arg(argc, argv, i, a.c_str()));
+            } else if (a == "--corridor_margin") {
+                obstacle_cfg.corridor_margin =
+                    std::stoi(require_arg(argc, argv, i, a.c_str()));
+            } else if (a == "--obstacle_max_rounds") {
+                obstacle_cfg.max_rounds =
+                    std::stoi(require_arg(argc, argv, i, a.c_str()));
+            } else if (a == "--s_min") {
+                obstacle_cfg.s_min = std::stoi(require_arg(argc, argv, i, a.c_str()));
+            } else if (a == "--candidates_per_round") {
+                obstacle_cfg.candidates_per_round =
+                    std::stoi(require_arg(argc, argv, i, a.c_str()));
+            } else if (a == "--isometric") {
+                obstacle_cfg.isometric = true;
+            } else if (a == "--dist_cap") {
+                obstacle_cfg.dist_cap = std::stoi(require_arg(argc, argv, i, a.c_str()));
+            } else if (a == "--dilate_steps") {
+                obstacle_cfg.dilate_steps =
+                    std::stoi(require_arg(argc, argv, i, a.c_str()));
             } else {
                 throw std::runtime_error("unknown argument: " + a);
             }
@@ -163,6 +285,11 @@ int main(int argc, char** argv) {
     }
     if (num <= 0) {
         std::cerr << "error: --num must be > 0\n";
+        return 1;
+    }
+    if (!obstacle_cfg.type.empty() && obstacle_cfg.type != "none" &&
+        obstacle_cfg.type != "pillar_field" && obstacle_cfg.type != "corridor_rack") {
+        std::cerr << "error: --obstacle must be none | pillar_field | corridor_rack\n";
         return 1;
     }
 
@@ -208,6 +335,7 @@ int main(int argc, char** argv) {
             p.size_z = size_z;
             p.radius = radius;
             p.shell_margin = shell_margin;
+            p.carve_margin = carve_margin;
             p.terminal_gap = terminal_gap;
             p.num_groups = num_groups;
             p.terminals_per_group = terminals;
@@ -239,6 +367,7 @@ int main(int argc, char** argv) {
             p.size_z = size_z;
             p.radius = radius;
             p.shell_margin = shell_margin;
+            p.carve_margin = carve_margin;
             p.terminal_gap = terminal_gap;
             p.num_groups = num_groups;
             p.terminals_per_group = terminals;
@@ -254,6 +383,19 @@ int main(int argc, char** argv) {
         } else {
             std::cerr << "error: unknown generator '" << generator << "'\n";
             return 1;
+        }
+
+        if (ok && inst.success && !obstacle_cfg.type.empty() &&
+            obstacle_cfg.type != "none") {
+            try {
+                if (!run_obstacle_gen(obstacle_cfg, seed, inst, gen_params)) {
+                    ok = false;
+                }
+            } catch (const std::exception& e) {
+                inst.success = false;
+                inst.reason = e.what();
+                ok = false;
+            }
         }
 
         if (!ok || !inst.success) {

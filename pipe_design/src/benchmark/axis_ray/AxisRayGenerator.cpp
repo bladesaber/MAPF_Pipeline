@@ -454,6 +454,7 @@ bool AxisRayGenerator::generate(Instance& out) {
     out.success = ok;
     out.reason = reason;
     expand_shell(out, m);
+    append_shell_aabbs(out.groups, out.params, out.aabbs);
     return ok;
 }
 

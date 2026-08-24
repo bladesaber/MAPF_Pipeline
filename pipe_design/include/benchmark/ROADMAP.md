@@ -302,7 +302,9 @@ Sampling uses discrete distance on `blocked_` (not six-axis runs / not unbounded
 free = dilate(witness, k);  obstacle = complement(free) as large AABBs
 ```
 
-Primary param is `k`; report \(\rho\) in meta. Emit merged boxes (never per-cell spheres).
+Primary param is `k` (`dilate_steps`); \(\rho = V_{\mathrm{obs}} / V_{\mathrm{domain}}\)
+is derived and written to `obstacle_params.density_target`. Emit merged boxes
+(never per-cell spheres). Implementation: `corridor_rack/`.
 
 ---
 

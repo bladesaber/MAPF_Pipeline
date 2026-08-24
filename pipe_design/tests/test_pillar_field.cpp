@@ -73,6 +73,7 @@ static void test_zero_density() {
     Instance inst = make_corridor_instance();
     pipe_design::benchmark::pillar_field::GenParams op;
     op.density_target = 0.f;
+    op.corridor_margin = 1;
     op.seed = 1;
     PillarFieldGenerator gen(op);
     CHECK(gen.generate(inst));
@@ -95,10 +96,25 @@ static void test_isometric_fills() {
     CHECK(!inst.aabbs.empty());
 }
 
+static void test_preserves_shell_aabbs() {
+    Instance inst = make_corridor_instance();
+    inst.aabbs.push_back(
+        {Vec3{0.f, 0.f, 0.f}, Vec3{16.f, 1.f, 16.f}});
+    pipe_design::benchmark::pillar_field::GenParams op;
+    op.density_target = 0.2f;
+    op.corridor_margin = 1;
+    op.seed = 3;
+    PillarFieldGenerator gen(op);
+    CHECK(gen.generate(inst));
+    CHECK(inst.aabbs.size() >= 2);
+    CHECK(inst.aabbs[0].mx.y == 1.f);
+}
+
 int main() {
     test_fills_toward_density();
     test_zero_density();
     test_isometric_fills();
+    test_preserves_shell_aabbs();
     if (g_fail) {
         std::cerr << g_fail << " check(s) failed\n";
         return 1;

@@ -201,6 +201,7 @@ bool PlaneSlicedGenerator::generate(Instance& out) {
     out.success = ok;
     out.reason = reason;
     expand_shell(out, m);
+    append_shell_aabbs(out.groups, out.params, out.aabbs);
     return ok;
 }
 
@@ -478,5 +479,7 @@ bool PlaneSlicedGenerator::attach_terminal(std::size_t g) {
     }
     return false;
 }
+
+}  // namespace pipe_design::benchmark::plane_slice
 
 }  // namespace pipe_design::benchmark::plane_slice
