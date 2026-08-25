@@ -138,13 +138,19 @@ CLI runner: YAML instance(s) → CBS / PP / PBS → `DesignReport`.
 ```bash
 # single instance
 ./pipe_run_design --instance ./bench_out/axis_ray/easy/instance_0.yaml \
-  --export_dir ./runs/cbs --algorithm cbs --max_time_ms 60000 --max_iterations 10000
+  --export_dir ./runs/cbs --algorithm cbs \
+  --heuristic octile --action_model TwentySixConnected \
+  --max_time_ms 60000 --max_iterations 10000
 
 # directory batch (instance_*.yaml)
 ./pipe_run_design --instance_dir ./bench_out/axis_ray/easy \
   --export_dir ./runs/cbs/axis_ray/easy --algorithm cbs \
+  --heuristic octile --action_model TwentySixConnected \
   --max_time_ms 60000 --max_iterations 10000
 ```
+
+`--heuristic`: `manhattan` | `euclidean` | `octile` (default `octile`)  
+`--action_model`: `SixConnected` | `EightConnected` | `TwentySixConnected` (default `TwentySixConnected`)
 
 Writes `export_dir/design_reports.jsonl` (one line per instance).
 

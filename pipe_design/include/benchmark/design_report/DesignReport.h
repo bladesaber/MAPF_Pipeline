@@ -29,7 +29,7 @@ struct DesignGroupResult {
 
 /// One high-level design solve → one JSON object (batch = JSONL).
 ///
-/// Experiment focus: fixed budget (`max_time_ms` / `max_iterations`) → success rate.
+/// Experiment focus: fixed budget mode (`time` or `iterations`) → success rate.
 /// Provenance is only `instance_id` + `instance_path` (rest lives in the YAML).
 ///
 /// Schema (version 1), abbreviated:
@@ -40,10 +40,11 @@ struct DesignGroupResult {
 ///   "algorithm": "cbs",
 ///   "topology": "pure_mst",
 ///   "low_model": "astar",
-///   "heuristic": "manhattan",
-///   "action_model": "SixConnected",
+///   "heuristic": "octile",
+///   "action_model": "TwentySixConnected",
 ///   "conflict_analyzer": "near_terminal",
 ///   "algorithm_kwargs": {},
+///   "budget_mode": "time",
 ///   "max_time_ms": 60000,
 ///   "max_iterations": 10000,
 ///   "success": true,
@@ -79,9 +80,11 @@ struct DesignReport {
     std::string conflict_analyzer;
     nlohmann::json algorithm_kwargs = nlohmann::json::object();
 
-    /// Budget: `max_time_ms <= 0` → unlimited; `max_iterations == kUnlimited` → unlimited.
-    double max_time_ms = 0.0;
-    std::size_t max_iterations = std::numeric_limits<std::size_t>::max();
+    /// Budget: exactly one active axis via `budget_mode`.
+    /// "time" → enforce `max_time_ms` only; "iterations" → enforce `max_iterations` only.
+    std::string budget_mode = "time";
+    double max_time_ms = 0.0;  // used when budget_mode == "time"; <= 0 → unlimited
+    std::size_t max_iterations = std::numeric_limits<std::size_t>::max();  // used when budget_mode == "iterations"
 
     /// Outcome.
     bool success = false;

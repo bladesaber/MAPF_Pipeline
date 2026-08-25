@@ -60,7 +60,7 @@ json dump(const DesignReport& r) {
         {"action_model", r.action_model},
         {"conflict_analyzer", r.conflict_analyzer},
         {"algorithm_kwargs", r.algorithm_kwargs},
-        {"max_time_ms", r.max_time_ms},
+        {"budget_mode", r.budget_mode},
         {"success", r.success},
         {"status", r.status},
         {"fail_reason", r.fail_reason},
@@ -72,10 +72,16 @@ json dump(const DesignReport& r) {
         {"num_tasks_success", r.num_tasks_success},
     };
 
-    if (r.max_iterations == std::numeric_limits<std::size_t>::max()) {
+    if (r.budget_mode == "time") {
+        j["max_time_ms"] = r.max_time_ms;
         j["max_iterations"] = nullptr;
     } else {
-        j["max_iterations"] = r.max_iterations;
+        j["max_time_ms"] = nullptr;
+        if (r.max_iterations == std::numeric_limits<std::size_t>::max()) {
+            j["max_iterations"] = nullptr;
+        } else {
+            j["max_iterations"] = r.max_iterations;
+        }
     }
 
     json groups = json::array();
