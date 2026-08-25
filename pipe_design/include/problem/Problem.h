@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -98,6 +99,11 @@ public:
     float max_pipe_radius() const { return max_pipe_radius_; }
 
     const grid::StaticClearanceGrid& static_grid() const { return *static_grid_; }
+
+    /// Load a frozen problem from a benchmark **instance file** on disk.
+    /// Reads `grid`, `obstacles`, and `groups`; the witness `solution` block is ignored.
+    /// (Instance files are YAML today; the name is format-agnostic.)
+    static Problem from_instance_file(const std::string& path);
 
 private:
     static float compute_max_pipe_radius(const std::vector<PipeGroup>& groups) {

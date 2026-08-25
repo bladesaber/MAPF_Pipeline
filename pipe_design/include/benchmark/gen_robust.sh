@@ -144,7 +144,7 @@ run_axis_ray() {
     --init_waypoints_num 4 --attach_waypoints_num 3 \
     --min_path_size 6 --max_path_size 15 \
     --path_gap "${PATH_GAP}" --branch_gap "${BRANCH_GAP}" \
-    --max_attempts 256 --max_iterations 128
+    --max_attempts 1024 --max_iterations 128
 
   # middle: 4 groups × 4 terminals
   run_one axis_ray middle 3000 \
@@ -152,7 +152,7 @@ run_axis_ray() {
     --init_waypoints_num 5 --attach_waypoints_num 4 \
     --min_path_size 6 --max_path_size 20 \
     --path_gap "${PATH_GAP}" --branch_gap "${BRANCH_GAP}" \
-    --max_attempts 512 --max_iterations 128
+    --max_attempts 1024 --max_iterations 128
 
   # hard: 6 groups × 5 terminals
   run_one axis_ray hard 3000 \

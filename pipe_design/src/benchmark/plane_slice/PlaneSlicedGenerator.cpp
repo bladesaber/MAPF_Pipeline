@@ -481,5 +481,3 @@ bool PlaneSlicedGenerator::attach_terminal(std::size_t g) {
 }
 
 }  // namespace pipe_design::benchmark::plane_slice
-
-}  // namespace pipe_design::benchmark::plane_slice

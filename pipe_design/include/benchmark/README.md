@@ -7,7 +7,7 @@ solution) first, then static obstacles (planned). Design detail:
 **Build** (from `pipe_design/build`):
 
 ```bash
-cmake .. && cmake --build . --target main_gen pipe_benchmark -j
+cmake .. && cmake --build . --target main_gen pipe_run_design pipe_benchmark -j
 ```
 
 Depends on `libyaml-cpp-dev`.
@@ -118,3 +118,34 @@ plus `bench_out/robust_summary.txt` (exit codes / yaml counts).
 
 *Stable fields today:* `meta`, `grid`, `obstacles`, `groups`, `solution`.  
 Loaders for `problem::Problem` and schema freeze: TBD.
+
+---
+
+## `DesignReport`
+
+High-level solve result JSON (success-rate under time / iteration budget).  
+Code: [`design_report/DesignReport.h`](design_report/DesignReport.h).
+
+Provenance: `instance_id` + `instance_path` only. Per-group `tasks[]` store final
+paths (`cost` + `cells`). Batch: `write_design_reports_jsonl`.
+
+---
+
+## `pipe_run_design`
+
+CLI runner: YAML instance(s) → CBS / PP / PBS → `DesignReport`.
+
+```bash
+# single instance
+./pipe_run_design --instance ./bench_out/axis_ray/easy/instance_0.yaml \
+  --export_dir ./runs/cbs --algorithm cbs --max_time_ms 60000 --max_iterations 10000
+
+# directory batch (instance_*.yaml)
+./pipe_run_design --instance_dir ./bench_out/axis_ray/easy \
+  --export_dir ./runs/cbs/axis_ray/easy --algorithm cbs \
+  --max_time_ms 60000 --max_iterations 10000
+```
+
+Writes `export_dir/design_reports.jsonl` (one line per instance).
+
+Batch over full robust suite: [`run_robust.sh`](run_robust.sh).

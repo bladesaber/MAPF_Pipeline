@@ -335,6 +335,29 @@ Exact YAML schema: TBD at implement time; keep it stable once tests depend on it
 
 ---
 
+## 3.1 `DesignReport` — high-level solve result
+
+**Code:** `benchmark/design_report/` → `DesignReport`.
+
+One high-level run (CBS / PP / PBS / …) on one YAML instance → one JSON object;
+batch runs use JSONL (`write_design_reports_jsonl`).
+
+**Experiment axis (v1):** fixed budget (`max_time_ms`, `max_iterations`) →
+**success / fail ratio**. No cross-algorithm effort counters, clearance, or witness gap.
+
+| Block | Contents |
+|-------|----------|
+| Provenance | `instance_id`, `instance_path` only (generator / size / obstacles stay in YAML) |
+| Solver | `algorithm`, topology / low / heuristic / …, `algorithm_kwargs` |
+| Budget | `max_time_ms`, `max_iterations` |
+| Outcome | `success`, `status`, `fail_reason`, `total_time_ms`, `iterations` |
+| Aggregates | `total_cost`, `total_length`, `num_tasks`, `num_tasks_success` |
+| `groups[]` | **final paths** per group (`tasks[]` with `cost` + `cells`) |
+
+Helpers: `set_groups_from_tasks(solution())`, `recompute_totals()`.
+
+---
+
 ## 4. Future plan — radius-aware gaps
 
 Today most generator knobs are **cell counts** and only loosely related to `radius`

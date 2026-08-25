@@ -1,0 +1,119 @@
+#pragma once
+
+#include "planner/low/Path.h"
+#include "topology/Types.h"
+
+#include <nlohmann/json.hpp>
+
+#include <cstddef>
+#include <limits>
+#include <string>
+#include <vector>
+
+namespace pipe_design::benchmark {
+
+/// One Task's final path in a DesignReport group result.
+struct DesignTaskResult {
+    std::string task_id;
+    std::string edge_id;
+    bool success = false;
+    planner::Path path;  // cells + cost
+};
+
+/// One group's final routing result (paths, not summary-only).
+struct DesignGroupResult {
+    topology::GroupId group_id;
+    bool success = false;
+    std::vector<DesignTaskResult> tasks;
+};
+
+/// One high-level design solve → one JSON object (batch = JSONL).
+///
+/// Experiment focus: fixed budget (`max_time_ms` / `max_iterations`) → success rate.
+/// Provenance is only `instance_id` + `instance_path` (rest lives in the YAML).
+///
+/// Schema (version 1), abbreviated:
+/// {
+///   "version": 1,
+///   "instance_id": "axis_ray/easy/instance_0",
+///   "instance_path": "/path/to/instance_0.yaml",
+///   "algorithm": "cbs",
+///   "topology": "pure_mst",
+///   "low_model": "astar",
+///   "heuristic": "manhattan",
+///   "action_model": "SixConnected",
+///   "conflict_analyzer": "near_terminal",
+///   "algorithm_kwargs": {},
+///   "max_time_ms": 60000,
+///   "max_iterations": 10000,
+///   "success": true,
+///   "status": "Success",
+///   "fail_reason": "",
+///   "total_time_ms": 1234.5,
+///   "iterations": 42,
+///   "total_cost": 180.5,
+///   "total_length": 180,
+///   "num_tasks": 4,
+///   "num_tasks_success": 4,
+///   "groups": [
+///     {"group_id": "G0", "success": true,
+///      "tasks": [{"task_id": "G0:e0", "edge_id": "e0", "success": true,
+///                "cost": 10.0, "cells": [[x,y,z], ...]}]}
+///   ]
+/// }
+struct DesignReport {
+    static constexpr int kSchemaVersion = 1;
+
+    int version = kSchemaVersion;
+
+    /// Provenance (only these two — instance YAML holds generator / size / …).
+    std::string instance_id;
+    std::string instance_path;
+
+    /// Solver config (echo from the run).
+    std::string algorithm;
+    std::string topology;
+    std::string low_model;
+    std::string heuristic;
+    std::string action_model;
+    std::string conflict_analyzer;
+    nlohmann::json algorithm_kwargs = nlohmann::json::object();
+
+    /// Budget: `max_time_ms <= 0` → unlimited; `max_iterations == kUnlimited` → unlimited.
+    double max_time_ms = 0.0;
+    std::size_t max_iterations = std::numeric_limits<std::size_t>::max();
+
+    /// Outcome.
+    bool success = false;
+    /// "Success" | "Failure" | "Running" (hit time / iteration cap).
+    std::string status = "Failure";
+    /// "" | "timeout" | "iteration_cap" | "no_solution" | …
+    std::string fail_reason;
+    double total_time_ms = 0.0;
+    std::size_t iterations = 0;
+
+    /// Aggregates over `groups` (runner may call `recompute_totals()`).
+    double total_cost = 0.0;
+    std::size_t total_length = 0;
+    std::size_t num_tasks = 0;
+    std::size_t num_tasks_success = 0;
+
+    /// Per-group final paths.
+    std::vector<DesignGroupResult> groups;
+
+    /// Fill `groups` from a high-level `solution()` Task list (grouped by `group_id`).
+    void set_groups_from_tasks(const std::vector<topology::Task>& tasks);
+
+    /// Recompute aggregate fields from `groups`.
+    void recompute_totals();
+
+    void to_file(const std::string& path) const;
+    std::string to_json_string(int indent = -1) const;
+};
+
+/// Write one JSON object per line (no pretty indent).
+void write_design_reports_jsonl(
+    const std::string& path,
+    const std::vector<DesignReport>& reports);
+
+}  // namespace pipe_design::benchmark

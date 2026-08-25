@@ -40,33 +40,42 @@ add_library(pipe_planner
     src/conflict/NearTerminalAnalyzer.cpp
     src/conflict/SampleKdTree.cpp
     src/heuristic/Dijkstra.cpp
+    src/problem/Problem.cpp
 )
 target_include_directories(pipe_planner PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(pipe_planner PUBLIC pipe_grid)
 
+find_package(yaml-cpp REQUIRED)
+target_link_libraries(pipe_planner PUBLIC yaml-cpp)
+
 add_library(pipe_benchmark
     src/benchmark/Subdomain.cpp
     src/benchmark/YamlUtils.cpp
+    src/benchmark/design_report/DesignReport.cpp
     src/benchmark/axis_ray/AxisRayGenerator.cpp
     src/benchmark/plane_slice/PlaneSlicedGenerator.cpp
     src/benchmark/pillar_field/PillarFieldGenerator.cpp
     src/benchmark/corridor_rack/CorridorRackGenerator.cpp
 )
-target_include_directories(pipe_benchmark PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(pipe_benchmark
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/nlohmann_json/single_include
+)
 target_link_libraries(pipe_benchmark PUBLIC pipe_planner)
-
-find_package(yaml-cpp REQUIRED)
-target_link_libraries(pipe_benchmark PUBLIC yaml-cpp)
 
 add_executable(main_gen src/benchmark/main_gen.cpp)
 target_link_libraries(main_gen PRIVATE pipe_benchmark)
+
+add_executable(pipe_run_design src/benchmark/pipe_run_design.cpp)
+target_link_libraries(pipe_run_design PRIVATE pipe_benchmark)
 
 find_package(OpenMP)
 if(OpenMP_CXX_FOUND)
   target_link_libraries(pipe_planner PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
-add_subdirectory(tools)
+add_subdirectory("tools(legacy)")
 
 enable_testing()
 

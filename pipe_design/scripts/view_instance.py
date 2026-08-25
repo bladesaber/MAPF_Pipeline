@@ -4,7 +4,7 @@
 Usage (conda env deploy_vllm):
   python view_instance.py
   python view_instance.py /path/to/folder
-  python view_instance.py /path/to/instance_0.yaml --no-tube
+  python view_instance.py /path/to/instance_0.yaml --points
 
 Depends (use ONE Qt stack — conda recommended):
   conda install -c conda-forge pyqt
@@ -78,32 +78,27 @@ def draw_pipe(
     radius: float,
     color: tuple[float, float, float],
     res: float,
-    use_tube: bool,
-) -> list:
-    """Draw one witness path as tube or centerline. Returns actors."""
-    if len(cells) < 2:
-        return []
-    line = pv.lines_from_points(cell_centers(cells, res))
-    mesh = line if not use_tube else line.tube(radius=radius, n_sides=12)
-    return [
-        plotter.add_mesh(mesh, color=color, opacity=0.9, smooth_shading=True),
-    ]
-
-
-def draw_terminals(
-    plotter: Any,
-    terminals: list,
-    default_radius: float,
-    color: tuple[float, float, float],
-) -> list:
-    """Draw terminal spheres. Returns actors."""
-    actors = []
-    for t in terminals:
-        pos = t["pos"]
-        r = float(t.get("radius", default_radius))
-        sphere = pv.Sphere(radius=r * 1.2, center=(pos[0], pos[1], pos[2]))
-        actors.append(plotter.add_mesh(sphere, color=color))
-    return actors
+) -> tuple[list, list]:
+    """Add tube + point actors for one path. Returns (tube_actors, point_actors)."""
+    tube_actors: list = []
+    point_actors: list = []
+    if not cells:
+        return tube_actors, point_actors
+    pts = cell_centers(cells, res)
+    if len(cells) >= 2:
+        mesh = pv.lines_from_points(pts).tube(radius=radius, n_sides=12)
+        tube_actors.append(
+            plotter.add_mesh(mesh, color=color, opacity=0.9, smooth_shading=True)
+        )
+    point_actors.append(
+        plotter.add_mesh(
+            pv.PolyData(pts),
+            color=color,
+            point_size=10,
+            render_points_as_spheres=True,
+        )
+    )
+    return tube_actors, point_actors
 
 
 def draw_obstacles(plotter: Any, obstacles: dict) -> tuple[list, list]:
@@ -211,6 +206,11 @@ class MainWindow(QMainWindow):
         self.shell_cb.setEnabled(False)
         self.shell_cb.stateChanged.connect(self._on_shell_toggled)
 
+        self.tube_cb = QCheckBox("Tube")
+        self.tube_cb.setChecked(use_tube)
+        self.tube_cb.setToolTip("On: pipe tubes; off: path cells as points")
+        self.tube_cb.stateChanged.connect(self._on_tube_toggled)
+
         self.obs_cb = QCheckBox("Obstacles")
         self.obs_cb.setChecked(True)
         self.obs_cb.stateChanged.connect(self._on_obstacles_toggled)
@@ -240,6 +240,8 @@ class MainWindow(QMainWindow):
         self._shell_actor = None
         self._obstacle_actors: list = []
         self._clip_actors: list = []
+        # Per group: (tube_actors, point_actors, group checkbox)
+        self._path_groups: list[tuple[list, list, QCheckBox]] = []
         self._clip_extents = (0.0, 0.0, 0.0)  # world size along x,y,z
         self._clip_plane = vtkPlane()
         self._slice_mesh: pv.PolyData | None = None
@@ -251,6 +253,7 @@ class MainWindow(QMainWindow):
         top.addWidget(self.prev_btn)
         top.addWidget(self.next_btn)
         top.addWidget(self.shell_cb)
+        top.addWidget(self.tube_cb)
         top.addWidget(self.obs_cb)
         top.addWidget(self.clip_cb)
         top.addWidget(self.slice_cb)
@@ -292,6 +295,21 @@ class MainWindow(QMainWindow):
         if self._shell_actor is None:
             return
         self._shell_actor.SetVisibility(state == Qt.Checked)  # type: ignore
+        self.plotter.render()
+
+    def _on_tube_toggled(self, state: int) -> None:
+        self.use_tube = state == Qt.Checked  # type: ignore
+        self._sync_path_mode()
+
+    def _sync_path_mode(self) -> None:
+        """Show tubes or points per group without rebuilding the scene."""
+        use_tube = self.tube_cb.isChecked()
+        for tube_acts, point_acts, cb in self._path_groups:
+            on = cb.isChecked()
+            for a in tube_acts:
+                a.SetVisibility(on and use_tube)
+            for a in point_acts:
+                a.SetVisibility(on and not use_tube)
         self.plotter.render()
 
     def _on_obstacles_toggled(self, state: int) -> None:
@@ -423,6 +441,7 @@ class MainWindow(QMainWindow):
         self._shell_actor = None
         self._obstacle_actors = []
         self._clip_actors = []
+        self._path_groups = []
         self._slice_mesh = None
         slice_solids: list = []
 
@@ -455,42 +474,50 @@ class MainWindow(QMainWindow):
         self._set_actors_visible(self._obstacle_actors, self.obs_cb.isChecked())
         self._clip_actors.extend(self._obstacle_actors)
 
+        use_tube = self.tube_cb.isChecked()
         for gi, g in enumerate(groups):
             gid = g["id"]
             color = COLORS[gi % len(COLORS)]
-            actors: list = []
+            tube_acts: list = []
+            point_acts: list = []
 
             for path_node in solution.get(gid, {}).get("paths") or []:
                 cells = path_node.get("cells") or []
-                if len(cells) >= 2 and self.use_tube:
-                    tube = pv.lines_from_points(cell_centers(cells, res)).tube(
-                        radius=radius, n_sides=12
+                if len(cells) >= 2:
+                    slice_solids.append(
+                        pv.lines_from_points(cell_centers(cells, res)).tube(
+                            radius=radius, n_sides=12
+                        )
                     )
-                    slice_solids.append(tube)
-                actors.extend(
-                    draw_pipe(
-                        self.plotter, cells, radius, color, res, self.use_tube
-                    )
+                t_acts, p_acts = draw_pipe(
+                    self.plotter, cells, radius, color, res
                 )
+                tube_acts.extend(t_acts)
+                point_acts.extend(p_acts)
 
-            actors.extend(
-                draw_terminals(
-                    self.plotter, g.get("terminals") or [], radius, color
-                )
-            )
-            self._clip_actors.extend(actors)
+            self._clip_actors.extend(tube_acts)
+            self._clip_actors.extend(point_acts)
 
             cb = QCheckBox(str(gid))
             cb.setChecked(True)
+            self._path_groups.append((tube_acts, point_acts, cb))
 
-            def on_group(state, acts=actors):
-                vis = state == Qt.Checked  # type: ignore
-                for a in acts:
-                    a.SetVisibility(vis)
+            def on_group(state, tubes=tube_acts, points=point_acts):
+                on = state == Qt.Checked  # type: ignore
+                show_tube = self.tube_cb.isChecked()
+                for a in tubes:
+                    a.SetVisibility(on and show_tube)
+                for a in points:
+                    a.SetVisibility(on and not show_tube)
                 self.plotter.render()
 
             cb.stateChanged.connect(on_group)
             self.group_box.insertWidget(self.group_box.count() - 1, cb)
+
+            for a in tube_acts:
+                a.SetVisibility(use_tube)
+            for a in point_acts:
+                a.SetVisibility(not use_tube)
 
         if slice_solids:
             self._slice_mesh = pv.merge(slice_solids)
@@ -520,11 +547,15 @@ def main() -> int:
         default=None,
         help="optional folder or yaml file to open at start",
     )
-    ap.add_argument("--no-tube", action="store_true", help="centerlines only")
+    ap.add_argument(
+        "--points",
+        action="store_true",
+        help="start in point mode (cell centers) instead of tubes",
+    )
     args = ap.parse_args()
 
     app = QApplication(sys.argv)
-    win = MainWindow(use_tube=not args.no_tube)
+    win = MainWindow(use_tube=not args.points)
     win.show()
 
     if args.path:
