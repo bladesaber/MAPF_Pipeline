@@ -66,10 +66,11 @@ BRANCH_GAP=3
 # Obstacle paint (after corridor + shell). Set WITH_OBSTACLE=true to enable.
 WITH_OBSTACLE=true
 OBSTACLE_TYPE=pillar_field          # pillar_field | corridor_rack
-OBSTACLE_DENSITY=0.4                # pillar_field target ρ
+OBSTACLE_DENSITY=0.2                # pillar_field target ρ
 CORRIDOR_MARGIN=1                   # Chebyshev keep-out (>=0); -1 → radius_cells
 OBSTACLE_MAX_ROUNDS=256             # pillar_field
-S_MIN=2
+MIN_EDGE=2
+MAX_EDGE=8
 CANDIDATES_PER_ROUND=32
 ISOMETRIC=true                     # pillar_field isometric expand
 DIST_CAP=16
@@ -88,7 +89,8 @@ obstacle_args() {
     pillar_field)
       args+=(
         --obstacle_density "${OBSTACLE_DENSITY}"
-        --s_min "${S_MIN}"
+        --min_edge "${MIN_EDGE}"
+        --max_edge "${MAX_EDGE}"
         --candidates_per_round "${CANDIDATES_PER_ROUND}"
         --dist_cap "${DIST_CAP}"
       )

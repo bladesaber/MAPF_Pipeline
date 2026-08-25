@@ -47,7 +47,7 @@ static void test_fills_toward_density() {
 
     pipe_design::benchmark::pillar_field::GenParams op;
     op.density_target = 0.35f;
-    op.s_min = 2;
+    op.min_edge = 2;
     op.candidates_per_round = 24;
     op.max_rounds = 64;
     op.corridor_margin = 1;
@@ -85,7 +85,7 @@ static void test_isometric_fills() {
     Instance inst = make_corridor_instance();
     pipe_design::benchmark::pillar_field::GenParams op;
     op.density_target = 0.25f;
-    op.s_min = 1;
+    op.min_edge = 1;
     op.candidates_per_round = 24;
     op.max_rounds = 64;
     op.corridor_margin = 1;

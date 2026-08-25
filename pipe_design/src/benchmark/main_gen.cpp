@@ -1,4 +1,4 @@
-#include "benchmark/YamlUtils.h"
+#include "benchmark/GeneratorTypes.h"
 #include "benchmark/axis_ray/AxisRayGenerator.h"
 #include "benchmark/corridor_rack/CorridorRackGenerator.h"
 #include "benchmark/pillar_field/PillarFieldGenerator.h"
@@ -44,7 +44,8 @@ void usage(const char* argv0) {
         << "  --obstacle_density <float>     pillar_field target rho (default 0.4)\n"
         << "  --corridor_margin <int>        Chebyshev corridor keep-out (default -1 → radius_cells)\n"
         << "  --obstacle_max_rounds <int>    pillar_field rounds (default 256)\n"
-        << "  --s_min <int>                  pillar_field min box edge (default 2)\n"
+        << "  --min_edge <int>               pillar_field min box edge (default 2)\n"
+        << "  --max_edge <int>               pillar_field max box edge (default 16)\n"
         << "  --candidates_per_round <int>   pillar_field (default 32)\n"
         << "  --isometric                    pillar_field isometric expand\n"
         << "  --dist_cap <int>               pillar_field sampling cap (default 16)\n"
@@ -78,7 +79,8 @@ struct ObstacleCliConfig {
     float density_target = 0.4f;
     int corridor_margin = -1;
     int max_rounds = 256;
-    int s_min = 2;
+    int min_edge = 2;
+    int max_edge = 16;
     int candidates_per_round = 32;
     bool isometric = false;
     int dist_cap = 16;
@@ -102,7 +104,8 @@ bool run_obstacle_gen(const ObstacleCliConfig& cfg,
         op.corridor_margin = corridor_margin;
         op.seed = seed;
         op.max_rounds = cfg.max_rounds;
-        op.s_min = cfg.s_min;
+        op.min_edge = cfg.min_edge;
+        op.max_edge = cfg.max_edge;
         op.candidates_per_round = cfg.candidates_per_round;
         op.isometric = cfg.isometric;
         op.dist_cap = cfg.dist_cap;
@@ -111,7 +114,8 @@ bool run_obstacle_gen(const ObstacleCliConfig& cfg,
         gen_params["obstacle_density"] = op.density_target;
         gen_params["corridor_margin"] = op.corridor_margin;
         gen_params["obstacle_max_rounds"] = op.max_rounds;
-        gen_params["s_min"] = op.s_min;
+        gen_params["min_edge"] = op.min_edge;
+        gen_params["max_edge"] = op.max_edge;
         gen_params["candidates_per_round"] = op.candidates_per_round;
         gen_params["isometric"] = op.isometric;
         gen_params["dist_cap"] = op.dist_cap;
@@ -256,8 +260,10 @@ int main(int argc, char** argv) {
             } else if (a == "--obstacle_max_rounds") {
                 obstacle_cfg.max_rounds =
                     std::stoi(require_arg(argc, argv, i, a.c_str()));
-            } else if (a == "--s_min") {
-                obstacle_cfg.s_min = std::stoi(require_arg(argc, argv, i, a.c_str()));
+            } else if (a == "--min_edge") {
+                obstacle_cfg.min_edge = std::stoi(require_arg(argc, argv, i, a.c_str()));
+            } else if (a == "--max_edge") {
+                obstacle_cfg.max_edge = std::stoi(require_arg(argc, argv, i, a.c_str()));
             } else if (a == "--candidates_per_round") {
                 obstacle_cfg.candidates_per_round =
                     std::stoi(require_arg(argc, argv, i, a.c_str()));
@@ -411,7 +417,7 @@ int main(int argc, char** argv) {
 
         const std::string path =
             (fs::path(out_dir) / ("instance_" + std::to_string(i) + ".yaml")).string();
-        if (!pipe_design::benchmark::write_instance_yaml(path, inst, generator, gen_params)) {
+        if (!inst.to_file(path, generator, gen_params)) {
             std::cerr << "[" << i << "] error writing " << path << "\n";
             return 1;
         }

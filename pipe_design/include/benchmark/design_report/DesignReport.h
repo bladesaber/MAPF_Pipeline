@@ -56,6 +56,10 @@ struct DesignGroupResult {
 ///   "total_length": 180,
 ///   "num_tasks": 4,
 ///   "num_tasks_success": 4,
+///   "witness_compared": true,
+///   "reference_cost": 160.0,
+///   "cost_gap": 20.5,
+///   "cost_ratio": 1.128,
 ///   "groups": [
 ///     {"group_id": "G0", "success": true,
 ///      "tasks": [{"task_id": "G0:e0", "edge_id": "e0", "success": true,
@@ -101,6 +105,12 @@ struct DesignReport {
     std::size_t num_tasks = 0;
     std::size_t num_tasks_success = 0;
 
+    /// Vs witness (constructive YAML `solution`). Filled by `compare_witness()`.
+    bool witness_compared = false;
+    double reference_cost = 0.0;
+    double cost_gap = 0.0;     // total_cost - reference_cost (success only)
+    double cost_ratio = 0.0;   // total_cost / reference_cost (success only)
+
     /// Per-group final paths.
     std::vector<DesignGroupResult> groups;
 
@@ -109,6 +119,9 @@ struct DesignReport {
 
     /// Recompute aggregate fields from `groups`.
     void recompute_totals();
+
+    /// Load witness from `instance_path` via `Instance::from_file`; fill reference_*.
+    void compare_witness();
 
     void to_file(const std::string& path) const;
     std::string to_json_string(int indent = -1) const;

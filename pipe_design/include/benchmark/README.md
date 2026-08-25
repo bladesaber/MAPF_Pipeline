@@ -21,7 +21,7 @@ Depends on `libyaml-cpp-dev`.
 | `axis_ray` | `axis_ray/` | Preferred (LOS ray tree, no A\*) |
 | `plane_slice` | `plane_slice/` | Planar A\* on axis slices |
 
-Shared types: `GeneratorTypes.h`, `YamlUtils.h`. Gaps / lengths derived from
+Shared types: `GeneratorTypes.h` (`Instance::to_file` / `from_file`). Gaps / lengths derived from
 `radius` where noted in each method’s `Types.h`.
 
 ---
@@ -154,4 +154,13 @@ CLI runner: YAML instance(s) → CBS / PP / PBS → `DesignReport`.
 
 Writes `export_dir/design_reports.jsonl` (one line per instance).
 
-Batch over full robust suite: [`run_robust.sh`](run_robust.sh).
+Batch over robust suite: [`run_robust.sh`](run_robust.sh) — plain `pipe_run_design` commands; edit the file to add runs.
+
+```bash
+# from pipe_design/build
+../include/benchmark/run_robust.sh
+
+# summarize
+python ../include/benchmark/summarize_reports.py \
+  /home/admin123456/Desktop/work/mapf_3d_benchmark/runs_easy_middle
+```

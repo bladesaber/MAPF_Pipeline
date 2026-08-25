@@ -50,7 +50,7 @@ target_link_libraries(pipe_planner PUBLIC yaml-cpp)
 
 add_library(pipe_benchmark
     src/benchmark/Subdomain.cpp
-    src/benchmark/YamlUtils.cpp
+    src/benchmark/GeneratorTypes.cpp
     src/benchmark/design_report/DesignReport.cpp
     src/benchmark/axis_ray/AxisRayGenerator.cpp
     src/benchmark/plane_slice/PlaneSlicedGenerator.cpp

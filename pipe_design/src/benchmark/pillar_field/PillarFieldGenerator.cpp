@@ -37,8 +37,12 @@ bool PillarFieldGenerator::generate(Instance& out) {
         out.reason = "pillar_field: density_target out of [0,1]";
         return false;
     }
-    if (params_.s_min < 1) {
-        out.reason = "pillar_field: s_min < 1";
+    if (params_.min_edge < 1) {
+        out.reason = "pillar_field: min_edge < 1";
+        return false;
+    }
+    if (params_.max_edge < params_.min_edge) {
+        out.reason = "pillar_field: max_edge < min_edge";
         return false;
     }
 
@@ -82,7 +86,7 @@ bool PillarFieldGenerator::generate(Instance& out) {
                 break;
             }
             Box box = greedy_expand(seed);
-            if (box.min_edge() < params_.s_min) {
+            if (box.min_edge() < params_.min_edge) {
                 continue;
             }
             const int score = box.volume();
@@ -311,8 +315,13 @@ PillarFieldGenerator::Box PillarFieldGenerator::greedy_expand(
         return b;
     }
     if (params_.isometric) {
-        // All six faces must advance together; stop when any face is blocked.
+        // All six faces must advance together; stop when any face is blocked
+        // or next layer would make edge > max_edge.
         while (true) {
+            const int edge = b.x1 - b.x0 + 1;
+            if (edge >= params_.max_edge) {
+                break;
+            }
             bool ok = true;
             for (int face = 0; face < 6; ++face) {
                 if (!face_free(b, face)) {
@@ -332,28 +341,52 @@ PillarFieldGenerator::Box PillarFieldGenerator::greedy_expand(
         }
         return b;
     }
-    // Maximal AABB: expand any free face independently.
-    bool grew = true;
-    while (grew) {
-        grew = false;
-        for (int face = 0; face < 6; ++face) {
-            if (!face_free(b, face)) {
-                continue;
-            }
-            if (face == 0) {
+    // Maximal AABB: expand free faces independently until each face is done
+    // (blocked or axis already at max_edge).
+    bool x_pos = false, x_neg = false, y_pos = false, y_neg = false,
+         z_pos = false, z_neg = false;
+    while (!(x_pos && x_neg && y_pos && y_neg && z_pos && z_neg)) {
+        if (!x_pos) {
+            if ((b.x1 - b.x0 + 1) >= params_.max_edge || !face_free(b, 0)) {
+                x_pos = true;
+            } else {
                 ++b.x1;
-            } else if (face == 1) {
+            }
+        }
+        if (!x_neg) {
+            if ((b.x1 - b.x0 + 1) >= params_.max_edge || !face_free(b, 1)) {
+                x_neg = true;
+            } else {
                 --b.x0;
-            } else if (face == 2) {
+            }
+        }
+        if (!y_pos) {
+            if ((b.y1 - b.y0 + 1) >= params_.max_edge || !face_free(b, 2)) {
+                y_pos = true;
+            } else {
                 ++b.y1;
-            } else if (face == 3) {
+            }
+        }
+        if (!y_neg) {
+            if ((b.y1 - b.y0 + 1) >= params_.max_edge || !face_free(b, 3)) {
+                y_neg = true;
+            } else {
                 --b.y0;
-            } else if (face == 4) {
+            }
+        }
+        if (!z_pos) {
+            if ((b.z1 - b.z0 + 1) >= params_.max_edge || !face_free(b, 4)) {
+                z_pos = true;
+            } else {
                 ++b.z1;
+            }
+        }
+        if (!z_neg) {
+            if ((b.z1 - b.z0 + 1) >= params_.max_edge || !face_free(b, 5)) {
+                z_neg = true;
             } else {
                 --b.z0;
             }
-            grew = true;
         }
     }
     return b;

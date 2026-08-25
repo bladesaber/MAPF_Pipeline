@@ -502,6 +502,7 @@ static DesignReport run_one(
 
     report.total_time_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - t0).count();
+    report.compare_witness();
     return report;
 }
 

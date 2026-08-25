@@ -288,7 +288,8 @@ Treat candidates as **AABB**; score by volume. Loop until \(\rho\):
 ```text
 0. Mark thickened corridors as blocked; Chebyshev DT → dist_ (to nearest blocked).
 1. Sample seed ∝ min(dist, dist_cap) on free cells.
-2. Grow AABB (greedy 6-face maximal, or isometric). Reject if min edge < s_min.
+2. Grow AABB (greedy 6-face maximal, or isometric). Reject if min edge < min_edge;
+   cap any edge at max_edge during expand.
 3. Repeat → candidate set; accept best by volume.
 4. Commit box into blocked_; incremental DT update from new cells.
 5. If ρ < ρ_target and progress remains → goto 1; else stop.

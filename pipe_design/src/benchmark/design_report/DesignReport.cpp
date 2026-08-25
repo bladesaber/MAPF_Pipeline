@@ -1,4 +1,5 @@
 #include "benchmark/design_report/DesignReport.h"
+#include "benchmark/GeneratorTypes.h"
 
 #include <fstream>
 #include <stdexcept>
@@ -70,7 +71,19 @@ json dump(const DesignReport& r) {
         {"total_length", r.total_length},
         {"num_tasks", r.num_tasks},
         {"num_tasks_success", r.num_tasks_success},
+        {"witness_compared", r.witness_compared},
     };
+
+    if (r.witness_compared) {
+        j["reference_cost"] = r.reference_cost;
+        if (r.success) {
+            j["cost_gap"] = r.cost_gap;
+            j["cost_ratio"] = r.cost_ratio;
+        } else {
+            j["cost_gap"] = nullptr;
+            j["cost_ratio"] = nullptr;
+        }
+    }
 
     if (r.budget_mode == "time") {
         j["max_time_ms"] = r.max_time_ms;
@@ -145,6 +158,28 @@ void DesignReport::recompute_totals() {
             total_cost += t.path.cost;
             total_length += t.path.length();
         }
+    }
+}
+
+void DesignReport::compare_witness() {
+    witness_compared = false;
+    reference_cost = 0.0;
+    cost_gap = 0.0;
+    cost_ratio = 0.0;
+    if (instance_path.empty()) {
+        return;
+    }
+
+    const Instance inst = Instance::from_file(instance_path);
+    for (const GroupCorridors& g : inst.groups) {
+        for (const planner::Path& p : g.paths) {
+            reference_cost += p.cost;
+        }
+    }
+    witness_compared = true;
+    if (success && reference_cost > 0.0) {
+        cost_gap = total_cost - reference_cost;
+        cost_ratio = total_cost / reference_cost;
     }
 }
 

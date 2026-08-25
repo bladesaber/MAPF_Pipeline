@@ -4,6 +4,8 @@
 #include "planner/low/Path.h"
 #include "topology/Types.h"
 
+#include <yaml-cpp/yaml.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -97,6 +99,15 @@ struct Instance {
     std::vector<geom::AabbObstacle> aabbs;
     bool success = false;
     std::string reason;
+
+    /// Write YAML instance (ROADMAP §3). `generator` e.g. "axis_ray";
+    /// `generator_params` merged into `meta`.
+    bool to_file(const std::string& path,
+                 const std::string& generator,
+                 const YAML::Node& generator_params = {}) const;
+
+    /// Load YAML including witness `solution` paths (for vs-witness compare).
+    static Instance from_file(const std::string& path);
 };
 
 }  // namespace pipe_design::benchmark
