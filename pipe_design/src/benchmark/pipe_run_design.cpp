@@ -26,6 +26,8 @@
 #include "topology/RadiusSpineMSTBuilder.h"
 #include "topology/Types.h"
 
+#include <nlohmann/json.hpp>
+
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -74,7 +76,7 @@ using pipe_design::topology::RadiusSpineMSTBuilder;
 struct Cli {
     fs::path instance;
     fs::path instance_dir;
-    fs::path export_dir = "runs";
+    fs::path export_path = "design_reports.jsonl";
     std::string algorithm = "cbs";
     // Topology section
     std::string topology = "pure_mst";
@@ -91,17 +93,21 @@ struct Cli {
     std::string budget_mode = "time";
     double max_time_ms = 60000.0;
     std::size_t max_iterations = 10000;
+    // Free-form tags copied into DesignReport.meta (JSON object).
+    nlohmann::json meta = nlohmann::json::object();
 };
 
 static void usage(const char* prog) {
     std::cerr
         << "Usage:\n"
         << "  " << prog << " --instance <file.yaml> [options]\n"
-        << "  " << prog << " --instance_dir <dir> --export_dir <dir> [options]\n"
+        << "  " << prog << " --instance_dir <dir> [options]\n"
         << "\nI/O:\n"
         << "  --instance PATH\n"
         << "  --instance_dir DIR\n"
-        << "  --export_dir DIR                       (default: runs)\n"
+        << "  --export PATH                          output JSONL file (default: design_reports.jsonl)\n"
+        << "  --meta JSON_OBJECT                     free-form tags → report.meta\n"
+        << "                                         e.g. '{\"generator\":\"axis_ray\",\"level\":\"middle\"}'\n"
         << "\nHigh-level:\n"
         << "  --algorithm cbs|pp|pbs                 (default: cbs)\n"
         << "\nTopology:\n"
@@ -148,12 +154,31 @@ static bool parse_cli(int argc, char** argv, Cli& cli) {
                 return false;
             }
             cli.instance_dir = v;
-        } else if (arg == "--export_dir") {
-            const char* v = need("--export_dir");
+        } else if (arg == "--export") {
+            const char* v = need("--export");
             if (v == nullptr) {
                 return false;
             }
-            cli.export_dir = v;
+            cli.export_path = v;
+        } else if (arg == "--export_dir") {
+            std::cerr << "--export_dir is removed; use --export <file.jsonl>\n";
+            return false;
+        } else if (arg == "--meta") {
+            const char* v = need("--meta");
+            if (v == nullptr) {
+                return false;
+            }
+            try {
+                cli.meta = nlohmann::json::parse(v);
+            } catch (const nlohmann::json::exception& e) {
+                std::cerr << "--meta must be valid JSON: " << e.what() << '\n';
+                return false;
+            }
+            if (!cli.meta.is_object()) {
+                std::cerr << "--meta must be a JSON object (dict), got "
+                          << cli.meta.type_name() << '\n';
+                return false;
+            }
         } else if (arg == "--algorithm") {
             const char* v = need("--algorithm");
             if (v == nullptr) {
@@ -372,6 +397,7 @@ static DesignReport run_one(
     DesignReport report;
     report.instance_path = fs::absolute(yaml_path).string();
     report.instance_id = make_instance_id(yaml_path, instance_dir);
+    report.meta = cli.meta;
     report.algorithm = cli.algorithm;
     report.topology = cli.topology;
     report.low_model = "astar";  // TODO: add low-level model name in the future
@@ -559,7 +585,9 @@ int main(int argc, char** argv) {
     }
 
     try {
-        fs::create_directories(cli.export_dir);
+        if (cli.export_path.has_parent_path() && !cli.export_path.parent_path().empty()) {
+            fs::create_directories(cli.export_path.parent_path());
+        }
 
         std::vector<fs::path> instances;
         if (!cli.instance.empty()) {
@@ -579,9 +607,8 @@ int main(int argc, char** argv) {
             reports.push_back(run_one(p, cli.instance_dir, cli));
         }
 
-        const fs::path jsonl = cli.export_dir / "design_reports.jsonl";
-        write_design_reports_jsonl(jsonl.string(), reports);
-        std::cout << "wrote " << reports.size() << " report(s) -> " << jsonl << '\n';
+        write_design_reports_jsonl(cli.export_path.string(), reports);
+        std::cout << "wrote " << reports.size() << " report(s) -> " << cli.export_path << '\n';
     } catch (const std::exception& e) {
         std::cerr << "pipe_run_design: " << e.what() << '\n';
         return 1;

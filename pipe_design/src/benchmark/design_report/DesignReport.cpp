@@ -54,6 +54,7 @@ json dump(const DesignReport& r) {
         {"version", r.version},
         {"instance_id", r.instance_id},
         {"instance_path", r.instance_path},
+        {"meta", r.meta.is_object() ? r.meta : json::object()},
         {"algorithm", r.algorithm},
         {"topology", r.topology},
         {"low_model", r.low_model},

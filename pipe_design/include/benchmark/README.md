@@ -138,29 +138,30 @@ CLI runner: YAML instance(s) → CBS / PP / PBS → `DesignReport`.
 ```bash
 # single instance
 ./pipe_run_design --instance ./bench_out/axis_ray/easy/instance_0.yaml \
-  --export_dir ./runs/cbs --algorithm cbs \
+  --export ./runs/cbs/instance_0.jsonl --algorithm cbs \
   --heuristic octile --action_model TwentySixConnected \
   --max_time_ms 60000 --max_iterations 10000
 
 # directory batch (instance_*.yaml)
 ./pipe_run_design --instance_dir ./bench_out/axis_ray/easy \
-  --export_dir ./runs/cbs/axis_ray/easy --algorithm cbs \
+  --export ./runs/cbs/axis_ray/easy.jsonl --algorithm cbs \
   --heuristic octile --action_model TwentySixConnected \
-  --max_time_ms 60000 --max_iterations 10000
+  --max_time_ms 60000 --max_iterations 10000 \
+  --meta '{"generator":"axis_ray","level":"easy"}'
 ```
 
 `--heuristic`: `manhattan` | `euclidean` | `octile` (default `octile`)  
 `--action_model`: `SixConnected` | `EightConnected` | `TwentySixConnected` (default `TwentySixConnected`)
 
-Writes `export_dir/design_reports.jsonl` (one line per instance).
+Writes `--export` JSONL file (one line per instance). Parent dirs are created as needed.
 
-Batch over robust suite: [`run_robust.sh`](run_robust.sh) — plain `pipe_run_design` commands; edit the file to add runs.
+Batch over robust suite: [`run_bench.sh`](run_bench.sh) — plain `pipe_run_design` commands; edit the file to add runs.
 
 ```bash
 # from pipe_design/build
-../include/benchmark/run_robust.sh
+../include/benchmark/run_bench.sh
 
 # summarize
 python ../include/benchmark/summarize_reports.py \
-  /home/admin123456/Desktop/work/mapf_3d_benchmark/runs_easy_middle
+  /home/admin123456/Desktop/work/mapf_3d_benchmark/runs_results
 ```

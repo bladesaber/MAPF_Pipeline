@@ -30,13 +30,14 @@ struct DesignGroupResult {
 /// One high-level design solve → one JSON object (batch = JSONL).
 ///
 /// Experiment focus: fixed budget mode (`time` or `iterations`) → success rate.
-/// Provenance is only `instance_id` + `instance_path` (rest lives in the YAML).
+/// Provenance: `instance_id` + `instance_path` (+ optional run `meta` from CLI).
 ///
 /// Schema (version 1), abbreviated:
 /// {
 ///   "version": 1,
 ///   "instance_id": "axis_ray/easy/instance_0",
 ///   "instance_path": "/path/to/instance_0.yaml",
+///   "meta": {"generator": "axis_ray", "level": "easy"},
 ///   "algorithm": "cbs",
 ///   "topology": "pure_mst",
 ///   "low_model": "astar",
@@ -71,9 +72,12 @@ struct DesignReport {
 
     int version = kSchemaVersion;
 
-    /// Provenance (only these two — instance YAML holds generator / size / …).
+    /// Provenance (instance YAML holds generator params / size / …).
     std::string instance_id;
     std::string instance_path;
+
+    /// Free-form run tags from CLI `--meta` (JSON object). Not solver config.
+    nlohmann::json meta = nlohmann::json::object();
 
     /// Solver config (echo from the run).
     std::string algorithm;
