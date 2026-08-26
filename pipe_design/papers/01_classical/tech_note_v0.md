@@ -3,7 +3,8 @@
 **Status:** internal draft (not a submission)  
 **Date:** 2026-08-26  
 **Code:** `pipe_design/`  
-**Primary results:** `mapf_3d_benchmark/runs_results_pillar_field/` (plane_slice × pillar_field)
+**Primary results:** early pillar_field plane_slice runs; full suite under
+`pipe_design/data/runs/` (see `run_bench.sh`).
 
 **Purpose of this note**
 
@@ -163,9 +164,8 @@ Witness proves **feasibility of the generator**, not optimality. Solver
 Shared: `topology=pure_mst`, `low_model=astar`, `heuristic=manhattan`,
 `action_model=TwentySixConnected`, `budget_mode=time`.
 
-Data path:
-`/home/admin123456/Desktop/work/mapf_3d_benchmark/runs_results_pillar_field/`
-(`{cbs,pbs,pp}_plane_slice_{easy,middle,hard}.jsonl`).
+Data path (current suite): `pipe_design/data/envs/` and JSONL under
+`pipe_design/data/runs/`.
 
 ---
 

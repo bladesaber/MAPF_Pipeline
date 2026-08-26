@@ -21,6 +21,7 @@ __pycache__
 build/
 build_test/
 cmake-build-*/
+.vscode
 
 # MovingAI / pathfinding benchmark payloads (keep README + .gitkeep)
 pipe_design/tools/data/movingai/**/*.map
@@ -38,7 +39,8 @@ pipe_design/tools/data/movingai/**/report/**
 /temporary_ref_code
 /bench_out
 .VSCodeCounter/
-/pipe_design/docs/envs/
+/pipe_design/data/envs/
+/pipe_design/data/runs/
 
 # LaTeX
 *.aux
@@ -50,3 +52,6 @@ pipe_design/tools/data/movingai/**/report/**
 *.synctex.gz
 *.toc
 *.gz
+
+# jsonl
+*.jsonl

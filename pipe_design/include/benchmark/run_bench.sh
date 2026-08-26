@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Parallel batch for pipe_run_design over docs/envs folders.
+# Parallel batch for pipe_run_design over data/envs folders.
 #
 # Dataset layout (from gen_robust.sh):
 #   BENCH/<axis_ray|plane_slice>/<pillar_field|corridor_rack>/<easy|middle|hard>/
@@ -16,8 +16,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PIPE_DESIGN="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 PIPE_RUN="${PIPE_RUN:-${PIPE_DESIGN}/build/pipe_run_design}"
-BENCH="${BENCH:-${PIPE_DESIGN}/docs/envs}"
-OUT="${OUT:-${PIPE_DESIGN}/docs/runs}"
+BENCH="${BENCH:-${PIPE_DESIGN}/data/envs}"
+OUT="${OUT:-${PIPE_DESIGN}/data/runs}"
 MAX_PARALLEL="${MAX_PARALLEL:-4}"
 
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
