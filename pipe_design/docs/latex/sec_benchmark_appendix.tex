@@ -1,0 +1,117 @@
+% !TEX root = preview.tex
+% =============================================================================
+% Appendix: generator pseudocode (optional for main paper)
+% =============================================================================
+
+\section{Generator Details}
+\label{app:generators}
+
+This appendix records constructive generators used in Sec.~\ref{sec:benchmark}.
+It is intended for reproducibility; the main text only needs the high-level
+behaviour.
+
+\subsection{\textsc{AxisRay}}
+\label{app:axis-ray}
+
+\textsc{AxisRay} uses LOS scans with rollback on failed seed/attach attempts.
+Hard rules include: no entry into written path cells; Chebyshev gap
+\texttt{path\_gap} except along the spine of the edge being left (requires
+\texttt{branch\_gap}$>$\texttt{path\_gap}); consecutive segments change axis;
+branch points stay farther than \texttt{branch\_gap} from existing waypoints.
+
+\begin{algorithm}[t]
+\caption{\textsc{AxisRay}: generate witness corridors}
+\label{alg:axis-ray}
+\begin{algorithmic}[1]
+\Require domain size, radius $r$, groups $\{n_t^{(g)}\}$, waypoint budgets, gaps
+\Ensure per-group corridors or \textbf{fail}
+\State $\mathrm{Occ}\gets\emptyset$; $\mathrm{WP}[g]\gets\emptyset$ for all groups $g$
+\While{some group needs more face terminals}
+  \For{group $g$ in round-robin order}
+    \If{$g$ has no corridor}
+      \State sample face terminal $s$; grow seed chain with
+             $\texttt{init\_waypoints\_num}{-}2$ interior LOS segments
+      \State final LOS segment to a domain face; record waypoints
+      \State \textbf{on fail:} rollback $\mathrm{Occ}$ / paths for this attempt
+    \Else
+      \State pick branch point $p$ on $g$'s tree with
+             $\mathrm{dist}(p,\mathrm{WP}[g])>\texttt{branch\_gap}$
+      \State pick side-exit direction (not along the current edge axis)
+      \State grow attach chain ($\texttt{attach\_waypoints\_num}$) to a new face
+      \State \textbf{on fail:} rollback this attach
+    \EndIf
+  \EndFor
+  \If{no progress after max attempts}
+    \State \Return \textbf{fail}
+  \EndIf
+\EndWhile
+\State \Return corridors
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{\textsc{PlaneSlice}}
+\label{app:plane-slice}
+
+Every search is restricted to the active axis plane (2D); there is no fallback
+to full 3D A$^\star$. Same-group corridors off the plane are ignored during
+search; other groups on the plane are obstacles. Same-axis planes within a
+group obey a plane-gap.
+
+\begin{algorithm}[t]
+\caption{\textsc{PlaneSlice}: generate witness corridors}
+\label{alg:plane-slice}
+\begin{algorithmic}[1]
+\Require domain, $r$, subdomain $N$, plane gap, targets $\{n_t^{(g)}\}$
+\Ensure per-group corridors or \textbf{fail}
+\State build subdomain partition; $\mathrm{Planes}[g]\gets\emptyset$
+\While{some group needs more terminals}
+  \For{group $g$ in round-robin order}
+    \If{$g$ empty}
+      \State sample valid axis-plane $P$; place two face terminals $s,t$ on $P$
+      \State planar A$^\star$ on $P$ only; record path and $P$
+    \Else
+      \State sample plane type ${\neq}$ last plane; derive $P$ from a cell of $g$
+      \State multi-source starts $\gets$ all cells of $g$ lying on $P$
+      \State pick new face goal on $P$; planar multi-source A$^\star$ on $P$
+      \State on success: append path, record $P$
+    \EndIf
+  \EndFor
+\EndWhile
+\State \Return corridors
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{\textsc{PillarField} and \textsc{CorridorRack}}
+\label{app:obstacles}
+
+Let $C$ be witness cells thickened by \texttt{corridor\_margin} (and $r$).
+Eligible volume $V_0$ is the complement of $C$ at paint start.
+
+\begin{algorithm}[t]
+\caption{\textsc{PillarField}: paint AABB obstacles}
+\label{alg:pillar}
+\begin{algorithmic}[1]
+\Require instance with witness, $\rho^\star$, edge bounds, \texttt{dist\_cap}
+\State mark thickened witness as blocked; build Chebyshev distance field $d(\cdot)$
+\State $V_0\gets$ count of free cells; $V_{\mathrm{obs}}\gets 0$
+\While{$V_{\mathrm{obs}}/V_0 < \rho^\star$ and progress}
+  \State sample seed $c$ with weight $\propto \min(d(c),\texttt{dist\_cap})$
+  \State expand AABB from $c$ (greedy / isometric); reject if too thin
+  \State among candidates, commit the largest-volume box into blocked
+  \State update $d(\cdot)$ from newly blocked cells; $V_{\mathrm{obs}}\mathrel{+}=$ volume
+\EndWhile
+\State emit committed boxes as static obstacles
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\caption{\textsc{CorridorRack}: complement of dilated witnesses}
+\label{alg:rack}
+\begin{algorithmic}[1]
+\Require instance with witness, dilate steps $k$
+\State $F \gets$ Chebyshev dilate of all witness cells by $k$
+\State $\mathrm{ObsCells} \gets$ domain $\setminus F$
+\State merge $\mathrm{ObsCells}$ into large AABBs; append to static obstacles
+\State record derived $\rho \gets V_{\mathrm{obs}} / V_{\mathrm{domain}}$
+\end{algorithmic}
+\end{algorithm}

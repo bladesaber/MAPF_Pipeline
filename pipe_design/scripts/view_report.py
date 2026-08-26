@@ -585,7 +585,7 @@ class MainWindow(QMainWindow):
                             radius=radius, n_sides=12
                         )
                     )
-                t_acts, p_acts = draw_pipe(self.plotter, cells, radius, color, res)
+                t_acts, p_acts = draw_pipe(self.plotter, cells, radius, color, res, opacity=1.0)
                 tube_acts.extend(t_acts)
                 point_acts.extend(p_acts)
 

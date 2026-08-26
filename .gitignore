@@ -1,7 +1,6 @@
 /reference_project
 /.idea
 /Company Record
-.vscode
 __pycache__
 *.npy
 *.csv
@@ -39,3 +38,15 @@ pipe_design/tools/data/movingai/**/report/**
 /temporary_ref_code
 /bench_out
 .VSCodeCounter/
+/pipe_design/docs/envs/
+
+# LaTeX
+*.aux
+*.bbl
+*.blg
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.gz

@@ -1,0 +1,23 @@
+% !TEX root = preview.tex
+% =============================================================================
+% Abstract fragment (paper draft)
+% =============================================================================
+
+\begin{abstract}
+Additive manufacturing (AM) enables compact hydraulic components whose internal
+fluid channels can follow free-form 3D paths rather than conventionally drilled
+holes. High-performance rotary direct-drive servo valves are a representative
+case: a motor-driven center axis must be connected to multiple groups of
+external ports by short, smooth pipes that never collide with each other or
+with structural obstacles. Once a channel is placed it permanently occupies
+volume, so later channels must clear earlier geometry---unlike classical
+multi-agent pathfinding (MAPF), where agents free space after moving.
+We study this setting as \emph{multi-group pipe routing under permanent
+geometric occupancy}. We formalize cross-group clearance conflicts (dual
+witness points with radii), describe a layered planner that adapts CBS, PBS,
+and priority planning to geometric constraints and multi-terminal topology,
+and introduce a constructive 3D benchmark with two corridor generators and two
+obstacle painters. On this suite we evaluate solvers by success rate under a
+fixed time budget. The goal of this work is a reproducible problem definition,
+benchmark, and baseline comparison for AM-oriented multi-group channel design.
+\end{abstract}

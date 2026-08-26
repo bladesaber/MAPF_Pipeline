@@ -78,33 +78,39 @@ Writes `instance_0.yaml`, `instance_1.yaml`, … Each file has `meta`, `grid`,
 
 Exit: `0` all ok, `2` if any generate failed (unless only `--keep_failed` writes).
 
-### Robust batch (easy / middle / hard × 100)
+### Robust batch (4 datasets × easy / middle / hard × 100)
 
-Script: [`gen_robust.sh`](gen_robust.sh) — `{easy,middle,hard}` × `NUM` instances
-(default 100). Third argument selects the generator.
+Script: [`gen_robust.sh`](gen_robust.sh) — path generator × obstacle painter ×
+`{easy,middle,hard}`, each filled to `NUM` success YAMLs (default 100).
+`axis_ray` uses multi-round fill (`AXIS_RAY_ATTEMPT_MULT`, default 5) because
+generation fails often.
 
 | Level | `axis_ray` groups × terms | init / attach | `plane_slice` groups × terms |
 |-------|---------------------------|---------------|------------------------------|
 | easy | 2 × 3 | 4 / 3 | 3 × 3 |
-| middle | 4 × 4 | 5 / 4 | 6 × 4 |
-| hard | 6 × 5 | 5 / 4 | 9 × 6 |
+| middle | 4 × 4 | 5 / 4 | 6 × 6 |
+| hard | 5 × 5 | 5 / 4 | 10 × 10 |
 
 ```bash
 # from pipe_design/build (or set MAIN_GEN)
 chmod +x ../include/benchmark/gen_robust.sh
-../include/benchmark/gen_robust.sh ./bench_out 100              # both
-../include/benchmark/gen_robust.sh ./bench_out 100 axis_ray    # one generator
-../include/benchmark/gen_robust.sh ./bench_out 100 plane_slice
-
-# optional 4th arg: shell_margin (else main_gen default 0)
-../include/benchmark/gen_robust.sh ./bench_out 100 axis_ray 1.0
+# all 4 datasets
+../include/benchmark/gen_robust.sh ./bench_out 100
+# one path gen × both obstacles
+../include/benchmark/gen_robust.sh ./bench_out 100 axis_ray all
+# one dataset
+../include/benchmark/gen_robust.sh ./bench_out 100 plane_slice pillar_field
+# optional 5th arg: shell_margin
+../include/benchmark/gen_robust.sh ./bench_out 100 all all 1.0
 ```
 
-`GENERATOR`: `axis_ray` | `plane_slice` | `all` (default).
-`SHELL_MARGIN`: optional 4th positional argument.
+Args: `[OUT_DIR] [NUM] [PATH_GEN] [OBSTACLE] [SHELL_MARGIN]`  
+`PATH_GEN`: `axis_ray` | `plane_slice` | `all`  
+`OBSTACLE`: `pillar_field` | `corridor_rack` | `all`
 
-Layout: `bench_out/<axis_ray|plane_slice>/<easy|middle|hard>/instance_*.yaml`  
-plus `bench_out/robust_summary.txt` (exit codes / yaml counts).
+Layout:
+`bench_out/<path_gen>/<obstacle>/<easy|middle|hard>/instance_*.yaml`  
+plus `bench_out/robust_summary.txt`.
 
 ---
 

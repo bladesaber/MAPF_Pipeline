@@ -1,0 +1,34 @@
+% Preview driver for abstract + problem + benchmark fragments.
+%   cd pipe_design/docs/latex && pdflatex preview.tex
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{hyperref}
+
+\title{Preview: Abstract, Problem, and Benchmark Fragments}
+\author{pipe\_design tech note}
+\date{}
+
+\begin{document}
+\maketitle
+\noindent\textit{Internal preview only --- not a submission.
+Citations marked TODO\_* are placeholders.}
+
+\input{sec_abstract}
+\input{sec_problem}
+\input{sec_benchmark}
+
+\begin{thebibliography}{9}
+\bibitem{TODO_AM_hydraulics}
+TODO: cite Additive Manufacturing for hydraulic valves / rotary direct-drive
+servo valves (replace with real references).
+\end{thebibliography}
+
+\appendix
+\input{sec_benchmark_appendix}
+
+\end{document}

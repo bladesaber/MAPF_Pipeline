@@ -1,0 +1,100 @@
+% !TEX root = preview.tex
+% =============================================================================
+% Benchmark + evaluation (paper body, compact)
+% Detailed generator pseudocode: sec_benchmark_appendix.tex
+% =============================================================================
+
+\section{Benchmark Construction}
+\label{sec:benchmark}
+
+Classical MAPF suites do not capture permanent geometric occupancy or
+multi-terminal pipe groups, and we are not aware of a public 3D multi-group
+pipe-routing suite with controlled difficulty and a constructive feasibility
+certificate. We therefore build instances synthetically.
+
+Each instance is a triple $(\mathcal{E},\{G_i\}_{i=1}^{m},\mathcal{W})$:
+environment $\mathcal{E}$, $m$ groups with face terminals and uniform radius
+$r$, and a conflict-free \textbf{witness} $\mathcal{W}$ proving generator-level
+feasibility. Solvers never see $\mathcal{W}$ as a hint; it is used for
+validation and as a \emph{reference length}, not an optimality bound.
+Growing $\mathcal{W}$ first, then painting obstacles in its complement, yields
+known-feasible clutter without coupling the suite to any solver under test.
+
+\paragraph{Pipeline.}
+(1)~Grow tree-like witness corridors with \textsc{AxisRay} or
+\textsc{PlaneSlice} (groups attach in round-robin).
+(2)~Paint static obstacles outside thickened witnesses with
+\textsc{PillarField} or \textsc{CorridorRack}, never invading clearance $r$ on
+$\mathcal{W}$.
+(3)~Emit YAML (grid, obstacles, terminals, witness).
+The product of two corridor methods and two obstacle families gives
+\textbf{four datasets}, each with levels
+\texttt{easy}/\texttt{middle}/\texttt{hard}
+(Table~\ref{tab:difficulty}; $N{=}100$ successes per cell, domain $32^3$,
+$r{=}0.5$).
+
+\begin{table}[t]
+  \centering
+  \caption{Difficulty schedule. Shared: domain $32^3$, $r{=}0.5$.}
+  \label{tab:difficulty}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Level & \textsc{AxisRay} ($m \times n_t$) & \textsc{PlaneSlice} ($m \times n_t$) \\
+    \midrule
+    easy   & $3\times 3$ & $3\times 3$ \\
+    middle & $4\times 4$ & $6\times 6$ \\
+    hard   & $5\times 5$ & $10\times 10$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Corridor generators.}
+Both produce multi-terminal trees, not a single $s$--$t$ path; inter-group
+corridors are obstacles for later growth.
+\textsc{AxisRay} (preferred) grows an axis-aligned polyline tree by LOS scans
+(no subdomain grid, no A$^\star$), with path/branch gaps and forced axis
+changes at turns.
+\textsc{PlaneSlice} grows on axis-aligned planes with \emph{planar} A$^\star$
+only (no 3D fallback), using an $N{\times}N{\times}N$ subdomain layout and a
+plane-gap within each group.
+Pseudocode and clearance rules appear in Appendix~\ref{app:generators}.
+
+\paragraph{Obstacle generators.}
+Witness cells are thickened into a keep-out set $C$; obstacles never invade
+$C$.
+\textsc{PillarField} places large AABBs until target density
+$\rho^\star{=}V_{\mathrm{obs}}/V_0$ (we use $\rho^\star{=}0.5$), sampling seeds
+by distance to blocked cells.
+\textsc{CorridorRack} dilates witnesses by $k$ Chebyshev steps and meshes the
+complement as AABBs (density derived). Details in
+Appendix~\ref{app:generators}.
+
+\section{Evaluation Protocol}
+\label{sec:eval}
+
+Given $(\mathcal{E},\{G_i\})$ without $\mathcal{W}$, a solver must return
+conflict-free paths for all topology tasks or fail within budget.
+Reported runs fix topology to pure MST and low-level search to A$^\star$
+(26-connected, Manhattan), and compare CBS / PBS / PP.
+
+\paragraph{Primary metric.}
+Success rate under wall-clock budget $T$ (easy $30\,$s, middle $60\,$s, hard
+$100\,$s):
+\[
+  \mathrm{SuccessRate}
+  = \frac{1}{N}\bigl|\{ i : \text{instance $i$ solved within $T$}\}\bigr|.
+\]
+We also report failure reasons (\texttt{timeout} / \texttt{no\_solution}) and
+success-vs-time curves. Fixed-budget success matches batch design use better
+than optimality claims we do not make.
+
+\paragraph{Secondary metrics.}
+Runtime on successes; on successes,
+$\mathrm{cost\_ratio}=\mathrm{cost}(\mathrm{sol})/\mathrm{cost}(\mathcal{W})$
+as a descriptive quality signal (\emph{not} an optimality gap---$\mathcal{W}$
+is constructive). Cost comparisons across algorithms use the common success
+set to limit selection bias.
+
+We do not claim CBS optimality, uniqueness of $\mathcal{W}$, or
+cross-paper leaderboard status until the suite and scripts are frozen and
+released.
