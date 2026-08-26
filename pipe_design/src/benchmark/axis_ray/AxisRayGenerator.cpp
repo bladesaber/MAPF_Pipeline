@@ -53,10 +53,16 @@ AxisRayGenerator::AxisRayGenerator(GenParams params)
     if (params_.min_path_size < 1 || params_.max_path_size < params_.min_path_size) {
         throw std::invalid_argument("AxisRayGenerator: invalid min/max_path_size");
     }
-    if (params_.branch_center_gap() <= params_.path_center_gap()) {
+    if (params_.path_center_gap() < 1 || params_.branch_center_gap() < 1) {
         throw std::invalid_argument(
-            "AxisRayGenerator: branch_center_gap must be > path_center_gap "
-            "(increase branch_gap slack vs path_gap)");
+            "AxisRayGenerator: path_center_gap and branch_center_gap must be >= 1");
+    }
+    // Equal is OK. Strict branch > path was only a style preference for
+    // "clearly interior" splits; it rejected many valid attach points on dense trees.
+    if (params_.branch_center_gap() < params_.path_center_gap()) {
+        throw std::invalid_argument(
+            "AxisRayGenerator: branch_center_gap must be >= path_center_gap "
+            "(increase branch_gap or decrease path_gap)");
     }
     if (params_.size_x < 3 || params_.size_y < 3 || params_.size_z < 3) {
         throw std::invalid_argument("AxisRayGenerator: domain too small");
@@ -244,7 +250,8 @@ bool AxisRayGenerator::grow_chain(std::size_t g,
                                     int forbidden_axis,
                                     int interior_segs,
                                     bool record_split_waypoint,
-                                    const CellCoord* split) {
+                                    const CellCoord* split,
+                                    std::string* reason) {
     if (record_split_waypoint && split != nullptr) {
         const bool already =
             std::find(waypoints_[g].begin(), waypoints_[g].end(), *split) !=
@@ -257,12 +264,27 @@ bool AxisRayGenerator::grow_chain(std::size_t g,
     int axis_forbid = forbidden_axis;
     CellCoord cur = tip;
     if (!try_interior(g, interior_segs, cur, axis_forbid)) {
+        if (reason != nullptr) {
+            *reason = "interior_fail";
+        }
         return false;
     }
-    return try_face_segment(g, cur, axis_forbid);
+    if (!try_face_segment(g, cur, axis_forbid)) {
+        if (reason != nullptr) {
+            *reason = "face_seg_fail";
+        }
+        return false;
+    }
+    if (reason != nullptr) {
+        reason->clear();
+    }
+    return true;
 }
 
-bool AxisRayGenerator::seed_group(std::size_t g) {
+bool AxisRayGenerator::seed_group(std::size_t g, std::string& reason) {
+    int n_grow = 0;
+    std::string last_grow;
+
     for (int attempt = 0; attempt < params_.max_attempts; ++attempt) {
         const auto occ_snap = occupied_;
         const auto wp_snap = waypoints_[g];
@@ -277,6 +299,7 @@ bool AxisRayGenerator::seed_group(std::size_t g) {
             groups_[g].paths = paths_snap;
             groups_[g].terminals = term_snap;
             last_axis_[g] = axis_snap;
+            reason = "no_face_terminal attempt=" + std::to_string(attempt);
             return false;
         }
         occupied_.insert(start);
@@ -290,17 +313,26 @@ bool AxisRayGenerator::seed_group(std::size_t g) {
 
         // Waypoints on seed ≈ segments+1 → interior segs = init-2, then one face seg.
         const int interior = params_.init_waypoints_num - 2;
+        std::string grow_reason;
         if (grow_chain(g, start, /*forbidden_axis=*/-1, interior,
-                       /*record_split=*/false, nullptr)) {
+                       /*record_split=*/false, nullptr, &grow_reason)) {
+            reason.clear();
             return true;
         }
-        
+        ++n_grow;
+        last_grow = grow_reason;
+
         /// roll back
         occupied_ = occ_snap;
         waypoints_[g] = wp_snap;
         groups_[g].paths = paths_snap;
         groups_[g].terminals = term_snap;
         last_axis_[g] = axis_snap;
+    }
+    reason = "attempts=" + std::to_string(params_.max_attempts) +
+             " grow_fail=" + std::to_string(n_grow);
+    if (!last_grow.empty()) {
+        reason += " last_grow=" + last_grow;
     }
     return false;
 }
@@ -333,8 +365,13 @@ bool AxisRayGenerator::edge_axis_at(std::size_t g, const CellCoord& p, int& axis
     throw std::logic_error("AxisRayGenerator: p not on any axis-aligned segment");
 }
 
-bool AxisRayGenerator::attach_branch(std::size_t g) {
+bool AxisRayGenerator::attach_branch(std::size_t g, std::string& reason) {
     const int interior = params_.attach_waypoints_num - 2;
+
+    int n_empty_cand = 0;
+    int n_grow = 0;
+    int n_split_tried = 0;
+    std::string last_grow;
 
     for (int attempt = 0; attempt < params_.max_attempts; ++attempt) {
         std::vector<CellCoord> candidates;
@@ -354,6 +391,9 @@ bool AxisRayGenerator::attach_branch(std::size_t g) {
         }
         // No split far enough from waypoints — further attempts cannot help.
         if (candidates.empty()) {
+            ++n_empty_cand;
+            reason = "no_branch_candidates attempt=" + std::to_string(attempt) +
+                     " empty_cand_rounds=" + std::to_string(n_empty_cand);
             return false;
         }
         std::shuffle(candidates.begin(), candidates.end(), rng_);
@@ -370,11 +410,16 @@ bool AxisRayGenerator::attach_branch(std::size_t g) {
         for (const CellCoord& split : candidates) {
             int forbid = -1;
             edge_axis_at(g, split, forbid);
+            ++n_split_tried;
 
+            std::string grow_reason;
             if (grow_chain(g, split, forbid, interior, /*record_split=*/true,
-                           &split)) {
+                           &split, &grow_reason)) {
+                reason.clear();
                 return true;
             }
+            ++n_grow;
+            last_grow = grow_reason;
 
             occupied_ = occ_snap;
             waypoints_[g] = wp_snap;
@@ -382,6 +427,12 @@ bool AxisRayGenerator::attach_branch(std::size_t g) {
             groups_[g].terminals = term_snap;
             last_axis_[g] = axis_snap;
         }
+    }
+    reason = "attempts=" + std::to_string(params_.max_attempts) +
+             " split_tried=" + std::to_string(n_split_tried) +
+             " grow_fail=" + std::to_string(n_grow);
+    if (!last_grow.empty()) {
+        reason += " last_grow=" + last_grow;
     }
     return false;
 }
@@ -428,10 +479,16 @@ bool AxisRayGenerator::generate(Instance& out) {
                 continue;
             }
             any_needed = true;
-            if (groups_[g].terminals.empty() ? !seed_group(g) : !attach_branch(g)) {
-                reason = groups_[g].terminals.empty()
-                             ? ("seed_group failed for " + groups_[g].id)
-                             : ("attach_branch failed for " + groups_[g].id);
+            std::string step_reason;
+            const bool need_seed = groups_[g].terminals.empty();
+            const bool step_ok_g =
+                need_seed ? seed_group(g, step_reason) : attach_branch(g, step_reason);
+            if (!step_ok_g) {
+                reason = (need_seed ? "seed_group" : "attach_branch") +
+                         std::string(" failed for ") + groups_[g].id +
+                         " (have_terms=" +
+                         std::to_string(groups_[g].terminals.size()) + "/" +
+                         std::to_string(target) + "): " + step_reason;
                 step_ok = false;
                 break;
             }

@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <random>
+#include <string>
 #include <vector>
 
 namespace pipe_design::benchmark::plane_slice {
@@ -52,16 +53,18 @@ private:
         std::vector<std::vector<grid::CellCoord>>& cells_per_sd,
         grid::CellCoord& g_cell);
 
-    bool seed_group(std::size_t g);
-    bool attach_terminal(std::size_t g);
+    bool seed_group(std::size_t g, std::string& reason);
+    bool attach_terminal(std::size_t g, std::string& reason);
 
     /// Planar A* on `plane` only (ROADMAP §1.A). Other groups' corridors = obstacles.
+    /// If `reason != nullptr` and search fails, writes a short cause tag.
     bool planar_search(
         const Plane& plane,
         std::size_t self_group,
         const std::vector<grid::CellCoord>& starts,
         const std::vector<grid::CellCoord>& goals,
-        planner::Path& out_path);
+        planner::Path& out_path,
+        std::string* reason = nullptr);
 };
 
 }  // namespace pipe_design::benchmark::plane_slice

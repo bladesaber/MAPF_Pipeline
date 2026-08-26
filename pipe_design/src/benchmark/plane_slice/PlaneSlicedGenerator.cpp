@@ -175,10 +175,16 @@ bool PlaneSlicedGenerator::generate(Instance& out) {
                 continue;
             }
             any_needed = true;
-            if (groups_[g].terminals.empty() ? !seed_group(g) : !attach_terminal(g)) {
-                reason = groups_[g].terminals.empty()
-                             ? ("seed_group failed for " + groups_[g].id)
-                             : ("attach_terminal failed for " + groups_[g].id);
+            std::string step_reason;
+            const bool seeded = !groups_[g].terminals.empty();
+            const bool step_ok_g =
+                seeded ? attach_terminal(g, step_reason) : seed_group(g, step_reason);
+            if (!step_ok_g) {
+                reason = (seeded ? "attach_terminal" : "seed_group") +
+                         std::string(" failed for ") + groups_[g].id +
+                         " (have_terms=" +
+                         std::to_string(groups_[g].terminals.size()) + "/" +
+                         std::to_string(target) + "): " + step_reason;
                 step_ok = false;
                 break;
             }
@@ -253,18 +259,28 @@ bool PlaneSlicedGenerator::planar_search(
     std::size_t self_group,
     const std::vector<CellCoord>& starts,
     const std::vector<CellCoord>& goals,
-    Path& out_path) {
+    Path& out_path,
+    std::string* reason) {
     out_path = Path{};
     if (starts.empty() || goals.empty()) {
+        if (reason != nullptr) {
+            *reason = "empty_starts_or_goals";
+        }
         return false;
     }
     for (const CellCoord& c : starts) {
         if (!on_plane(c, plane)) {
+            if (reason != nullptr) {
+                *reason = "start_off_plane";
+            }
             return false;
         }
     }
     for (const CellCoord& c : goals) {
         if (!on_plane(c, plane)) {
+            if (reason != nullptr) {
+                *reason = "goal_off_plane";
+            }
             return false;
         }
     }
@@ -282,11 +298,17 @@ bool PlaneSlicedGenerator::planar_search(
     grid::CompositeGrid cgrid(*static_grid_, chain);
     for (const CellCoord& c : starts) {
         if (!cgrid.is_free(c, r)) {
+            if (reason != nullptr) {
+                *reason = "start_blocked";
+            }
             return false;
         }
     }
     for (const CellCoord& c : goals) {
         if (!cgrid.is_free(c, r)) {
+            if (reason != nullptr) {
+                *reason = "goal_blocked";
+            }
             return false;
         }
     }
@@ -297,10 +319,19 @@ bool PlaneSlicedGenerator::planar_search(
     AStar<SearchNode> astar;
     astar.reset(cgrid, starts, goals, r, h, open, actions);
     if (astar.search() != SearchStatus::Success) {
+        if (reason != nullptr) {
+            *reason = "no_path";
+        }
         return false;
     }
     out_path = astar.path();
-    return !out_path.empty();
+    if (out_path.empty()) {
+        if (reason != nullptr) {
+            *reason = "empty_path";
+        }
+        return false;
+    }
+    return true;
 }
 
 bool PlaneSlicedGenerator::pick_seed_terminals(
@@ -343,12 +374,17 @@ bool PlaneSlicedGenerator::pick_seed_terminals(
     return false;
 }
 
-bool PlaneSlicedGenerator::seed_group(std::size_t g) {
+bool PlaneSlicedGenerator::seed_group(std::size_t g, std::string& reason) {
     const float r = params_.radius;
     const int sx = static_grid_->size_x();
     const int sy = static_grid_->size_y();
     const int sz = static_grid_->size_z();
     constexpr int kAttempts = 64;
+
+    int n_no_plane = 0;
+    int n_no_term = 0;
+    int n_search = 0;
+    std::string last_search_reason;
 
     for (int attempt = 0; attempt < kAttempts; ++attempt) {
         Plane plane;
@@ -364,17 +400,22 @@ bool PlaneSlicedGenerator::seed_group(std::size_t g) {
         std::vector<std::size_t> candidates;
         std::vector<std::vector<CellCoord>> cells_per_sd;
         if (!collect_plane_candidates(g, plane, candidates, cells_per_sd)) {
+            ++n_no_plane;
             continue;
         }
 
         CellCoord s_cell;
         CellCoord g_cell;
         if (!pick_seed_terminals(candidates, cells_per_sd, s_cell, g_cell)) {
+            ++n_no_term;
             continue;
         }
 
         Path path;
-        if (!planar_search(plane, g, {s_cell}, {g_cell}, path)) {
+        std::string search_reason;
+        if (!planar_search(plane, g, {s_cell}, {g_cell}, path, &search_reason)) {
+            ++n_search;
+            last_search_reason = search_reason;
             continue;
         }
 
@@ -383,7 +424,15 @@ bool PlaneSlicedGenerator::seed_group(std::size_t g) {
         groups_[g].terminals.push_back({gid + "_t1", static_grid_->cell_center(g_cell), r});
         groups_[g].paths.push_back(std::move(path));
         planes_[g].push_back(plane);
+        reason.clear();
         return true;
+    }
+    reason = "attempts=" + std::to_string(kAttempts) +
+          " no_plane_cand=" + std::to_string(n_no_plane) +
+          " no_term_pair=" + std::to_string(n_no_term) +
+          " planar_fail=" + std::to_string(n_search);
+    if (!last_search_reason.empty()) {
+        reason += " last_planar=" + last_search_reason;
     }
     return false;
 }
@@ -413,11 +462,12 @@ bool PlaneSlicedGenerator::pick_attach_terminal(
     return false;
 }
 
-bool PlaneSlicedGenerator::attach_terminal(std::size_t g) {
+bool PlaneSlicedGenerator::attach_terminal(std::size_t g, std::string& reason) {
     const float r = params_.radius;
     constexpr int kAttempts = 64;
 
     if (planes_[g].empty() || groups_[g].paths.empty()) {
+        reason = "empty_planes_or_paths";
         return false;
     }
     const AxisKind last_axis = planes_[g].back().axis;
@@ -428,8 +478,15 @@ bool PlaneSlicedGenerator::attach_terminal(std::size_t g) {
         path_cells.insert(path_cells.end(), path.cells.begin(), path.cells.end());
     }
     if (path_cells.empty()) {
+        reason = "empty_path_cells";
         return false;
     }
+
+    int n_no_plane = 0;
+    int n_no_term = 0;
+    int n_no_starts = 0;
+    int n_search = 0;
+    std::string last_search_reason;
 
     for (int attempt = 0; attempt < kAttempts; ++attempt) {
         // Axis ≠ last; sample a path cell → define plane.
@@ -444,10 +501,12 @@ bool PlaneSlicedGenerator::attach_terminal(std::size_t g) {
         std::vector<std::size_t> candidates;
         std::vector<std::vector<CellCoord>> cells_per_sd;
         if (!collect_plane_candidates(g, plane, candidates, cells_per_sd)) {
+            ++n_no_plane;
             continue;
         }
         CellCoord g_cell;
         if (!pick_attach_terminal(candidates, cells_per_sd, g_cell)) {
+            ++n_no_term;
             continue;
         }
 
@@ -462,12 +521,16 @@ bool PlaneSlicedGenerator::attach_terminal(std::size_t g) {
             }
         }
         if (start_set.empty()) {
+            ++n_no_starts;
             continue;
         }
         std::vector<CellCoord> starts(start_set.begin(), start_set.end());
 
         Path path;
-        if (!planar_search(plane, g, starts, {g_cell}, path)) {
+        std::string search_reason;
+        if (!planar_search(plane, g, starts, {g_cell}, path, &search_reason)) {
+            ++n_search;
+            last_search_reason = search_reason;
             continue;
         }
 
@@ -475,7 +538,16 @@ bool PlaneSlicedGenerator::attach_terminal(std::size_t g) {
         groups_[g].terminals.push_back({tid, static_grid_->cell_center(g_cell), r});
         groups_[g].paths.push_back(std::move(path));
         planes_[g].push_back(plane);
+        reason.clear();
         return true;
+    }
+    reason = "attempts=" + std::to_string(kAttempts) +
+          " no_plane_cand=" + std::to_string(n_no_plane) +
+          " no_face_term=" + std::to_string(n_no_term) +
+          " no_starts_on_plane=" + std::to_string(n_no_starts) +
+          " planar_fail=" + std::to_string(n_search);
+    if (!last_search_reason.empty()) {
+        reason += " last_planar=" + last_search_reason;
     }
     return false;
 }

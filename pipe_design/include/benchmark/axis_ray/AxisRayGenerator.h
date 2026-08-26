@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <random>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -30,16 +31,18 @@ private:
     std::vector<int> last_axis_;  // per group: -1 none, 0=x, 1=y, 2=z
     std::unordered_set<grid::CellCoord> occupied_;  // occupied cells (any group)
 
-    bool seed_group(std::size_t g);
-    bool attach_branch(std::size_t g);
+    bool seed_group(std::size_t g, std::string& reason);
+    bool attach_branch(std::size_t g, std::string& reason);
 
     bool sample_face_terminal(grid::CellCoord& out);
+    /// If `reason != nullptr` and growth fails, writes `interior_fail` or `face_seg_fail`.
     bool grow_chain(std::size_t g,
                     grid::CellCoord tip,
                     int forbidden_axis,
                     int interior_segs,
                     bool record_split_waypoint,
-                    const grid::CellCoord* split);
+                    const grid::CellCoord* split,
+                    std::string* reason = nullptr);
 
     /// Append up to `segs` interior segments; updates `cur` and `axis_forbid`.
     bool try_interior(std::size_t g,
@@ -52,8 +55,7 @@ private:
 
     /// Longest free steps along +dir from `from` (not counting `from`).
     /// `spine_axis`: 0/1/2 = ignore path_center_gap vs occupied on that axis-line
-    /// through `from` (requires branch_center_gap > path_center_gap); -1 = only
-    /// `from` itself.
+    /// through `from`; -1 = only `from` itself.
     int scan_los(const grid::CellCoord& from,
                   int dx, int dy, int dz,
                   int spine_axis) const;

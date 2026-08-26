@@ -10,18 +10,19 @@
 #
 # Rules:
 #   - num_groups >= 2; hard > middle > easy (per path generator)
-#   - axis_ray groups: 2 / 4 / 5; plane_slice groups: 3 / 6 / 10
+#   - axis_ray groups×terms: 3 / 6 / 9   (path_gap=branch_gap=1, min_path_size=3)
+#   - plane_slice groups×terms: 3 / 8 / 12
 #   - each group terminals > 2; hard > middle > easy
 #   - axis_ray: init_waypoints_num > attach_waypoints_num, both > 3
-#   - axis_ray fails often → fill loop with larger attempt batches until NUM ok
-#     (or MAX_FILL_ROUNDS); plane_slice usually one shot
+#   - low success rates → fill loop retries until NUM ok (or MAX_FILL_ROUNDS);
+#     axis_ray uses AXIS_RAY_ATTEMPT_MULT; plane_slice uses PLANE_SLICE_ATTEMPT_MULT
 #
 # Usage:
 #   ./gen_robust.sh [OUT_DIR] [NUM] [PATH_GEN] [OBSTACLE] [SHELL_MARGIN]
-# PATH_GEN:  axis_ray | plane_slice | all          (default: all)
+# PATH_GEN:  axis_ray | plane_slice | all     (default: all → both generators)
 # OBSTACLE:  pillar_field | corridor_rack | all    (default: all)
 # SHELL_MARGIN: optional float; if omitted, main_gen default (0)
-# Defaults: OUT_DIR=./bench_out  NUM=100
+# Defaults: OUT_DIR=./bench_out  NUM=100  PATH_GEN=all
 #
 # Run from pipe_design/build (or set MAIN_GEN).
 set -euo pipefail
@@ -34,14 +35,15 @@ OBSTACLE="${4:-all}"
 SHELL_MARGIN="${5:-}"
 MAIN_GEN="${MAIN_GEN:-./main_gen}"
 
-# axis_ray: each fill round requests (remaining * MULT) attempts (min NUM).
+# Fill multipliers: each round requests (remaining * MULT) attempts (min NUM).
 AXIS_RAY_ATTEMPT_MULT="${AXIS_RAY_ATTEMPT_MULT:-5}"
+PLANE_SLICE_ATTEMPT_MULT="${PLANE_SLICE_ATTEMPT_MULT:-4}"
 MAX_FILL_ROUNDS="${MAX_FILL_ROUNDS:-20}"
 
 case "${PATH_GEN}" in
-  axis_ray|plane_slice|all) ;;
+  plane_slice|axis_ray|all) ;;
   *)
-    echo "error: PATH_GEN must be axis_ray | plane_slice | all (got '${PATH_GEN}')" >&2
+    echo "error: PATH_GEN must be plane_slice | axis_ray | all (got '${PATH_GEN}')" >&2
     echo "usage: $0 [OUT_DIR] [NUM] [PATH_GEN] [OBSTACLE] [SHELL_MARGIN]" >&2
     exit 1
     ;;
@@ -81,23 +83,27 @@ SUMMARY="${OUT_DIR}/robust_summary.txt"
 log() { echo "$@" | tee -a "${SUMMARY}"; }
 
 # Shared across levels (difficulty from groups / terminals / waypoints only).
-# Must keep BRANCH_GAP > PATH_GAP (AxisRayGenerator: branch_center_gap > path_center_gap).
+# Must keep BRANCH_GAP >= PATH_GAP (AxisRayGenerator: branch_center_gap >= path_center_gap).
 SIZE=32
-PATH_GAP=2
-BRANCH_GAP=3
+PATH_GAP=1
+BRANCH_GAP=1
+TERMINAL_GAP=2                      # slack beyond diameter; terminal_center_gap = diam + this
+                                    #   (main_gen default 2; face terminals Chebyshev clearance)
 
 # Obstacle paint (after corridor + shell). Always on for the four datasets.
 # OBSTACLE_TYPE is set per dataset in run_one (pillar_field | corridor_rack).
-WITH_OBSTACLE=true
-OBSTACLE_DENSITY=0.4                # pillar_field target ρ
-CORRIDOR_MARGIN=1                   # Chebyshev keep-out (>=0); -1 → radius_cells
-OBSTACLE_MAX_ROUNDS=256             # pillar_field
-MIN_EDGE=2
-MAX_EDGE=8
-CANDIDATES_PER_ROUND=32
-ISOMETRIC=true                     # pillar_field isometric expand
-DIST_CAP=16
-DILATE_STEPS=2                      # corridor_rack k; -1 → CORRIDOR_MARGIN
+# Never invade thickened witnesses: corridors stay feasible for radius r.
+WITH_OBSTACLE=true                  # false → corridors only (no static paint)
+OBSTACLE_DENSITY=0.4                # pillar_field only: target ρ = V_obs / V_eligible0
+CORRIDOR_MARGIN=1                   # Chebyshev keep-out around witness (>=0); -1 → radius_cells
+OBSTACLE_MAX_ROUNDS=256             # pillar_field only: max seed/commit rounds (stop if stuck)
+MIN_EDGE=2                          # pillar_field only: reject AABB if any edge < this (cells)
+MAX_EDGE=8                          # pillar_field only: cap any AABB edge during expand (cells)
+CANDIDATES_PER_ROUND=32             # pillar_field only: sample this many boxes/round, keep largest
+ISOMETRIC=true                      # pillar_field only: true = grow 6 faces together; false = per-face max
+DIST_CAP=16                         # pillar_field only: cap Chebyshev dist weight for seed sampling
+DILATE_STEPS=2                      # corridor_rack only: dilate witness by k, complement = obstacles
+                                    #   (-1 → use CORRIDOR_MARGIN)
 
 obstacle_args() {
   if [[ "${WITH_OBSTACLE}" != "true" ]]; then
@@ -172,11 +178,12 @@ run_one() {
   if [[ -n "${SHELL_MARGIN:-}" ]]; then
     shell_args=(--shell_margin "${SHELL_MARGIN}")
   fi
+  local shared_args=(--terminal_gap "${TERMINAL_GAP}")
   local obst_args=()
   mapfile -t obst_args < <(obstacle_args)
 
   log "=== ${gen} / ${obst} / ${level}  seed0=${seed_base}  target=${NUM}  out=${dest} ==="
-  log "obstacle=${OBSTACLE_TYPE}  corridor_margin=${CORRIDOR_MARGIN}  density=${OBSTACLE_DENSITY}  dilate_steps=${DILATE_STEPS}"
+  log "terminal_gap=${TERMINAL_GAP}  obstacle=${OBSTACLE_TYPE}  corridor_margin=${CORRIDOR_MARGIN}  density=${OBSTACLE_DENSITY}  dilate_steps=${DILATE_STEPS}"
 
   local have=0
   local seed="${seed_base}"
@@ -188,8 +195,14 @@ run_one() {
     round=$((round + 1))
     local remaining=$((NUM - have))
     local batch="${remaining}"
+    local mult=1
     if [[ "${gen}" == "axis_ray" ]]; then
-      batch=$((remaining * AXIS_RAY_ATTEMPT_MULT))
+      mult="${AXIS_RAY_ATTEMPT_MULT}"
+    elif [[ "${gen}" == "plane_slice" ]]; then
+      mult="${PLANE_SLICE_ATTEMPT_MULT}"
+    fi
+    if (( mult > 1 )); then
+      batch=$((remaining * mult))
       if (( batch < NUM )); then
         batch="${NUM}"
       fi
@@ -201,7 +214,7 @@ run_one() {
     log "  fill round=${round}  have=${have}/${NUM}  batch_attempts=${batch}  seed=${seed}"
     set +e
     "${MAIN_GEN}" --generator "${gen}" --out "${staging}" --num "${batch}" --seed "${seed}" \
-      "$@" "${shell_args[@]}" "${obst_args[@]}"
+      "$@" "${shared_args[@]}" "${shell_args[@]}" "${obst_args[@]}"
     last_rc=$?
     set -e
 
@@ -226,23 +239,23 @@ run_axis_ray_levels() {
   run_one axis_ray "${obst}" easy 3000 \
     --size "${SIZE}" --radius 0.5 --num_groups 3 --terminals 3,3,3 \
     --init_waypoints_num 4 --attach_waypoints_num 3 \
-    --min_path_size 6 --max_path_size 15 \
+    --min_path_size 3 --max_path_size 15 \
     --path_gap "${PATH_GAP}" --branch_gap "${BRANCH_GAP}" \
     --max_attempts 1024 --max_iterations 128
 
-  # middle: 4 groups × 4 terminals
+  # middle: 6 groups × 6 terminals
   run_one axis_ray "${obst}" middle 4000 \
-    --size "${SIZE}" --radius 0.5 --num_groups 4 --terminals 4,4,4,4 \
+    --size "${SIZE}" --radius 0.5 --num_groups 6 --terminals 6,6,6,6,6,6 \
     --init_waypoints_num 5 --attach_waypoints_num 4 \
-    --min_path_size 6 --max_path_size 20 \
+    --min_path_size 3 --max_path_size 20 \
     --path_gap "${PATH_GAP}" --branch_gap "${BRANCH_GAP}" \
     --max_attempts 1024 --max_iterations 128
 
-  # hard: 5 groups × 5 terminals
+  # hard: 9 groups × 9 terminals
   run_one axis_ray "${obst}" hard 5000 \
-    --size "${SIZE}" --radius 0.5 --num_groups 5 --terminals 5,5,5,5,5 \
+    --size "${SIZE}" --radius 0.5 --num_groups 9 --terminals 9,9,9,9,9,9,9,9,9 \
     --init_waypoints_num 5 --attach_waypoints_num 4 \
-    --min_path_size 6 --max_path_size 20 \
+    --min_path_size 3 --max_path_size 20 \
     --path_gap "${PATH_GAP}" --branch_gap "${BRANCH_GAP}" \
     --max_attempts 1024 --max_iterations 128
 }
@@ -254,14 +267,14 @@ run_plane_slice_levels() {
     --size "${SIZE}" --radius 0.5 --num_groups 3 --terminals 3,3,3 \
     --subdomain_n 3 --plane_gap 3 --max_iterations 128
 
-  # middle: 6 groups × 6 terminals
+  # middle: 8 groups × 8 terminals
   run_one plane_slice "${obst}" middle 12000 \
-    --size "${SIZE}" --radius 0.5 --num_groups 6 --terminals 6,6,6,6,6,6 \
+    --size "${SIZE}" --radius 0.5 --num_groups 8 --terminals 8,8,8,8,8,8,8,8 \
     --subdomain_n 3 --plane_gap 3 --max_iterations 128
 
-  # hard: 10 groups × 10 terminals
+  # hard: 12 groups × 12 terminals
   run_one plane_slice "${obst}" hard 13000 \
-    --size "${SIZE}" --radius 0.5 --num_groups 10 --terminals 10,10,10,10,10,10,10,10,10,10 \
+    --size "${SIZE}" --radius 0.5 --num_groups 12 --terminals 12,12,12,12,12,12,12,12,12,12,12,12 \
     --subdomain_n 4 --plane_gap 3 --max_iterations 256
 }
 
@@ -273,7 +286,7 @@ run_dataset() {
   esac
 }
 
-# Resolve PATH_GEN × OBSTACLE → dataset list.
+# Resolve PATH_GEN × OBSTACLE → dataset list (default: both path gens × both obstacles).
 PATH_GENS=()
 case "${PATH_GEN}" in
   all) PATH_GENS=(axis_ray plane_slice) ;;
@@ -287,8 +300,8 @@ case "${OBSTACLE}" in
 esac
 
 log "path_gen=${PATH_GEN}  obstacle=${OBSTACLE}  out=${OUT_DIR}  target_num=${NUM}"
-log "shell_margin=${SHELL_MARGIN:-(default)}  axis_ray_mult=${AXIS_RAY_ATTEMPT_MULT}  max_fill_rounds=${MAX_FILL_ROUNDS}"
-log "pillar density=${OBSTACLE_DENSITY}  corridor_margin=${CORRIDOR_MARGIN}  dilate_steps=${DILATE_STEPS}"
+log "shell_margin=${SHELL_MARGIN:-(default)}  axis_ray_mult=${AXIS_RAY_ATTEMPT_MULT}  plane_slice_mult=${PLANE_SLICE_ATTEMPT_MULT}  max_fill_rounds=${MAX_FILL_ROUNDS}"
+log "path_gap=${PATH_GAP}  branch_gap=${BRANCH_GAP}  pillar density=${OBSTACLE_DENSITY}  corridor_margin=${CORRIDOR_MARGIN}  dilate_steps=${DILATE_STEPS}"
 log ""
 
 for gen in "${PATH_GENS[@]}"; do

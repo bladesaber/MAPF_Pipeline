@@ -3,8 +3,8 @@
 **Status:** internal draft (not a submission)  
 **Date:** 2026-08-26  
 **Code:** `pipe_design/`  
-**Primary results:** early pillar_field plane_slice runs; full suite under
-`pipe_design/data/runs/` (see `run_bench.sh`).
+**Primary results:** full suite under `pipe_design/data/runs/` (36 JSONL batches;
+analyze with `scripts/analyze_runs.py`).
 
 **Purpose of this note**
 
@@ -130,18 +130,21 @@ renaming CBS/PBS/PP.
 Constructive pipeline (`include/benchmark/`):
 
 1. Grow **witness corridors** (feasible tree per group)  
-2. Paint static obstacles in remaining free space (**pillar_field** in this note)  
+2. Paint static obstacles in remaining free space (`pillar_field` or
+   `corridor_rack`)  
 3. Emit YAML: environment + witness `solution`  
 
-Generators:
+Generators (all four datasets present in `data/envs` / `data/runs`):
 
-| Name | Idea | In this result folder? |
-|------|------|------------------------|
+| Name | Idea | In suite? |
+|------|------|-----------|
+| `axis_ray` | LOS ray tree (preferred) | **Yes** |
 | `plane_slice` | Planar A\* on axis slices | **Yes** |
-| `axis_ray` | LOS ray tree (preferred generator) | **No — TODO** |
+| `pillar_field` | Large AABB clutter to density ρ | **Yes** |
+| `corridor_rack` | Dilate witness; mesh complement | **Yes** |
 
 Difficulty knobs (see `gen_robust.sh`): group count × terminals per group
-(plane_slice easy/middle/hard ≈ 3×3 / 6×4 / 9×6).
+(axis_ray ≈ 3×3 / 4×4 / 5×5; plane_slice ≈ 3×3 / 8×8 / 13×13).
 
 Witness proves **feasibility of the generator**, not optimality. Solver
 `cost_ratio = total_cost / reference_cost` can be **&lt; 1**.
@@ -150,94 +153,107 @@ Witness proves **feasibility of the generator**, not optimality. Solver
 
 - Binary: `pipe_run_design`  
 - One DesignReport JSON object per instance → JSONL batch  
-- Stats style: success rate, fail_reason, `total_time_ms` five-number summary,
-  `cost_ratio` on success+witness (same spirit as `scripts/view_report.py` Stats)
+- Batch summary: `scripts/analyze_runs.py` (success rate, median time / cost_ratio,
+  hard fail reasons, success@T); per-file browse: `scripts/view_report.py` Stats
 
-### 3.3 Experiment config (pillar_field / plane_slice)
+### 3.3 Experiment config (current suite)
 
 | Level | N | `max_time_ms` |
 |-------|---|---------------|
-| easy | 150 | 30 000 |
-| middle | 150 | 60 000 |
-| hard | 138 | 100 000 |
+| easy | 100 | 30 000 |
+| middle | 100 | 60 000 |
+| hard | 100 | 100 000 |
 
 Shared: `topology=pure_mst`, `low_model=astar`, `heuristic=manhattan`,
 `action_model=TwentySixConnected`, `budget_mode=time`.
 
-Data path (current suite): `pipe_design/data/envs/` and JSONL under
-`pipe_design/data/runs/`.
+Matrix: `{cbs,pbs,pp} × {axis_ray,plane_slice} × {pillar_field,corridor_rack} ×
+{easy,middle,hard}` → **36** JSONL files under `pipe_design/data/runs/`.
 
 ---
 
-## 4. Results (plane_slice + pillar_field)
+## 4. Results (full suite, 2026-08-26)
 
-### 4.1 Success rate
+Reproduce tables:
 
-| Level | CBS | PBS | PP |
-|-------|-----|-----|-----|
-| easy | **100.0%** | 100.0% | 100.0% |
-| middle | **100.0%** | 96.0% | 95.3% |
-| hard | **97.1%** | 52.9% | 11.6% |
+```bash
+python3 pipe_design/scripts/analyze_runs.py
+# or: python3 pipe_design/scripts/analyze_runs.py pipe_design/data/runs
+```
 
-**Takeaway:** easy is saturated (no ranking power). Hard separates algorithms
-clearly: **CBS ≫ PBS ≫ PP** under the same stack.
+### 4.1 Success rate (%)
 
-### 4.2 Runtime (median `total_time_ms`, successes only)
+**axis_ray × pillar_field**
 
 | Level | CBS | PBS | PP |
 |-------|-----|-----|-----|
-| easy | 8.2 | 8.3 | **0.8** |
-| middle | **78** | 101 | 251 |
-| hard | **4 253** | 6 160 | 72 313 |
+| easy | 100 | 100 | 100 |
+| middle | 100 | 100 | 100 |
+| hard | **100** | 99 | 99 |
 
-On easy, PP is cheapest when order luck works. On hard, PP spends most of the
-budget and still fails.
+**axis_ray × corridor_rack** — all cells **100%** (CBS/PBS/PP × easy/middle/hard).
 
-### 4.3 Hard: cumulative success by wall time
+**plane_slice × pillar_field**
 
-Approximate success if solved within \(T\) (failures counted as \(+\infty\)):
+| Level | CBS | PBS | PP |
+|-------|-----|-----|-----|
+| easy | 100 | 100 | 100 |
+| middle | **100** | 94 | 94 |
+| hard | **93** | 56 | 7 |
+
+**plane_slice × corridor_rack**
+
+| Level | CBS | PBS | PP |
+|-------|-----|-----|-----|
+| easy | 100 | 100 | 100 |
+| middle | **100** | 95 | 95 |
+| hard | **88** | 51 | 11 |
+
+**Takeaway:** `axis_ray` is too easy for ranking under this schedule (near-perfect
+success). Discriminating stress comes from **plane_slice hard**, where
+**CBS ≫ PBS ≫ PP** on both obstacle families.
+
+### 4.2 Median success time (ms)
+
+**plane_slice × pillar_field** (the informative family): easy CBS/PBS ~34 ms, PP
+~1 ms; middle CBS ~560 ms; hard CBS ~15.7 s, PBS ~9.8 s, PP ~50 s (few successes).
+
+**axis_ray hard:** all medians &lt; 300 ms (CBS/PBS); PP often fastest when it
+succeeds (~18 ms on pillar_field hard).
+
+### 4.3 Hard success cumulative by wall time
+
+**plane_slice × pillar_field**
 
 | \(T\) | CBS | PBS | PP |
 |-------|-----|-----|-----|
-| 5 s | 52.9% | 21.0% | 0.0% |
-| 30 s | 89.9% | 48.6% | 0.7% |
-| 60 s | 95.7% | 52.2% | 5.1% |
-| 100 s | 97.1% | 52.9% | 11.6% |
+| 5 s | 1% | 6% | 0% |
+| 30 s | 70% | 51% | 2% |
+| 60 s | 87% | 54% | 4% |
+| 100 s | 93% | 56% | 7% |
 
-PBS/PP barely improve from 60 s → 100 s: failures are not “just need more time”
-in a simple way (search structure / dead orders dominate).
+**plane_slice × corridor_rack:** similar shape (CBS 88% @100 s, PBS 51%, PP 11%).
+
+**axis_ray hard:** essentially solved by 5 s for all three algos (≥90–100%).
+
+PBS/PP on plane_slice hard barely improve from 60 s → 100 s: structure / dead
+orders dominate, not “slightly more time.”
 
 ### 4.4 Failure modes (hard)
 
-| Algo | timeout | no_solution | notes |
-|------|---------|-------------|-------|
-| CBS | 4 | 0 | almost always finishes |
-| PBS | 60 | 5 | depth-first priority search stalls |
-| PP | 87 | 35 | many exhaustive order failures |
-
-Middle failures for PBS/PP are almost entirely `no_solution` (6–7 instances,
-largely overlapping).
+| Dataset | CBS | PBS | PP |
+|---------|-----|-----|-----|
+| plane_slice × pillar_field | timeout 7 | timeout 41 + no_sol 3 | timeout 73 + no_sol 20 |
+| plane_slice × corridor_rack | timeout 12 | timeout 46 + no_sol 3 | timeout 71 + no_sol 18 |
+| axis_ray × pillar_field | — | no_sol 1 | no_sol 1 |
+| axis_ray × corridor_rack | — | — | — |
 
 ### 4.5 Cost vs witness
 
-On middle/hard **successful** runs, median `cost_ratio` ≈ **0.90 / 0.80**
-(all three algos). Hard CBS: **134/134** successes have `cost_ratio < 1`.
-
-**Interpretation:** constructive corridors are loose feasibility witnesses;
-grid search often finds shorter trees. Use witness for regression / reference
-length, **not** as an optimality gap.
-
-### 4.6 Paired hard successes
-
-| Set | Count |
-|-----|------:|
-| CBS ∩ PBS ∩ PP success | 13 |
-| CBS success, PBS fail | 64 |
-| PBS success, CBS fail | 3 |
-| All three fail | 1 |
-
-Quality ranking across algos on hard is weak (only 13 common successes). Primary
-metric for this note remains **success under budget**.
+Median `cost_ratio` on successes is **&lt; 1** on all non-trivial cells (often
+~0.55–0.80 on hard). Constructive witnesses are loose; use for reference length,
+**not** optimality gap. Cross-algo quality ranking on plane_slice hard remains
+weak (few common successes when PP almost never finishes).
 
 ---
 
@@ -245,30 +261,34 @@ metric for this note remains **success under budget**.
 
 ### 5.1 What the data support
 
-1. Permanent geometric multi-group routing is a **meaningful** stress test:
-   difficulty scales with groups/terminals under pillar clutter.  
-2. Constraint-centric **CBS** transfers well when conflicts become negative
-   spheres on `ObstacleChain`.  
-3. **PBS** (depth-first) and especially **PP** degrade sharply when many groups
-   interact — consistent with order/priority brittleness when prior pipes are
-   hard obstacles.  
-4. Easy instances alone would falsely suggest “all methods work.”
+1. Permanent geometric multi-group routing is a **meaningful** stress test
+   **when** the corridor generator creates hard interaction
+   (`plane_slice` + many groups).  
+2. Constraint-centric **CBS** transfers well on the hard cells
+   (negative spheres on `ObstacleChain`).  
+3. **PBS** (depth-first) and especially **PP** degrade on plane_slice hard —
+   order/priority brittleness when prior pipes are hard obstacles.  
+4. Easy / `axis_ray` alone would falsely suggest “all methods work.”  
+5. Obstacle family (`pillar_field` vs `corridor_rack`) does **not** change the
+   high-level ranking on plane_slice; both are useful for robustness of the claim.
 
 ### 5.2 What the data do *not* support
 
 1. CBS is “optimal” or best possible — only best among {CBS, PBS, PP} here.  
-2. Results generalize to `axis_ray` or other obstacle painters — **not run**.  
-3. Topology / analyzer / low-level choices matter — **not ablated**.  
+2. That `axis_ray` hard is intrinsically easy for all future methods — only under
+   the current size / group schedule.  
+3. Topology / analyzer / low-level / PBS mode matter — **not ablated**.  
 4. External CAD / ILP / published pipe routers — **no baseline**.
 
 ### 5.3 Likely bottlenecks (hypothesis → next engineering)
 
 | Symptom | Hypothesis | Next probe |
 |---------|------------|------------|
-| PBS hard timeouts | DF priority expansion + bad early orders | Try `best_first`; log priority depth |
+| PBS hard timeouts (plane_slice) | DF priority + bad early orders | Try `best_first`; log priority depth |
 | PP `no_solution` | Sequence neighborhood exhausted | Inspect failed orders; stronger replanner |
-| PP hard timeouts | Repeated full re-solves under bad prefixes | CAT-style soft guidance or better init order |
-| CBS rare timeout | Deep CT / expensive replans | Conflict selection / bypass (later) |
+| PP hard timeouts | Repeated full re-solves under bad prefixes | CAT soft guidance or better init order |
+| CBS residual timeout | Deep CT / expensive replans | Conflict selection / bypass (later) |
+| axis_ray saturated | Difficulty schedule too mild | Raise groups/terminals or density for a harder axis_ray tier |
 
 ---
 
@@ -295,19 +315,20 @@ obstacles.*
 
 **Must-have before workshop-style draft**
 
-- [ ] Run **axis_ray** under the same algos / budgets (second generator)  
+- [x] Full matrix: axis_ray + plane_slice × both obstacles × levels × {cbs,pbs,pp}  
 - [ ] At least **one ablation** (analyzer *or* topology *or* PBS mode)  
-- [ ] Formal problem definition section (math notation for conflict / freeness)  
-- [ ] Expanded related work (cite MAPF + pipe routing properly)  
-- [ ] Reproducibility: relative paths, seed list, one-command table script  
+- [x] Formal problem draft in `papers/01_classical/latex/`  
+- [ ] Expanded related work (cite MAPF + pipe / AM valves properly)  
+- [x] One-command table script: `scripts/analyze_runs.py`  
 
 **Nice-to-have**
 
 - [ ] External baseline (greedy sequential, small ILP, or published heuristic)  
 - [ ] Success@\(T\) plots as figures  
 - [ ] Failure-case visualization set  
+- [ ] Harder `axis_ray` tier if we want that generator to discriminate  
 
-**Explicitly deferred (future work, not blockers for v0 story)**
+**Explicitly deferred (future work / `papers/02_advanced`)**
 
 - CAT soft occupancy  
 - Disjoint splitting / continuous partition  
@@ -319,26 +340,23 @@ obstacles.*
 
 ## 8. Recommended next steps (priority)
 
-1. **Keep this note updated** as results land (treat as living skeleton).  
-2. **Finish experiment matrix:** axis_ray × {easy,middle,hard} × {cbs,pbs,pp}.  
-3. **One ablation** driven by §5.3 (PBS mode or conflict analyzer).  
-4. **Short architecture appendix** (optional notebook): how to reproduce Table 4.1
-   from JSONL — not a substitute for this note.  
-5. Only then invest in CAT / densify / WDG if the second generator confirms the
-   same ranking and a clear failure mode remains.
+1. **One ablation** on plane_slice hard (PBS mode or conflict analyzer).  
+2. Draft Method section (CBS/PBS/PP on this stack) + pull §4 tables into LaTeX.  
+3. Cite AM valve + MAPF related work; freeze suite + `analyze_runs.py` in paper.  
+4. Only then open `02_advanced` features if ablation leaves a clear gap.
 
 ---
 
 ## 9. Appendix — how stats were computed
 
-For each JSONL batch (same fields as `view_report.py` Stats):
+`scripts/analyze_runs.py` over `data/runs/*.jsonl`:
 
-- `N`, `success` count / rate  
-- `fail_reason` histogram on failures  
-- five-number summary of `total_time_ms` (all / success-only)  
-- five-number summary of `cost_ratio` where `success ∧ witness_compared`  
+- Parse stem `{algo}_{path_gen}_{obstacle}_{level}`  
+- Success rate; median `total_time_ms` on successes; median `cost_ratio` on
+  success + `witness_compared`  
+- Hard `fail_reason` counts; hard success cumulative at 5/30/60/100 s  
 
-Paired hard sets keyed by `instance_id`.
+Same field meanings as `view_report.py` Stats.
 
 ---
 
@@ -346,4 +364,5 @@ Paired hard sets keyed by `instance_id`.
 
 | Ver | Date | Notes |
 |-----|------|-------|
-| v0 | 2026-08-26 | First tech note; plane_slice + pillar_field only |
+| v0 | 2026-08-26 | First tech note; early plane_slice + pillar_field only |
+| v0.1 | 2026-08-26 | Full 36-batch suite; `analyze_runs.py`; axis_ray easy vs plane_slice hard story |

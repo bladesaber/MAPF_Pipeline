@@ -13,8 +13,8 @@ struct GenParams : benchmark::GenParams {
     int max_path_size = 16;        // interior only; last face seg ignores max
     /// Extra Chebyshev slack beyond `diameter_cells()` vs occupied paths.
     int path_gap = 2;
-    /// Extra Chebyshev slack beyond diameter vs waypoints (must exceed path slack
-    /// so that `branch_center_gap() > path_center_gap()`).
+    /// Extra Chebyshev slack beyond diameter vs waypoints when picking a split.
+    /// Effective `branch_center_gap()` should be >= `path_center_gap()` (equal OK).
     int branch_gap = 3;
     int max_attempts = 64;         // retries per seed / attach
 

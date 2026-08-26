@@ -220,7 +220,7 @@ Grow an axis-aligned polyline tree by **line-of-sight (LOS) scans**. Params:
 1. **Ray block:** never enter any written path cell (any group). Separately,
    Chebyshev to occupied must be `> path_gap`, except occupied cells on the
    **spine line** through the ray origin (same axis as the edge being left;
-   requires `branch_gap > path_gap`). Other lines / groups still enforce `path_gap`.
+   requires `branch_gap >= path_gap`). Other lines / groups still enforce `path_gap`.
 2. **Turn:** `D_t ∈ {±x,±y,±z}` must **not** share the axis of `D_{t-1}` (first
    segment: any direction).
 3. **Interior length:** longest free LOS = `L`; reject if `L < min_path_length()`;
@@ -229,7 +229,8 @@ Grow an axis-aligned polyline tree by **line-of-sight (LOS) scans**. Params:
 4. **Last segment** (seed or attach): **no** `max_path_length()`; extend to a domain
    **face**; still check radius / `path_gap` along the segment.
 5. **Branch point:** on the current tree; distance to every existing **waypoint**
-   `> branch_gap`. Require **`branch_gap > path_gap`** (ctor-enforced).
+   `> branch_gap`. Require **`branch_gap >= path_gap`** (ctor: both center gaps
+   `>= 1`, and `branch_center_gap >= path_center_gap`; equal OK).
 6. **Branch direction:** if the point is **not** a waypoint, it lies on a single-axis
    edge — new `D` must **not** use that edge’s axis (side exit only).
 

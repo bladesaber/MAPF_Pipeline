@@ -82,19 +82,18 @@ Exit: `0` all ok, `2` if any generate failed (unless only `--keep_failed` writes
 
 Script: [`gen_robust.sh`](gen_robust.sh) — path generator × obstacle painter ×
 `{easy,middle,hard}`, each filled to `NUM` success YAMLs (default 100).
-`axis_ray` uses multi-round fill (`AXIS_RAY_ATTEMPT_MULT`, default 5) because
-generation fails often.
+Both generators use multi-round fill (`AXIS_RAY_ATTEMPT_MULT` / `PLANE_SLICE_ATTEMPT_MULT`).
 
 | Level | `axis_ray` groups × terms | init / attach | `plane_slice` groups × terms |
 |-------|---------------------------|---------------|------------------------------|
-| easy | 2 × 3 | 4 / 3 | 3 × 3 |
-| middle | 4 × 4 | 5 / 4 | 6 × 6 |
-| hard | 5 × 5 | 5 / 4 | 10 × 10 |
+| easy | 3 × 3 | 4 / 3 | 3 × 3 |
+| middle | 6 × 6 | 5 / 4 | 8 × 8 |
+| hard | 9 × 9 | 5 / 4 | 12 × 12 |
 
 ```bash
 # from pipe_design/build (or set MAIN_GEN)
 chmod +x ../include/benchmark/gen_robust.sh
-# all 4 datasets
+# default: both path gens × both obstacles (4 datasets)
 ../include/benchmark/gen_robust.sh ./bench_out 100
 # one path gen × both obstacles
 ../include/benchmark/gen_robust.sh ./bench_out 100 axis_ray all
@@ -105,7 +104,7 @@ chmod +x ../include/benchmark/gen_robust.sh
 ```
 
 Args: `[OUT_DIR] [NUM] [PATH_GEN] [OBSTACLE] [SHELL_MARGIN]`  
-`PATH_GEN`: `axis_ray` | `plane_slice` | `all`  
+`PATH_GEN`: `all` (default) | `axis_ray` | `plane_slice`  
 `OBSTACLE`: `pillar_field` | `corridor_rack` | `all`
 
 Layout:
