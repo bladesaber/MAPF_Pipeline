@@ -1,0 +1,43 @@
+% !TEX root = preview.tex
+% =============================================================================
+% Discussion + conclusion (compact)
+% =============================================================================
+
+\section{Discussion}
+\label{sec:discussion}
+
+The benchmark is not uniformly hard.
+\textsc{AxisRay} easy and middle saturate for all three controllers; only on
+hard do PBS and PP fall behind CBS, and even then CBS stays near $100\%$.
+\textsc{PlaneSlice}---especially hard with many groups---is where methods
+separate: CBS reaches $56$--$66\%$ success while PBS drops to single digits
+and PP solves none of the $200$ hard instances under the same budget.
+That pattern matches the problem structure: once prior pipes are permanent
+obstacles, order- and priority-based search can lock in early commitments,
+whereas CBS can branch on geometric conflicts and add localized negative
+constraints.
+Obstacle family (\textsc{PillarField} vs.\ \textsc{CorridorRack}) does not
+change the ranking on \textsc{PlaneSlice}, which suggests the stress test
+comes from corridor layout and group count rather than a particular clutter
+model.
+
+Several scope limits follow directly.
+Instances are synthetic $32^3$ grids with uniform radius; we do not evaluate on
+B-rep valve bodies, multi-radius mixtures, or manufacturing criteria such as
+bend limits or supportability.
+Constructive witnesses certify generator feasibility only---$\mathrm{cost\_ratio}$
+below $1$ must not be read as an optimality gap.
+We report CBS, PBS, and PP as baselines under one fixed protocol, not as an
+exhaustive comparison to commercial CAD routers or continuous shape
+optimisers; post-layout smoothing remains orthogonal follow-on work.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+We formalized multi-group 3D pipe routing under permanent geometric occupancy,
+introduced a constructive benchmark with four datasets and controlled difficulty,
+and measured fixed-budget success for CBS, PBS, and priority planning on
+$N{=}100$ instances per cell.
+The suite and reported runs are intended as a reproducible starting point for
+stronger geometric multi-group planners and for coupling discrete layout search
+to manufacturing-aware refinement.

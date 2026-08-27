@@ -1,0 +1,48 @@
+% !TEX root = preview.tex
+% =============================================================================
+% Related work (aligned with mapf_paper/ref reading list)
+% =============================================================================
+
+\section{Related Work}
+\label{sec:related}
+
+\textbf{Multi-agent pathfinding.}
+Grid MAPF uses high-level controllers such as CBS~\cite{sharon2012cbs},
+PBS~\cite{ma2019pbs}, and priority planning~\cite{felner2017socs}.
+Agents occupy cells temporarily; conflicts are vertex- or edge-based at explicit
+timesteps.
+Stern et al.~\cite{stern2019mapf} unify MAPF terminology and publish grid
+benchmarks for spatiotemporal planning.
+We reuse the same \emph{control patterns}---constraint trees, priority DAGs,
+total orders---but under permanent geometric occupancy, dual-witness clearance
+conflicts, and multi-terminal groups.
+Our suite targets design-time 3D layout rather than concurrent motion on
+MovingAI-style MAPF maps~\cite{stern2019mapf}.
+
+\textbf{3D pipe routing and MAPF transfer.}
+Belov et al.~\cite{belov2020pr} draw the analogy between MAPF blocked cells in
+$x$--$y$--$t$ and pipe routing in $x$--$y$--$z$, and adapt CBS and PBS to
+industrial PR instances with one start and one goal per pipe.
+They evaluate on plant-scale and smaller synthetic cases, but do not provide a
+public multi-group benchmark with constructive feasibility witnesses or a
+systematic comparison including priority planning.
+We extend the MAPF-to-routing line to \emph{grouped} multi-terminal topology,
+explicit permanent occupancy, and a reproducible four-dataset suite
+(Sec.~\ref{sec:benchmark}).
+
+\textbf{Automatic pipe routing.}
+Blokland et al.~\cite{blokland2023pipe} survey automatic pipe routing for
+large architectures (ships, chemical plants), where sequential CAD-style routing
+and mixed-integer or sampling methods dominate and full automation remains
+difficult.
+That literature rarely expresses cross-pipe interaction as MAPF-style branching
+and seldom releases controlled 3D instance generators with certificates.
+Our contribution is closer to a MAPF benchmark paper~\cite{stern2019mapf} than
+to a single-application optimiser: fixed protocol, open scripts, and baseline
+success rates on $N{=}100$ instances per cell.
+
+\textbf{Application context.}
+Industrial PR motivates the abstraction~\cite{belov2020pr,blokland2023pipe};
+our intro uses AM-oriented multi-group valve layout as a representative case.
+Reported experiments remain on constructive $32^3$ grids so that difficulty and
+metrics are comparable across CBS, PBS, and PP.

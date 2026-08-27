@@ -28,9 +28,11 @@ At different rotation angles, different groups are brought into hydraulic
 connection through the rotary core. Therefore pipes belonging to
 \emph{different} groups must remain geometrically separated for all design
 poses of interest, while pipes \emph{within} a group may share trunks or
-branch (tree-like manifolds), as illustrated in
-Fig.~\ref{fig:rotary-valve}.
+branch (tree-like manifolds)%
+\IfFileExists{figures/rotary_valve_pipes.png}{, as illustrated in
+Fig.~\ref{fig:rotary-valve}}{}.
 
+\IfFileExists{figures/rotary_valve_pipes.png}{%
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.72\linewidth]{figures/rotary_valve_pipes.png}
@@ -41,12 +43,29 @@ Fig.~\ref{fig:rotary-valve}.
   drilled manifolds, but must not collide.}
   \label{fig:rotary-valve}
 \end{figure}
+}{%
+% Figure asset optional for preview builds; add figures/rotary_valve_pipes.png later.
+}
 
 AM makes such layouts manufacturable, but \emph{designing} the channels is
 still a combinatorial 3D routing problem: many terminals, cluttered obstacles,
 and hard clearance between groups. Manual CAD routing does not scale; we seek
 automatic planners that return conflict-free multi-group layouts inside a
 bounded design domain.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+  \item \textbf{Problem.} We formalize multi-group pipe routing under permanent
+        geometric occupancy, with dual-witness clearance conflicts and
+        topology-driven multi-terminal groups (Sec.~\ref{sec:problem}).
+  \item \textbf{Benchmark.} We construct a synthetic 3D suite with known-feasible
+        witnesses, two corridor generators, two obstacle painters, and
+        easy/middle/hard schedules (Sec.~\ref{sec:benchmark}).
+  \item \textbf{Baselines.} We adapt CBS, PBS, and priority planning to this
+        stack and report fixed-budget success rates on $36$ batches of
+        $N{=}100$ instances each (Secs.~\ref{sec:method}--\ref{sec:experiments}).
+\end{enumerate}
+We do not claim a new optimal high-level algorithm or industrial CAD parity.
 
 \section{From Valve Design to a Computational Problem}
 \label{sec:problem}

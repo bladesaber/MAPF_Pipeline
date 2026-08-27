@@ -1,0 +1,61 @@
+% !TEX root = preview.tex
+% =============================================================================
+% Method: layered planner + classical high-level baselines
+% =============================================================================
+
+\section{Baseline Planner Stack}
+\label{sec:method}
+
+We adapt CBS, PBS, and priority planning (PP) to permanent geometric
+occupancy and multi-terminal groups.
+The shared stack comprises four layers:
+
+\begin{description}
+  \item[Topology.]
+  Terminals $\{T_i\}$ map to tasks (edges) and an optional intra-group growth
+  order.
+  Reported runs use a Euclidean \emph{pure MST} per group: same-group routed
+  segments become connectable goals, forming a tree-shaped manifold.
+  Cross-group interaction is only through occupancy.
+
+  \item[Occupancy.]
+  Static geometry uses a clearance grid; committed other-group pipes and CBS
+  negative constraints use an \emph{obstacle chain} of spheres and capsules.
+  A cell centre $c$ is free for radius $r$ iff clearance to every forbidden
+  volume is at least $r$.
+
+  \item[Low-level search.]
+  Each task is solved by grid A$^\star$ (26-connected, Manhattan) on the
+  composite grid, yielding a free cell polyline.
+  Under PP the path is committed as hard occupancy for later groups; under
+  CBS/PBS it is held in the current leaf solution.
+
+  \item[Conflict detection.]
+  After all groups are routed in a leaf, we detect cross-group geometric hits
+  as dual witnesses $(p_a,r_a)$, $(p_b,r_b)$ with a deficit (same-group contacts
+  ignored).
+  CBS/PBS rank conflicts with a \emph{near-terminal} heuristic when choosing
+  which hit to resolve.
+\end{description}
+
+\subsection{High-level controllers}
+\label{sec:high-level}
+
+\begin{description}
+  \item[CBS.]
+  Constraint-tree leaves store per-group paths plus negative witness spheres on
+  the chain.
+  A selected conflict adds opposing constraints; only the affected group is
+  replanned.
+
+  \item[PBS.]
+  Leaves store a priority DAG over groups.
+  A conflict adds a priority edge; the lower-priority group replans with
+  higher-priority paths as hard obstacles
+  (reported: depth-first expansion).
+
+  \item[PP.]
+  A total order over groups is searched: prior groups are hard obstacles for
+  later ones; failure triggers sequence neighbourhood repair.
+  There is no dual-witness constraint branching---only order search.
+\end{description}

@@ -25,7 +25,7 @@ mkdir -p "${OUT}"
 
 EASY_TIME_MS=30000
 MIDDLE_TIME_MS=60000
-HARD_TIME_MS=120000
+HARD_TIME_MS=90000
 
 if [[ ! -x "${PIPE_RUN}" ]]; then
   echo "error: pipe_run_design not found: ${PIPE_RUN}" >&2

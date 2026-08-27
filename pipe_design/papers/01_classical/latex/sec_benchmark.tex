@@ -35,15 +35,16 @@ $r{=}0.5$).
 
 \begin{table}[t]
   \centering
-  \caption{Difficulty schedule. Shared: domain $32^3$, $r{=}0.5$.}
+  \caption{Difficulty schedule ($m$ groups $\times$ $n_t$ terminals per group).
+  Shared: domain $32^3$, $r{=}0.5$.}
   \label{tab:difficulty}
   \begin{tabular}{@{}lll@{}}
     \toprule
     Level & \textsc{AxisRay} ($m \times n_t$) & \textsc{PlaneSlice} ($m \times n_t$) \\
     \midrule
     easy   & $3\times 3$ & $3\times 3$ \\
-    middle & $4\times 4$ & $8\times 8$ \\
-    hard   & $5\times 5$ & $13\times 13$ \\
+    middle & $6\times 6$ & $8\times 8$ \\
+    hard   & $9\times 9$ & $12\times 12$ \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -63,11 +64,11 @@ Pseudocode and clearance rules appear in Appendix~\ref{app:generators}.
 Witness cells are thickened into a keep-out set $C$; obstacles never invade
 $C$.
 \textsc{PillarField} places large AABBs until target density
-$\rho^\star{=}V_{\mathrm{obs}}/V_0$ (we use $\rho^\star{=}0.5$), sampling seeds
+$\rho^\star{=}V_{\mathrm{obs}}/V_0$ (we use $\rho^\star{=}0.4$), sampling seeds
 by distance to blocked cells.
-\textsc{CorridorRack} dilates witnesses by $k$ Chebyshev steps and meshes the
-complement as AABBs (density derived). Details in
-Appendix~\ref{app:generators}.
+\textsc{CorridorRack} dilates witnesses by $k$ Chebyshev steps
+($k{=}2$ in reported runs) and meshes the complement as AABBs (density derived).
+Details in Appendix~\ref{app:generators}.
 
 \section{Evaluation Protocol}
 \label{sec:eval}
@@ -75,11 +76,12 @@ Appendix~\ref{app:generators}.
 Given $(\mathcal{E},\{G_i\})$ without $\mathcal{W}$, a solver must return
 conflict-free paths for all topology tasks or fail within budget.
 Reported runs fix topology to pure MST and low-level search to A$^\star$
-(26-connected, Manhattan), and compare CBS / PBS / PP.
+(26-connected, Manhattan), and compare CBS / PBS / PP as in
+Sec.~\ref{sec:method}.
 
 \paragraph{Primary metric.}
 Success rate under wall-clock budget $T$ (easy $30\,$s, middle $60\,$s, hard
-$100\,$s):
+$120\,$s):
 \[
   \mathrm{SuccessRate}
   = \frac{1}{N}\bigl|\{ i : \text{instance $i$ solved within $T$}\}\bigr|.
@@ -95,6 +97,8 @@ as a descriptive quality signal (\emph{not} an optimality gap---$\mathcal{W}$
 is constructive). Cost comparisons across algorithms use the common success
 set to limit selection bias.
 
-We do not claim CBS optimality, uniqueness of $\mathcal{W}$, or
-cross-paper leaderboard status until the suite and scripts are frozen and
-released.
+\paragraph{Reproducibility.}
+The suite, batch runners, and JSONL summaries ship with the
+\texttt{pipe\_design} codebase
+(\texttt{gen\_robust.sh}, \texttt{run\_bench.sh}, \texttt{analyze\_runs.py}).
+We intend to freeze these scripts with any public release of the benchmark.

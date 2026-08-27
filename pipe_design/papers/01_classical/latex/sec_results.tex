@@ -1,0 +1,129 @@
+% !TEX root = preview.tex
+% =============================================================================
+% Experiments / Results (from pipe_design/data/runs; analyze_runs.py)
+% =============================================================================
+
+\section{Experiments}
+\label{sec:experiments}
+
+We evaluate CBS, PBS, and PP on the four datasets of Sec.~\ref{sec:benchmark}
+($N{=}100$ instances per cell). Shared solver settings match
+Sec.~\ref{sec:eval}: pure MST topology, A$^\star$ / 26-connected / Manhattan,
+wall-clock budgets $30$\,s / $60$\,s / $120$\,s for easy / middle / hard.
+Tables report success rate under the level budget; hard Success@$T$ curves use
+wall time with failures treated as $+\infty$.
+
+\subsection{Success rate}
+\label{sec:success}
+
+Table~\ref{tab:success} summarises success rates.
+On \textsc{AxisRay}, all three algorithms solve easy and middle almost
+completely; on hard, CBS remains near-perfect ($99$--$100\%$) while PBS and PP
+drop to roughly $77$--$81\%$ and $64$--$71\%$, respectively.
+On \textsc{PlaneSlice}, easy remains saturated, but middle already separates
+methods, and hard is strongly discriminating:
+CBS reaches $56\%$ (\textsc{PillarField}) and $66\%$ (\textsc{CorridorRack}),
+PBS only $7\%$ / $11\%$, and PP solves \emph{none} of the $200$ hard instances.
+Obstacle family does not change the high-level ranking on
+\textsc{PlaneSlice}; both painters support the same ordering
+$\mathrm{CBS}\gg\mathrm{PBS}\gg\mathrm{PP}$.
+
+\begin{table}[t]
+  \centering
+  \caption{Success rate (\%). Each cell: $N{=}100$. Budgets: easy $30$\,s,
+  middle $60$\,s, hard $120$\,s.}
+  \label{tab:success}
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}llrrr@{}}
+    \toprule
+    Dataset & Level & CBS & PBS & PP \\
+    \midrule
+    \textsc{AxisRay}$\times$\textsc{PillarField}
+      & easy   & 100 & 100 & 100 \\
+      & middle & 100 &  99 &  99 \\
+      & hard   &  99 &  81 &  71 \\
+    \midrule
+    \textsc{AxisRay}$\times$\textsc{CorridorRack}
+      & easy   & 100 & 100 & 100 \\
+      & middle & 100 &  98 &  98 \\
+      & hard   & 100 &  77 &  64 \\
+    \midrule
+    \textsc{PlaneSlice}$\times$\textsc{PillarField}
+      & easy   & 100 & 100 & 100 \\
+      & middle &  98 &  90 &  75 \\
+      & hard   &  56 &   7 &   0 \\
+    \midrule
+    \textsc{PlaneSlice}$\times$\textsc{CorridorRack}
+      & easy   & 100 & 100 & 100 \\
+      & middle & 100 &  96 &  80 \\
+      & hard   &  66 &  11 &   0 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Runtime and Success@$T$}
+\label{sec:runtime}
+
+When successful, easy instances finish in tens of milliseconds (PP often
+$\sim$1\,ms).
+On \textsc{AxisRay} hard, CBS/PBS median success times stay below $2$\,s; PP
+successes are much slower (median $\sim$38\,s).
+On \textsc{PlaneSlice} hard, CBS median success time is on the order of
+$46$--$61$\,s, and many failures are timeouts---the budget is binding.
+
+Table~\ref{tab:success-at-t} reports hard Success@$T$ at $5$/$30$/$60$/$100$\,s
+(budget in the runs is $120$\,s; the $100$\,s column is slightly conservative).
+\textsc{AxisRay} hard is largely decided by $5$--$30$\,s for CBS/PBS.
+\textsc{PlaneSlice} hard continues to accumulate CBS successes through $100$\,s
+($50$--$62\%$), while PBS plateaus near $7$--$9\%$ and PP remains at $0\%$.
+PBS/PP gains from $60$\,s to $100$\,s are small: structure and dead orders
+dominate, not a missing few seconds.
+
+\begin{table}[t]
+  \centering
+  \caption{Hard Success@$T$ (\%). Failures counted as $+\infty$ time.}
+  \label{tab:success-at-t}
+  \setlength{\tabcolsep}{3.5pt}
+  \begin{tabular}{@{}llrrrr@{}}
+    \toprule
+    Dataset & Algo & $@5$\,s & $@30$\,s & $@60$\,s & $@100$\,s \\
+    \midrule
+    \textsc{AxisRay}$\times$\textsc{PillarField}
+      & CBS & 96 & 99 & 99 & 99 \\
+      & PBS & 78 & 81 & 81 & 81 \\
+      & PP  & 16 & 31 & 52 & 67 \\
+    \midrule
+    \textsc{AxisRay}$\times$\textsc{CorridorRack}
+      & CBS & 94 & 100 & 100 & 100 \\
+      & PBS & 76 &  76 &  77 &  77 \\
+      & PP  & 11 &  27 &  49 &  61 \\
+    \midrule
+    \textsc{PlaneSlice}$\times$\textsc{PillarField}
+      & CBS &  0 &  8 & 28 & 50 \\
+      & PBS &  0 &  2 &  6 &  7 \\
+      & PP  &  0 &  0 &  0 &  0 \\
+    \midrule
+    \textsc{PlaneSlice}$\times$\textsc{CorridorRack}
+      & CBS &  0 & 17 & 43 & 62 \\
+      & PBS &  0 &  1 &  5 &  9 \\
+      & PP  &  0 &  0 &  0 &  0 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Failures and path cost}
+\label{sec:fail-cost}
+
+On \textsc{PlaneSlice} hard, CBS failures are almost all timeouts
+($44$ and $34$ of $100$).
+PBS mixes timeouts with a few \texttt{no\_solution} outcomes; PP fails with a
+large share of both timeout and exhausted order neighbourhoods
+($\sim$33--34 \texttt{no\_solution} per obstacle family).
+On \textsc{AxisRay} hard, PBS/PP failures are mostly \texttt{no\_solution}
+rather than timeout, consistent with brittle orders once corridors interact.
+
+Median $\mathrm{cost\_ratio}$ on successes is typically below $1$
+(often $\sim$0.53--0.76 on hard non-trivial cells): constructive witnesses are
+feasible but loose.
+We treat $\mathrm{cost\_ratio}$ as a descriptive length signal only, not as an
+optimality gap.

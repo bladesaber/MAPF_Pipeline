@@ -1,4 +1,4 @@
-% Preview driver for abstract + problem + benchmark fragments.
+% Preview driver for the classical benchmark paper draft.
 %   cd pipe_design/papers/01_classical/latex && pdflatex preview.tex
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
@@ -9,23 +9,57 @@
 \usepackage{algpseudocode}
 \usepackage{hyperref}
 
-\title{Preview: Abstract, Problem, and Benchmark Fragments}
-\author{pipe\_design tech note}
+\title{Multi-Group Pipe Routing under Permanent Geometric Occupancy:\\
+Problem, Benchmark, and Classical Baselines}
+\author{Deng}
 \date{}
 
 \begin{document}
 \maketitle
-\noindent\textit{Internal preview only --- not a submission.
-Citations marked TODO\_* are placeholders.}
 
 \input{sec_abstract}
 \input{sec_problem}
+\input{sec_method}
 \input{sec_benchmark}
+\input{sec_results}
+\input{sec_related}
+\input{sec_discussion}
 
-\begin{thebibliography}{9}
-\bibitem{TODO_AM_hydraulics}
-TODO: cite Additive Manufacturing for hydraulic valves / rotary direct-drive
-servo valves (replace with real references).
+\begin{thebibliography}{99}
+
+\bibitem{sharon2012cbs}
+G.~Sharon, R.~Stern, A.~Felner, and N.~R. Sturtevant.
+\newblock Conflict-based search for optimal multi-agent pathfinding.
+\newblock In \emph{Proc. AAAI}, pages 563--568, 2012.
+
+\bibitem{ma2019pbs}
+H.~Ma, D.~Harabor, P.~J. Stuckey, J.~Li, and S.~Koenig.
+\newblock Searching with consistent prioritization for multi-agent path finding.
+\newblock In \emph{Proc. AAAI}, pages 7643--7650, 2019.
+
+\bibitem{felner2017socs}
+A.~Felner, R.~Stern, S.~E.~Shimony, E.~Boyarski, M.~Goldenberg, G.~Sharon,
+N.~Sturtevant, and S.~Koenig.
+\newblock Search-based optimal solvers for the multi-agent pathfinding problem:
+summary and challenges.
+\newblock In \emph{Proc. SoCS}, pages 29--36, 2017.
+
+\bibitem{stern2019mapf}
+R.~Stern, N.~R. Sturtevant, A.~Felner, S.~Koenig, H.~Ma, T.~Walker,
+J.~Li, D.~Atzmon, L.~Cohen, T.~K.~S. Kumar, E.~Boyarski, and R.~Bart{\'a}k.
+\newblock Multi-agent pathfinding: Definitions, variants, and benchmarks.
+\newblock In \emph{Proc. SoCS}, volume~10, pages 151--158, 2019.
+
+\bibitem{belov2020pr}
+G.~Belov, W.~Du, M.~Garcia de la Banda, D.~Harabor, S.~Koenig, and X.~Wei.
+\newblock From multi-agent pathfinding to 3D pipe routing.
+\newblock In \emph{Proc. AAAI}, pages 10257--10265, 2020.
+
+\bibitem{blokland2023pipe}
+M.~Blokland, R.~D. van der Mei, J.~F.~J. Pruyn, and J.~Berkhout.
+\newblock Literature survey on automatic pipe routing.
+\newblock \emph{Operations Research Forum}, 4(35), 2023.
+
 \end{thebibliography}
 
 \appendix
