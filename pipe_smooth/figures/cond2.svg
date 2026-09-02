@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" width="480" height="300">
+  <rect width="100%" height="100%" fill="#fafafa"/>
+
+  <text x="240" y="28" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="600" fill="#333">
+    cond2 - local split
+  </text>
+  <text x="240" y="46" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#666">
+    A-&gt;C, B-&gt;C: same as cond1 (arc + straight); plus A-&gt;B arc
+  </text>
+
+  <!-- dashed void near join (no single shared J) -->
+  <path d="M 178 128 L 178 172 L 218 150 Z"
+        fill="none" stroke="#999" stroke-width="1.8" stroke-dasharray="6,4"/>
+  <text x="188" y="154" font-family="sans-serif" font-size="9" fill="#999">void</text>
+
+  <!-- A->C: same as cond1 (arc then straight) -->
+  <path d="M 72 62
+           C 118 58, 158 95, 198 148
+           L 438 148"
+        fill="none" stroke="#c0392b" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- B->C: same as cond1 (arc then straight) -->
+  <path d="M 72 238
+           C 118 242, 158 205, 198 152
+           L 438 152"
+        fill="none" stroke="#c0392b" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- A->B: extra smooth arc with smaller bend radius -->
+  <path d="M 72 62
+           C 155 110, 155 190, 72 238"
+        fill="none" stroke="#c0392b" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- terminals (same as cond1) -->
+  <circle cx="72" cy="62" r="5" fill="#2c3e50"/>
+  <text x="52" y="58" font-family="sans-serif" font-size="15" font-weight="700" fill="#2c3e50">A</text>
+
+  <circle cx="72" cy="238" r="5" fill="#2c3e50"/>
+  <text x="52" y="246" font-family="sans-serif" font-size="15" font-weight="700" fill="#2c3e50">B</text>
+
+  <circle cx="438" cy="150" r="5" fill="#2c3e50"/>
+  <text x="448" y="155" font-family="sans-serif" font-size="15" font-weight="700" fill="#2c3e50">C</text>
+
+  <!-- angle labels -->
+  <text x="248" y="132" font-family="sans-serif" font-size="12" fill="#555">angle AC</text>
+  <text x="248" y="178" font-family="sans-serif" font-size="12" fill="#555">angle BC</text>
+  <text x="118" y="152" font-family="sans-serif" font-size="12" fill="#555">angle AB</text>
+</svg>
