@@ -1,2 +1,4 @@
 1. soft constrain optimization
 2. streamline partial different equation optimization
+
+3. agent control optimization weight
