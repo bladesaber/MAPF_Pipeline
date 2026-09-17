@@ -3,4 +3,5 @@
 2. improvements
    - meta-agents: ICBS
    - Cardinal / bypass no tree grow  ??
+   - inflate light on sight method, search like light
    
