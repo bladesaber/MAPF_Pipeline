@@ -15,13 +15,13 @@ class LabeledEdge:
     """Trunk or junction run on the fine chain (deduped across usages).
 
     Positions live in PartitionedTree.nodes[id].pos — look up via `nodes` (u→…→v).
+    Radius lives on nodes; interpolate between endpoint node radii when needed.
     """
 
     id: str
     kind: str  # "trunk" | "junction"
     u: str
     v: str
-    radius: float
     nodes: list[str] = field(default_factory=list)
 
 
@@ -276,7 +276,6 @@ def build_junctions(
                     kind=kind,
                     u=canon[0],
                     v=canon[-1],
-                    radius=nodes[canon[0]].radius,
                     nodes=canon,
                 )
             edge_ids.append(store[key].id)

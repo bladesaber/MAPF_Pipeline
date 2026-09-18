@@ -5,22 +5,11 @@ Callers pass NumPy or JAX arrays. Choose ops via backend='numpy'|'jax' (default 
 
 from __future__ import annotations
 
-import numpy as np
+from utils import backend as _backend
 
 # 4-point Gauss–Legendre on [0, 1]
 _GL4_T = (0.06943184420297371, 0.33000947820757187, 0.6699905217924281, 0.9305681557970262)
 _GL4_W = (0.17392742256872692, 0.3260725774312731, 0.3260725774312731, 0.17392742256872692)
-
-
-def _backend(backend: str):
-    """Return array module: 'numpy' -> numpy, 'jax' -> jax.numpy."""
-    if backend in ("numpy", "np"):
-        return np
-    if backend in ("jax", "jnp"):
-        import jax.numpy as jnp
-
-        return jnp
-    raise ValueError(f"backend must be 'numpy' or 'jax', got {backend!r}")
 
 
 def unit(dx, backend: str = "numpy"):

@@ -19,6 +19,7 @@ from .hermite import unit, hermite_length, sample_hermite
 @dataclass
 class HermiteNode:
     pos: np.ndarray
+    radius: float = 0.5
     v: np.ndarray | None = None
     sigma: float | None = None
     fixed_p: bool = False
@@ -33,7 +34,12 @@ class HermiteSegment:
     kind: str  # trunk | junction
     u: str
     v: str
-    radius: float
+
+    def radius_at(self, t: float, nodes: dict[str, HermiteNode]) -> float:
+        """Linear radius on [0, 1] between endpoint node radii."""
+        r0 = float(nodes[self.u].radius)
+        r1 = float(nodes[self.v].radius)
+        return (1.0 - t) * r0 + t * r1
 
 
 @dataclass
@@ -84,10 +90,15 @@ class OptimizeGraph:
             L = float(hermite_length(p0, v0, s0, p1, v1, s1, backend="numpy"))
             n = max(2, int(math.ceil(L / resolution)))
             xyz = sample_hermite(p0, v0, s0, p1, v1, s1, n=n, backend="numpy")
+            # radius from travel-direction endpoints; linear in same t as sample_hermite
+            r0 = float(nv.radius if rev else nu.radius)
+            r1 = float(nu.radius if rev else nv.radius)
+            ts = np.linspace(0.0, 1.0, n)
             if pts:
                 xyz = xyz[1:]  # drop duplicate joint
+                ts = ts[1:]
             pts.append(xyz)
-            rads.append(np.full(xyz.shape[0], float(seg.radius)))
+            rads.append((1.0 - ts) * r0 + ts * r1)
         if not pts:
             return {
                 "usage": path.usage,
@@ -113,11 +124,12 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
     segments: dict[str, HermiteSegment] = {}
     edge_segs: dict[str, list[str]] = {}  # eid -> hermite segment ids along e.nodes
 
-    def add_node(kid, pos, role):
+    def add_node(kid, pos, role, radius):
         if kid not in nodes_out:
             is_port = role == "port"
             nodes_out[kid] = HermiteNode(
                 pos=np.asarray(pos, dtype=float),
+                radius=float(radius),
                 v=None if is_port else np.array([1.0, 0.0, 0.0]),
                 sigma=None if is_port else 1.0,
                 fixed_p=is_port,
@@ -140,6 +152,8 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
             id_a, id_b = nids[i], nids[i + 1]
             p_a = np.asarray(jnodes[id_a].pos, dtype=float)
             p_b = np.asarray(jnodes[id_b].pos, dtype=float)
+            r_a = float(jnodes[id_a].radius)
+            r_b = float(jnodes[id_b].radius)
             chord = float(np.linalg.norm(p_b - p_a))
             if chord < 1e-12:
                 raise ValueError(f"Zero-length waypoint pair on {e.id}: {id_a}->{id_b}")
@@ -147,19 +161,23 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
             n_split = max(1, int(math.ceil(chord / length_max)))
             chain_ids = [local_id(id_a)]
             chain_pos = [p_a]
+            chain_r = [r_a]
             for k in range(1, n_split):
                 w = k / n_split
                 chain_ids.append(f"{e.id}_{i}_{k}")
                 chain_pos.append(p_a + w * (p_b - p_a))
+                chain_r.append((1.0 - w) * r_a + w * r_b)
             chain_ids.append(local_id(id_b))
             chain_pos.append(p_b)
+            chain_r.append(r_b)
 
-            for kid, p in zip(chain_ids, chain_pos):
+            for kid, p, r in zip(chain_ids, chain_pos, chain_r):
                 if kid in shared:
                     role = "port" if (kid in jnodes and jnodes[kid].terminal_id) else "interface"
+                    r = float(jnodes[kid].radius) if kid in jnodes else r
                 else:
                     role = e.kind
-                add_node(kid, p, role)
+                add_node(kid, p, role, r)
 
             for j in range(len(chain_ids) - 1):
                 p0, p1 = chain_pos[j], chain_pos[j + 1]
@@ -174,7 +192,7 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
                     nodes_out[v_id].sigma = seg_L
                 sid = f"{e.id}_{i}_{j}"
                 segments[sid] = HermiteSegment(
-                    id=sid, edge=e.id, kind=e.kind, u=u, v=v_id, radius=e.radius
+                    id=sid, edge=e.id, kind=e.kind, u=u, v=v_id
                 )
                 segs_here.append(sid)
         edge_segs[e.id] = segs_here
