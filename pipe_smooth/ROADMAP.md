@@ -1217,3 +1217,59 @@ Commitments for the first production implementation of `pipe_smooth` Stage 1. Su
 
 Shared rule (§7.2): broadphase → active set $\mathcal{A}$ with buffer $\delta_{\mathrm{buf}}$ → cost/constraint only on $\mathcal{A}$; AD differentiates continuous $d$/$\phi$ with $\mathcal{A}$ fixed for the step.
 
+### 8.3 Solve schedule
+
+```text
+init Hermite X from coarse P
+    → soft loop: J_path + J_clear(capsule) + J_union + J_space
+         Discrete Langevin / Adam-annealed  (JAX ∇J), T ↓ 0
+    → hard phase: SQP with c(X) from hull GJK/EPA (and optional space bands)
+         Jacobians from JAX on active constraints
+    → accept: denser capsule and/or hull checks; else raise μ / δ_buf / m and retry
+```
+
+Do **not** mix Langevin noise into a single SQP QP. Multi-start = several Langevin seeds, each followed by SQP, keep best feasible.
+
+### 8.4 Explicit non-goals (this production cut)
+
+- Circular-arc segment representation as default (§6.5.2).
+- Full CD inside JAX; differentiating GJK branches.
+- Stage 2 CAD / Stage 3 FEM inside the Stage 1 loop.
+- Same-group hard clearance ($\mu_{\mathrm{self}}=0$ default).
+
+### 8.5 Repository layout (Stage 1)
+
+Align packages with §6 data flow. Keep a thin `pipeline.py`; defer Langevin / SQP / GJK to a second wave.
+
+```text
+pipe_smooth/
+  ROADMAP.md
+  example_load_env.py       # CLI → io; or move under examples/
+  data/                     # prepared instance YAML (obstacles optional later)
+  examples/                 # run one instance, plots
+  tests/
+  pipe_smooth/              # importable package
+    __init__.py
+    io/
+      load_instance.py      # YAML → meta/grid/groups/paths/usages
+    topology/
+      tree.py               # §6.1 coarse paths → 𝒯
+      junction.py           # §6.2 complexes, trunk / junction partition
+    geometry/
+      hermite.py            # §6.5.1 nodes (p,v,σ), evaluate / sample one segment
+      assemble.py           # Hermite optimize graph from trunk/junction edges + port tangents
+    costs/
+      path.py               # §6.4.1 L, K
+      clear.py              # §6.4.2 MVP point / short capsule
+      union.py              # §6.4.3
+      space.py              # §7.1 (optional early)
+    collision/              # second wave
+      capsule.py            # §7.2.1
+      gjk.py                # §7.2.2
+    optimize/
+      pack.py               # free vars; ports / interface clamped
+      adam.py               # soft GD MVP
+      langevin.py           # §7.3
+      sqp.py                # hard phase
+    pipeline.py             # load → tree → junction → Hermite init → assemble → J → step
+```

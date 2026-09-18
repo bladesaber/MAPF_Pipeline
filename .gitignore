@@ -55,3 +55,6 @@ pipe_design/tools/data/movingai/**/report/**
 
 # jsonl
 *.jsonl
+
+# path smoothing results
+/pipe_smooth/data

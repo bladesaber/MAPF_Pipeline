@@ -1,4 +1,22 @@
-1. soft constrain optimization
-2. streamline partial different equation optimization
+compress PDE optimization gradient into path centeral line
 
-3. agent control optimization weight
+
+
+
+optimization:
+- SQP for following hard constraint
+
+
+discuss
+- SQP
+- should each cost function be convex or concave
+- how to add norm item in SQP
+- how to combine Hamiltonian Monte Carlo
+
+
+
+
+
+agent control optimize weight schedule
+should each cost function be convex or concave
+convex hull to AD version
