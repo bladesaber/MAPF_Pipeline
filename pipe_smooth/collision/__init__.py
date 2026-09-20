@@ -30,8 +30,20 @@ __all__ = [
 ]
 
 try:
-    from .gjk import hull_hull, hull_aabb, aabb_aabb  # noqa: F401
+    from .gjk import (
+        Hull4,
+        NarrowHullObsPair,
+        NarrowHullGrpPair,
+        signed_distance,
+        find_narrowphase_pairs as find_hull_narrowphase_pairs,
+    )  # noqa: F401
 
-    __all__ += ["hull_hull", "hull_aabb", "aabb_aabb"]
+    __all__ += [
+        "Hull4",
+        "NarrowHullObsPair",
+        "NarrowHullGrpPair",
+        "signed_distance",
+        "find_hull_narrowphase_pairs",
+    ]
 except ImportError:
     pass

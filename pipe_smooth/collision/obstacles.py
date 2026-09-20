@@ -1,7 +1,10 @@
-"""Static obstacle types for collision broadphase / narrowphase.
+"""Static obstacles for collision broadphase / GJK.
 
-Each type exposes aabb(margin) -> (mn, mx) for shared AABB broadphase.
+Each type: aabb(margin) -> (mn, mx) and to_coal() -> (shape, Transform3s).
+Native coal Sphere / Capsule / Box. Four-point hulls live in gjk.Hull4.
 """
+
+# pyright: reportCallIssue=false, reportArgumentType=false
 
 from __future__ import annotations
 
@@ -9,6 +12,9 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 import numpy as np
+import coal
+
+_EPS = 1e-12
 
 
 @dataclass
@@ -32,6 +38,12 @@ class SphereObs:
         c = np.asarray(self.c, float)
         e = float(self.r) + float(margin)
         return c - e, c + e
+
+    def to_coal(self) -> tuple[coal.Sphere, coal.Transform3s]:
+        """Native coal.Sphere at c."""
+        T = coal.Transform3s.Identity()
+        T.setTranslation(np.asarray(self.c, float))
+        return coal.Sphere(float(self.r)), T
 
 
 @dataclass
@@ -58,6 +70,19 @@ class CapsuleObs:
         e = float(self.r) + float(margin)
         return np.minimum(a, b) - e, np.maximum(a, b) + e
 
+    def to_coal(self) -> tuple[coal.Capsule, coal.Transform3s]:
+        """Native coal.Capsule; local +z aligned to b-a (length ||b-a||)."""
+        a = np.asarray(self.a, float)
+        b = np.asarray(self.b, float)
+        d = b - a
+        L = float(np.linalg.norm(d))
+        T = coal.Transform3s.Identity()
+        T.setTranslation(0.5 * (a + b))
+        if L < _EPS:
+            return coal.Sphere(float(self.r)), T
+        T.setQuatRotation(coal.Quaternion.FromTwoVectors(np.array([0.0, 0.0, 1.0]), d / L))
+        return coal.Capsule(float(self.r), L), T
+
 
 @dataclass
 class AabbObs:
@@ -69,10 +94,10 @@ class AabbObs:
     name: str = ""
 
     def aabb(self, margin: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
-        """Box corners, optionally expanded by margin.
+        """AABB of the box, expanded by margin.
 
         Args:
-            margin: pad applied on all sides
+            margin: extra pad on the box sides
 
         Returns:
             mn, mx: shape (3,) each
@@ -81,3 +106,12 @@ class AabbObs:
         mx = np.asarray(self.mx, float)
         e = float(margin)
         return mn - e, mx + e
+
+    def to_coal(self):
+        """Native coal.Box centered at 0.5*(mn+mx)."""
+        mn = np.asarray(self.mn, float)
+        mx = np.asarray(self.mx, float)
+        size = np.maximum(mx - mn, _EPS)
+        T = coal.Transform3s.Identity()
+        T.setTranslation(0.5 * (mn + mx))
+        return coal.Box(float(size[0]), float(size[1]), float(size[2])), T

@@ -9,6 +9,7 @@ from .hermite import (
     hermite_length,
     hermite_bezier_controls,
     hermite_convex_hull,
+    bezier_on_interval,
 )
 from .assemble import (
     HermiteNode,
@@ -28,6 +29,7 @@ __all__ = [
     "hermite_length",
     "hermite_bezier_controls",
     "hermite_convex_hull",
+    "bezier_on_interval",
     "HermiteNode",
     "HermiteSegment",
     "OptimizeUsagePath",

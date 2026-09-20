@@ -97,3 +97,31 @@ def hermite_bezier_controls(p0, v0, s0, p1, v1, s1, backend: str = "numpy"):
 def hermite_convex_hull(p0, v0, s0, p1, v1, s1, backend: str = "numpy"):
     """Outer convex bound of one segment = four Bézier controls (§7.3)."""
     return hermite_bezier_controls(p0, v0, s0, p1, v1, s1, backend=backend)
+
+
+def bezier_on_interval(C, ta, tb, backend: str = "numpy"):
+    """Restrict cubic Bézier controls C (4, 3) on [0, 1] to sub-interval [ta, tb].
+
+    de Casteljau: split at tb → left = [0, tb]; then split left at ta/tb → right = [ta, tb].
+    Same cubic as re-Hermite with endpoint pos + derivatives scaled by (tb - ta).
+    """
+    xp = _backend(backend)
+
+    def split(P, t):
+        p01 = (1 - t) * P[0] + t * P[1]
+        p12 = (1 - t) * P[1] + t * P[2]
+        p23 = (1 - t) * P[2] + t * P[3]
+        p012 = (1 - t) * p01 + t * p12
+        p123 = (1 - t) * p12 + t * p23
+        p0123 = (1 - t) * p012 + t * p123
+        left = xp.stack([P[0], p01, p012, p0123], axis=0)
+        right = xp.stack([p0123, p123, p23, P[3]], axis=0)
+        return left, right
+
+    C = xp.asarray(C).reshape(4, 3)
+    ta, tb = float(ta), float(tb)
+    left, _ = split(C, tb) if tb < 1.0 - 1e-15 else (C, None)
+    if ta <= 1e-15:
+        return left
+    _, mid = split(left, ta / tb)
+    return mid

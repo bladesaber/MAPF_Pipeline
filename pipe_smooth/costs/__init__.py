@@ -7,7 +7,7 @@ from .path import (
     k_fd,
     k_hermite,
 )
-from .clear import phi, clear_balls
+from .clear import phi, clear_balls, clear_capsule_active, clear_hull_active
 
 __all__ = [
     "softplus",
@@ -19,4 +19,6 @@ __all__ = [
     "k_hermite",
     "phi",
     "clear_balls",
+    "clear_capsule_active",
+    "clear_hull_active",
 ]
