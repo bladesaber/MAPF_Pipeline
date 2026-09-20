@@ -354,7 +354,7 @@ $$
 \kappa_{u,i}^{\mathrm{M}}
 =
 \frac{
-\big\|
+2\big\|
 (x_{u,i}-x_{u,i-1})\times(x_{u,i+1}-x_{u,i})
 \big\|_2
 }{

@@ -1,12 +1,13 @@
-"""§6.4.1 — path costs L, K, J_path on samples.
+"""§6.4.1 — path length and curvature pieces.
 
-Inputs align with OptimizeGraph.sample_usage_path: xyz (N,3), radius (N,), optional w (N,).
-Optional unit end tangents t_start / t_end (port clamps). backend='numpy'|'jax'.
+Polyline samples: `k_bend` / `k_bend_approx` / `k_menger` / `k_fd`.
+Cubic Hermite segment: `k_hermite` (analytic κ(t)). Caller sums / weights costs.
 """
 
 from __future__ import annotations
 
 from pipe_smooth.utils import backend as _backend
+from pipe_smooth.geometry.hermite import eval_hermite_kappa, eval_hermite_ts
 
 _EPS = 1e-12
 
@@ -29,23 +30,18 @@ def path_length(xyz, w=None, backend: str = "numpy"):
     return xp.sum(0.5 * (w[:-1] + w[1:]) * ds)
 
 
-def path_curvature(
+def k_bend(
     xyz,
     radius,
     w=None,
     t_start=None,
     t_end=None,
-    rho: float = 0.0,
-    c_pref: float = 0.25,
-    soft_sigma: float = 1e-2,
     backend: str = "numpy",
 ):
-    """Radius-aware K_u = K^bend + ρ K^thr on polyline samples (§6.4.1).
+    """Turning-energy bend: Σ (θ r)² / Δℓ with θ=atan2(||t×t||, t·t) (§6.4.1).
 
-    Bend (MVP): Σ ||Δt||² r² / Δℓ with edge tangents from xyz. Optional unit
-    `t_start` / `t_end` (port / usage clamps) add end turns vs the first / last
-    chord; σ is not used. `radius` is (N,) like `xyz` (scalar broadcasts).
-    Threshold term (ρ>0) stays on interior Menger samples only.
+    Edge tangents from xyz chords. Optional unit `t_start` / `t_end` (port clamps)
+    add end turns vs first / last chord. `radius` (N,) or scalar.
     """
     xp = _backend(backend)
     xyz = xp.asarray(xyz)
@@ -56,28 +52,87 @@ def path_curvature(
     t = (xyz[1:] - xyz[:-1]) / (ds[:, None] + _EPS)
     dl = 0.5 * (ds[:-1] + ds[1:])
     wi = xp.ones((xyz.shape[0],), dtype=xyz.dtype) if w is None else xp.asarray(w)
-    r_i = radius[1:-1]
-    w_i = wi[1:-1]
 
-    # MVP: ||t_i - t_{i-1}||² = 4 sin²(θ/2) ≈ θ² for small bends
-    dt2 = xp.sum((t[1:] - t[:-1]) ** 2, axis=-1)
-    K_bend = xp.sum(w_i * dt2 * (r_i ** 2) / (dl + _EPS))
+    # θ ∈ [0,π]; avoid arccos (singular as cos→1)
+    theta = xp.arctan2(
+        xp.linalg.norm(xp.cross(t[:-1], t[1:]), axis=-1),
+        xp.sum(t[:-1] * t[1:], axis=-1),
+    )
+    K = xp.sum(wi[1:-1] * (theta ** 2) * (radius[1:-1] ** 2) / (dl + _EPS))
 
     if t_start is not None:
         ts = xp.asarray(t_start)
         ts = ts / (xp.linalg.norm(ts) + _EPS)
-        K_bend = K_bend + wi[0] * xp.sum((t[0] - ts) ** 2) * (radius[0] ** 2) / (ds[0] + _EPS)
+        th0 = xp.arctan2(xp.linalg.norm(xp.cross(ts, t[0])), xp.sum(ts * t[0]))
+        K = K + wi[0] * (th0 ** 2) * (radius[0] ** 2) / (ds[0] + _EPS)
     if t_end is not None:
         te = xp.asarray(t_end)
         te = te / (xp.linalg.norm(te) + _EPS)
-        K_bend = K_bend + wi[-1] * xp.sum((te - t[-1]) ** 2) * (radius[-1] ** 2) / (
-            ds[-1] + _EPS
-        )
+        th1 = xp.arctan2(xp.linalg.norm(xp.cross(t[-1], te)), xp.sum(t[-1] * te))
+        K = K + wi[-1] * (th1 ** 2) * (radius[-1] ** 2) / (ds[-1] + _EPS)
+    return K
 
-    if rho == 0.0:
-        return K_bend
 
-    # Menger κ at interior samples
+def k_bend_approx(
+    xyz,
+    radius,
+    w=None,
+    t_start=None,
+    t_end=None,
+    backend: str = "numpy",
+):
+    """Small-angle bend approx: Σ ||Δt||² r² / Δℓ (= 4 sin²(θ/2) r² / Δℓ).
+
+    Same inputs as `k_bend`. Underestimates large turns; use `k_bend` (atan2 θ²) when
+    sharp corners must be fully penalized.
+    """
+    xp = _backend(backend)
+    xyz = xp.asarray(xyz)
+    radius = xp.asarray(radius)
+    if radius.ndim == 0:
+        radius = xp.full((xyz.shape[0],), radius)
+    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
+    t = (xyz[1:] - xyz[:-1]) / (ds[:, None] + _EPS)
+    dl = 0.5 * (ds[:-1] + ds[1:])
+    wi = xp.ones((xyz.shape[0],), dtype=xyz.dtype) if w is None else xp.asarray(w)
+
+    dt2 = xp.sum((t[1:] - t[:-1]) ** 2, axis=-1)
+    K = xp.sum(wi[1:-1] * dt2 * (radius[1:-1] ** 2) / (dl + _EPS))
+
+    if t_start is not None:
+        ts = xp.asarray(t_start)
+        ts = ts / (xp.linalg.norm(ts) + _EPS)
+        K = K + wi[0] * xp.sum((t[0] - ts) ** 2) * (radius[0] ** 2) / (ds[0] + _EPS)
+    if t_end is not None:
+        te = xp.asarray(t_end)
+        te = te / (xp.linalg.norm(te) + _EPS)
+        K = K + wi[-1] * xp.sum((te - t[-1]) ** 2) * (radius[-1] ** 2) / (ds[-1] + _EPS)
+    return K
+
+
+def k_menger(
+    xyz,
+    radius,
+    w=None,
+    t_start=None,
+    t_end=None,
+    backend: str = "numpy",
+):
+    """Menger bend: Σ w (κ r)² Δℓ (no threshold).
+
+    Interior: classic 3-point κ^M. Optional `t_start` / `t_end`: terminal κ ≈ θ/Δs
+    with θ between the port tangent and the first / last chord (simpler than virtual
+    Menger points; interior stays pure Menger).
+    """
+    xp = _backend(backend)
+    xyz = xp.asarray(xyz)
+    radius = xp.asarray(radius)
+    if radius.ndim == 0:
+        radius = xp.full((xyz.shape[0],), radius)
+    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
+    dl = 0.5 * (ds[:-1] + ds[1:])
+    wi = xp.ones((xyz.shape[0],), dtype=xyz.dtype) if w is None else xp.asarray(w)
+
     a = xyz[1:-1] - xyz[:-2]
     b = xyz[2:] - xyz[1:-1]
     c = xyz[2:] - xyz[:-2]
@@ -86,45 +141,134 @@ def path_curvature(
         xp.linalg.norm(a, axis=-1) * xp.linalg.norm(b, axis=-1) * xp.linalg.norm(c, axis=-1)
         + _EPS
     )
-    kappa_m = cross / denom
-    thr = softplus(kappa_m * r_i - c_pref, sigma=soft_sigma, backend=backend)
-    K_thr = xp.sum(w_i * (thr ** 2) * dl)
-    return K_bend + rho * K_thr
+    kappa_m = 2.0 * cross / denom
+    K = xp.sum(wi[1:-1] * (kappa_m * radius[1:-1]) ** 2 * dl)
+
+    # Terminals: κ ≈ θ / Δs from port tangent vs first/last chord (not 3-point Menger)
+    if t_start is not None:
+        ts = xp.asarray(t_start)
+        ts = ts / (xp.linalg.norm(ts) + _EPS)
+        t0 = (xyz[1] - xyz[0]) / (ds[0] + _EPS)
+        th0 = xp.arctan2(xp.linalg.norm(xp.cross(ts, t0)), xp.sum(ts * t0))
+        km0 = th0 / (ds[0] + _EPS)
+        K = K + wi[0] * (km0 * radius[0]) ** 2 * ds[0]
+    if t_end is not None:
+        te = xp.asarray(t_end)
+        te = te / (xp.linalg.norm(te) + _EPS)
+        t1 = (xyz[-1] - xyz[-2]) / (ds[-1] + _EPS)
+        th1 = xp.arctan2(xp.linalg.norm(xp.cross(t1, te)), xp.sum(t1 * te))
+        km1 = th1 / (ds[-1] + _EPS)
+        K = K + wi[-1] * (km1 * radius[-1]) ** 2 * ds[-1]
+    return K
 
 
-def j_path(
+def k_fd(
     xyz,
     radius,
     w=None,
-    alpha: float = 1.0,
-    beta: float = 1.0,
+    t_start=None,
+    t_end=None,
     backend: str = "numpy",
-    **kwargs,
 ):
-    """α L_u + β K_u for one usage sample path.
+    """Finite-difference κ on polyline samples: Σ w (κ r)² Δℓ, κ=||γ'×γ''||/||γ'||³.
 
-    `xyz` (N,3), `radius` (N,); optional `w`, `t_start`, `t_end` via kwargs.
+    Interior: centered γ', γ'' from chords. Optional `t_start` / `t_end`: one-sided
+    at terminals — γ'=t_port, γ''=(t_chord - t_port)/Δs (no central stencil at ends).
+    For cubic-Hermite κ(t) use `k_hermite`.
     """
-    L = path_length(xyz, w=w, backend=backend)
-    K = path_curvature(xyz, radius, w=w, backend=backend, **kwargs)
-    return alpha * L + beta * K
-
-
-def j_path_sum(samples, alpha: float = 1.0, beta: float = 1.0, backend: str = "numpy", **kwargs):
-    """Σ_u (α L_u + β K_u); sample dicts: xyz, radius, optional w / t_start / t_end."""
     xp = _backend(backend)
-    total = 0.0
-    for s in samples:
-        kw = dict(kwargs)
-        total = total + j_path(
-            s["xyz"],
-            s["radius"],
-            w=s.get("w"),
-            alpha=alpha,
-            beta=beta,
-            backend=backend,
-            t_start=s.get("t_start", kw.pop("t_start", None)),
-            t_end=s.get("t_end", kw.pop("t_end", None)),
-            **kw,
-        )
-    return xp.asarray(total)
+    xyz = xp.asarray(xyz)
+    radius = xp.asarray(radius)
+    if radius.ndim == 0:
+        radius = xp.full((xyz.shape[0],), radius)
+    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
+    t = (xyz[1:] - xyz[:-1]) / (ds[:, None] + _EPS)
+    dl = 0.5 * (ds[:-1] + ds[1:])
+    wi = xp.ones((xyz.shape[0],), dtype=xyz.dtype) if w is None else xp.asarray(w)
+
+    # Interior: centered chords for γ', Δt/Δℓ for γ'' — O(h) (first-order) on uneven samples
+    d1 = (xyz[2:] - xyz[:-2]) / ((ds[:-1] + ds[1:])[:, None] + _EPS)
+    # d2 ≈ γ'': difference of successive unit chord tangents t_i=(x_{i+1}-x_i)/Δs_i,
+    # divided by local spacing Δℓ=½(Δs_{i-1}+Δs_i)
+    d2 = (t[1:] - t[:-1]) / (dl[:, None] + _EPS)
+    kappa = xp.linalg.norm(xp.cross(d1, d2), axis=-1) / (xp.linalg.norm(d1, axis=-1) ** 3 + _EPS)
+    K = xp.sum(wi[1:-1] * (kappa * radius[1:-1]) ** 2 * dl)
+
+    # Terminals: one-sided (forward / backward) using port unit tangents
+    if t_start is not None:
+        ts = xp.asarray(t_start)
+        ts = ts / (xp.linalg.norm(ts) + _EPS)
+        d2_0 = (t[0] - ts) / (ds[0] + _EPS)
+        km0 = xp.linalg.norm(xp.cross(ts, d2_0)) / (xp.linalg.norm(ts) ** 3 + _EPS)
+        K = K + wi[0] * (km0 * radius[0]) ** 2 * ds[0]
+    if t_end is not None:
+        te = xp.asarray(t_end)
+        te = te / (xp.linalg.norm(te) + _EPS)
+        d2_1 = (te - t[-1]) / (ds[-1] + _EPS)
+        km1 = xp.linalg.norm(xp.cross(te, d2_1)) / (xp.linalg.norm(te) ** 3 + _EPS)
+        K = K + wi[-1] * (km1 * radius[-1]) ** 2 * ds[-1]
+    return K
+
+
+def k_hermite(
+    p0,
+    v0,
+    s0,
+    p1,
+    v1,
+    s1,
+    radius,
+    ts,
+    w=None,
+    t_start=None,
+    t_end=None,
+    backend: str = "numpy",
+):
+    """Cubic Hermite analytic κ: Σ w (κ(t) r(t))² Δs on one segment (§6.5.1).
+
+    Interior `ts[1:-1]`: κ(t)=||γ'×γ''||/||γ'||³ via `eval_hermite_kappa`.
+    Optional `t_start` / `t_end`: one-sided FD at terminals (same idea as `k_fd`) —
+    γ'=t_port, γ''=(t_chord-t_port)/Δs — for port clamps that may differ from v0/v1.
+    Prefer passing the port direction as v0/v1 when the Hermite is already clamped;
+    then leave t_start/t_end as None. `ts` on [0,1], len>=3. `radius` scalar, (2,), or (n,).
+    """
+    xp = _backend(backend)
+    ts = xp.asarray(ts)
+    n = int(ts.shape[0])
+    if n < 3:
+        raise ValueError(f"k_hermite needs len(ts)>=3, got {n}")
+
+    xyz = eval_hermite_ts(p0, v0, s0, p1, v1, s1, ts, backend=backend)
+    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
+    dl = 0.5 * (ds[:-1] + ds[1:])
+    t_chord = (xyz[1:] - xyz[:-1]) / (ds[:, None] + _EPS)
+
+    radius = xp.asarray(radius)
+    if radius.ndim == 0:
+        r = xp.full((n,), radius)
+    elif radius.shape == (2,):
+        r = (1.0 - ts) * radius[0] + ts * radius[1]
+    else:
+        r = radius
+
+    wi = xp.ones((n,), dtype=xyz.dtype) if w is None else xp.asarray(w)
+    K = 0.0
+    for i in range(1, n - 1):
+        kappa = eval_hermite_kappa(p0, v0, s0, p1, v1, s1, ts[i], backend=backend)
+        K = K + wi[i] * (kappa * r[i]) ** 2 * dl[i - 1]
+
+    # Optional port clamps: one-sided FD (do not replace analytic κ at ends — Hermite
+    # already has κ(0),κ(1) from v0,v1; use these when port direction ≠ segment v)
+    if t_start is not None:
+        tp = xp.asarray(t_start)
+        tp = tp / (xp.linalg.norm(tp) + _EPS)
+        d2_0 = (t_chord[0] - tp) / (ds[0] + _EPS)
+        km0 = xp.linalg.norm(xp.cross(tp, d2_0)) / (xp.linalg.norm(tp) ** 3 + _EPS)
+        K = K + wi[0] * (km0 * r[0]) ** 2 * ds[0]
+    if t_end is not None:
+        tp = xp.asarray(t_end)
+        tp = tp / (xp.linalg.norm(tp) + _EPS)
+        d2_1 = (tp - t_chord[-1]) / (ds[-1] + _EPS)
+        km1 = xp.linalg.norm(xp.cross(tp, d2_1)) / (xp.linalg.norm(tp) ** 3 + _EPS)
+        K = K + wi[-1] * (km1 * r[-1]) ** 2 * ds[-1]
+    return K

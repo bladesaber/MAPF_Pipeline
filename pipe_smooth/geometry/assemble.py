@@ -12,8 +12,8 @@ import math
 
 import numpy as np
 
-from topology.junction import PartitionedTree, LabeledEdge
-from .hermite import unit, hermite_length, sample_hermite
+from pipe_smooth.topology.junction import PartitionedTree, LabeledEdge
+from pipe_smooth.geometry.hermite import unit, hermite_length, sample_hermite
 
 
 @dataclass
@@ -34,12 +34,24 @@ class HermiteSegment:
     kind: str  # trunk | junction
     u: str
     v: str
+    ts_count: int = 17  # sample count along [0,1]; set via ts_count_for / sampling
 
     def radius_at(self, t: float, nodes: dict[str, HermiteNode]) -> float:
         """Linear radius on [0, 1] between endpoint node radii."""
         r0 = float(nodes[self.u].radius)
         r1 = float(nodes[self.v].radius)
         return (1.0 - t) * r0 + t * r1
+
+    @staticmethod
+    def ts_count_for(p0, v0, s0, p1, v1, s1, resolution: float) -> int:
+        """Number of t-samples for ≈arc-length spacing ``resolution``.
+
+        Same rule as ``sample_usage_path``: n = max(2, ceil(L / resolution)).
+        """
+        if resolution <= 0:
+            raise ValueError(f"resolution must be > 0, got {resolution}")
+        L = float(hermite_length(p0, v0, s0, p1, v1, s1, backend="numpy"))
+        return max(2, int(math.ceil(L / resolution)))
 
 
 @dataclass
@@ -87,8 +99,8 @@ class OptimizeGraph:
                 v0, s0 = path.v_start, path.sigma_start
             if i == nseg - 1:
                 v1, s1 = path.v_end, path.sigma_end
-            L = float(hermite_length(p0, v0, s0, p1, v1, s1, backend="numpy"))
-            n = max(2, int(math.ceil(L / resolution)))
+            n = HermiteSegment.ts_count_for(p0, v0, s0, p1, v1, s1, resolution)
+            seg.ts_count = n
             xyz = sample_hermite(p0, v0, s0, p1, v1, s1, n=n, backend="numpy")
             # radius from travel-direction endpoints; linear in same t as sample_hermite
             r0 = float(nv.radius if rev else nu.radius)

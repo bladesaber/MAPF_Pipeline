@@ -5,7 +5,7 @@ Callers pass NumPy or JAX arrays. Choose ops via backend='numpy'|'jax' (default 
 
 from __future__ import annotations
 
-from utils import backend as _backend
+from pipe_smooth.utils import backend as _backend
 
 # 4-point Gauss–Legendre on [0, 1]
 _GL4_T = (0.06943184420297371, 0.33000947820757187, 0.6699905217924281, 0.9305681557970262)
