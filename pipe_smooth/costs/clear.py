@@ -37,7 +37,7 @@ def clear_balls(
     margin: float = 0.0,
     mu: float = 1.0,
     soft_sigma: float = 1e-2,
-    sign: float = 1.0,
+    sign: float | object = 1.0,
     backend: str = "numpy",
 ):
     """Soft ball–ball clearance μ Σ φ on an **active set** (§6.4.2 / §7.2).
@@ -64,26 +64,35 @@ def clear_balls(
     return mu * xp.sum(phi(d_geom, d_req, soft_sigma=soft_sigma, backend=backend))
 
 
-def _hermite_ends(g: OptimizeGraph, sid: str):
-    """Segment endpoints in the same orientation as collision narrowphase."""
-    seg = g.segments[sid]
-    nu, nv = g.nodes[seg.u], g.nodes[seg.v]
-    for path in g.usage_paths:
-        for i, s in enumerate(path.segments):
-            if s != sid:
+def _hermite_ends_table(graphs: Sequence[OptimizeGraph]) -> dict[tuple[str, str], tuple]:
+    """(group_id, seg_id) → (p0,v0,s0,p1,v1,s1); first usage-path hit wins (same as narrowphase)."""
+    out: dict[tuple[str, str], tuple] = {}
+    for g in graphs:
+        seen: set[str] = set()
+        for path in g.usage_paths:
+            for i, sid in enumerate(path.segments):
+                if sid in seen:
+                    continue
+                seen.add(sid)
+                seg = g.segments[sid]
+                nu, nv = g.nodes[seg.u], g.nodes[seg.v]
+                if path.reverse[i]:
+                    p0, v0, s0 = nv.pos, -nv.v, nv.sigma  # type: ignore[operator]
+                    p1, v1, s1 = nu.pos, -nu.v, nu.sigma  # type: ignore[operator]
+                else:
+                    p0, v0, s0 = nu.pos, nu.v, nu.sigma
+                    p1, v1, s1 = nv.pos, nv.v, nv.sigma
+                if i == 0:
+                    v0, s0 = path.v_start, path.sigma_start
+                if i == len(path.segments) - 1:
+                    v1, s1 = path.v_end, path.sigma_end
+                out[(g.id, sid)] = (p0, v0, s0, p1, v1, s1)
+        for sid, seg in g.segments.items():
+            if sid in seen:
                 continue
-            if path.reverse[i]:
-                p0, v0, s0 = nv.pos, -nv.v, nv.sigma  # type: ignore[operator]
-                p1, v1, s1 = nu.pos, -nu.v, nu.sigma  # type: ignore[operator]
-            else:
-                p0, v0, s0 = nu.pos, nu.v, nu.sigma
-                p1, v1, s1 = nv.pos, nv.v, nv.sigma
-            if i == 0:
-                v0, s0 = path.v_start, path.sigma_start
-            if i == len(path.segments) - 1:
-                v1, s1 = path.v_end, path.sigma_end
-            return p0, v0, s0, p1, v1, s1
-    return nu.pos, nu.v, nu.sigma, nv.pos, nv.v, nv.sigma
+            nu, nv = g.nodes[seg.u], g.nodes[seg.v]
+            out[(g.id, sid)] = (nu.pos, nu.v, nu.sigma, nv.pos, nv.v, nv.sigma)
+    return out
 
 
 def clear_capsule_active(
@@ -96,31 +105,33 @@ def clear_capsule_active(
 ):
     """Soft J_clear from capsule narrowphase pairs (frozen hits, live Hermite)."""
     xp = _backend(backend)
-    by_g = {g.id: g for g in graphs}
+    ends = _hermite_ends_table(graphs)
     narrow_obs, narrow_grp = active
     j = xp.asarray(0.0)
 
     for p in narrow_obs:
-        ends = _hermite_ends(by_g[p.group_id], p.seg_id)
+        p0, v0, s0, p1, v1, s1 = ends[(p.group_id, p.seg_id)]
         for h in p.hits:
-            g0 = eval_hermite(*ends, h.hermite_t0, backend=backend)
-            g1 = eval_hermite(*ends, h.hermite_t1, backend=backend)
+            g0 = eval_hermite(p0, v0, s0, p1, v1, s1, h.hermite_t0, backend=backend)
+            g1 = eval_hermite(p0, v0, s0, p1, v1, s1, h.hermite_t1, backend=backend)
             qa = (1.0 - h.chord_t) * g0 + h.chord_t * g1
-            d = xp.asarray(h.sign) * xp.linalg.norm(qa - xp.asarray(h.qb))
-            j = j + mu_obs * phi(d, p.d_req, soft_sigma=soft_sigma, backend=backend)
+            j = j + clear_balls(
+                qa, h.qb, p.d_req, 0.0, mu=mu_obs, soft_sigma=soft_sigma, sign=h.sign, backend=backend
+            )
 
     for p in narrow_grp:
-        ends_a = _hermite_ends(by_g[p.group_a], p.seg_a)
-        ends_b = _hermite_ends(by_g[p.group_b], p.seg_b)
+        a0, av0, as0, a1, av1, as1 = ends[(p.group_a, p.seg_a)]
+        b0, bv0, bs0, b1, bv1, bs1 = ends[(p.group_b, p.seg_b)]
         for h in p.hits:
-            a0 = eval_hermite(*ends_a, h.hermite_t0_a, backend=backend)
-            a1 = eval_hermite(*ends_a, h.hermite_t1_a, backend=backend)
-            b0 = eval_hermite(*ends_b, h.hermite_t0_b, backend=backend)
-            b1 = eval_hermite(*ends_b, h.hermite_t1_b, backend=backend)
-            qa = (1.0 - h.chord_t_a) * a0 + h.chord_t_a * a1
-            qb = (1.0 - h.chord_t_b) * b0 + h.chord_t_b * b1
-            d = xp.asarray(h.sign) * xp.linalg.norm(qa - qb)
-            j = j + mu_grp * phi(d, p.d_req, soft_sigma=soft_sigma, backend=backend)
+            qa0 = eval_hermite(a0, av0, as0, a1, av1, as1, h.hermite_t0_a, backend=backend)
+            qa1 = eval_hermite(a0, av0, as0, a1, av1, as1, h.hermite_t1_a, backend=backend)
+            qb0 = eval_hermite(b0, bv0, bs0, b1, bv1, bs1, h.hermite_t0_b, backend=backend)
+            qb1 = eval_hermite(b0, bv0, bs0, b1, bv1, bs1, h.hermite_t1_b, backend=backend)
+            qa = (1.0 - h.chord_t_a) * qa0 + h.chord_t_a * qa1
+            qb = (1.0 - h.chord_t_b) * qb0 + h.chord_t_b * qb1
+            j = j + clear_balls(
+                qa, qb, p.d_req, 0.0, mu=mu_grp, soft_sigma=soft_sigma, sign=h.sign, backend=backend
+            )
 
     return j
 
@@ -135,25 +146,30 @@ def clear_hull_active(
 ):
     """Soft J_clear from Hull4 GJK pairs (frozen weights/qb/shift, live Hermite)."""
     xp = _backend(backend)
-    by_g = {g.id: g for g in graphs}
+    ends = _hermite_ends_table(graphs)
     narrow_obs, narrow_grp = active
     j = xp.asarray(0.0)
 
     for p in narrow_obs:
-        C = hermite_bezier_controls(*_hermite_ends(by_g[p.group_id], p.seg_id), backend=backend)
+        p0, v0, s0, p1, v1, s1 = ends[(p.group_id, p.seg_id)]
+        C = hermite_bezier_controls(p0, v0, s0, p1, v1, s1, backend=backend)
         C_sub = bezier_on_interval(C, p.hermite_t0, p.hermite_t1, backend=backend)
         qa = xp.asarray(p.weights) @ (C_sub + xp.asarray(p.shift))
-        d = xp.asarray(p.sign) * xp.linalg.norm(qa - xp.asarray(p.qb))
-        j = j + mu_obs * phi(d, p.d_req, soft_sigma=soft_sigma, backend=backend)
+        j = j + clear_balls(
+            qa, p.qb, p.d_req, 0.0, mu=mu_obs, soft_sigma=soft_sigma, sign=p.sign, backend=backend
+        )
 
     for p in narrow_grp:
-        Ca = hermite_bezier_controls(*_hermite_ends(by_g[p.group_a], p.seg_a), backend=backend)
-        Cb = hermite_bezier_controls(*_hermite_ends(by_g[p.group_b], p.seg_b), backend=backend)
+        a0, av0, as0, a1, av1, as1 = ends[(p.group_a, p.seg_a)]
+        b0, bv0, bs0, b1, bv1, bs1 = ends[(p.group_b, p.seg_b)]
+        Ca = hermite_bezier_controls(a0, av0, as0, a1, av1, as1, backend=backend)
+        Cb = hermite_bezier_controls(b0, bv0, bs0, b1, bv1, bs1, backend=backend)
         Ca_sub = bezier_on_interval(Ca, p.hermite_t0_a, p.hermite_t1_a, backend=backend)
         Cb_sub = bezier_on_interval(Cb, p.hermite_t0_b, p.hermite_t1_b, backend=backend)
         qa = xp.asarray(p.weights_a) @ (Ca_sub + xp.asarray(p.shift_a))
         qb = xp.asarray(p.weights_b) @ (Cb_sub + xp.asarray(p.shift_b))
-        d = xp.asarray(p.sign) * xp.linalg.norm(qa - qb)
-        j = j + mu_grp * phi(d, p.d_req, soft_sigma=soft_sigma, backend=backend)
+        j = j + clear_balls(
+            qa, qb, p.d_req, 0.0, mu=mu_grp, soft_sigma=soft_sigma, sign=p.sign, backend=backend
+        )
 
     return j
