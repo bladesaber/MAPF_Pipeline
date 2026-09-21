@@ -18,44 +18,44 @@ def unit(dx, backend: str = "numpy"):
     return dx / (xp.linalg.norm(dx) + 1e-12)
 
 
-def eval_hermite(p0, v0, s0, p1, v1, s1, t, backend: str = "numpy"):
-    """γ(t), t in [0, 1]. p,v are (3,); s,t scalars. v unit; s > 0."""
+def eval_hermite(p0, v0, p1, v1, t, backend: str = "numpy"):
+    """γ(t), t in [0, 1]. p and v are (3,); v is the end derivative γ' (not unit)."""
     t2, t3 = t * t, t * t * t
     h00 = 2 * t3 - 3 * t2 + 1
     h10 = t3 - 2 * t2 + t
     h01 = -2 * t3 + 3 * t2
     h11 = t3 - t2
-    return h00 * p0 + h10 * (s0 * v0) + h01 * p1 + h11 * (s1 * v1)
+    return h00 * p0 + h10 * v0 + h01 * p1 + h11 * v1
 
 
-def eval_hermite_d1(p0, v0, s0, p1, v1, s1, t, backend: str = "numpy"):
+def eval_hermite_d1(p0, v0, p1, v1, t, backend: str = "numpy"):
     """dγ/dt. Same conventions as eval_hermite."""
     t2 = t * t
     dh00 = 6 * t2 - 6 * t
     dh10 = 3 * t2 - 4 * t + 1
     dh01 = -6 * t2 + 6 * t
     dh11 = 3 * t2 - 2 * t
-    return dh00 * p0 + dh10 * (s0 * v0) + dh01 * p1 + dh11 * (s1 * v1)
+    return dh00 * p0 + dh10 * v0 + dh01 * p1 + dh11 * v1
 
 
-def eval_hermite_d2(p0, v0, s0, p1, v1, s1, t, backend: str = "numpy"):
+def eval_hermite_d2(p0, v0, p1, v1, t, backend: str = "numpy"):
     """d²γ/dt². Same conventions as eval_hermite."""
     d2h00 = 12 * t - 6
     d2h10 = 6 * t - 4
     d2h01 = -12 * t + 6
     d2h11 = 6 * t - 2
-    return d2h00 * p0 + d2h10 * (s0 * v0) + d2h01 * p1 + d2h11 * (s1 * v1)
+    return d2h00 * p0 + d2h10 * v0 + d2h01 * p1 + d2h11 * v1
 
 
-def eval_hermite_kappa(p0, v0, s0, p1, v1, s1, t, backend: str = "numpy"):
+def eval_hermite_kappa(p0, v0, p1, v1, t, backend: str = "numpy"):
     """Curvature κ(t) = ||γ' × γ''|| / ||γ'||³ (§6 / parameterized curve)."""
     xp = _backend(backend)
-    d1 = eval_hermite_d1(p0, v0, s0, p1, v1, s1, t, backend=backend)
-    d2 = eval_hermite_d2(p0, v0, s0, p1, v1, s1, t, backend=backend)
+    d1 = eval_hermite_d1(p0, v0, p1, v1, t, backend=backend)
+    d2 = eval_hermite_d2(p0, v0, p1, v1, t, backend=backend)
     return xp.linalg.norm(xp.cross(d1, d2)) / (xp.linalg.norm(d1) ** 3 + 1e-12)
 
 
-def eval_hermite_ts(p0, v0, s0, p1, v1, s1, ts, backend: str = "numpy"):
+def eval_hermite_ts(p0, v0, p1, v1, ts, backend: str = "numpy"):
     """γ(ts) for many parameters. `ts` shape (n,) → points (n, 3). Vectorized."""
     xp = _backend(backend)
     ts = xp.asarray(ts)
@@ -64,39 +64,39 @@ def eval_hermite_ts(p0, v0, s0, p1, v1, s1, ts, backend: str = "numpy"):
     h10 = (t3 - 2 * t2 + ts)[:, None]
     h01 = (-2 * t3 + 3 * t2)[:, None]
     h11 = (t3 - t2)[:, None]
-    return h00 * p0 + h10 * (s0 * v0) + h01 * p1 + h11 * (s1 * v1)
+    return h00 * p0 + h10 * v0 + h01 * p1 + h11 * v1
 
 
-def sample_hermite(p0, v0, s0, p1, v1, s1, n: int = 16, backend: str = "numpy"):
+def sample_hermite(p0, v0, p1, v1, n: int = 16, backend: str = "numpy"):
     """(n, 3) uniform samples on [0, 1], inclusive endpoints."""
     xp = _backend(backend)
     n = max(int(n), 2)
-    return eval_hermite_ts(p0, v0, s0, p1, v1, s1, xp.linspace(0.0, 1.0, n), backend=backend)
+    return eval_hermite_ts(p0, v0, p1, v1, xp.linspace(0.0, 1.0, n), backend=backend)
 
 
-def hermite_length(p0, v0, s0, p1, v1, s1, backend: str = "numpy"):
+def hermite_length(p0, v0, p1, v1, backend: str = "numpy"):
     """Arc length ∫₀¹ ||γ'(t)|| dt (4-point Gauss–Legendre)."""
     xp = _backend(backend)
     acc = 0.0
     for ti, wi in zip(_GL4_T, _GL4_W):
-        d1 = eval_hermite_d1(p0, v0, s0, p1, v1, s1, ti, backend=backend)
+        d1 = eval_hermite_d1(p0, v0, p1, v1, ti, backend=backend)
         acc = acc + wi * xp.linalg.norm(d1)
     return acc
 
 
-def hermite_bezier_controls(p0, v0, s0, p1, v1, s1, backend: str = "numpy"):
+def hermite_bezier_controls(p0, v0, p1, v1, backend: str = "numpy"):
     """Hermite → Bézier controls C0..C3, shape (4, 3). Curve ⊂ CH{Ci}."""
     xp = _backend(backend)
     c0 = p0
-    c1 = p0 + (s0 / 3.0) * v0
-    c2 = p1 - (s1 / 3.0) * v1
+    c1 = p0 + v0 / 3.0
+    c2 = p1 - v1 / 3.0
     c3 = p1
     return xp.stack([c0, c1, c2, c3], axis=0)
 
 
-def hermite_convex_hull(p0, v0, s0, p1, v1, s1, backend: str = "numpy"):
+def hermite_convex_hull(p0, v0, p1, v1, backend: str = "numpy"):
     """Outer convex bound of one segment = four Bézier controls (§7.3)."""
-    return hermite_bezier_controls(p0, v0, s0, p1, v1, s1, backend=backend)
+    return hermite_bezier_controls(p0, v0, p1, v1, backend=backend)
 
 
 def bezier_on_interval(C, ta, tb, backend: str = "numpy"):

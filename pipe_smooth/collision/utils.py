@@ -38,18 +38,18 @@ class BroadGrpPair:
     seg_b: str
 
 
-def hermite_aabb(p0, v0, s0, p1, v1, s1, r: float = 0.0, margin: float = 0.0):
+def hermite_aabb(p0, v0, p1, v1, r: float = 0.0, margin: float = 0.0):
     """AABB of one cubic Hermite segment (Bézier controls ⊕ ball r).
 
     Args:
-        p0, v0, s0, p1, v1, s1: Hermite ends (v unit, s > 0)
+        p0, v0, p1, v1: Hermite ends; v is the end derivative γ'
         r: tube radius pad
         margin: extra pad (e.g. δ_buf)
 
     Returns:
         mn, mx: shape (3,) each
     """
-    C = hermite_bezier_controls(p0, v0, s0, p1, v1, s1, backend="numpy")
+    C = hermite_bezier_controls(p0, v0, p1, v1, backend="numpy")
     e = float(r) + float(margin)
     return C.min(axis=0) - e, C.max(axis=0) + e
 
@@ -73,31 +73,29 @@ def find_broadphase_pairs(
     
     def _usage_seg_hermite(
         graph: OptimizeGraph, path: OptimizeUsagePath, i: int
-    ) -> tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, float, float]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
         """Hermite ends for path.segments[i] (same convention as sample_usage_path)."""
         sid, rev = path.segments[i], path.reverse[i]
         seg = graph.segments[sid]
         nu, nv = graph.nodes[seg.u], graph.nodes[seg.v]
         if rev:
-            p0, v0, s0 = nv.pos, -nv.v, nv.sigma  # type: ignore[operator]
-            p1, v1, s1 = nu.pos, -nu.v, nu.sigma  # type: ignore[operator]
+            p0, v0 = nv.pos, -nv.v  # type: ignore[operator]
+            p1, v1 = nu.pos, -nu.v  # type: ignore[operator]
             r = max(float(nv.radius), float(nu.radius))
         else:
-            p0, v0, s0 = nu.pos, nu.v, nu.sigma
-            p1, v1, s1 = nv.pos, nv.v, nv.sigma
+            p0, v0 = nu.pos, nu.v
+            p1, v1 = nv.pos, nv.v
             r = max(float(nu.radius), float(nv.radius))
         nseg = len(path.segments)
         if i == 0:
-            v0, s0 = path.v_start, path.sigma_start
+            v0 = path.v_start
         if i == nseg - 1:
-            v1, s1 = path.v_end, path.sigma_end
+            v1 = path.v_end
         return (
             np.asarray(p0, float),
             np.asarray(v0, float),
-            float(s0),  # type: ignore[arg-type]
             np.asarray(p1, float),
             np.asarray(v1, float),
-            float(s1),  # type: ignore[arg-type]
             r,
         )
     
@@ -117,8 +115,8 @@ def find_broadphase_pairs(
                 if sid in seen:
                     continue
                 seen.add(sid)
-                p0, v0, s0, p1, v1, s1, r = _usage_seg_hermite(g, path, i)
-                mn, mx = hermite_aabb(p0, v0, s0, p1, v1, s1, r=r, margin=margin)
+                p0, v0, p1, v1, r = _usage_seg_hermite(g, path, i)
+                mn, mx = hermite_aabb(p0, v0, p1, v1, r=r, margin=margin)
                 segs.append((sid, mn, mx))  # type: ignore[arg-type]
         boxes.append(segs)
 

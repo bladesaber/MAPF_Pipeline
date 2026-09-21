@@ -49,7 +49,7 @@ def _params_from_sliders(sliders: dict[str, Slider]):
     s0 = float(sliders["σ0"].val)
     s1 = float(sliders["σ1"].val)
     n = max(1, int(round(sliders["n"].val)))
-    return p0, v0, s0, p1, v1, s1, n
+    return p0, s0 * v0, p1, s1 * v1, s0, s1, n
 
 
 def convex_hull_2d(pts_xy: np.ndarray) -> np.ndarray:
@@ -169,11 +169,11 @@ def main() -> None:
     info = fig.text(0.08, 0.015, "", family="monospace", fontsize=8, va="bottom")
 
     def redraw(_=None) -> None:
-        p0, v0, s0, p1, v1, s1, n = _params_from_sliders(sliders)
+        p0, v0, p1, v1, s0, s1, n = _params_from_sliders(sliders)
 
-        xyz = eval_hermite_ts(p0, v0, s0, p1, v1, s1, ts_draw)
-        C = hermite_bezier_controls(p0, v0, s0, p1, v1, s1)
-        L = float(hermite_length(p0, v0, s0, p1, v1, s1))
+        xyz = eval_hermite_ts(p0, v0, p1, v1, ts_draw)
+        C = hermite_bezier_controls(p0, v0, p1, v1)
+        L = float(hermite_length(p0, v0, p1, v1))
 
         line_curve.set_data(xyz[:, 0], xyz[:, 1])
         line_ctrl.set_data(C[:, 0], C[:, 1])

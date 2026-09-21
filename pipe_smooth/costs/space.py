@@ -60,17 +60,17 @@ def graph_space(
             seg = graph.segments[sid]
             nu, nv = graph.nodes[seg.u], graph.nodes[seg.v]
             if rev:
-                p0, v0, s0 = nv.pos, -nv.v, nv.sigma  # type: ignore[operator]
-                p1, v1, s1 = nu.pos, -nu.v, nu.sigma  # type: ignore[operator]
+                p0, v0 = nv.pos, -nv.v  # type: ignore[operator]
+                p1, v1 = nu.pos, -nu.v  # type: ignore[operator]
             else:
-                p0, v0, s0 = nu.pos, nu.v, nu.sigma
-                p1, v1, s1 = nv.pos, nv.v, nv.sigma
+                p0, v0 = nu.pos, nu.v
+                p1, v1 = nv.pos, nv.v
             if i == 0:
-                v0, s0 = path.v_start, path.sigma_start
+                v0 = path.v_start
             if i == nseg - 1:
-                v1, s1 = path.v_end, path.sigma_end
+                v1 = path.v_end
             n = max(2, int(seg.ts_count))
-            xyz = sample_hermite(p0, v0, s0, p1, v1, s1, n=n, backend=backend)
+            xyz = sample_hermite(p0, v0, p1, v1, n=n, backend=backend)
             total = total + space_cost(
                 xyz, eta=eta, ds_max=ds_max, soft_sigma=soft_sigma, backend=backend
             )

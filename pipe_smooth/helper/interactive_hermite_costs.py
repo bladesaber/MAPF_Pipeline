@@ -50,17 +50,17 @@ def _params_from_sliders(sliders: dict[str, Slider]):
     v1 = unit(np.array([np.cos(a2), np.sin(a2), 0.0]))
     s0 = float(sliders["σ1"].val)
     s1 = float(sliders["σ2"].val)
-    return p0, v0, s0, p1, v1, s1
+    return p0, s0 * v0, p1, s1 * v1
 
 
-def _eval_five(p0, v0, s0, p1, v1, s1, xyz, ts) -> dict[str, float]:
+def _eval_five(p0, v0, p1, v1, xyz, ts) -> dict[str, float]:
     r = RADIUS
     return {
         "k_bend": float(k_bend(xyz, r)),
         "k_bend_approx": float(k_bend_approx(xyz, r)),
         "k_menger": float(k_menger(xyz, r)),
         "k_fd": float(k_fd(xyz, r)),
-        "k_hermite": float(k_hermite(p0, v0, s0, p1, v1, s1, r, ts)),
+        "k_hermite": float(k_hermite(p0, v0, p1, v1, r, ts)),
     }
 
 
@@ -115,14 +115,14 @@ def main() -> None:
     info = fig.text(0.07, 0.01, "", family="monospace", fontsize=8, va="bottom")
 
     def redraw(_=None) -> None:
-        p0, v0, s0, p1, v1, s1 = _params_from_sliders(sliders)
-        xyz = eval_hermite_ts(p0, v0, s0, p1, v1, s1, ts)
-        xyz_d = eval_hermite_ts(p0, v0, s0, p1, v1, s1, ts_draw)
+        p0, v0, p1, v1 = _params_from_sliders(sliders)
+        xyz = eval_hermite_ts(p0, v0, p1, v1, ts)
+        xyz_d = eval_hermite_ts(p0, v0, p1, v1, ts_draw)
         kappa_s = np.array(
-            [float(eval_hermite_kappa(p0, v0, s0, p1, v1, s1, t)) for t in ts]
+            [float(eval_hermite_kappa(p0, v0, p1, v1, t)) for t in ts]
         )
-        vals = _eval_five(p0, v0, s0, p1, v1, s1, xyz, ts)
-        L = float(hermite_length(p0, v0, s0, p1, v1, s1))
+        vals = _eval_five(p0, v0, p1, v1, xyz, ts)
+        L = float(hermite_length(p0, v0, p1, v1))
 
         line_curve.set_data(xyz_d[:, 0], xyz_d[:, 1])
         pts_samp.set_data(xyz[:, 0], xyz[:, 1])
@@ -139,7 +139,7 @@ def main() -> None:
         ax_curve.set_xlim(xs.min() - pad, xs.max() + pad)
         ax_curve.set_ylim(ys.min() - pad, ys.max() + pad)
         title_curve.set_text(
-            f"σ1={s0:.2f}, σ2={s1:.2f}, L≈{L:.3f}  |  "
+            f"||v1||={float(np.linalg.norm(v0)):.2f}, ||v2||={float(np.linalg.norm(v1)):.2f}, L≈{L:.3f}  |  "
             f"κ∈[{kappa_s.min():.3g}, {kappa_s.max():.3g}]"
         )
 

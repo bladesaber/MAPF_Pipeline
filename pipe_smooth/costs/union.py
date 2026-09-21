@@ -53,19 +53,19 @@ def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]
                     continue
                 nu, nv = graph.nodes[seg.u], graph.nodes[seg.v]
                 if rev:
-                    p0, v0, s0 = nv.pos, -nv.v, nv.sigma  # type: ignore[operator]
-                    p1, v1, s1 = nu.pos, -nu.v, nu.sigma  # type: ignore[operator]
+                    p0, v0 = nv.pos, -nv.v  # type: ignore[operator]
+                    p1, v1 = nu.pos, -nu.v  # type: ignore[operator]
                     r0, r1 = float(nv.radius), float(nu.radius)
                 else:
-                    p0, v0, s0 = nu.pos, nu.v, nu.sigma
-                    p1, v1, s1 = nv.pos, nv.v, nv.sigma
+                    p0, v0 = nu.pos, nu.v
+                    p1, v1 = nv.pos, nv.v
                     r0, r1 = float(nu.radius), float(nv.radius)
                 if i == 0:
-                    v0, s0 = path.v_start, path.sigma_start
+                    v0 = path.v_start
                 if i == nseg - 1:
-                    v1, s1 = path.v_end, path.sigma_end
+                    v1 = path.v_end
                 n = max(2, int(seg.ts_count))
-                xyz = sample_hermite(p0, v0, s0, p1, v1, s1, n=n, backend="numpy")
+                xyz = sample_hermite(p0, v0, p1, v1, n=n, backend="numpy")
                 ts = np.linspace(0.0, 1.0, n)
                 radius = (1.0 - ts) * r0 + ts * r1
                 if pts:

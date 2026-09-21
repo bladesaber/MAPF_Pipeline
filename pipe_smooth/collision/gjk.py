@@ -221,16 +221,16 @@ def find_narrowphase_pairs(
                 seg = g.segments[sid]
                 nu, nv = g.nodes[seg.u], g.nodes[seg.v]
                 if path.reverse[i]:
-                    p0, v0, s0 = nv.pos, -nv.v, nv.sigma  # type: ignore[operator]
-                    p1, v1, s1 = nu.pos, -nu.v, nu.sigma  # type: ignore[operator]
+                    p0, v0 = nv.pos, -nv.v  # type: ignore[operator]
+                    p1, v1 = nu.pos, -nu.v  # type: ignore[operator]
                 else:
-                    p0, v0, s0 = nu.pos, nu.v, nu.sigma
-                    p1, v1, s1 = nv.pos, nv.v, nv.sigma
+                    p0, v0 = nu.pos, nu.v
+                    p1, v1 = nv.pos, nv.v
                 if i == 0:
-                    v0, s0 = path.v_start, path.sigma_start
+                    v0 = path.v_start
                 if i == len(path.segments) - 1:
-                    v1, s1 = path.v_end, path.sigma_end
-                C = hermite_bezier_controls(p0, v0, s0, p1, v1, s1, backend="numpy")
+                    v1 = path.v_end
+                C = hermite_bezier_controls(p0, v0, p1, v1, backend="numpy")
                 r = max(float(nu.radius), float(nv.radius))
                 n = max(2, int(seg.ts_count))
                 ts = np.linspace(0.0, 1.0, n)
