@@ -10,8 +10,8 @@ from .path import (
     graph_curvature,
 )
 from .clear import phi, clear_balls, clear_capsule_active, clear_hull_active
-from .space import space_cost, space_band_residuals, graph_space
-from .union import UnionHit, find_union_pairs
+from .space import space_cost, space_band_residuals, graph_space, graph_tangent_reg
+from .union import UnionHit, find_union_pairs, union_cost
 
 __all__ = [
     "softplus",
@@ -30,6 +30,8 @@ __all__ = [
     "space_cost",
     "space_band_residuals",
     "graph_space",
+    "graph_tangent_reg",
     "UnionHit",
     "find_union_pairs",
+    "union_cost",
 ]

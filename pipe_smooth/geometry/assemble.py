@@ -35,6 +35,10 @@ class HermiteSegment:
     u: str
     v: str
     ts_count: int = 17  # sample count along [0,1]; set via ts_count_for / sampling
+    
+    ts: object | None = None  # (n,) cached parameters
+    xyz: object | None = None  # (n, 3) cached samples along stored u→v
+    radius: object | None = None  # (n,) linear radius along stored u→v
 
     def radius_at(self, t: float, nodes: dict[str, HermiteNode]) -> float:
         """Linear radius on [0, 1] between endpoint node radii."""
@@ -50,8 +54,35 @@ class HermiteSegment:
         """
         if resolution <= 0:
             raise ValueError(f"resolution must be > 0, got {resolution}")
-        L = float(hermite_length(p0, v0, p1, v1, backend="numpy"))
+        L = float(hermite_length(np.asarray(p0), np.asarray(v0), np.asarray(p1), np.asarray(v1), backend="numpy"))
         return max(2, int(math.ceil(L / resolution)))
+
+    def refresh(
+        self,
+        p0,
+        p1,
+        v0,
+        v1,
+        r0: float,
+        r1: float,
+        resolution: float | None = None,
+        backend: str = "numpy",
+    ):
+        if resolution is not None:
+            self.ts_count = self.ts_count_for(p0, v0, p1, v1, resolution)
+        xp = _backend(backend)
+        n = max(2, int(self.ts_count))
+        self.ts = xp.linspace(0.0, 1.0, n)
+        self.xyz = sample_hermite(p0, v0, p1, v1, n=n, backend=backend)
+        self.radius = (1.0 - self.ts) * float(r0) + self.ts * float(r1)
+        return self
+
+    def samples(self, backend: str = "numpy"):
+        """Cached (ts, xyz, radius) along u→v, converted for callers outside AD."""
+        if self.xyz is None or self.ts is None or self.radius is None:
+            raise RuntimeError(f"segment {self.id}: call refresh before samples")
+        xp = _backend(backend)
+        return xp.asarray(self.ts), xp.asarray(self.xyz), xp.asarray(self.radius)
 
 
 @dataclass
@@ -70,15 +101,136 @@ class OptimizeUsagePath:
     v_start: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
     v_end: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
 
+    def port_derivatives(self, backend: str = "numpy"):
+        """Port end derivatives (v_start, v_end) for the requested backend."""
+        xp = _backend(backend)
+        return xp.asarray(self.v_start), xp.asarray(self.v_end)
+
 
 @dataclass
 class OptimizeGraph:
+    """Hermite graph for one pipe group.
+
+    **Tangent assumption:** each Hermite end has one geometric derivative direction.
+    Usages that traverse a segment forward/backward only **flip the sign** (±);
+    they never assign non-colinear port tangents to the same stored end. Therefore
+    ``hermite_ends`` may keep the first usage's clamp per ``seg_id`` safely.
+    Call ``check_usage_tangents_colinear`` after assemble to verify.
+    """
+
     id: str
     nodes: dict[str, HermiteNode]
     segments: dict[str, HermiteSegment]
     edge_segs: dict[str, list[str]] = field(default_factory=dict)  # labeled edge -> Hermite segs
     junctions: dict[str, list[str]] = field(default_factory=dict)  # complex id -> labeled edge ids
     usage_paths: list[OptimizeUsagePath] = field(default_factory=list)
+
+    def refresh(self, resolution: float | None = None, backend: str = "numpy"):
+        """Refresh every segment once. Call after unpack. Port ends override v0/v1."""
+        ends = self.hermite_ends(backend=backend)
+        for sid, (p0, v0, p1, v1) in ends.items():
+            seg = self.segments[sid]
+            nu, nv = self.nodes[seg.u], self.nodes[seg.v]
+            seg.refresh(
+                p0,
+                p1,
+                v0,
+                v1,
+                float(nu.radius),
+                float(nv.radius),
+                resolution=resolution,
+                backend=backend,
+            )
+        return self
+
+    def hermite_ends(self, backend: str = "numpy") -> dict[str, tuple]:
+        """seg_id → (p0, v0, p1, v1) along stored u→v (same port clamps as refresh).
+
+        First usage that touches a seg wins the port clamp write. Safe under the
+        colinear ± assumption (see class docstring / ``check_usage_tangents_colinear``).
+        """
+        xp = _backend(backend)
+        out: dict[str, tuple] = {}
+        seen: set[str] = set()
+        for path in self.usage_paths:
+            nseg = len(path.segments)
+            v_start, v_end = path.port_derivatives(backend=backend)
+            for i, (sid, rev) in enumerate(zip(path.segments, path.reverse)):
+                if sid in seen:
+                    continue
+                seen.add(sid)
+                seg = self.segments[sid]
+                nu, nv = self.nodes[seg.u], self.nodes[seg.v]
+                p0, p1 = nu.pos, nv.pos
+                v0, v1 = nu.v, nv.v
+                if rev:
+                    if i == 0:
+                        v1 = -v_start
+                    if i == nseg - 1:
+                        v0 = -v_end
+                else:
+                    if i == 0:
+                        v0 = v_start
+                    if i == nseg - 1:
+                        v1 = v_end
+                out[sid] = (
+                    xp.asarray(p0),
+                    xp.asarray(v0),
+                    xp.asarray(p1),
+                    xp.asarray(v1),
+                )
+        for sid in self.segments:
+            if sid not in seen:
+                raise RuntimeError(f"segment {sid}: not found in usage paths")
+        return out
+
+    def check_usage_tangents_colinear(self, atol: float = 1e-6) -> None:
+        """Raise if two usages demand non-colinear derivatives at the same stored end.
+
+        For each path start/end on a segment, map the travel port derivative into the
+        stored u→v frame (reverse ⇒ sign flip on the opposite end). All claims at
+        ``(seg_id, 'u'|'v')`` must be parallel up to sign.
+        """
+
+        def _colinear(a, b) -> bool:
+            a = np.asarray(a, dtype=float).reshape(3)
+            b = np.asarray(b, dtype=float).reshape(3)
+            na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
+            if na <= atol or nb <= atol:
+                return True
+            return abs(abs(float(np.dot(a / na, b / nb))) - 1.0) <= atol
+
+        # sid -> end -> list of claimed stored-frame derivatives
+        claims: dict[str, dict[str, list]] = {
+            sid: {"u": [], "v": []} for sid in self.segments
+        }
+        for path in self.usage_paths:
+            nseg = len(path.segments)
+            for i, (sid, rev) in enumerate(zip(path.segments, path.reverse)):
+                if i == 0:
+                    # travel start → stored end
+                    if rev:
+                        claims[sid]["v"].append(-np.asarray(path.v_start, dtype=float))
+                    else:
+                        claims[sid]["u"].append(np.asarray(path.v_start, dtype=float))
+                if i == nseg - 1:
+                    if rev:
+                        claims[sid]["u"].append(-np.asarray(path.v_end, dtype=float))
+                    else:
+                        claims[sid]["v"].append(np.asarray(path.v_end, dtype=float))
+
+        for sid, ends in claims.items():
+            for which, vecs in ends.items():
+                if len(vecs) < 2:
+                    continue
+                ref = vecs[0]
+                for k, v in enumerate(vecs[1:], start=1):
+                    if not _colinear(ref, v):
+                        raise ValueError(
+                            f"OptimizeGraph {self.id!r}: segment {sid!r} stored-{which} "
+                            f"has non-colinear usage tangents (claim 0 vs {k}); "
+                            f"hermite_ends assumes usages only flip ±"
+                        )
 
     def sample_usage_path(self, path: OptimizeUsagePath, resolution: float = 0.5):
         """Sample γ along one usage. `resolution` ≈ arc-length spacing.
@@ -237,7 +389,7 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
             )
         )
 
-    return OptimizeGraph(
+    g = OptimizeGraph(
         id=junction.id,
         nodes=nodes_out,
         segments=segments,
@@ -245,3 +397,5 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
         junctions={Z.id: list(Z.edges) for Z in junction.complexes},
         usage_paths=usage_paths,
     )
+    g.check_usage_tangents_colinear()
+    return g

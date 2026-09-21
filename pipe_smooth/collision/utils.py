@@ -1,6 +1,6 @@
 """AABB broadphase: OptimizeGraph segments vs obstacles and vs other groups.
 
-Hermite → Bézier-control AABB (params from OptimizeUsagePath, same as sampling);
+Hermite → Bézier-control AABB via ``hermite_ends`` (stored u→v, same as refresh);
 R-tree (3D) for queries. Narrowphase / active-set stay outside this module.
 """
 
@@ -13,7 +13,7 @@ import numpy as np
 from rtree import index as rtree_index
 
 from pipe_smooth.geometry.hermite import hermite_bezier_controls
-from pipe_smooth.geometry.assemble import OptimizeGraph, OptimizeUsagePath
+from pipe_smooth.geometry.assemble import OptimizeGraph
 from pipe_smooth.collision.obstacles import AabbObs, CapsuleObs, SphereObs
 
 Obstacle = SphereObs | CapsuleObs | AabbObs
@@ -44,7 +44,7 @@ def hermite_aabb(p0, v0, p1, v1, r: float = 0.0, margin: float = 0.0):
     Args:
         p0, v0, p1, v1: Hermite ends; v is the end derivative γ'
         r: tube radius pad
-        margin: extra pad (e.g. δ_buf)
+        margin: extra pad (same δ_margin as clearance d_req)
 
     Returns:
         mn, mx: shape (3,) each
@@ -70,54 +70,23 @@ def find_broadphase_pairs(
         obs_pairs: list of BroadObsPair
         grp_pairs: list of BroadGrpPair (group index i < j only; no same-group pairs)
     """
-    
-    def _usage_seg_hermite(
-        graph: OptimizeGraph, path: OptimizeUsagePath, i: int
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
-        """Hermite ends for path.segments[i] (same convention as sample_usage_path)."""
-        sid, rev = path.segments[i], path.reverse[i]
-        seg = graph.segments[sid]
-        nu, nv = graph.nodes[seg.u], graph.nodes[seg.v]
-        if rev:
-            p0, v0 = nv.pos, -nv.v  # type: ignore[operator]
-            p1, v1 = nu.pos, -nu.v  # type: ignore[operator]
-            r = max(float(nv.radius), float(nu.radius))
-        else:
-            p0, v0 = nu.pos, nu.v
-            p1, v1 = nv.pos, nv.v
-            r = max(float(nu.radius), float(nv.radius))
-        nseg = len(path.segments)
-        if i == 0:
-            v0 = path.v_start
-        if i == nseg - 1:
-            v1 = path.v_end
-        return (
-            np.asarray(p0, float),
-            np.asarray(v0, float),
-            np.asarray(p1, float),
-            np.asarray(v1, float),
-            r,
-        )
-    
     graphs = list(graphs)
     obs_pairs: list[BroadObsPair] = []
     grp_pairs: list[BroadGrpPair] = []
     if not graphs:
         return obs_pairs, grp_pairs
 
-    # --- segment boxes per group: [(seg_id, mn, mx), ...] via usage_paths ---
+    # --- segment boxes per group: [(seg_id, mn, mx), ...] ---
     boxes: list[list[tuple[str, np.ndarray, np.ndarray]]] = []
     for g in graphs:
+        ends = g.hermite_ends(backend="numpy")
         segs: list[tuple[str, np.ndarray, np.ndarray]] = []
-        seen: set[str] = set()
-        for path in g.usage_paths:
-            for i, sid in enumerate(path.segments):
-                if sid in seen:
-                    continue
-                seen.add(sid)
-                p0, v0, p1, v1, r = _usage_seg_hermite(g, path, i)
-                mn, mx = hermite_aabb(p0, v0, p1, v1, r=r, margin=margin)
-                segs.append((sid, mn, mx))  # type: ignore[arg-type]
+        for sid, (p0, v0, p1, v1) in ends.items():
+            seg = g.segments[sid]
+            nu, nv = g.nodes[seg.u], g.nodes[seg.v]
+            r = max(float(nu.radius), float(nv.radius))
+            mn, mx = hermite_aabb(p0, v0, p1, v1, r=r, margin=margin)
+            segs.append((sid, mn, mx))  # type: ignore[arg-type]
         boxes.append(segs)
 
     # --- vs static obstacles ---

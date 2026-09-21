@@ -200,61 +200,45 @@ def find_narrowphase_pairs(
 ) -> tuple[list[NarrowHullObsPair], list[NarrowHullGrpPair]]:
     """Filter broadphase pairs with Hull4 GJK; keep active pairs (d_geom < d_req).
 
-    Each Hermite segment → subdivided Bézier Hull4s (``seg.ts_count`` samples ⇒
-    n-1 sub-hulls). Obstacles use ``to_coal()`` (native convex Sphere/Capsule/Box).
+    Each Hermite segment → subdivided Bézier Hull4s. Interval ends come from
+    cached ``seg.samples()`` ts (call ``graph.refresh`` first). Obstacles use
+    ``to_coal()`` (native convex Sphere/Capsule/Box).
     """
     obs_coal = {obs.name: obs.to_coal() for obs in obstacles}
-    obs_r = {
-        obs.name: float(getattr(obs, "r", 0.0)) if obs.kind != "aabb" else 0.0
-        for obs in obstacles
-    }
 
     # (group_id, seg_id) → list of (Hull4, hermite_t0, hermite_t1)
     hulls_by: dict[tuple[str, str], list[tuple[Hull4, float, float]]] = {}
     for g in graphs:
-        seen: set[str] = set()
-        for path in g.usage_paths:
-            for i, sid in enumerate(path.segments):
-                if sid in seen:
-                    continue
-                seen.add(sid)
-                seg = g.segments[sid]
-                nu, nv = g.nodes[seg.u], g.nodes[seg.v]
-                if path.reverse[i]:
-                    p0, v0 = nv.pos, -nv.v  # type: ignore[operator]
-                    p1, v1 = nu.pos, -nu.v  # type: ignore[operator]
-                else:
-                    p0, v0 = nu.pos, nu.v
-                    p1, v1 = nv.pos, nv.v
-                if i == 0:
-                    v0 = path.v_start
-                if i == len(path.segments) - 1:
-                    v1 = path.v_end
-                C = hermite_bezier_controls(p0, v0, p1, v1, backend="numpy")
-                r = max(float(nu.radius), float(nv.radius))
-                n = max(2, int(seg.ts_count))
-                ts = np.linspace(0.0, 1.0, n)
-                hulls_by[(g.id, sid)] = [
-                    (
-                        Hull4.from_pts(
-                            bezier_on_interval(C, float(ts[k]), float(ts[k + 1])),
-                            r=r,
-                        ),
-                        float(ts[k]),
-                        float(ts[k + 1]),
-                    )
-                    for k in range(n - 1)
-                ]
+        ends = g.hermite_ends(backend="numpy")
+        for sid, (p0, v0, p1, v1) in ends.items():
+            seg = g.segments[sid]
+            nu, nv = g.nodes[seg.u], g.nodes[seg.v]
+            # Stored u→v ends match refresh / samples ts (not travel-direction).
+            C = hermite_bezier_controls(p0, v0, p1, v1, backend="numpy")
+            r = max(float(nu.radius), float(nv.radius))
+            ts, _, _ = seg.samples(backend="numpy")
+            n = int(ts.shape[0])
+            hulls_by[(g.id, sid)] = [
+                (
+                    Hull4.from_pts(
+                        bezier_on_interval(C, float(ts[k]), float(ts[k + 1])),
+                        r=r,
+                    ),
+                    float(ts[k]),
+                    float(ts[k + 1]),
+                )
+                for k in range(n - 1)
+            ]
 
     narrow_obs: list[NarrowHullObsPair] = []
     narrow_grp: list[NarrowHullGrpPair] = []
 
     for p in broad_obs:
         s_obs, T_obs = obs_coal[p.obs_name]
-        r_o = obs_r[p.obs_name]
         for hull, ht0, ht1 in hulls_by.get((p.group_id, p.seg_id), ()):
             d_geom, qa, qb = signed_distance(*hull.to_coal(), s_obs, T_obs)
-            d_req = float(hull.r) + r_o + float(margin)
+            # coal sphere/capsule/box already has obstacle size; only pad pipe r + margin
+            d_req = float(hull.r) + float(margin)
             if not np.isfinite(d_geom) or d_geom >= d_req:
                 continue
             sign = 1.0 if d_geom >= 0.0 else -1.0

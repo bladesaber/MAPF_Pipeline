@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pipe_smooth.utils import backend as _backend
 from pipe_smooth.geometry.assemble import OptimizeGraph
-from pipe_smooth.geometry.hermite import eval_hermite_kappa, eval_hermite_ts, sample_hermite
+from pipe_smooth.geometry.hermite import eval_hermite_kappa, eval_hermite_ts
 
 _EPS = 1e-12
 
@@ -274,73 +274,43 @@ def k_hermite(
 
 
 def graph_length(graph: OptimizeGraph, backend: str = "numpy"):
-    """Σ length over Hermite segments; each seg_id once (usage walk for port clamps).
-
-    Sample count from ``HermiteSegment.ts_count`` (set by assemble / sampling upstream).
-    """
+    """Σ length over Hermite segments; each seg once. Requires ``graph.refresh``."""
     xp = _backend(backend)
     total = xp.asarray(0.0)
-    seen: set[str] = set()
-    for path in graph.usage_paths:
-        nseg = len(path.segments)
-        for i, (sid, rev) in enumerate(zip(path.segments, path.reverse)):
-            if sid in seen:
-                continue
-            seen.add(sid)
-            seg = graph.segments[sid]
-            nu, nv = graph.nodes[seg.u], graph.nodes[seg.v]
-            if rev:
-                p0, v0 = nv.pos, -nv.v  # type: ignore[operator]
-                p1, v1 = nu.pos, -nu.v  # type: ignore[operator]
-            else:
-                p0, v0 = nu.pos, nu.v
-                p1, v1 = nv.pos, nv.v
-            if i == 0:
-                v0 = path.v_start
-            if i == nseg - 1:
-                v1 = path.v_end
-            n = max(2, int(seg.ts_count))
-            xyz = sample_hermite(p0, v0, p1, v1, n=n, backend=backend)
-            total = total + path_length(xyz, backend=backend)
+    for seg in graph.segments.values():
+        _, xyz, _ = seg.samples(backend=backend)
+        total = total + path_length(xyz, backend=backend)
     return total
 
 
 def graph_curvature(graph: OptimizeGraph, backend: str = "numpy"):
-    """Σ k_bend over Hermite segments; each seg_id once (usage walk for port clamps).
+    """Σ k_bend: each seg interior once; each unordered joint (seg_a, seg_b) once.
 
-    Sample count from ``HermiteSegment.ts_count``. Seen segments are skipped for
-    cost but still sampled so the next new segment can prepend ``prev[-2:]`` and
-    pick up the C¹ joint turn (avoid zero-length concat of ``prev[-1]`` alone).
+    Requires ``graph.refresh``. Cache is stored u→v; ``reverse`` flips to travel
+    direction. New seg: ``prev[-2:]+xyz[1:]`` (joint + interior). Already-seen seg
+    with a new joint: joint-only window ``prev[-2:]+xyz[1:2]``.
     """
     xp = _backend(backend)
     total = xp.asarray(0.0)
-    seen: set[str] = set()
+    seen_seg: set[str] = set()
+    seen_joint: set[tuple[str, str]] = set()
     for path in graph.usage_paths:
         nseg = len(path.segments)
+        prev_sid = None
         prev_xyz = prev_r = None
         for i, (sid, rev) in enumerate(zip(path.segments, path.reverse)):
-            seg = graph.segments[sid]
-            nu, nv = graph.nodes[seg.u], graph.nodes[seg.v]
+            _, xyz, radius = graph.segments[sid].samples(backend=backend)
             if rev:
-                p0, v0 = nv.pos, -nv.v  # type: ignore[operator]
-                p1, v1 = nu.pos, -nu.v  # type: ignore[operator]
-                r0, r1 = float(nv.radius), float(nu.radius)
-            else:
-                p0, v0 = nu.pos, nu.v
-                p1, v1 = nv.pos, nv.v
-                r0, r1 = float(nu.radius), float(nv.radius)
-            if i == 0:
-                v0 = path.v_start
-            if i == nseg - 1:
-                v1 = path.v_end
-            n = max(2, int(seg.ts_count))
-            xyz = sample_hermite(p0, v0, p1, v1, n=n, backend=backend)
-            ts = xp.linspace(0.0, 1.0, n)
-            radius = (1.0 - ts) * r0 + ts * r1
+                xyz = xyz[::-1]
+                radius = radius[::-1]
 
-            if sid not in seen:
-                seen.add(sid)
-                t_end = path.v_end if i == nseg - 1 else None
+            t_end = path.v_end if i == nseg - 1 else None
+            joint_key = None if prev_sid is None else tuple(sorted((prev_sid, sid)))
+
+            if sid not in seen_seg:
+                seen_seg.add(sid)
+                if joint_key is not None:
+                    seen_joint.add(joint_key)  # type: ignore
                 if i == 0 or prev_xyz is None:
                     total = total + k_bend(
                         xyz,
@@ -356,7 +326,14 @@ def graph_curvature(graph: OptimizeGraph, backend: str = "numpy"):
                     total = total + k_bend(
                         xyz_c, r_c, t_start=None, t_end=t_end, backend=backend
                     )
+            elif joint_key is not None and joint_key not in seen_joint:
+                # seg already scored; still pick up a new interface onto it
+                seen_joint.add(joint_key)  # type: ignore
+                xyz_c = xp.concatenate([prev_xyz[-2:], xyz[1:2]], axis=0)  # type: ignore
+                r_c = xp.concatenate([prev_r[-2:], radius[1:2]], axis=0)  # type: ignore
+                total = total + k_bend(xyz_c, r_c, backend=backend)
 
+            prev_sid = sid
             prev_xyz, prev_r = xyz, radius
     return total
 

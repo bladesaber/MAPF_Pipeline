@@ -9,7 +9,7 @@ import matplotlib
 
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
+from matplotlib.patches import FancyArrowPatch, Polygon
 from matplotlib.widgets import Slider
 import numpy as np
 
@@ -148,18 +148,27 @@ def main() -> None:
 
     (line_chord,) = ax.plot([], [], ":", color="0.55", lw=1, label="chord", zorder=2)
     scat_ends = ax.scatter([0.0, 2.0], [0.0, 0.0], c=["C0", "C3"], s=70, zorder=7)
-    arrow0 = ax.annotate(
-        "",
-        xy=(0, 0),
-        xytext=(0, 0),
-        arrowprops=dict(arrowstyle="->", color="C0", lw=1.8),
-    )
-    arrow1 = ax.annotate(
-        "",
-        xy=(0, 0),
-        xytext=(0, 0),
-        arrowprops=dict(arrowstyle="->", color="C3", lw=1.8),
-    )
+
+    def _make_tangent_arrow(color: str, label: str) -> FancyArrowPatch:
+        arr = FancyArrowPatch(
+            (0.0, 0.0),
+            (TANGENT_DRAW, 0.0),
+            arrowstyle="-|>",
+            mutation_scale=14,
+            lw=2.0,
+            color=color,
+            zorder=8,
+            label=label,
+        )
+        ax.add_patch(arr)
+        return arr
+
+    arrow0 = _make_tangent_arrow("C0", "tag0 (γ')")
+    arrow1 = _make_tangent_arrow("C3", "tag1 (γ')")
+    # tip markers / text near arrow heads
+    tag0_txt = ax.text(0.0, 0.0, "tag0", color="C0", fontsize=9, ha="left", va="bottom", zorder=9)
+    tag1_txt = ax.text(0.0, 0.0, "tag1", color="C3", fontsize=9, ha="left", va="bottom", zorder=9)
+
     title = ax.set_title("")
     ax.set_aspect("equal", adjustable="datalim")
     ax.grid(True, alpha=0.3)
@@ -167,6 +176,14 @@ def main() -> None:
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     info = fig.text(0.08, 0.015, "", family="monospace", fontsize=8, va="bottom")
+
+    def _set_tangent_arrow(arr: FancyArrowPatch, origin, vel, txt) -> None:
+        """Draw arrow at origin along unit(vel), fixed visual length TANGENT_DRAW."""
+        u = unit(np.asarray(vel, dtype=float))
+        tip = (float(origin[0] + TANGENT_DRAW * u[0]), float(origin[1] + TANGENT_DRAW * u[1]))
+        base = (float(origin[0]), float(origin[1]))
+        arr.set_positions(base, tip)
+        txt.set_position((tip[0] + 0.04, tip[1] + 0.04))
 
     def redraw(_=None) -> None:
         p0, v0, p1, v1, s0, s1, n = _params_from_sliders(sliders)
@@ -194,13 +211,20 @@ def main() -> None:
                 sub_patches[k].set_visible(False)
                 sub_ctrl_lines[k].set_visible(False)
 
-        arrow0.xy = (p0[0] + TANGENT_DRAW * v0[0], p0[1] + TANGENT_DRAW * v0[1])
-        arrow0.set_position((p0[0], p0[1]))
-        arrow1.xy = (p1[0] + TANGENT_DRAW * v1[0], p1[1] + TANGENT_DRAW * v1[1])
-        arrow1.set_position((p1[0], p1[1]))
+        _set_tangent_arrow(arrow0, p0, v0, tag0_txt)
+        _set_tangent_arrow(arrow1, p1, v1, tag1_txt)
 
         pad = 0.45
         stack = np.vstack([xyz] + all_ctrl)
+        # include arrow tips in view
+        u0, u1 = unit(v0), unit(v1)
+        tips = np.array(
+            [
+                [p0[0] + TANGENT_DRAW * u0[0], p0[1] + TANGENT_DRAW * u0[1], 0.0],
+                [p1[0] + TANGENT_DRAW * u1[0], p1[1] + TANGENT_DRAW * u1[1], 0.0],
+            ]
+        )
+        stack = np.vstack([stack, tips])
         ax.set_xlim(float(stack[:, 0].min()) - pad, float(stack[:, 0].max()) + pad)
         ax.set_ylim(float(stack[:, 1].min()) - pad, float(stack[:, 1].max()) + pad)
 
@@ -210,7 +234,7 @@ def main() -> None:
         )
         info.set_text(
             f"intervals [k/n,(k+1)/n] via bezier_on_interval; "
-            f"full C0..C3 dashed; colored = sub hulls + sub control polygons"
+            f"arrows = unit tag0/tag1; full C0..C3 dashed; colored = sub hulls"
         )
         fig.canvas.draw_idle()
 

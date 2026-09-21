@@ -38,12 +38,12 @@ $$
 | Symbol | Role | Soft / hard |
 |--------|------|-------------|
 | $X$ | Centerline parameters (shared trunk + private junction controls) | decision |
-| $L,K$ | Per-usage length / **radius-aware** curvature ($\kappa r$) on path samples (§6.4.1) | soft |
+| $L,K$ | Manifold length (each Hermite **once**) + curvature (seg interiors **once**, usage **joints** once) (§6.4.1) | soft |
 | $J_{\mathrm{clear}}$ | Obstacle + cross-group tube separation (§6.4.2) | soft in loop; **hard** at accept |
 | $J_{\mathrm{union}}$ | Junction-bundle compactness via sample Chamfer (§6.4.3) | soft |
 | Topology / ports / interface | Connectivity, fixed ends, $C^{0}/C^{1}$ clamps | **hard** (by construction) |
 
-**Why usages matter:** shared trunk nodes couple directions. Optimizing only shared polylines can make $A \to C$, $B \to C$ smooth while $A \to B$ stays sharp. Cost must be evaluated **per usage** $u \in \mathcal{U}$, with geometry free enough at junctions to trade off those costs.
+**Why usages matter:** shared trunk nodes couple directions. Optimizing only shared polylines can make $A \to C$, $B \to C$ smooth while $A \to B$ stays sharp. Usages $\mathcal{U}$ still drive **path assembly**, **junction private DOF**, **union**, and **which segment–segment joints** enter $K$; Stage 1 does **not** naively $\sum_u L_u$ (that multi-counts shared trunk material)—see §6.4.1.
 
 **Feasibility first:** if free space is tight, large local curvature is allowed; $K$ only ranks feasible designs.
 
@@ -55,7 +55,7 @@ Classical path / trajectory smoothing (robotics TEB/CHOMP, single B-spline fairi
 |--------|----------------------|--------------|
 | Occupancy | Pass-and-release (time / moving agent) | **Permanent** tubes stay; clearance is static geometry |
 | Structure | Single $s$–$t$ line | **Tree / branched** manifold: $n\!\ge\!3$ joins, and nearby branch points on one trunk (short shared segments) |
-| Cost scope | One path’s length / curvature | **Per-usage** costs over $\mathcal{U}$, not only shared edges |
+| Cost scope | One path’s length / curvature | **Usage-assembled** paths; $L$ once per shared piece, $K$ covers all usage joints (§6.4.1) |
 | Geometry | Often centerline / thin agent | Finite **radius** capsules; self- and cross-group volume |
 | Domain | Often open or mild | Tight $\Omega$ → large $\kappa$ may be necessary (soft $K$) |
 | Ends | Usually fixed $s,t$ (pose optional) | Fixed ports **plus** line-axis alignment (terminal sits on / along a prescribed axis) |
@@ -189,7 +189,7 @@ Background notions used when reading objectives / method notes. Entries are defi
    - **Full rod model (optional):** torsion and stretch terms exist; for pipe centerlines the bending term usually dominates.  
    - **Vs TEB-style peak penalty:** TEB mainly suppresses large $\kappa$ at samples; $\int\kappa^2\,ds$ is a global fairing energy (may lengthen the path → pair with $L$).  
    - **With B-splines:** approximate $E \approx \sum_i \kappa_i^{2}\,\Delta s_i$ on samples, then differentiate w.r.t. control points.  
-   - **Per-usage:** compute one energy per $u \in \mathcal{U}$ and weight-sum (fits soft $K$ in §1.2 / §6.4.1).  
+   - **Aggregation:** Stage 1 sums segment interiors + usage joints once each (§6.4.1); not a naive $\sum_u$ over full usage polylines.
    - **Caveat:** geometric proxy for “smoothness,” not exact hydraulic loss.
 
 2. **CHOMP** (Covariant Hamiltonian Optimization for Motion Planning)  
@@ -435,44 +435,58 @@ Ports, topology, and interface $C^0/C^1$ are **hard by construction** (not in $J
 
 #### 6.4.1 Path costs $J_{\mathrm{path}}$
 
+**Production aggregation** (Hermite graph; matches `graph_length` / `graph_curvature`):
+
 $$
 J_{\mathrm{path}}
 =
-\sum_{u\in\mathcal{U}}
-\Big(
-\alpha_u\,L_u
-+\beta_u\,K_u
-\Big).
-$$
-
-Weights $(\alpha_u,\beta_u)$ may be global or per-usage. Physics velocity / pressure-drop terms are **out of scope** for Stage 1.
-
-**(1) Length**
-
-$$
-L_u
-=
-\sum_{i=0}^{N_u-2}
-\bar w_{u,i}\,\Delta s_{u,i}
-=
-\int w(s)\,\mathrm{d}s,
+\alpha\,L
++\beta\,K,
 \qquad
-\bar w_{u,i}=\tfrac12(w_{u,i}+w_{u,i+1}).
-$$
-
-Optional excess-length form (penalize stretch vs coarse path length $L_u^{0}$):
-
-$$
-L_u^{\mathrm{ex}}
+L
 =
-\big[L_u-L_u^{0}\big]_+^\sigma.
+\sum_{e\in\mathcal{E}}
+L_e,
+\qquad
+K
+=
+\sum_{e\in\mathcal{E}}
+K_e^{\mathrm{int}}
++
+\sum_{\{e,e'\}\in\mathcal{J}}
+K_{e,e'}^{\mathrm{joint}}.
 $$
 
-Default Stage 1: use $L_u$ (or a mix $L_u+\eta L_u^{\mathrm{ex}}$).
+| Symbol | Meaning |
+|--------|---------|
+| $\mathcal{E}$ | Hermite segments (trunk + junction); each **once** |
+| $L_e$ | Sampled length of segment $e$ (same discrete $L$ as below on that piece) |
+| $K_e^{\mathrm{int}}$ | Interior bend on $e$ only (polyline $k_*$ or analytic $k_{\mathrm{hermite}}$) |
+| $\mathcal{J}$ | Unordered joints $\{e,e'\}$ discovered by walking usages; `seen_joint` |
+| $K_{e,e'}^{\mathrm{joint}}$ | One interface turn (e.g. 3-point window $\mathrm{prev}[-2:]\mathbin{++}\mathrm{xyz}[1:2]$) |
+
+**Why not $\sum_u L_u$:** shared trunk is one physical centerline; summing per usage multiplies its length by how many flows use it and over-pulls the trunk. **Why still walk usages for $K$:** Y-junction conflicts live at **which segments meet**; every distinct joint must enter $K$ once even if a shared segment’s interior was already scored.
+
+Discrete kernels below define $L$ / bend on a point sequence (one segment, one joint window, or a full $\gamma_u$ if debugging). Optional per-usage weights $(\alpha_u,\beta_u)$ are **not** the Stage 1 default.
+
+**(1) Length** (on a sample chain)
+
+$$
+L
+=
+\sum_{i}
+\bar w_{i}\,\Delta s_{i},
+\qquad
+\bar w_{i}=\tfrac12(w_{i}+w_{i+1}).
+$$
+
+Optional excess-length vs a reference $L^{0}$: $L^{\mathrm{ex}}=[L-L^{0}]_+^\sigma$. Default Stage 1: plain $L$ over $\mathcal{E}$.
 
 **(2) Curvature** (soft preference, not hard $\kappa_{\max}$; **radius-aware**)
 
 Same centerline bend is worse for a fatter tube. Stage 1 uses the dimensionless bend measure $\kappa r$ (manufacturing bend ratio), not bare $\kappa$. Structural stiffness $\sim r^{4}$ is **out of scope** here.
+
+On each Hermite segment / joint window, the discrete proxies below apply (implementation: `k_bend`, `k_menger`, …). **Aggregate** with $K_e^{\mathrm{int}}$ + $K_{e,e'}^{\mathrm{joint}}$ as above—not $\sum_u K_u$ over full usage polylines (that multi-counts shared interiors).
 
 
 $$
@@ -846,7 +860,11 @@ If $J$ is assembled only from discrete points $\{x_i\}$ on $\gamma$, the optimiz
 **Limitation of forcing every term into one analytic scalar.**  
 Conversely, not every objective is naturally a single integral or a single global $\min$
 
-### 7.1 Sample spacing regularizer $J_{\mathrm{space}}$ (reference)
+### 7.1 Sampling / parameterization regularizers (reference)
+
+Uniform-$t$ Hermite samples can be **evaded** in two coupled ways: stretch $\|\gamma'(t)\|$ so $\Delta s$ balloons between samples, or grow end derivatives $\|v\|=\|\gamma'\|$ (old $\sigma\hat{v}$) so long Bézier handles create short high-$\kappa$ spikes that sparse samples miss. Both §7.1.1 and §7.1.2 target that family of failure; they are **complementary** (symptom vs handle scale), not substitutes.
+
+#### 7.1.1 Sample spacing $J_{\mathrm{space}}$
 
 **Failure mode (v1).** With fixed-$N$ samples in parameter $t$, the optimizer can enlarge $\|\gamma'(t)\|$ (hence $\Delta s$) in high-cost regions so fewer samples land there—clearance at samples drops while the continuous curve still grazes or tunnels. Point-only $J_{\mathrm{clear}}$ without $\Delta s$ weight makes this worse; total length $L$ does not block short tunnels between safe samples.
 
@@ -867,7 +885,7 @@ J_{\mathrm{space}}
 \big(\Delta s_{u,i}-\overline{\Delta s}_u\big)^{2}.
 $$
 
-Optional: hinge only large gaps, $\eta\sum_u\sum_i[\Delta s_{u,i}-\Delta s_{\max}]_+^{\sigma\,2}$. Keep soft—do **not** hard-fix $\Delta s_i=\mathrm{const}$ under GD (fights Hermite $\sigma$ / bends). Pair with $\sum\phi_i\Delta s_i$ when clearance is still point-based.
+Optional: hinge only large gaps, $\eta\sum_u\sum_i[\Delta s_{u,i}-\Delta s_{\max}]_+^{\sigma\,2}$. Keep soft—do **not** hard-fix $\Delta s_i=\mathrm{const}$ under GD (fights Hermite $\|v\|$ / bends). Pair with $\sum\phi_i\Delta s_i$ when clearance is still point-based.
 
 **(2) SQP — inequality band** (hard accept / Phase-3)
 
@@ -886,7 +904,43 @@ $$
 
 $\overline{\Delta s}_u$ depends on all $\Delta s_{u,\cdot}$: in each SQP step, **linearize** at the current iterate (TrajOpt-style), or use the equivalent form $\big|\Delta s_{u,i}-L_u/(N_u-1)\big|\le\varepsilon\,L_u/(N_u-1)$ and linearize $L_u$.
 
-**Anti-evasion first:** if full two-sided bands cause infeasibility with clearance / Hermite $\sigma$, keep only the **upper** bound $\Delta s_{u,i}\le(1+\varepsilon)\overline{\Delta s}_u$ (blocks long gaps); leave the lower bound soft or omit. If SQP fails, **widen $\varepsilon$ before** tightening geometry.
+**Anti-evasion first:** if full two-sided bands cause infeasibility with clearance / Hermite $\|v\|$, keep only the **upper** bound $\Delta s_{u,i}\le(1+\varepsilon)\overline{\Delta s}_u$ (blocks long gaps); leave the lower bound soft or omit. If SQP fails, **widen $\varepsilon$ before** tightening geometry.
+
+#### 7.1.2 Hermite end-derivative scale $J_{v}$
+
+**Failure mode.** Production packs raw end derivatives $v=\gamma'$ (no separate unit tangent + $\sigma$). Large $\|v\|$ relative to the chord length $\|p_1-p_0\|$ lengthens Bézier handles: uniform-$t$ $\Delta s$ becomes unbalanced, and tiny high-$\kappa$ lobes can sit between samples. $J_{\mathrm{space}}$ sees the $\Delta s$ symptom; $J_v$ caps the handle scale at the parameter root.
+
+**(1) Gradient / AD — soft hinge** (Stage-1; `graph_tangent_reg`)
+
+Per Hermite segment with ends $(p_0,v_0)$, $(p_1,v_1)$ (port clamps as in assemble / `hermite_ends`):
+
+$$
+v_{\max}
+=
+\beta\,\|p_1-p_0\|_2,
+\qquad
+J_{v}
+=
+\mu_{v}
+\sum_{\mathrm{seg}}
+\Big(
+\big[\|v_0\|-v_{\max}\big]_+^{\sigma\,2}
++
+\big[\|v_1\|-v_{\max}\big]_+^{\sigma\,2}
+\Big),
+$$
+
+with $\beta\sim 0.3$–$1$ (default lean tight, e.g.\ $0.5$). Note $\beta=1$ is the
+**straight** uniform-$t$ scale $\|v\|=\|p_1-p_0\|$; circular arcs need
+$\|v\|\sim$ arc length $>$ chord (e.g.\ $90^\circ\!:\sim 1.11$, semicircle $\sim 1.57$),
+so $\beta\ge 1$ still permits long handles and can hide short high-$\kappa$ lobes.
+Prefer $\beta<1$ when $J_v$ is an anti-spike barrier; raise $\beta$ only if bends
+look too chord-locked. Prefer this chord-relative hinge over a global absolute
+$\|v\|\le\mathrm{const}$.
+
+**(2) SQP (optional)**
+
+Hard inequalities $\|v_0\|\le\beta\|p_1-p_0\|$, $\|v_1\|\le\beta\|p_1-p_0\|$ (linearize norms / chords at the iterate), or keep the soft hinge only in the merit / quadratic model.
 
 
 ### 7.2 Continuous clearance proxies (capsule / hull)
@@ -896,7 +950,7 @@ $\overline{\Delta s}_u$ depends on all $\Delta s_{u,\cdot}$: in each SQP step, *
 **Shared pipeline** (both §7.2.1 and §7.2.2; AD soft cost or SQP hard constraint):
 
 1. **Detect** — broadphase → narrow phase (capsule kernels or GJK/EPA).  
-2. **Active set** — keep pairs with $d_{\mathrm{geom}} < d_{\mathrm{req}}+\delta_{\mathrm{buf}}$ (buffer, not only true collisions; refresh every $k$ steps).  
+2. **Active set** — keep pairs with $d_{\mathrm{geom}} < d_{\mathrm{req}}$ (same threshold as the soft hinge; $\delta_{\mathrm{margin}}$ inside $d_{\mathrm{req}}$ is the look-ahead pad). Refresh every $k$ steps.  
 3. **Cost / constraint** — only on $\mathcal{A}$: soft $\phi=[d_{\mathrm{req}}-d_{\mathrm{geom}}]_+^{\sigma\,2}$, or $d_{\mathrm{geom}}\ge d_{\mathrm{req}}$. AD differentiates the continuous $d$/$\phi$ with the current $\mathcal{A}$ (and contact features) **held fixed**.
 
 #### 7.2.1 Polyline capsule clearance (simpler continuous proxy)
@@ -1063,8 +1117,8 @@ $$
 d_{\mathrm{req}}
 =
 \begin{cases}
-r_{\mathrm{pipe}}+r_{\mathrm{pipe}}'+\delta_{\mathrm{margin}} & \text{pipe–pipe}, \\[0.2em]
-r_{\mathrm{pipe}}+r_{\mathrm{shell}}+\delta_{\mathrm{margin}} & \text{pipe–obstacle},
+r_{\mathrm{pipe}}+r_{\mathrm{pipe}}'+\delta_{\mathrm{margin}} & \text{pipe–pipe (both hulls are centerlines)}, \\[0.2em]
+r_{\mathrm{pipe}}+\delta_{\mathrm{margin}} & \text{pipe–obstacle (coal shape already has obstacle size)},
 \end{cases}
 \qquad
 \phi=\big[d_{\mathrm{req}}-d_{\mathrm{geom}}\big]_+^{\sigma\,2}
@@ -1072,7 +1126,7 @@ r_{\mathrm{pipe}}+r_{\mathrm{shell}}+\delta_{\mathrm{margin}} & \text{pipe–obs
 d_{\mathrm{geom}}\ge d_{\mathrm{req}}.
 $$
 
-Hulls bound **centerlines** (or obstacle solids); radii enter only through $d_{\mathrm{req}}$. Sufficient for clearance because $\mathrm{curve}\subset H\Rightarrow d(H_A,H_B)\le d(\mathrm{curve}_A,\mathrm{curve}_B)$.
+Hulls bound **centerlines**; pipe radii enter $d_{\mathrm{req}}$. Obstacle radius/size is in the coal sphere/capsule/box—do **not** add $r_{\mathrm{shell}}$ again. Sufficient because $\mathrm{curve}\subset H\Rightarrow d(H_A,H_B)\le d(\mathrm{curve}_A,\mathrm{curve}_B)$ for pipe–pipe.
 
 ### 7.3 Discrete Langevin exploration
 
@@ -1207,6 +1261,7 @@ Commitments for the first production implementation of `pipe_smooth` Stage 1. Su
 | Soft optimize | **Discrete Langevin** (§7.3), then anneal $T\to 0$ | Prefer §7.3.2 (Adam + annealed noise) for production scaling; §7.3.1 if Langevin character matters. |
 | Hard optimize / accept | **SQP** (e.g. SLSQP / IPOPT) | Consumes JAX $\nabla J$, $J_c$; does **not** embed Langevin noise inside QP steps. |
 | Clearance proxies | **Both** §7.2.1 and §7.2.2 | Same active-set pipeline; different narrow-phase (see §8.2). |
+| $J_{\mathrm{path}}$ aggregation | **$L$ once / seg**; **$K$ = interiors once + `seen_joint`** (§6.4.1) | Not $\sum_u(L_u+K_u)$. Usages still assemble paths and discover joints. |
 
 ### 8.2 Clearance roles
 
@@ -1215,17 +1270,17 @@ Commitments for the first production implementation of `pipe_smooth` Stage 1. Su
 | **§7.2.1 Polyline capsules** | Default **soft** $J_{\mathrm{clear}}$ in the AD / Langevin loop (cheap, tight enough for chords). |
 | **§7.2.2 Hull + GJK/EPA** | **Hard** SQP inequalities and/or dense accept (conservative outer bounds). Optional soft term later if capsules miss thin features. |
 
-Shared rule (§7.2): broadphase → active set $\mathcal{A}$ with buffer $\delta_{\mathrm{buf}}$ → cost/constraint only on $\mathcal{A}$; AD differentiates continuous $d$/$\phi$ with $\mathcal{A}$ fixed for the step.
+Shared rule (§7.2): broadphase → active set $\mathcal{A}=\{d_{\mathrm{geom}}<d_{\mathrm{req}}\}$ ($d_{\mathrm{req}}$ includes $\delta_{\mathrm{margin}}$) → cost/constraint only on $\mathcal{A}$; AD differentiates continuous $d$/$\phi$ with $\mathcal{A}$ fixed for the step.
 
 ### 8.3 Solve schedule
 
 ```text
 init Hermite X from coarse P
-    → soft loop: J_path + J_clear(capsule) + J_union + J_space
+    → soft loop: J_path + J_clear(capsule) + J_union + J_space + J_v
          Discrete Langevin / Adam-annealed  (JAX ∇J), T ↓ 0
     → hard phase: SQP with c(X) from hull GJK/EPA (and optional space bands)
          Jacobians from JAX on active constraints
-    → accept: denser capsule and/or hull checks; else raise μ / δ_buf / m and retry
+    → accept: denser capsule and/or hull checks; else raise μ / margin / m and retry
 ```
 
 Do **not** mix Langevin noise into a single SQP QP. Multi-start = several Langevin seeds, each followed by SQP, keep best feasible.
@@ -1262,7 +1317,7 @@ pipe_smooth/
       path.py               # §6.4.1 L, K
       clear.py              # §6.4.2 MVP point / short capsule
       union.py              # §6.4.3
-      space.py              # §7.1 (optional early)
+      space.py              # §7.1.1 J_space + §7.1.2 J_v
     collision/              # second wave
       capsule.py            # §7.2.1
       gjk.py                # §7.2.2

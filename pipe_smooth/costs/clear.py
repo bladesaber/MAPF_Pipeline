@@ -32,67 +32,32 @@ def phi(d_geom, d_req, soft_sigma: float = 1e-2, backend: str = "numpy"):
 def clear_balls(
     a,
     b,
-    ra,
-    rb,
-    margin: float = 0.0,
+    d_req,
     mu: float = 1.0,
     soft_sigma: float = 1e-2,
     sign: float | object = 1.0,
     backend: str = "numpy",
 ):
-    """Soft ball–ball clearance μ Σ φ on an **active set** (§6.4.2 / §7.2).
+    """Soft clearance μ Σ φ on an **active set** (§6.4.2 / §7.2).
 
-    Call only after broadphase / narrow-phase has selected near pairs
-    (d_geom < d_req + δ_buf). Do not pass the full all-pairs set.
+    Narrowphase supplies the full required gap ``d_req`` (radii + margin already
+    folded in). Call only for pairs with d_geom < d_req.
 
     Args:
-        a, b: pair centers, shape (..., 3) — one row/entry per active pair
-        ra, rb: radii, broadcastable to the pair batch
-        margin: extra separation δ in d_req = ra + rb + margin
+        a, b: witness points, shape (..., 3)
+        d_req: required separation (scalar or broadcastable to pairs)
         mu: weight in front of Σ φ
         soft_sigma: softplus hinge scale
-        sign: +1 outside, -1 inside AABB (broadcastable); d_signed = sign * ||a-b||
+        sign: +1 outside / separated; -1 inside AABB; d_geom = sign * ||a-b||
         backend: 'numpy' | 'jax'
 
     Returns:
-        Scalar μ Σ [d_req - sign*||a-b||]_+^σ ² over the active pairs.
+        Scalar μ Σ [d_req - sign*||a-b||]_+^σ ².
     """
     xp = _backend(backend)
     a, b = xp.asarray(a), xp.asarray(b)
     d_geom = xp.asarray(sign) * xp.linalg.norm(a - b, axis=-1)
-    d_req = xp.asarray(ra) + xp.asarray(rb) + margin
     return mu * xp.sum(phi(d_geom, d_req, soft_sigma=soft_sigma, backend=backend))
-
-
-def _hermite_ends_table(graphs: Sequence[OptimizeGraph]) -> dict[tuple[str, str], tuple]:
-    """(group_id, seg_id) → (p0, v0, p1, v1); first usage-path hit wins (same as narrowphase)."""
-    out: dict[tuple[str, str], tuple] = {}
-    for g in graphs:
-        seen: set[str] = set()
-        for path in g.usage_paths:
-            for i, sid in enumerate(path.segments):
-                if sid in seen:
-                    continue
-                seen.add(sid)
-                seg = g.segments[sid]
-                nu, nv = g.nodes[seg.u], g.nodes[seg.v]
-                if path.reverse[i]:
-                    p0, v0 = nv.pos, -nv.v  # type: ignore[operator]
-                    p1, v1 = nu.pos, -nu.v  # type: ignore[operator]
-                else:
-                    p0, v0 = nu.pos, nu.v
-                    p1, v1 = nv.pos, nv.v
-                if i == 0:
-                    v0 = path.v_start
-                if i == len(path.segments) - 1:
-                    v1 = path.v_end
-                out[(g.id, sid)] = (p0, v0, p1, v1)
-        for sid, seg in g.segments.items():
-            if sid in seen:
-                continue
-            nu, nv = g.nodes[seg.u], g.nodes[seg.v]
-            out[(g.id, sid)] = (nu.pos, nu.v, nv.pos, nv.v)
-    return out
 
 
 def clear_capsule_active(
@@ -105,7 +70,7 @@ def clear_capsule_active(
 ):
     """Soft J_clear from capsule narrowphase pairs (frozen hits, live Hermite)."""
     xp = _backend(backend)
-    ends = _hermite_ends_table(graphs)
+    ends = {(g.id, sid): e for g in graphs for sid, e in g.hermite_ends(backend=backend).items()}
     narrow_obs, narrow_grp = active
     j = xp.asarray(0.0)
 
@@ -116,7 +81,7 @@ def clear_capsule_active(
             g1 = eval_hermite(p0, v0, p1, v1, h.hermite_t1, backend=backend)
             qa = (1.0 - h.chord_t) * g0 + h.chord_t * g1
             j = j + clear_balls(
-                qa, h.qb, p.d_req, 0.0, mu=mu_obs, soft_sigma=soft_sigma, sign=h.sign, backend=backend
+                qa, h.qb, p.d_req, mu=mu_obs, soft_sigma=soft_sigma, sign=h.sign, backend=backend
             )
 
     for p in narrow_grp:
@@ -130,7 +95,7 @@ def clear_capsule_active(
             qa = (1.0 - h.chord_t_a) * qa0 + h.chord_t_a * qa1
             qb = (1.0 - h.chord_t_b) * qb0 + h.chord_t_b * qb1
             j = j + clear_balls(
-                qa, qb, p.d_req, 0.0, mu=mu_grp, soft_sigma=soft_sigma, sign=h.sign, backend=backend
+                qa, qb, p.d_req, mu=mu_grp, soft_sigma=soft_sigma, sign=h.sign, backend=backend
             )
 
     return j
@@ -146,7 +111,7 @@ def clear_hull_active(
 ):
     """Soft J_clear from Hull4 GJK pairs (frozen weights/qb/shift, live Hermite)."""
     xp = _backend(backend)
-    ends = _hermite_ends_table(graphs)
+    ends = {(g.id, sid): e for g in graphs for sid, e in g.hermite_ends(backend=backend).items()}
     narrow_obs, narrow_grp = active
     j = xp.asarray(0.0)
 
@@ -156,7 +121,7 @@ def clear_hull_active(
         C_sub = bezier_on_interval(C, p.hermite_t0, p.hermite_t1, backend=backend)
         qa = xp.asarray(p.weights) @ (C_sub + xp.asarray(p.shift))
         j = j + clear_balls(
-            qa, p.qb, p.d_req, 0.0, mu=mu_obs, soft_sigma=soft_sigma, sign=p.sign, backend=backend
+            qa, p.qb, p.d_req, mu=mu_obs, soft_sigma=soft_sigma, sign=p.sign, backend=backend
         )
 
     for p in narrow_grp:
@@ -169,7 +134,7 @@ def clear_hull_active(
         qa = xp.asarray(p.weights_a) @ (Ca_sub + xp.asarray(p.shift_a))
         qb = xp.asarray(p.weights_b) @ (Cb_sub + xp.asarray(p.shift_b))
         j = j + clear_balls(
-            qa, qb, p.d_req, 0.0, mu=mu_grp, soft_sigma=soft_sigma, sign=p.sign, backend=backend
+            qa, qb, p.d_req, mu=mu_grp, soft_sigma=soft_sigma, sign=p.sign, backend=backend
         )
 
     return j

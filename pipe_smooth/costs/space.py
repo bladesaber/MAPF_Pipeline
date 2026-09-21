@@ -1,6 +1,6 @@
-"""§7.1 — sample spacing regularizer J_space.
+"""§7.1 — sample spacing J_space + Hermite ||v|| scale hinge J_v.
 
-Soft AD: penalize nonuniform Δs on Hermite samples (anti parameter-evasion).
+Soft AD: nonuniform Δs; optional ||γ'|| vs chord length (anti long-handle spikes).
 SQP: optional relative band residuals about mean Δs.
 """
 
@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from pipe_smooth.utils import backend as _backend
 from pipe_smooth.geometry.assemble import OptimizeGraph
-from pipe_smooth.geometry.hermite import sample_hermite
 from pipe_smooth.costs.path import softplus
+
+_EPS = 1e-12
 
 
 def space_cost(xyz, eta: float = 1.0, ds_max=None, soft_sigma: float = 1e-2, backend: str = "numpy"):
@@ -47,31 +48,32 @@ def graph_space(
     soft_sigma: float = 1e-2,
     backend: str = "numpy",
 ):
-    """Σ space_cost over Hermite segments; each seg_id once (usage walk for port clamps)."""
+    """Σ space_cost over Hermite segments; each seg once. Requires ``graph.refresh``."""
     xp = _backend(backend)
     total = xp.asarray(0.0)
-    seen: set[str] = set()
-    for path in graph.usage_paths:
-        nseg = len(path.segments)
-        for i, (sid, rev) in enumerate(zip(path.segments, path.reverse)):
-            if sid in seen:
-                continue
-            seen.add(sid)
-            seg = graph.segments[sid]
-            nu, nv = graph.nodes[seg.u], graph.nodes[seg.v]
-            if rev:
-                p0, v0 = nv.pos, -nv.v  # type: ignore[operator]
-                p1, v1 = nu.pos, -nu.v  # type: ignore[operator]
-            else:
-                p0, v0 = nu.pos, nu.v
-                p1, v1 = nv.pos, nv.v
-            if i == 0:
-                v0 = path.v_start
-            if i == nseg - 1:
-                v1 = path.v_end
-            n = max(2, int(seg.ts_count))
-            xyz = sample_hermite(p0, v0, p1, v1, n=n, backend=backend)
-            total = total + space_cost(
-                xyz, eta=eta, ds_max=ds_max, soft_sigma=soft_sigma, backend=backend
-            )
+    for seg in graph.segments.values():
+        _, xyz, _ = seg.samples(backend=backend)
+        total = total + space_cost(
+            xyz, eta=eta, ds_max=ds_max, soft_sigma=soft_sigma, backend=backend
+        )
     return total
+
+
+def graph_tangent_reg(
+    graph: OptimizeGraph,
+    beta: float = 0.4,
+    mu: float = 1.0,
+    soft_sigma: float = 1e-2,
+    backend: str = "numpy",
+):
+    """μ Σ [||v|| - β||p1-p0||]_+^σ ² on each Hermite end (port clamps via hermite_ends).
+
+    β=1 ≈ straight uniform-t speed ||γ'||=chord; β≪1 tightens handles (anti κ-spike).
+    """
+    xp = _backend(backend)
+    j = xp.asarray(0.0)
+    for p0, v0, p1, v1 in graph.hermite_ends(backend=backend).values():
+        vmax = beta * (xp.linalg.norm(p1 - p0) + _EPS)
+        j = j + softplus(xp.linalg.norm(v0) - vmax, sigma=soft_sigma, backend=backend) ** 2
+        j = j + softplus(xp.linalg.norm(v1) - vmax, sigma=soft_sigma, backend=backend) ** 2
+    return mu * j

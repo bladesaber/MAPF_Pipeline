@@ -14,7 +14,6 @@ from typing import Sequence, cast
 import numpy as np
 
 from pipe_smooth.geometry.assemble import OptimizeGraph
-from pipe_smooth.geometry.hermite import eval_hermite_ts
 from pipe_smooth.collision.obstacles import AabbObs, CapsuleObs, SphereObs
 from pipe_smooth.collision.utils import BroadGrpPair, BroadObsPair
 
@@ -350,53 +349,29 @@ def find_narrowphase_pairs(
 ) -> tuple[list[NarrowObsPair], list[NarrowGrpPair]]:
     """Filter broadphase pairs with capsule kernels; keep pairs with non-empty hits.
 
-    Each Hermite is sampled once via usage_paths into polyline chords
-    (``seg.ts_count`` waypoints); narrowphase runs on those chords.
-
-    Args:
-        graphs: OptimizeGraph per group (indexed by graph.id)
-        obstacles: static obstacles (looked up by obs.name)
-        broad_obs: coarse segment–obstacle pairs
-        broad_grp: coarse cross-group segment pairs
-        margin: δ in d_req (also defines how near a pair stays active)
-
-    Returns:
-        narrow_obs: active NarrowObsPair list
-        narrow_grp: active NarrowGrpPair list
+    Uses cached Hermite samples from ``seg.samples()`` (call ``graph.refresh`` first).
+    Narrowphase runs on consecutive sample chords along stored u→v.
     """
     by_obs = {obs.name: obs for obs in obstacles}
     narrow_obs: list[NarrowObsPair] = []
     narrow_grp: list[NarrowGrpPair] = []
 
-    # (group_id, seg_id) → chords (a, b, r, hermite_t0, hermite_t1); sample each sid once
+    # (group_id, seg_id) → chords (a, b, r, hermite_t0, hermite_t1)
     chords_by: dict[tuple[str, str], list[tuple]] = {}
     for g in graphs:
-        seen: set[str] = set()
-        for path in g.usage_paths:
-            for i, sid in enumerate(path.segments):
-                if sid in seen:
-                    continue
-                seen.add(sid)
-                seg = g.segments[sid]
-                nu, nv = g.nodes[seg.u], g.nodes[seg.v]
-                if path.reverse[i]:
-                    p0, v0 = nv.pos, -nv.v  # type: ignore[operator]
-                    p1, v1 = nu.pos, -nu.v  # type: ignore[operator]
-                else:
-                    p0, v0 = nu.pos, nu.v
-                    p1, v1 = nv.pos, nv.v
-                if i == 0:
-                    v0 = path.v_start
-                if i == len(path.segments) - 1:
-                    v1 = path.v_end
-                n = max(2, int(seg.ts_count))
-                ts = np.linspace(0.0, 1.0, n)
-                xyz = eval_hermite_ts(p0, v0, p1, v1, ts, backend="numpy")
-                r = max(float(nu.radius), float(nv.radius))
-                chords_by[(g.id, sid)] = [
-                    (xyz[k], xyz[k + 1], r, float(ts[k]), float(ts[k + 1]))
-                    for k in range(n - 1)
-                ]
+        for sid, seg in g.segments.items():
+            ts, xyz, radius = seg.samples(backend="numpy")
+            n = int(ts.shape[0])
+            chords_by[(g.id, sid)] = [
+                (
+                    xyz[k],
+                    xyz[k + 1],
+                    float(max(float(radius[k]), float(radius[k + 1]))),
+                    float(ts[k]),
+                    float(ts[k + 1]),
+                )
+                for k in range(n - 1)
+            ]
 
     for p in broad_obs:
         obs = by_obs[p.obs_name]
