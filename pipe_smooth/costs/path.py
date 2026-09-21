@@ -7,7 +7,8 @@ Cubic Hermite segment: `k_hermite` (analytic κ(t)). Caller sums / weights costs
 from __future__ import annotations
 
 from pipe_smooth.utils import backend as _backend
-from pipe_smooth.geometry.hermite import eval_hermite_kappa, eval_hermite_ts
+from pipe_smooth.geometry.assemble import OptimizeGraph
+from pipe_smooth.geometry.hermite import eval_hermite_kappa, eval_hermite_ts, sample_hermite
 
 _EPS = 1e-12
 
@@ -272,3 +273,92 @@ def k_hermite(
         km1 = xp.linalg.norm(xp.cross(tp, d2_1)) / (xp.linalg.norm(tp) ** 3 + _EPS)
         K = K + wi[-1] * (km1 * r[-1]) ** 2 * ds[-1]
     return K
+
+
+def graph_length(graph: OptimizeGraph, backend: str = "numpy"):
+    """Σ length over Hermite segments; each seg_id once (usage walk for port clamps).
+
+    Sample count from ``HermiteSegment.ts_count`` (set by assemble / sampling upstream).
+    """
+    xp = _backend(backend)
+    total = xp.asarray(0.0)
+    seen: set[str] = set()
+    for path in graph.usage_paths:
+        nseg = len(path.segments)
+        for i, (sid, rev) in enumerate(zip(path.segments, path.reverse)):
+            if sid in seen:
+                continue
+            seen.add(sid)
+            seg = graph.segments[sid]
+            nu, nv = graph.nodes[seg.u], graph.nodes[seg.v]
+            if rev:
+                p0, v0, s0 = nv.pos, -nv.v, nv.sigma  # type: ignore[operator]
+                p1, v1, s1 = nu.pos, -nu.v, nu.sigma  # type: ignore[operator]
+            else:
+                p0, v0, s0 = nu.pos, nu.v, nu.sigma
+                p1, v1, s1 = nv.pos, nv.v, nv.sigma
+            if i == 0:
+                v0, s0 = path.v_start, path.sigma_start
+            if i == nseg - 1:
+                v1, s1 = path.v_end, path.sigma_end
+            n = max(2, int(seg.ts_count))
+            xyz = sample_hermite(p0, v0, s0, p1, v1, s1, n=n, backend=backend)
+            total = total + path_length(xyz, backend=backend)
+    return total
+
+
+def graph_curvature(graph: OptimizeGraph, backend: str = "numpy"):
+    """Σ k_bend over Hermite segments; each seg_id once (usage walk for port clamps).
+
+    Sample count from ``HermiteSegment.ts_count``. Seen segments are skipped for
+    cost but still sampled so the next new segment can prepend ``prev[-2:]`` and
+    pick up the C¹ joint turn (avoid zero-length concat of ``prev[-1]`` alone).
+    """
+    xp = _backend(backend)
+    total = xp.asarray(0.0)
+    seen: set[str] = set()
+    for path in graph.usage_paths:
+        nseg = len(path.segments)
+        prev_xyz = prev_r = None
+        for i, (sid, rev) in enumerate(zip(path.segments, path.reverse)):
+            seg = graph.segments[sid]
+            nu, nv = graph.nodes[seg.u], graph.nodes[seg.v]
+            if rev:
+                p0, v0, s0 = nv.pos, -nv.v, nv.sigma  # type: ignore[operator]
+                p1, v1, s1 = nu.pos, -nu.v, nu.sigma  # type: ignore[operator]
+                r0, r1 = float(nv.radius), float(nu.radius)
+            else:
+                p0, v0, s0 = nu.pos, nu.v, nu.sigma
+                p1, v1, s1 = nv.pos, nv.v, nv.sigma
+                r0, r1 = float(nu.radius), float(nv.radius)
+            if i == 0:
+                v0, s0 = path.v_start, path.sigma_start
+            if i == nseg - 1:
+                v1, s1 = path.v_end, path.sigma_end
+            n = max(2, int(seg.ts_count))
+            xyz = sample_hermite(p0, v0, s0, p1, v1, s1, n=n, backend=backend)
+            ts = xp.linspace(0.0, 1.0, n)
+            radius = (1.0 - ts) * r0 + ts * r1
+
+            if sid not in seen:
+                seen.add(sid)
+                t_end = path.v_end if i == nseg - 1 else None
+                if i == 0 or prev_xyz is None:
+                    total = total + k_bend(
+                        xyz,
+                        radius,
+                        t_start=path.v_start if i == 0 else None,
+                        t_end=t_end,
+                        backend=backend,
+                    )
+                else:
+                    # joint + current interior; do not rescore previous interiors
+                    xyz_c = xp.concatenate([prev_xyz[-2:], xyz[1:]], axis=0)
+                    r_c = xp.concatenate([prev_r[-2:], radius[1:]], axis=0)  # type: ignore
+                    total = total + k_bend(
+                        xyz_c, r_c, t_start=None, t_end=t_end, backend=backend
+                    )
+
+            prev_xyz, prev_r = xyz, radius
+    return total
+

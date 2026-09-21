@@ -35,12 +35,69 @@ class HermiteSegment:
     u: str
     v: str
     ts_count: int = 17  # sample count along [0,1]; set via ts_count_for / sampling
+    # temporary sample cache (numpy; refill each opt step for AD-out detection)
+    _xyz: np.ndarray | None = field(default=None, repr=False)
+    _radius: np.ndarray | None = field(default=None, repr=False)
+    _ts: np.ndarray | None = field(default=None, repr=False)
 
     def radius_at(self, t: float, nodes: dict[str, HermiteNode]) -> float:
         """Linear radius on [0, 1] between endpoint node radii."""
         r0 = float(nodes[self.u].radius)
         r1 = float(nodes[self.v].radius)
         return (1.0 - t) * r0 + t * r1
+
+    def get_xyz(self) -> np.ndarray:
+        if self._xyz is None:
+            raise RuntimeError(f"segment {self.id}: samples not refreshed")
+        return self._xyz
+
+    def get_radius(self) -> np.ndarray:
+        if self._radius is None:
+            raise RuntimeError(f"segment {self.id}: samples not refreshed")
+        return self._radius
+
+    def get_ts(self) -> np.ndarray:
+        if self._ts is None:
+            raise RuntimeError(f"segment {self.id}: samples not refreshed")
+        return self._ts
+
+    def refresh_samples(
+        self,
+        nodes: dict[str, HermiteNode],
+        p0=None,
+        v0=None,
+        s0=None,
+        p1=None,
+        v1=None,
+        s1=None,
+        r0: float | None = None,
+        r1: float | None = None,
+        resolution: float | None = None,
+    ) -> None:
+        """Fill ``_xyz`` / ``_radius`` / ``_ts`` (numpy). Ends default to node u→v.
+
+        If ``resolution`` is set, update ``ts_count`` via ``ts_count_for`` first.
+        """
+        nu, nv = nodes[self.u], nodes[self.v]
+        if p0 is None:
+            p0, v0, s0 = nu.pos, nu.v, nu.sigma
+            p1, v1, s1 = nv.pos, nv.v, nv.sigma
+        if r0 is None:
+            r0, r1 = float(nu.radius), float(nv.radius)
+        if resolution is not None:
+            self.ts_count = HermiteSegment.ts_count_for(
+                p0, v0, s0, p1, v1, s1, resolution
+            )
+        n = max(2, int(self.ts_count))
+        self._ts = np.linspace(0.0, 1.0, n)
+        self._xyz = np.asarray(
+            sample_hermite(p0, v0, s0, p1, v1, s1, n=n, backend="numpy"), float
+        )
+        self._radius = (1.0 - self._ts) * float(r0) + self._ts * float(r1)  # type: ignore[arg-type]
+
+    def clear_samples(self) -> None:
+        """Drop temporary sample cache."""
+        self._xyz = self._radius = self._ts = None
 
     @staticmethod
     def ts_count_for(p0, v0, s0, p1, v1, s1, resolution: float) -> int:
@@ -56,11 +113,17 @@ class HermiteSegment:
 
 @dataclass
 class OptimizeUsagePath:
-    """Usage as ordered Hermite segment ids (travel direction vs stored u→v)."""
+    """Usage as ordered labeled edges and densified Hermite segments.
+
+    ``edges`` / ``edges_reverse``: PartitionedTree labeled-edge walk (same as topology).
+    ``segments`` / ``reverse``: Hermite segment ids along that walk (travel vs stored u→v).
+    """
 
     usage: tuple[str, str]
-    segments: list[str]
-    reverse: list[bool]
+    edges: list[str] = field(default_factory=list)
+    edges_reverse: list[bool] = field(default_factory=list)
+    segments: list[str] = field(default_factory=list)
+    reverse: list[bool] = field(default_factory=list)
     v_start: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
     sigma_start: float = 1.0
     v_end: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
@@ -72,6 +135,8 @@ class OptimizeGraph:
     id: str
     nodes: dict[str, HermiteNode]
     segments: dict[str, HermiteSegment]
+    edge_segs: dict[str, list[str]] = field(default_factory=dict)  # labeled edge -> Hermite segs
+    junctions: dict[str, list[str]] = field(default_factory=dict)  # complex id -> labeled edge ids
     usage_paths: list[OptimizeUsagePath] = field(default_factory=list)
 
     def sample_usage_path(self, path: OptimizeUsagePath, resolution: float = 0.5):
@@ -225,6 +290,8 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
         usage_paths.append(
             OptimizeUsagePath(
                 usage=(up.usage[0], up.usage[1]),
+                edges=list(up.edges),
+                edges_reverse=list(up.reverse),
                 segments=seg_ids,
                 reverse=rev_flags,
                 v_start=np.asarray(up.v_start, dtype=float),
@@ -238,5 +305,7 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
         id=junction.id,
         nodes=nodes_out,
         segments=segments,
+        edge_segs=edge_segs,
+        junctions={Z.id: list(Z.edges) for Z in junction.complexes},
         usage_paths=usage_paths,
     )

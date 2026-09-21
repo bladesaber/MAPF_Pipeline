@@ -6,8 +6,12 @@ from .path import (
     k_menger,
     k_fd,
     k_hermite,
+    graph_length,
+    graph_curvature,
 )
 from .clear import phi, clear_balls, clear_capsule_active, clear_hull_active
+from .space import space_cost, space_band_residuals, graph_space
+from .union import UnionHit, find_union_pairs
 
 __all__ = [
     "softplus",
@@ -17,8 +21,15 @@ __all__ = [
     "k_menger",
     "k_fd",
     "k_hermite",
+    "graph_length",
+    "graph_curvature",
     "phi",
     "clear_balls",
     "clear_capsule_active",
     "clear_hull_active",
+    "space_cost",
+    "space_band_residuals",
+    "graph_space",
+    "UnionHit",
+    "find_union_pairs",
 ]
