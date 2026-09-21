@@ -185,17 +185,20 @@ class OptimizeGraph:
         return out
 
     def check_usage_tangents_colinear(self, atol: float = 1e-6) -> None:
-        """Raise if two usages demand non-colinear derivatives at the same stored end.
+        """Raise if two usages disagree on the geometric derivative at one stored end.
 
         For each path start/end on a segment, map the travel port derivative into the
         stored u→v frame (reverse ⇒ sign flip on the opposite end). All claims at
-        ``(seg_id, 'u'|'v')`` must be parallel up to sign.
+        ``(seg_id, 'u'|'v')`` must match up to sign: same ``||v||`` and parallel
+        direction (hermite_ends / ± assumption).
         """
 
-        def _colinear(a, b) -> bool:
+        def _same_end_derivative(a, b) -> bool:
             a = np.asarray(a, dtype=float).reshape(3)
             b = np.asarray(b, dtype=float).reshape(3)
             na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
+            if not np.isclose(na, nb, rtol=atol, atol=atol):
+                return False
             if na <= atol or nb <= atol:
                 return True
             return abs(abs(float(np.dot(a / na, b / nb))) - 1.0) <= atol
@@ -225,11 +228,14 @@ class OptimizeGraph:
                     continue
                 ref = vecs[0]
                 for k, v in enumerate(vecs[1:], start=1):
-                    if not _colinear(ref, v):
+                    if not _same_end_derivative(ref, v):
+                        na = float(np.linalg.norm(ref))
+                        nb = float(np.linalg.norm(v))
                         raise ValueError(
                             f"OptimizeGraph {self.id!r}: segment {sid!r} stored-{which} "
-                            f"has non-colinear usage tangents (claim 0 vs {k}); "
-                            f"hermite_ends assumes usages only flip ±"
+                            f"has inconsistent usage derivatives (claim 0 vs {k}: "
+                            f"||v||={na:.6g} vs {nb:.6g}); "
+                            f"hermite_ends assumes usages only flip ± with equal magnitude"
                         )
 
     def sample_usage_path(self, path: OptimizeUsagePath, resolution: float = 0.5):

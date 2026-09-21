@@ -81,7 +81,7 @@ def clear_capsule_active(
             g1 = eval_hermite(p0, v0, p1, v1, h.hermite_t1, backend=backend)
             qa = (1.0 - h.chord_t) * g0 + h.chord_t * g1
             j = j + clear_balls(
-                qa, h.qb, p.d_req, mu=mu_obs, soft_sigma=soft_sigma, sign=h.sign, backend=backend
+                qa, h.qb, h.d_req, mu=mu_obs, soft_sigma=soft_sigma, sign=h.sign, backend=backend
             )
 
     for p in narrow_grp:
@@ -95,7 +95,7 @@ def clear_capsule_active(
             qa = (1.0 - h.chord_t_a) * qa0 + h.chord_t_a * qa1
             qb = (1.0 - h.chord_t_b) * qb0 + h.chord_t_b * qb1
             j = j + clear_balls(
-                qa, qb, p.d_req, mu=mu_grp, soft_sigma=soft_sigma, sign=h.sign, backend=backend
+                qa, qb, h.d_req, mu=mu_grp, soft_sigma=soft_sigma, sign=h.sign, backend=backend
             )
 
     return j
