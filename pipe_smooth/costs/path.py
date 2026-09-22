@@ -1,6 +1,7 @@
 """§6.4.1 — path length and curvature pieces.
 
-Polyline samples: `k_bend` / `k_bend_approx` / `k_menger` / `k_fd`.
+Polyline samples: `k_bend` / `k_bend_approx` / `k_menger` / `k_fd` (bend **energy**).
+Pointwise Menger κ for reports: `kappa_menger`.
 Cubic Hermite segment: `k_hermite` (analytic κ(t)). Caller sums / weights costs.
 """
 
@@ -161,6 +162,46 @@ def k_menger(
         km1 = th1 / (ds[-1] + _EPS)
         K = K + wi[-1] * (km1 * radius[-1]) ** 2 * ds[-1]
     return K
+
+
+def kappa_menger(xyz, t_start=None, t_end=None, backend: str = "numpy"):
+    """Pointwise Menger curvature κ on a polyline (report / viz, not bend energy).
+
+    Interior: κ_i = 2 ||(p_i-p_{i-1})×(p_{i+1}-p_i)|| / (|a||b||c|).
+    Optional ``t_start`` / ``t_end``: end κ ≈ θ/Δs vs first / last chord.
+    Returns shape (N,); undefined ends stay 0 when ports are omitted.
+    """
+    xp = _backend(backend)
+    xyz = xp.asarray(xyz)
+    n = int(xyz.shape[0])
+    if n < 3:
+        raise ValueError(f"kappa_menger needs len(xyz)>=3, got {n}")
+    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
+    a = xyz[1:-1] - xyz[:-2]
+    b = xyz[2:] - xyz[1:-1]
+    c = xyz[2:] - xyz[:-2]
+    cross = xp.linalg.norm(xp.cross(a, b), axis=-1)
+    denom = (
+        xp.linalg.norm(a, axis=-1)
+        * xp.linalg.norm(b, axis=-1)
+        * xp.linalg.norm(c, axis=-1)
+        + _EPS
+    )
+    kappa = xp.zeros((n,), dtype=xyz.dtype)
+    kappa[1:-1] = 2.0 * cross / denom
+    if t_start is not None:
+        ts = xp.asarray(t_start)
+        ts = ts / (xp.linalg.norm(ts) + _EPS)
+        t0 = (xyz[1] - xyz[0]) / (ds[0] + _EPS)
+        th0 = xp.arctan2(xp.linalg.norm(xp.cross(ts, t0)), xp.sum(ts * t0))
+        kappa[0] = th0 / (ds[0] + _EPS)
+    if t_end is not None:
+        te = xp.asarray(t_end)
+        te = te / (xp.linalg.norm(te) + _EPS)
+        t1 = (xyz[-1] - xyz[-2]) / (ds[-1] + _EPS)
+        th1 = xp.arctan2(xp.linalg.norm(xp.cross(t1, te)), xp.sum(t1 * te))
+        kappa[-1] = th1 / (ds[-1] + _EPS)
+    return kappa
 
 
 def k_fd(

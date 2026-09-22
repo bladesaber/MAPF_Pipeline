@@ -32,9 +32,9 @@ def langevin(
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 10,
     key: int = 0,
-    recorder: Recorder | None = None,
+    recorder: Recorder,
     verbose: bool = False,
-):
+) -> None:
     """Euler–Maruyama: x ← x - η ∇J + √(2ηT) ξ, with capped η and annealed T.
 
     η = min(η_max, δ / (||∇J||+ε)). ``anneal``: ``linear`` | ``exp`` (same as adam_annealed).
@@ -42,11 +42,10 @@ def langevin(
     """
     if anneal not in ("linear", "exp"):
         raise ValueError(f"anneal must be 'linear' or 'exp', got {anneal!r}")
-    if recorder is not None and not recorder.phase:
+    if not recorder.phase:
         recorder.phase = "langevin"
 
     x = jnp.asarray(pack(graphs, layout, backend="numpy"), dtype=jnp.float32)
-    history: list[float] = []
     clear_active = None
     union_hits = None
     rng = jax.random.PRNGKey(key)
@@ -73,15 +72,13 @@ def langevin(
             union_hits=union_hits,
         )
         val_f = float(val)
-        history.append(val_f)
 
         eta = jnp.minimum(eta_max, delta / (jnp.linalg.norm(g) + eps))
         if anneal == "linear":
             T = T0 * (steps - t) / max(steps - 1, 1)
         else:
             T = T0 * (rho ** (t - 1))
-        if recorder is not None:
-            recorder.record(t, val_f, x, eta=float(eta), T=float(T))
+        recorder.record(t, val_f, x, eta=float(eta), T=float(T))
         if verbose and (t == 1 or t % max(1, steps // 10) == 0 or t == steps):
             print(f"langevin {t}/{steps}  J={val_f:.6g}  η={float(eta):.3g}  T={float(T):.3g}")
 
@@ -89,10 +86,11 @@ def langevin(
         xi = jax.random.normal(sub, shape=x.shape, dtype=x.dtype)
         x = x - eta * g + jnp.sqrt(2.0 * eta * T) * xi
 
-    unpack(np.asarray(x), graphs, layout, backend="numpy")
+    if recorder.best_x is None:
+        raise RuntimeError("recorder.best_x is None; no step recorded a state")
+    unpack(recorder.best_x, graphs, layout, backend="numpy")
     for g in graphs:
         g.refresh(backend="numpy")
-    return x, history
 
 
 def langevin_ema(
@@ -113,9 +111,9 @@ def langevin_ema(
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 10,
     key: int = 0,
-    recorder: Recorder | None = None,
+    recorder: Recorder,
     verbose: bool = False,
-):
+) -> None:
     """Langevin with EMA-smoothed step (§7.3.1).
 
     η_raw = min(η_max, δ/(||∇J||+ε)),  η̄ = β η̄ + (1-β) η_raw,
@@ -123,12 +121,11 @@ def langevin_ema(
     """
     if anneal not in ("linear", "exp"):
         raise ValueError(f"anneal must be 'linear' or 'exp', got {anneal!r}")
-    if recorder is not None and not recorder.phase:
+    if not recorder.phase:
         recorder.phase = "langevin_ema"
 
     x = jnp.asarray(pack(graphs, layout, backend="numpy"), dtype=jnp.float32)
     eta_bar = jnp.asarray(eta_max, dtype=x.dtype)
-    history: list[float] = []
     clear_active = None
     union_hits = None
     rng = jax.random.PRNGKey(key)
@@ -155,7 +152,6 @@ def langevin_ema(
             union_hits=union_hits,
         )
         val_f = float(val)
-        history.append(val_f)
 
         eta_raw = jnp.minimum(eta_max, delta / (jnp.linalg.norm(g) + eps))
         eta_bar = beta * eta_bar + (1.0 - beta) * eta_raw
@@ -163,8 +159,7 @@ def langevin_ema(
             T = T0 * (steps - t) / max(steps - 1, 1)
         else:
             T = T0 * (rho ** (t - 1))
-        if recorder is not None:
-            recorder.record(t, val_f, x, eta=float(eta_bar), T=float(T))
+        recorder.record(t, val_f, x, eta=float(eta_bar), T=float(T))
         if verbose and (t == 1 or t % max(1, steps // 10) == 0 or t == steps):
             print(
                 f"langevin_ema {t}/{steps}  J={val_f:.6g}  "
@@ -175,7 +170,8 @@ def langevin_ema(
         xi = jax.random.normal(sub, shape=x.shape, dtype=x.dtype)
         x = x - eta_bar * g + jnp.sqrt(2.0 * eta_bar * T) * xi
 
-    unpack(np.asarray(x), graphs, layout, backend="numpy")
+    if recorder.best_x is None:
+        raise RuntimeError("recorder.best_x is None; no step recorded a state")
+    unpack(recorder.best_x, graphs, layout, backend="numpy")
     for g in graphs:
         g.refresh(backend="numpy")
-    return x, history

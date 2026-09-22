@@ -162,9 +162,9 @@ def elastic_qp(
     refresh_clear: Callable[[Sequence[OptimizeGraph]], Any] | None = None,
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 5,
-    recorder: Recorder | None = None,
+    recorder: Recorder,
     verbose: bool = False,
-):
+) -> None:
     """Elastic QP hard phase (§7 / OSQP sequential convex).
 
     Each outer step linearizes soft ``J`` and hard ``g(x)≤0``, then solves an
@@ -187,18 +187,14 @@ def elastic_qp(
         refresh_clear: callback → frozen clear active set (outside AD)
         refresh_union: callback → frozen union hits for soft ``J_union``
         refresh_every: refresh period in outer steps
-        recorder: optional history / best-x logger
+        recorder: history / best-x logger
         verbose: print OSQP status / ``J``
-
-    Returns:
-        ``(x, history)`` packed DOF and per-step soft ``J`` values.
     """
-    if recorder is not None and not recorder.phase:
+    if not recorder.phase:
         recorder.phase = "elastic_qp"
 
     w = replace(weights, mu_obs=0.0, mu_grp=0.0, eta=0.0, mu_v=0.0)
     x = jnp.asarray(pack(graphs, layout, backend="numpy"), dtype=jnp.float32)
-    history: list[float] = []
     clear_active = None
     union_hits = None
     n = int(layout.n)
@@ -219,7 +215,6 @@ def elastic_qp(
             x, graphs, layout, w, clear_active=None, union_hits=union_hits
         )
         val_f = float(val)
-        history.append(val_f)
 
         def c_fn(xx):
             unpack(xx, graphs, layout, backend="jax")
@@ -250,9 +245,8 @@ def elastic_qp(
         # Elastic QP: min ½||Δx||² + gradᵀΔx + w 1ᵀs
         #   g + Jg Δx - s ≤ 0,  s≥0,  |Δx|≤trust  (always feasible)
         m = c.size
-        if recorder is not None:
-            max_viol = float(np.max(c)) if m else 0.0
-            recorder.record(t, val_f, x, n_cons=m, max_viol=max_viol)
+        max_viol = float(np.max(c)) if m else 0.0
+        recorder.record(t, val_f, x, n_cons=m, max_viol=max_viol)
 
         P = sparse.block_diag(
             [sparse.eye(n, format="csc"), sparse.csc_matrix((m, m))], format="csc"
@@ -291,9 +285,10 @@ def elastic_qp(
         x = x + jnp.asarray(res.x[:n], dtype=x.dtype)
 
         if verbose and (t == 1 or t % max(1, steps // 5) == 0 or t == steps):
-            print(f"elastic_qp {t}/{steps}  J={history[-1]:.6g}  m={m}  status={res.info.status}")
+            print(f"elastic_qp {t}/{steps}  J={val_f:.6g}  m={m}  status={res.info.status}")
 
-    unpack(np.asarray(x), graphs, layout, backend="numpy")
+    if recorder.best_x is None:
+        raise RuntimeError("recorder.best_x is None; no step recorded a state")
+    unpack(recorder.best_x, graphs, layout, backend="numpy")
     for g in graphs:
         g.refresh(backend="numpy")
-    return x, history

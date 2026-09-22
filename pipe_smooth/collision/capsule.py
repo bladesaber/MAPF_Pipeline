@@ -42,6 +42,16 @@ class ObsContactHit:
     sign: float  # +1 outside, -1 inside
     d_req: float  # full clearance gap
 
+    def export(self) -> dict:
+        return {
+            "hermite_t0": float(self.hermite_t0),
+            "hermite_t1": float(self.hermite_t1),
+            "chord_t": float(self.chord_t),
+            "qb": np.asarray(self.qb, float).reshape(-1).tolist(),
+            "sign": float(self.sign),
+            "d_req": float(self.d_req),
+        }
+
 
 @dataclass(frozen=True)
 class GrpContactHit:
@@ -62,6 +72,18 @@ class GrpContactHit:
     sign: float  # +1 outside
     d_req: float  # full clearance gap
 
+    def export(self) -> dict:
+        return {
+            "hermite_t0_a": float(self.hermite_t0_a),
+            "hermite_t1_a": float(self.hermite_t1_a),
+            "chord_t_a": float(self.chord_t_a),
+            "hermite_t0_b": float(self.hermite_t0_b),
+            "hermite_t1_b": float(self.hermite_t1_b),
+            "chord_t_b": float(self.chord_t_b),
+            "sign": float(self.sign),
+            "d_req": float(self.d_req),
+        }
+
 
 @dataclass(frozen=True)
 class NarrowObsPair:
@@ -72,6 +94,15 @@ class NarrowObsPair:
     obs_name: str
     d_geom: float
     hits: tuple[ObsContactHit, ...] = ()  # closest (+ neighbors); empty if unset
+
+    def export(self) -> dict:
+        return {
+            "group_id": self.group_id,
+            "seg_id": self.seg_id,
+            "obs_name": self.obs_name,
+            "d_geom": float(self.d_geom),
+            "hits": [h.export() for h in self.hits],
+        }
 
 
 @dataclass(frozen=True)
@@ -84,6 +115,16 @@ class NarrowGrpPair:
     seg_b: str
     d_geom: float
     hits: tuple[GrpContactHit, ...] = ()  # closest (+ neighbors)
+
+    def export(self) -> dict:
+        return {
+            "group_a": self.group_a,
+            "seg_a": self.seg_a,
+            "group_b": self.group_b,
+            "seg_b": self.seg_b,
+            "d_geom": float(self.d_geom),
+            "hits": [h.export() for h in self.hits],
+        }
 
 
 def capsule_ball(

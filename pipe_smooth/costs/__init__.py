@@ -25,6 +25,7 @@ from .space import (
     graph_tangent_constraint,
 )
 from .union import UnionHit, find_union_pairs, union_cost
+from .volume import tube_volume
 
 __all__ = [
     "softplus",
@@ -50,4 +51,5 @@ __all__ = [
     "UnionHit",
     "find_union_pairs",
     "union_cost",
+    "tube_volume",
 ]

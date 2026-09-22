@@ -29,9 +29,9 @@ def adam(
     refresh_clear: Callable[[Sequence[OptimizeGraph]], Any] | None = None,
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 10,
-    recorder: Recorder | None = None,
+    recorder: Recorder,
     verbose: bool = False,
-):
+) -> None:
     """Minimize weighted soft J with Adam.
 
     Active sets come only from refresh callbacks (outside AD), every ``refresh_every``
@@ -40,15 +40,14 @@ def adam(
     - ``refresh_clear(graphs) -> clear_active``
     - ``refresh_union(graphs) -> {graph_id: hits}``
 
-    Optional ``recorder`` logs J (and ``x`` if ``record_state``) each step.
+    ``recorder`` logs J (and ``x`` if ``record_state``) each step.
     """
-    if recorder is not None and not recorder.phase:
+    if not recorder.phase:
         recorder.phase = "adam"
 
     x = jnp.asarray(pack(graphs, layout, backend="numpy"), dtype=jnp.float32)
     m = jnp.zeros_like(x)
     v = jnp.zeros_like(x)
-    history: list[float] = []
     clear_active = None
     union_hits = None
 
@@ -74,9 +73,7 @@ def adam(
             union_hits=union_hits,
         )
         val_f = float(val)
-        history.append(val_f)
-        if recorder is not None:
-            recorder.record(t, val_f, x)
+        recorder.record(t, val_f, x)
         if verbose and (t == 1 or t % max(1, steps // 10) == 0 or t == steps):
             print(f"adam {t}/{steps}  J={val_f:.6g}")
 
@@ -86,10 +83,11 @@ def adam(
         vhat = v / (1.0 - beta2**t)
         x = x - lr * mhat / (jnp.sqrt(vhat) + eps)
 
-    unpack(np.asarray(x), graphs, layout, backend="numpy")
+    if recorder.best_x is None:
+        raise RuntimeError("recorder.best_x is None; no step recorded a state")
+    unpack(recorder.best_x, graphs, layout, backend="numpy")
     for g in graphs:
         g.refresh(backend="numpy")
-    return x, history
 
 
 def adam_annealed(
@@ -111,9 +109,9 @@ def adam_annealed(
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 10,
     key: int = 0,
-    recorder: Recorder | None = None,
+    recorder: Recorder,
     verbose: bool = False,
-):
+) -> None:
     """Adam + annealed noise (§7.3.2): x ← x - η û + √(2ηT) ξ, T↓0.
 
     η = min(η_max, δ / (||û||+ε)). ``anneal``: ``linear`` → T=0 at last step;
@@ -121,13 +119,12 @@ def adam_annealed(
     """
     if anneal not in ("linear", "exp"):
         raise ValueError(f"anneal must be 'linear' or 'exp', got {anneal!r}")
-    if recorder is not None and not recorder.phase:
+    if not recorder.phase:
         recorder.phase = "adam_annealed"
 
     x = jnp.asarray(pack(graphs, layout, backend="numpy"), dtype=jnp.float32)
     m = jnp.zeros_like(x)
     v = jnp.zeros_like(x)
-    history: list[float] = []
     clear_active = None
     union_hits = None
     rng = jax.random.PRNGKey(key)
@@ -154,7 +151,6 @@ def adam_annealed(
             union_hits=union_hits,
         )
         val_f = float(val)
-        history.append(val_f)
 
         m = beta1 * m + (1.0 - beta1) * g
         v = beta2 * v + (1.0 - beta2) * (g * g)
@@ -167,8 +163,7 @@ def adam_annealed(
             T = T0 * (steps - t) / max(steps - 1, 1)
         else:
             T = T0 * (rho ** (t - 1))
-        if recorder is not None:
-            recorder.record(t, val_f, x, eta=float(eta), T=float(T))
+        recorder.record(t, val_f, x, eta=float(eta), T=float(T))
         if verbose and (t == 1 or t % max(1, steps // 10) == 0 or t == steps):
             print(f"adam_annealed {t}/{steps}  J={val_f:.6g}  η={float(eta):.3g}  T={float(T):.3g}")
 
@@ -176,7 +171,8 @@ def adam_annealed(
         xi = jax.random.normal(sub, shape=x.shape, dtype=x.dtype)
         x = x - eta * uhat + jnp.sqrt(2.0 * eta * T) * xi
 
-    unpack(np.asarray(x), graphs, layout, backend="numpy")
+    if recorder.best_x is None:
+        raise RuntimeError("recorder.best_x is None; no step recorded a state")
+    unpack(recorder.best_x, graphs, layout, backend="numpy")
     for g in graphs:
         g.refresh(backend="numpy")
-    return x, history

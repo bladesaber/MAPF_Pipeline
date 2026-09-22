@@ -1250,48 +1250,42 @@ $$
 
 ## 8. Production choices (Stage 1 lock)
 
-Commitments for the first production implementation of `pipe_smooth` Stage 1. Survey options in §1.4 / §6.5.2 remain reference only unless promoted here.
+Stage 1 evaluation and repo layout. Locked stack / clearance roles / solve schedule live in the implemented pipeline (`pipeline.py`, §6–§7); this section only records **how to score results**.
 
-### 8.1 Locked stack
+### 8.1 Evaluation metrics
 
-| Item | Choice | Notes |
-|------|--------|-------|
-| Centerline | **Cubic Hermite** $G^{1}$ nodes $(p,v,\sigma)$ (§6.5.1) | Trunk share + junction private patches; $C^{0}/C^{1}$ by construction. **Not** circular-arc MVP (arc constraints deferred). |
-| Differentiation | **JAX AD** | $\nabla J$ for GD / Langevin; $\nabla J$ and constraint Jacobians for SQP / IPOPT. Collision **detection** stays outside the AD graph (§7.2). |
-| Optimizers | **One method per run** | Choose among Adam, Adam-annealed (§7.3.2), Langevin (§7.3), elastic SQP, or IPOPT — not a fixed soft→hard chain. |
-| Clearance proxies | **Both** §7.2.1 and §7.2.2 available | Pick capsule and/or hull via `clear_kind` (see §8.2); same active-set pipeline. |
-| $J_{\mathrm{path}}$ aggregation | **$L$ once / seg**; **$K$ = interiors once + `seen_joint`** (§6.4.1) | Not $\sum_u(L_u+K_u)$. Usages still assemble paths and discover joints. |
+Report on a fixed instance set, fixed weights, and a **single** `clear_kind` per run. Soft path metrics are primary on **accepted** runs; always report feasibility separately so infeasible low-$J$ designs do not look “better.”
 
-### 8.2 Clearance roles
+**Consistency (Stage 1).** Optimize-loop detection and accept / residual scoring use the **same** narrowphase proxy and sampling density (`clear_kind`, margin, segment sampling). A denser or alternate accept proxy is deferred—mixing proxies confounds method comparison more than it helps at this cut.
 
-| Proxy | Role |
-|-------|------|
-| **§7.2.1 Polyline capsules** | Cheap continuous clearance (chords); default for AD / Langevin-style loops. |
-| **§7.2.2 Hull + GJK/EPA** | Conservative outer bounds; natural with SQP / IPOPT inequalities and dense accept. |
+#### 8.1.1 Feasibility
 
-Shared rule (§7.2): broadphase → active set $\mathcal{A}=\{d_{\mathrm{geom}}<d_{\mathrm{req}}\}$ ($d_{\mathrm{req}}$ includes $\delta_{\mathrm{margin}}$) → cost/constraint only on $\mathcal{A}$; AD differentiates continuous $d$/$\phi$ with $\mathcal{A}$ fixed for the step.
+| Metric | Definition | Notes |
+|--------|------------|--------|
+| Success / accept rate | Fraction of runs with hard $n_{\mathrm{hit}}=0$ | Soft $\delta_{\mathrm{margin}}$ is look-ahead only; hard uses $d_{\mathrm{req}}-\delta_{\mathrm{margin}}$ |
+| $n_{\mathrm{hit}}$ | Count of pairs with $(d_{\mathrm{req}}-\delta_{\mathrm{margin}})-d_{\mathrm{geom}}>0$ | Optionally split obs / cross-group (`n_hit_obs`, `n_hit_grp`) |
+| $\max(d_{\mathrm{req}}-\delta_{\mathrm{margin}}-d_{\mathrm{geom}})$ | Max hard shortfall (0 if none) | Same proxy as the loop; strip soft pad |
 
-### 8.3 Solve schedule
+#### 8.1.2 Path performance
 
-```text
-init Hermite X from coarse P
-    → pick one optimizer (Adam | Adam-annealed | Langevin | elastic SQP | IPOPT)
-         J_path + J_clear(clear_kind) + optional J_union / J_space / J_v
-    → accept: clearance check with chosen (or denser) proxy; else retune and retry
-```
+Report on **usage polylines** for $L$/$\kappa$; **$V$** is voxel-union solid volume (overlap once) at group / aggregate. Shared trunk $L$ still counted per usage (diagnostic).
 
-Run **one** method per pipeline call. Multi-start = several seeds / methods, keep best feasible — not a mandated soft-then-hard cascade.
+| Metric | Definition | Notes |
+|--------|------------|--------|
+| $L_u$ | Polyline length of usage $u$ | Group / aggregate = sum of usages |
+| $\kappa_{\max}$ | $\max(\kappa^{\mathrm{M}} r)$ via `kappa_menger` | Port ends: $\kappa\approx\theta/\Delta s$; not $\int(\kappa r)^{2}$ |
+| $V$ | `tube_volume(xyz, r)` voxel union of sample spheres | Segments once; overlap once. Stage-2 CAD Boolean later |
+#### 8.1.3 Solve process
 
-### 8.4 Explicit non-goals (this production cut)
+| Metric | Definition | Notes |
+|--------|------------|--------|
+| Wall time | End-to-end Stage 1 (build optional) | Same machine / budget when comparing methods |
+| Steps / budget used | Iterations until stop or cap | Pair with early-stop if added |
+| $J$-curve stability | From recorder history | e.g. final $J$, relative drop $(J_0-J_T)/\max(\|J_0\|,\varepsilon)$; late-window std or fraction of uphill steps as oscillation proxy. Langevin: expect more noise early—score late anneal window |
 
-- Circular-arc segment representation as default (§6.5.2).
-- Full CD inside JAX; differentiating GJK branches.
-- Stage 2 CAD / Stage 3 FEM inside the Stage 1 loop.
-- Same-group hard clearance ($\mu_{\mathrm{self}}=0$ default).
+### 8.2 Repository layout (Stage 1)
 
-### 8.5 Repository layout (Stage 1)
-
-Align packages with §6 data flow. Keep a thin `pipeline.py`; defer Langevin / SQP / GJK to a second wave.
+Align packages with §6 data flow. Keep a thin `pipeline.py`.
 
 ```text
 pipe_smooth/

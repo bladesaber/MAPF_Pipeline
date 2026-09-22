@@ -72,9 +72,9 @@ def interior_nlp(
     refresh_clear: Callable[[Sequence[OptimizeGraph]], Any] | None = None,
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 1,
-    recorder: Recorder | None = None,
+    recorder: Recorder,
     verbose: bool = False,
-):
+) -> None:
     """Interior-point NLP hard phase (§7 / cyipopt).
 
     Same soft ``J`` + flat ``g(x)≤0`` as ``elastic_qp``; IPOPT solves the NLP
@@ -93,18 +93,14 @@ def interior_nlp(
         refresh_clear: callback → frozen clear active set (outside AD)
         refresh_union: callback → frozen union hits for soft ``J_union``
         refresh_every: refresh period in outer steps
-        recorder: optional history / best-x logger (one record per outer round)
+        recorder: history / best-x logger (one record per outer round)
         verbose: IPOPT print_level / outer ``J``
-
-    Returns:
-        ``(x, history)`` packed DOF and per-outer soft ``J`` values.
     """
-    if recorder is not None and not recorder.phase:
+    if not recorder.phase:
         recorder.phase = "interior_nlp"
 
     w = replace(weights, mu_obs=0.0, mu_grp=0.0, eta=0.0, mu_v=0.0)
     x = np.asarray(pack(graphs, layout, backend="numpy"), dtype=np.float64)
-    history: list[float] = []
     clear_active = None
     union_hits = None
     n = int(layout.n)
@@ -159,7 +155,6 @@ def interior_nlp(
             )
 
         val0, _ = _obj_grad(x)
-        history.append(val0)
 
         g0 = np.asarray(_c_fn(jnp.asarray(x, dtype=jnp.float32)), dtype=np.float64).reshape(-1)
         m = int(g0.size)
@@ -214,21 +209,21 @@ def interior_nlp(
         nlp.add_option("print_level", 5 if verbose else 0)
         x, info = nlp.solve(x)
 
-        if recorder is not None:
-            # reuse last IPOPT callback evals (avoid extra _obj_grad / _c_fn)
-            val_f = float(info.get("obj_val", prob.last_f if prob.last_f is not None else val0))
-            g_f = prob.last_c
-            max_viol = float(np.max(g_f)) if g_f is not None and g_f.size else 0.0
-            recorder.record(
-                t, val_f, x, n_cons=m, max_viol=max_viol, status=int(info["status"])
-            )
+        # reuse last IPOPT callback evals (avoid extra _obj_grad / _c_fn)
+        val_f = float(info.get("obj_val", prob.last_f if prob.last_f is not None else val0))
+        g_f = prob.last_c
+        max_viol = float(np.max(g_f)) if g_f is not None and g_f.size else 0.0
+        recorder.record(
+            t, val_f, x, n_cons=m, max_viol=max_viol, status=int(info["status"])
+        )
 
         if verbose:
-            print(f"interior_nlp {t}/{steps}  J={history[-1]:.6g}  m={m}  status={info['status']}")
+            print(f"interior_nlp {t}/{steps}  J={val_f:.6g}  m={m}  status={info['status']}")
         if info["status"] < 0:
             break
 
-    unpack(x, graphs, layout, backend="numpy")
+    if recorder.best_x is None:
+        raise RuntimeError("recorder.best_x is None; no step recorded a state")
+    unpack(recorder.best_x, graphs, layout, backend="numpy")
     for g in graphs:
         g.refresh(backend="numpy")
-    return jnp.asarray(x, dtype=jnp.float32), history

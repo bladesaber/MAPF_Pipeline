@@ -46,6 +46,21 @@ class NarrowHullObsPair:
     sign: float  # +1 outside / separated; -1 overlap
     shift: np.ndarray  # (4, 3); freeze with weights for qa = λ @ (C + shift)
 
+    def export(self) -> dict:
+        return {
+            "group_id": self.group_id,
+            "seg_id": self.seg_id,
+            "obs_name": self.obs_name,
+            "d_geom": float(self.d_geom),
+            "d_req": float(self.d_req),
+            "hermite_t0": float(self.hermite_t0),
+            "hermite_t1": float(self.hermite_t1),
+            "weights": np.asarray(self.weights, float).reshape(-1).tolist(),
+            "qb": np.asarray(self.qb, float).reshape(-1).tolist(),
+            "sign": float(self.sign),
+            "shift": np.asarray(self.shift, float).tolist(),
+        }
+
 
 @dataclass(frozen=True)
 class NarrowHullGrpPair:
@@ -66,6 +81,25 @@ class NarrowHullGrpPair:
     sign: float  # +1 separated; -1 overlap
     shift_a: np.ndarray  # (4, 3)
     shift_b: np.ndarray  # (4, 3)
+
+    def export(self) -> dict:
+        return {
+            "group_a": self.group_a,
+            "seg_a": self.seg_a,
+            "group_b": self.group_b,
+            "seg_b": self.seg_b,
+            "d_geom": float(self.d_geom),
+            "d_req": float(self.d_req),
+            "hermite_t0_a": float(self.hermite_t0_a),
+            "hermite_t1_a": float(self.hermite_t1_a),
+            "weights_a": np.asarray(self.weights_a, float).reshape(-1).tolist(),
+            "hermite_t0_b": float(self.hermite_t0_b),
+            "hermite_t1_b": float(self.hermite_t1_b),
+            "weights_b": np.asarray(self.weights_b, float).reshape(-1).tolist(),
+            "sign": float(self.sign),
+            "shift_a": np.asarray(self.shift_a, float).tolist(),
+            "shift_b": np.asarray(self.shift_b, float).tolist(),
+        }
 
 
 @dataclass
