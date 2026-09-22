@@ -1257,18 +1257,17 @@ Commitments for the first production implementation of `pipe_smooth` Stage 1. Su
 | Item | Choice | Notes |
 |------|--------|-------|
 | Centerline | **Cubic Hermite** $G^{1}$ nodes $(p,v,\sigma)$ (§6.5.1) | Trunk share + junction private patches; $C^{0}/C^{1}$ by construction. **Not** circular-arc MVP (arc constraints deferred). |
-| Differentiation | **JAX AD** | $\nabla J$ for GD / Langevin; $\nabla J$ and constraint Jacobians for SQP. Collision **detection** stays outside the AD graph (§7.2). |
-| Soft optimize | **Discrete Langevin** (§7.3), then anneal $T\to 0$ | Prefer §7.3.2 (Adam + annealed noise) for production scaling; §7.3.1 if Langevin character matters. |
-| Hard optimize / accept | **SQP** (e.g. SLSQP / IPOPT) | Consumes JAX $\nabla J$, $J_c$; does **not** embed Langevin noise inside QP steps. |
-| Clearance proxies | **Both** §7.2.1 and §7.2.2 | Same active-set pipeline; different narrow-phase (see §8.2). |
+| Differentiation | **JAX AD** | $\nabla J$ for GD / Langevin; $\nabla J$ and constraint Jacobians for SQP / IPOPT. Collision **detection** stays outside the AD graph (§7.2). |
+| Optimizers | **One method per run** | Choose among Adam, Adam-annealed (§7.3.2), Langevin (§7.3), elastic SQP, or IPOPT — not a fixed soft→hard chain. |
+| Clearance proxies | **Both** §7.2.1 and §7.2.2 available | Pick capsule and/or hull via `clear_kind` (see §8.2); same active-set pipeline. |
 | $J_{\mathrm{path}}$ aggregation | **$L$ once / seg**; **$K$ = interiors once + `seen_joint`** (§6.4.1) | Not $\sum_u(L_u+K_u)$. Usages still assemble paths and discover joints. |
 
 ### 8.2 Clearance roles
 
 | Proxy | Role |
 |-------|------|
-| **§7.2.1 Polyline capsules** | Default **soft** $J_{\mathrm{clear}}$ in the AD / Langevin loop (cheap, tight enough for chords). |
-| **§7.2.2 Hull + GJK/EPA** | **Hard** SQP inequalities and/or dense accept (conservative outer bounds). Optional soft term later if capsules miss thin features. |
+| **§7.2.1 Polyline capsules** | Cheap continuous clearance (chords); default for AD / Langevin-style loops. |
+| **§7.2.2 Hull + GJK/EPA** | Conservative outer bounds; natural with SQP / IPOPT inequalities and dense accept. |
 
 Shared rule (§7.2): broadphase → active set $\mathcal{A}=\{d_{\mathrm{geom}}<d_{\mathrm{req}}\}$ ($d_{\mathrm{req}}$ includes $\delta_{\mathrm{margin}}$) → cost/constraint only on $\mathcal{A}$; AD differentiates continuous $d$/$\phi$ with $\mathcal{A}$ fixed for the step.
 
@@ -1276,14 +1275,12 @@ Shared rule (§7.2): broadphase → active set $\mathcal{A}=\{d_{\mathrm{geom}}<
 
 ```text
 init Hermite X from coarse P
-    → soft loop: J_path + J_clear(capsule) + J_union + J_space + J_v
-         Discrete Langevin / Adam-annealed  (JAX ∇J), T ↓ 0
-    → hard phase: SQP with c(X) from hull GJK/EPA (and optional space bands)
-         Jacobians from JAX on active constraints
-    → accept: denser capsule and/or hull checks; else raise μ / margin / m and retry
+    → pick one optimizer (Adam | Adam-annealed | Langevin | elastic SQP | IPOPT)
+         J_path + J_clear(clear_kind) + optional J_union / J_space / J_v
+    → accept: clearance check with chosen (or denser) proxy; else retune and retry
 ```
 
-Do **not** mix Langevin noise into a single SQP QP. Multi-start = several Langevin seeds, each followed by SQP, keep best feasible.
+Run **one** method per pipeline call. Multi-start = several seeds / methods, keep best feasible — not a mandated soft-then-hard cascade.
 
 ### 8.4 Explicit non-goals (this production cut)
 
@@ -1323,8 +1320,9 @@ pipe_smooth/
       gjk.py                # §7.2.2
     optimize/
       pack.py               # free vars; ports / interface clamped
-      adam.py               # soft GD MVP
+      adam.py               # Adam / Adam-annealed
       langevin.py           # §7.3
-      sqp.py                # hard phase
-    pipeline.py             # load → tree → junction → Hermite init → assemble → J → step
+      sqp.py                # elastic SQP
+      ipopt.py              # interior NLP
+    pipeline.py             # load → tree → junction → Hermite → one method → accept
 ```

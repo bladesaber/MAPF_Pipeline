@@ -1,7 +1,9 @@
-"""Stage-1 pipeline (§8.3 / §8.5): load → tree → junction → Hermite → soft → hard → accept."""
+"""Stage-1 pipeline (§8.5): load → tree → junction → Hermite → one optimizer → accept."""
 
 from __future__ import annotations
 
+import json
+from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
@@ -17,7 +19,9 @@ from pipe_smooth.collision import (
 )
 from pipe_smooth.costs.union import find_union_pairs
 from pipe_smooth.geometry.assemble import OptimizeGraph, assemble_hermite_graph
-from pipe_smooth.optimize.adam import adam_annealed
+from pipe_smooth.optimize.adam import adam, adam_annealed
+from pipe_smooth.optimize.ipopt import interior_nlp
+from pipe_smooth.optimize.langevin import langevin
 from pipe_smooth.optimize.loss import LossWeights
 from pipe_smooth.optimize.pack import PackLayout, layout, unpack
 from pipe_smooth.optimize.recorder import Recorder
@@ -32,10 +36,9 @@ except ImportError:  # coal optional
 
 Obstacle = SphereObs | CapsuleObs | AabbObs
 
-
-def load_prepared(path: str | Path) -> dict:
-    """Load a prepared env YAML (from ``example_load_env`` / ``data/``)."""
-    return yaml.safe_load(Path(path).read_text())
+METHODS = ("adam", "adam_annealed", "langevin", "elastic_qp", "interior_nlp")
+Method = Literal[*METHODS]
+ClearKind = Literal["capsule", "hull"]
 
 
 def obstacles_from_env(env: dict) -> list[Obstacle]:
@@ -76,14 +79,30 @@ def build_graphs(
     *,
     tau0: float = 2.0,
     alpha: float = 2.0,
+    out_dir: str | Path | None = None,
 ) -> list[OptimizeGraph]:
-    """§6.1–6.3 / 6.5: trees → junctions → Hermite graphs + refresh samples."""
+    """§6.1–6.3 / 6.5: trees → junctions → Hermite graphs + refresh samples.
+
+    If ``out_dir`` is set, dump ``tree_*.json``, ``partition_*.json``, and
+    ``graph_*_init.json`` (pre-optimize) for debug / reload.
+    """
     trees = build_trees(env)
     domain = env.get("grid") or {}
     parts = build_junctions_all(trees, domain=domain, tau0=tau0, alpha=alpha)
     graphs = [assemble_hermite_graph(p, length_max=length_max) for p in parts]
     for g in graphs:
         g.refresh(backend="numpy")
+
+    if out_dir is not None:
+        out = Path(out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        for t in trees:
+            t.export(out / f"tree_{t.id}.json")
+        for p in parts:
+            p.export(out / f"partition_{p.id}.json")
+        for g in graphs:
+            g.export(out / f"graph_{g.id}_init.json")
+
     return graphs
 
 
@@ -113,89 +132,79 @@ def accept_clearance(
     *,
     kind: Literal["capsule", "hull"] = "hull",
     margin: float = 0.0,
-    tol: float = 0.0,
-) -> tuple[bool, float]:
-    """Dense accept (§8.3): True iff max(d_req - d_geom) <= tol on active pairs."""
+) -> tuple[bool, int]:
+    """Dense accept (§8.3): True iff narrowphase returns no active pairs.
+
+    Narrowphase only keeps pairs with ``d_geom < d_req``; empty ⇒ clearance OK.
+    """
     if kind == "hull":
         narrow_obs, narrow_grp = _refresh_hull(graphs, obstacles, margin)
     else:
         narrow_obs, narrow_grp = _refresh_capsule(graphs, obstacles, margin)
-    viol = 0.0
-    for p in list(narrow_obs) + list(narrow_grp):
-        viol = max(viol, float(p.d_req) - float(p.d_geom))
-    return viol <= tol, viol
+    n_hit = len(narrow_obs) + len(narrow_grp)
+    return n_hit == 0, n_hit
 
 
 def run_stage1(
     env: dict,
     *,
+    method: Method = "adam_annealed",  # type: ignore[assignment]
+    clear_kind: ClearKind = "capsule",
     weights: LossWeights | None = None,
     obstacles: Sequence[Obstacle] | None = None,
     margin: float = 0.0,
     length_max: float = 8.0,
-    soft_steps: int = 200,
-    hard_steps: int = 20,
+    steps: int = 200,
     out_dir: str | Path = "runs/stage1",
     record_state: bool = False,
-    soft: Literal["adam_annealed", "none"] = "adam_annealed",
-    hard: Literal["elastic_qp", "none"] = "elastic_qp",
     verbose: bool = False,
 ) -> dict[str, Any]:
-    """Full Stage-1 schedule (§8.3): soft capsule AD → hard hull SQP → accept."""
-    graphs = build_graphs(env, length_max=length_max)
-    obs = list(obstacles if obstacles is not None else obstacles_from_env(env))
-    lay = layout(graphs)
-    w = weights or LossWeights()
-    rec = Recorder(out_dir=out_dir, record_state=record_state, phase="stage1")
+    """Build graphs, run **one** optimizer, then accept (§8.5)."""
+    if method not in METHODS:
+        raise ValueError(f"method must be one of {METHODS}, got {method!r}")
 
-    def refresh_soft(gs):
+    graphs = build_graphs(env, length_max=length_max, out_dir=out_dir)
+    obs = list(obstacles if obstacles is not None else obstacles_from_env(env))
+    out = Path(out_dir)
+    lay = layout(graphs)
+    lay.export(out / "layout.json")
+    w = weights or LossWeights()
+    (out / "weights.json").write_text(json.dumps(asdict(w), indent=2))
+    rec = Recorder(out_dir=out, record_state=record_state, phase=method)
+
+    def refresh_clear(gs):
+        if clear_kind == "hull":
+            return _refresh_hull(gs, obs, margin)
         return _refresh_capsule(gs, obs, margin)
 
-    def refresh_hard(gs):
-        return _refresh_hull(gs, obs, margin)
+    union_cb = (lambda gs: _refresh_union(gs)) if w.lam != 0.0 else None
+    kw: dict[str, Any] = dict(
+        steps=steps,
+        clear_kind=clear_kind,
+        refresh_clear=refresh_clear,
+        refresh_union=union_cb,
+        recorder=rec,
+        verbose=verbose,
+    )
 
-    def refresh_union(gs):
-        return _refresh_union(gs)
-
-    hist_soft: list[float] = []
-    hist_hard: list[float] = []
-
-    if soft == "adam_annealed":
-        rec.phase = "adam_annealed"
-        _, hist_soft = adam_annealed(
-            graphs,
-            lay,
-            w,
-            steps=soft_steps,
-            clear_kind="capsule",
-            refresh_clear=refresh_soft,
-            refresh_union=refresh_union if w.lam != 0.0 else None,
-            recorder=rec,
-            verbose=verbose,
-        )
-
-    if hard == "elastic_qp":
-        rec.phase = "elastic_qp"
-        _, hist_hard = elastic_qp(
-            graphs,
-            lay,
-            w,
-            steps=hard_steps,
-            clear_kind="hull",
-            refresh_clear=refresh_hard,
-            refresh_union=refresh_union if w.lam != 0.0 else None,
-            recorder=rec,
-            verbose=verbose,
-        )
+    if method == "adam":
+        _, history = adam(graphs, lay, w, **kw)
+    elif method == "adam_annealed":
+        _, history = adam_annealed(graphs, lay, w, **kw)
+    elif method == "langevin":
+        _, history = langevin(graphs, lay, w, **kw)
+    elif method == "elastic_qp":
+        _, history = elastic_qp(graphs, lay, w, **kw)
+    else:
+        _, history = interior_nlp(graphs, lay, w, **kw)
 
     if rec.best_x is not None:
         unpack(rec.best_x, graphs, lay, backend="numpy")
         for g in graphs:
             g.refresh(backend="numpy")
 
-    ok, viol = accept_clearance(graphs, obs, kind="hull", margin=margin)
+    ok, n_hit = accept_clearance(graphs, obs, kind=clear_kind, margin=margin)
     rec.save("recorder.pkl")
-    lay.export(Path(rec.out_dir) / "layout.json")
     for g in graphs:
         g.export(Path(rec.out_dir) / f"graph_{g.id}.json")
 
@@ -203,10 +212,12 @@ def run_stage1(
         "graphs": graphs,
         "layout": lay,
         "recorder": rec,
-        "history_soft": hist_soft,
-        "history_hard": hist_hard,
+        "history": history,
+        "method": method,
+        "clear_kind": clear_kind,
+        "weights": w,
         "accepted": ok,
-        "max_viol": viol,
+        "n_hit": n_hit,
         "obstacles": obs,
     }
 
@@ -215,6 +226,7 @@ def main() -> None:
     import argparse
 
     root = Path(__file__).resolve().parent
+    defaults = LossWeights()
     parser = argparse.ArgumentParser(description="pipe_smooth Stage-1 pipeline (§8)")
     parser.add_argument(
         "env",
@@ -223,23 +235,56 @@ def main() -> None:
         help="prepared env YAML",
     )
     parser.add_argument("-o", "--out-dir", default=str(root / "runs" / "stage1"))
-    parser.add_argument("--soft-steps", type=int, default=50)
-    parser.add_argument("--hard-steps", type=int, default=10)
+    parser.add_argument("-m", "--method", default="adam_annealed", choices=list(METHODS))
+    parser.add_argument(
+        "--clear-kind",
+        default="capsule",
+        choices=["capsule", "hull"],
+        help="narrowphase proxy for clear / accept",
+    )
+    parser.add_argument("--steps", type=int, default=50)
+    parser.add_argument(
+        "--weights",
+        type=str,
+        default=None,
+        help="YAML/JSON with LossWeights fields (overrides defaults; CLI flags win)",
+    )
+    for f in fields(LossWeights):
+        parser.add_argument(
+            f"--{f.name.replace('_', '-')}",
+            type=float,
+            default=None,
+            dest=f.name,
+            help=f"LossWeights.{f.name} (default {getattr(defaults, f.name)})",
+        )
     parser.add_argument("--record-state", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
-    env = load_prepared(args.env)
+    w_kw = asdict(defaults)
+    if args.weights:
+        loaded = yaml.safe_load(Path(args.weights).read_text()) or {}
+        w_kw.update({k: float(v) for k, v in loaded.items() if k in w_kw})
+    for f in fields(LossWeights):
+        val = getattr(args, f.name)
+        if val is not None:
+            w_kw[f.name] = float(val)
+    weights = LossWeights(**w_kw)
+
+    env = yaml.safe_load(Path(args.env).read_text())
     out = run_stage1(
         env,
-        soft_steps=args.soft_steps,
-        hard_steps=args.hard_steps,
+        method=args.method,
+        clear_kind=args.clear_kind,
+        weights=weights,
+        steps=args.steps,
         out_dir=args.out_dir,
         record_state=args.record_state,
         verbose=args.verbose,
     )
     print(
-        f"accepted={out['accepted']}  max_viol={out['max_viol']:.6g}  "
+        f"method={out['method']}  clear={out['clear_kind']}  "
+        f"accepted={out['accepted']}  n_hit={out['n_hit']}  "
         f"groups={len(out['graphs'])}  out={args.out_dir}"
     )
 
