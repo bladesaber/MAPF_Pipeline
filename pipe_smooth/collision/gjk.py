@@ -242,14 +242,13 @@ def find_narrowphase_pairs(
             if not np.isfinite(d_geom) or d_geom >= d_req:
                 continue
             sign = 1.0 if d_geom >= 0.0 else -1.0
-            # Outside: full clearance; penetrating (sign < 0): only depth → d_req = 0
             narrow_obs.append(
                 NarrowHullObsPair(
                     p.group_id,
                     p.seg_id,
                     p.obs_name,
                     d_geom,
-                    d_req if sign > 0.0 else 0.0,
+                    d_req,
                     ht0,
                     ht1,
                     hull.weights(qa),
@@ -274,7 +273,7 @@ def find_narrowphase_pairs(
                         p.group_b,
                         p.seg_b,
                         d_geom,
-                        d_req if sign > 0.0 else 0.0,
+                        d_req,
                         ht0_a,
                         ht1_a,
                         ha.weights(qa),

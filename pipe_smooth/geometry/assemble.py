@@ -7,14 +7,17 @@ ports / interfaces / shared labeled-edge knots stay shared by node id.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
 import math
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 
 from pipe_smooth.topology.junction import PartitionedTree, LabeledEdge
 from pipe_smooth.geometry.hermite import unit, hermite_length, sample_hermite
-from pipe_smooth.utils import backend as _backend
+from pipe_smooth.utils import backend as _backend, to_float_list
 
 
 @dataclass
@@ -25,6 +28,28 @@ class HermiteNode:
     fixed_p: bool = False
     fixed_v: bool = False
     role: str = "trunk"  # port | interface | trunk | junction
+
+    def export(self) -> dict[str, Any]:
+        return {
+            "pos": to_float_list(self.pos),
+            "radius": float(self.radius),
+            "v": None if self.v is None else to_float_list(self.v),
+            "fixed_p": bool(self.fixed_p),
+            "fixed_v": bool(self.fixed_v),
+            "role": self.role,
+        }
+
+    @classmethod
+    def load(cls, data: dict[str, Any]) -> "HermiteNode":
+        v = data.get("v")
+        return cls(
+            pos=np.asarray(data["pos"], dtype=float),
+            radius=float(data.get("radius", 0.5)),
+            v=None if v is None else np.asarray(v, dtype=float),
+            fixed_p=bool(data.get("fixed_p", False)),
+            fixed_v=bool(data.get("fixed_v", False)),
+            role=str(data.get("role", "trunk")),
+        )
 
 
 @dataclass
@@ -39,6 +64,28 @@ class HermiteSegment:
     ts: object | None = None  # (n,) cached parameters
     xyz: object | None = None  # (n, 3) cached samples along stored u→v
     radius: object | None = None  # (n,) linear radius along stored u→v
+
+    def export(self) -> dict[str, Any]:
+        """Topology only; caches (ts/xyz/radius) rebuilt by ``refresh``."""
+        return {
+            "id": self.id,
+            "edge": self.edge,
+            "kind": self.kind,
+            "u": self.u,
+            "v": self.v,
+            "ts_count": int(self.ts_count),
+        }
+
+    @classmethod
+    def load(cls, data: dict[str, Any]) -> "HermiteSegment":
+        return cls(
+            id=str(data["id"]),
+            edge=str(data["edge"]),
+            kind=str(data["kind"]),
+            u=str(data["u"]),
+            v=str(data["v"]),
+            ts_count=int(data.get("ts_count", 17)),
+        )
 
     def radius_at(self, t: float, nodes: dict[str, HermiteNode]) -> float:
         """Linear radius on [0, 1] between endpoint node radii."""
@@ -101,6 +148,30 @@ class OptimizeUsagePath:
     v_start: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
     v_end: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
 
+    def export(self) -> dict[str, Any]:
+        return {
+            "usage": [self.usage[0], self.usage[1]],
+            "edges": list(self.edges),
+            "edges_reverse": [bool(x) for x in self.edges_reverse],
+            "segments": list(self.segments),
+            "reverse": [bool(x) for x in self.reverse],
+            "v_start": to_float_list(self.v_start),
+            "v_end": to_float_list(self.v_end),
+        }
+
+    @classmethod
+    def load(cls, data: dict[str, Any]) -> "OptimizeUsagePath":
+        u = data["usage"]
+        return cls(
+            usage=(str(u[0]), str(u[1])),
+            edges=[str(e) for e in data.get("edges") or []],
+            edges_reverse=[bool(x) for x in data.get("edges_reverse") or []],
+            segments=[str(s) for s in data.get("segments") or []],
+            reverse=[bool(x) for x in data.get("reverse") or []],
+            v_start=np.asarray(data.get("v_start", [1.0, 0.0, 0.0]), dtype=float),
+            v_end=np.asarray(data.get("v_end", [1.0, 0.0, 0.0]), dtype=float),
+        )
+
     def port_derivatives(self, backend: str = "numpy"):
         """Port end derivatives (v_start, v_end) for the requested backend."""
         xp = _backend(backend)
@@ -124,6 +195,35 @@ class OptimizeGraph:
     edge_segs: dict[str, list[str]] = field(default_factory=dict)  # labeled edge -> Hermite segs
     junctions: dict[str, list[str]] = field(default_factory=dict)  # complex id -> labeled edge ids
     usage_paths: list[OptimizeUsagePath] = field(default_factory=list)
+
+    def export(self, path: str | Path) -> None:
+        """Write graph JSON (nested types via their ``export``; no sample caches)."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "id": self.id,
+            "nodes": {nid: n.export() for nid, n in self.nodes.items()},
+            "segments": {sid: s.export() for sid, s in self.segments.items()},
+            "edge_segs": {k: list(v) for k, v in self.edge_segs.items()},
+            "junctions": {k: list(v) for k, v in self.junctions.items()},
+            "usage_paths": [p.export() for p in self.usage_paths],
+        }
+        path.write_text(json.dumps(data, indent=2))
+
+    @classmethod
+    def load(cls, path: str | Path) -> "OptimizeGraph":
+        data = json.loads(Path(path).read_text())
+        g = cls(
+            id=str(data["id"]),
+            nodes={nid: HermiteNode.load(n) for nid, n in (data.get("nodes") or {}).items()},
+            segments={
+                sid: HermiteSegment.load(s) for sid, s in (data.get("segments") or {}).items()
+            },
+            edge_segs={k: list(v) for k, v in (data.get("edge_segs") or {}).items()},
+            junctions={k: list(v) for k, v in (data.get("junctions") or {}).items()},
+            usage_paths=[OptimizeUsagePath.load(p) for p in data.get("usage_paths") or []],
+        )
+        return g
 
     def refresh(self, resolution: float | None = None, backend: str = "numpy"):
         """Refresh every segment once. Call after unpack. Port ends override v0/v1."""

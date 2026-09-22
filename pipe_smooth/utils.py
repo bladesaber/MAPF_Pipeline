@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 
@@ -14,3 +16,8 @@ def backend(name: str = "numpy"):
 
         return jnp
     raise ValueError(f"backend must be 'numpy' or 'jax', got {name!r}")
+
+
+def to_float_list(x: Any) -> list[float]:
+    """Flatten array-like to a JSON-friendly list of floats."""
+    return [float(v) for v in np.asarray(x, dtype=float).reshape(-1)]

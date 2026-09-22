@@ -32,16 +32,15 @@ class ObsContactHit:
 
     `sign`: +1 outside / separated (push increases ||qa-qb|| away from obstacle);
     -1 inside AABB (so d_signed = sign*||qa-qb|| is negative; hinge pushes out).
-    `d_req`: per-hit required gap; 0 if sign < 0 (inside), else r(+r_obs)+margin.
-    Use ndarrays so sign/d_req stack with batched clear_balls.
+    `d_req`: full required gap r(+r_obs)+margin (keep even when inside / penetrating).
     """
 
     hermite_t0: float  # parent Hermite param at chord start, [0, 1]
     hermite_t1: float  # parent Hermite param at chord end, [0, 1]
     chord_t: float  # local parameter on the straight chord, [0, 1]
     qb: np.ndarray  # shape (3,)
-    sign: np.ndarray  # shape () or (1,); +1 outside, -1 inside
-    d_req: np.ndarray  # shape () or (1,); 0 if inside, else full clearance
+    sign: float  # +1 outside, -1 inside
+    d_req: float  # full clearance gap
 
 
 @dataclass(frozen=True)
@@ -51,7 +50,7 @@ class GrpContactHit:
     Seg_a chord = γ_a(hermite_t0_a)→γ_a(hermite_t1_a); likewise for b.
     ``chord_t_a`` / ``chord_t_b`` are local on those chords (frozen for AD).
     `sign`: +1 separated (same convention as ObsContactHit outside).
-    `d_req`: per-hit required gap (0 if sign < 0).
+    `d_req`: full required gap (keep even when penetrating).
     """
 
     hermite_t0_a: float  # Hermite param at chord start on seg_a
@@ -60,8 +59,8 @@ class GrpContactHit:
     hermite_t0_b: float  # Hermite param at chord start on seg_b
     hermite_t1_b: float  # Hermite param at chord end on seg_b
     chord_t_b: float  # local chord param on seg_b, [0, 1]
-    sign: np.ndarray  # shape () or (1,); +1 outside
-    d_req: np.ndarray  # shape () or (1,); full clearance
+    sign: float  # +1 outside
+    d_req: float  # full clearance gap
 
 
 @dataclass(frozen=True)
@@ -133,9 +132,8 @@ def capsule_ball(
                 if all(abs(tk - t) > 1e-9 for t in ts):
                     ts.append(tk)
     ht0, ht1 = float(hermite_t0), float(hermite_t1)
-    dr = np.asarray(d_req)
     hits = tuple(
-        ObsContactHit(ht0, ht1, t, qb.copy(), np.asarray(1.0), dr) for t in ts
+        ObsContactHit(ht0, ht1, t, qb.copy(), 1.0, d_req) for t in ts
     )
     return d_geom, hits
 
@@ -250,15 +248,14 @@ def capsule_capsule(
                 if all(abs(tk - t) > 1e-9 for t in ts):
                     ts.append(tk)
 
-    sgn = np.asarray(1.0)
-    dr = np.asarray(d_req)
+    sgn = 1.0
     ht0, ht1 = float(hermite_t0), float(hermite_t1)
     if other_is_obs:
         hits_obs: list[ObsContactHit] = []
         for t in ts:
             qa = a + t * d
             _, qb, _ = _closest_on_seg(qa, a2, b2)
-            hits_obs.append(ObsContactHit(ht0, ht1, t, qb.copy(), sgn, dr))
+            hits_obs.append(ObsContactHit(ht0, ht1, t, qb.copy(), sgn, d_req))
         return d_geom, tuple(hits_obs)
 
     ht0_b, ht1_b = float(hermite_t0_b), float(hermite_t1_b)
@@ -267,7 +264,7 @@ def capsule_capsule(
         qa = a + t * d
         chord_t_b, _, _ = _closest_on_seg(qa, a2, b2)
         hits_grp.append(
-            GrpContactHit(ht0, ht1, t, ht0_b, ht1_b, float(chord_t_b), sgn, dr)
+            GrpContactHit(ht0, ht1, t, ht0_b, ht1_b, float(chord_t_b), sgn, d_req)
         )
     return d_geom, tuple(hits_grp)
 
@@ -307,7 +304,7 @@ def capsule_aabb(
         """Witness on AABB for q; signed gap (>0 out, <0 in) and force sign."""
         closest = np.clip(q, mn, mx)
         if np.any(q < mn) or np.any(q > mx):
-            return float(np.linalg.norm(q - closest)), closest, np.asarray(1.0)
+            return float(np.linalg.norm(q - closest)), closest, 1.0
         to_lo, to_hi = q - mn, mx - q
         face = int(np.argmin(np.concatenate([to_lo, to_hi])))
         gap = -float(np.min(np.minimum(to_lo, to_hi)))
@@ -316,7 +313,7 @@ def capsule_aabb(
             qb[face] = mn[face]
         else:
             qb[face - 3] = mx[face - 3]
-        return gap, qb, np.asarray(-1.0)  # inside: sign=-1 so clearance pushes outward
+        return gap, qb, -1.0  # inside: sign=-1 so clearance pushes outward
 
     d = b - a
     d_req = float(r) + float(margin)
@@ -339,14 +336,7 @@ def capsule_aabb(
     ht0, ht1 = float(hermite_t0), float(hermite_t1)
     order = [ibest] + [i for i in range(n_samp) if i != ibest and gaps[i] < d_req]
     hits = tuple(
-        ObsContactHit(
-            ht0,
-            ht1,
-            float(ts[i]),
-            qbs[i].copy(),
-            signs[i],
-            np.asarray(d_req if float(signs[i]) > 0.0 else 0.0),
-        )
+        ObsContactHit(ht0, ht1, float(ts[i]), qbs[i].copy(), float(signs[i]), d_req)
         for i in order
     )
     return d_geom, hits

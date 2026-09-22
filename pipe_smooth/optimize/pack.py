@@ -1,14 +1,18 @@
-"""Pack free Hermite DOF into one vector and differentiate a loss through it.
+"""Pack free Hermite DOF into one vector x.
 
 Free: node.pos if not fixed_p; derivative v = (vx, vy, vz) if not fixed_v.
 ||v|| is the tangent scale (old σ). Ports / clamped interfaces stay out of x
 via HermiteNode.fixed_p / fixed_v.
+
+Weighted J / ∇J: see ``optimize.loss.loss_and_grad``.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+import json
+from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from pipe_smooth.geometry.assemble import OptimizeGraph
@@ -21,6 +25,25 @@ class PackLayout:
 
     slots: list[tuple[int, str, str, int]]
     n: int
+
+    def export(self, path: str | Path) -> None:
+        """Write layout JSON for resume / viz (pairs with recorded ``x``)."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "n": self.n,
+            "slots": [[gi, nid, field, off] for gi, nid, field, off in self.slots],
+        }
+        path.write_text(json.dumps(data, indent=2))
+
+    @classmethod
+    def load(cls, path: str | Path) -> "PackLayout":
+        data = json.loads(Path(path).read_text())
+        slots = [
+            (int(gi), str(nid), str(field), int(off))
+            for gi, nid, field, off in data["slots"]
+        ]
+        return cls(slots=slots, n=int(data["n"]))
 
 
 def layout(graphs: Sequence[OptimizeGraph]) -> PackLayout:
@@ -62,23 +85,3 @@ def unpack(x: Any, graphs: Sequence[OptimizeGraph], layout: PackLayout, backend:
         else:
             node.v = x[off : off + 3]
     return graphs
-
-
-def loss_grad(
-    loss_fn: Callable[[Sequence[OptimizeGraph]], Any],
-    x: Any,
-    graphs: Sequence[OptimizeGraph],
-    layout: PackLayout,
-):
-    """(value, ∇_x loss). loss_fn(graphs) must read node fields with backend='jax'.
-
-    Active-set / collision detection stays outside this call: freeze pairs first,
-    then let loss_fn close over them.
-    """
-    import jax
-
-    def f(xx):
-        unpack(xx, graphs, layout, backend="jax")
-        return loss_fn(graphs)
-
-    return jax.value_and_grad(f)(x)

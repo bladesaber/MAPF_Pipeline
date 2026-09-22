@@ -9,8 +9,21 @@ from .path import (
     graph_length,
     graph_curvature,
 )
-from .clear import phi, clear_balls, clear_capsule_active, clear_hull_active
-from .space import space_cost, space_band_residuals, graph_space, graph_tangent_reg
+from .clear import (
+    phi,
+    clear_balls,
+    clear_capsule_active,
+    clear_hull_active,
+    clear_capsule_active_constraint,
+    clear_hull_active_constraint,
+)
+from .space import (
+    space_cost,
+    graph_space,
+    graph_tangent_reg,
+    graph_space_band_constraint,
+    graph_tangent_constraint,
+)
 from .union import UnionHit, find_union_pairs, union_cost
 
 __all__ = [
@@ -27,10 +40,13 @@ __all__ = [
     "clear_balls",
     "clear_capsule_active",
     "clear_hull_active",
+    "clear_capsule_active_constraint",
+    "clear_hull_active_constraint",
     "space_cost",
-    "space_band_residuals",
     "graph_space",
     "graph_tangent_reg",
+    "graph_space_band_constraint",
+    "graph_tangent_constraint",
     "UnionHit",
     "find_union_pairs",
     "union_cost",

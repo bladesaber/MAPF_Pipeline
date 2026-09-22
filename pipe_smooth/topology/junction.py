@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 import heapq
 import math
+
+from pipe_smooth.utils import to_float_list
 
 from .tree import GroupTree, TreeNode
 
@@ -23,6 +28,25 @@ class LabeledEdge:
     u: str
     v: str
     nodes: list[str] = field(default_factory=list)
+
+    def export(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "u": self.u,
+            "v": self.v,
+            "nodes": list(self.nodes),
+        }
+
+    @classmethod
+    def load(cls, data: dict[str, Any]) -> "LabeledEdge":
+        return cls(
+            id=str(data["id"]),
+            kind=str(data["kind"]),
+            u=str(data["u"]),
+            v=str(data["v"]),
+            nodes=[str(n) for n in data.get("nodes") or []],
+        )
 
 
 @dataclass
@@ -42,6 +66,30 @@ class UsagePath:
     v_end: list[float] = field(default_factory=lambda: [1.0, 0.0, 0.0])
     sigma_end: float = 1.0
 
+    def export(self) -> dict[str, Any]:
+        return {
+            "usage": [self.usage[0], self.usage[1]],
+            "edges": list(self.edges),
+            "reverse": [bool(x) for x in self.reverse],
+            "v_start": to_float_list(self.v_start),
+            "sigma_start": float(self.sigma_start),
+            "v_end": to_float_list(self.v_end),
+            "sigma_end": float(self.sigma_end),
+        }
+
+    @classmethod
+    def load(cls, data: dict[str, Any]) -> "UsagePath":
+        u = data["usage"]
+        return cls(
+            usage=(str(u[0]), str(u[1])),
+            edges=[str(e) for e in data.get("edges") or []],
+            reverse=[bool(x) for x in data.get("reverse") or []],
+            v_start=to_float_list(data.get("v_start", [1.0, 0.0, 0.0])),
+            sigma_start=float(data.get("sigma_start", 1.0)),
+            v_end=to_float_list(data.get("v_end", [1.0, 0.0, 0.0])),
+            sigma_end=float(data.get("sigma_end", 1.0)),
+        )
+
 
 @dataclass
 class JunctionComplex:
@@ -52,6 +100,25 @@ class JunctionComplex:
     interfaces: list[str]
     nodes: list[str]
     edges: list[str]
+
+    def export(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "seeds": list(self.seeds),
+            "interfaces": list(self.interfaces),
+            "nodes": list(self.nodes),
+            "edges": list(self.edges),
+        }
+
+    @classmethod
+    def load(cls, data: dict[str, Any]) -> "JunctionComplex":
+        return cls(
+            id=str(data["id"]),
+            seeds=[str(x) for x in data.get("seeds") or []],
+            interfaces=[str(x) for x in data.get("interfaces") or []],
+            nodes=[str(x) for x in data.get("nodes") or []],
+            edges=[str(x) for x in data.get("edges") or []],
+        )
 
 
 @dataclass
@@ -71,6 +138,34 @@ class PartitionedTree:
     junction_edges: list[LabeledEdge]
     usage_paths: list[UsagePath]
     complexes: list[JunctionComplex]
+
+    def export(self, path: str | Path) -> None:
+        """Write partitioned tree JSON (for debug / skip rebuild)."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "id": self.id,
+            "nodes": {nid: n.export() for nid, n in self.nodes.items()},
+            "labels": dict(self.labels),
+            "trunk_edges": [e.export() for e in self.trunk_edges],
+            "junction_edges": [e.export() for e in self.junction_edges],
+            "usage_paths": [p.export() for p in self.usage_paths],
+            "complexes": [c.export() for c in self.complexes],
+        }
+        path.write_text(json.dumps(data, indent=2))
+
+    @classmethod
+    def load(cls, path: str | Path) -> "PartitionedTree":
+        data = json.loads(Path(path).read_text())
+        return cls(
+            id=str(data["id"]),
+            nodes={nid: TreeNode.load(n) for nid, n in (data.get("nodes") or {}).items()},
+            labels={str(k): str(v) for k, v in (data.get("labels") or {}).items()},
+            trunk_edges=[LabeledEdge.load(e) for e in data.get("trunk_edges") or []],
+            junction_edges=[LabeledEdge.load(e) for e in data.get("junction_edges") or []],
+            usage_paths=[UsagePath.load(p) for p in data.get("usage_paths") or []],
+            complexes=[JunctionComplex.load(c) for c in data.get("complexes") or []],
+        )
 
 
 def _face_inward(pos, domain: dict, tol: float | None = None) -> list[float]:

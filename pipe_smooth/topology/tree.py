@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from pipe_smooth.utils import to_float_list
 
 
 @dataclass
@@ -13,6 +18,22 @@ class TreeNode:
     pos: list[float]
     radius: float
     terminal_id: str | None = None
+
+    def export(self) -> dict[str, Any]:
+        return {
+            "pos": to_float_list(self.pos),
+            "radius": float(self.radius),
+            "terminal_id": self.terminal_id,
+        }
+
+    @classmethod
+    def load(cls, data: dict[str, Any]) -> "TreeNode":
+        tid = data.get("terminal_id")
+        return cls(
+            pos=to_float_list(data["pos"]),
+            radius=float(data["radius"]),
+            terminal_id=None if tid is None else str(tid),
+        )
 
 
 @dataclass
@@ -25,6 +46,27 @@ class TreeEdge:
     xyz: list[list[float]]
     radius: float
     usages: list[list[str]] = field(default_factory=list)
+
+    def export(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "u": self.u,
+            "v": self.v,
+            "xyz": [to_float_list(p) for p in self.xyz],
+            "radius": float(self.radius),
+            "usages": [[str(a), str(b)] for a, b in self.usages],
+        }
+
+    @classmethod
+    def load(cls, data: dict[str, Any]) -> "TreeEdge":
+        return cls(
+            id=str(data["id"]),
+            u=str(data["u"]),
+            v=str(data["v"]),
+            xyz=[to_float_list(p) for p in data.get("xyz") or []],
+            radius=float(data["radius"]),
+            usages=[[str(a), str(b)] for a, b in data.get("usages") or []],
+        )
 
 
 @dataclass
@@ -39,6 +81,30 @@ class GroupTree:
     edges: list[TreeEdge]
     terminal_node: dict[str, str]  # terminal_id -> node_id
     usages: list[tuple[str, str]]
+
+    def export(self, path: str | Path) -> None:
+        """Write group tree JSON (for debug / skip rebuild)."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "id": self.id,
+            "nodes": {nid: n.export() for nid, n in self.nodes.items()},
+            "edges": [e.export() for e in self.edges],
+            "terminal_node": {str(k): str(v) for k, v in self.terminal_node.items()},
+            "usages": [[a, b] for a, b in self.usages],
+        }
+        path.write_text(json.dumps(data, indent=2))
+
+    @classmethod
+    def load(cls, path: str | Path) -> "GroupTree":
+        data = json.loads(Path(path).read_text())
+        return cls(
+            id=str(data["id"]),
+            nodes={nid: TreeNode.load(n) for nid, n in (data.get("nodes") or {}).items()},
+            edges=[TreeEdge.load(e) for e in data.get("edges") or []],
+            terminal_node={str(k): str(v) for k, v in (data.get("terminal_node") or {}).items()},
+            usages=[(str(a), str(b)) for a, b in data.get("usages") or []],
+        )
 
 
 def build_tree(group: dict, paths: dict, usages: dict, tol: float = 1e-6) -> GroupTree:
