@@ -370,7 +370,8 @@ inline void append_shell_aabbs(const std::vector<GroupCorridors>& groups,
         throw std::invalid_argument(
             "append_shell_aabbs: carve_margin must be >= 0");
     }
-    const int carve_margin = params.carve_margin;
+    // Floor open width by pipe radius (CLI carve_margin may still be larger).
+    const int carve_margin = std::max(params.carve_margin, params.radius_cells());
     // m==0 → planar boundary: outermost cell layer (degraded shell).
     const int m = std::max(params.shell_obstacle_cells(), 1);
     const int size_x = params.size_x;

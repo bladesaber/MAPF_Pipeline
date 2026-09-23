@@ -29,7 +29,8 @@ struct GenParams {
     /// to the full-domain face afterward.
     float shell_margin = 0.f;
     /// Chebyshev carve of witness tunnels through shell AABBs (cells).
-    /// Must be `>= 0` (`append_shell_aabbs` throws otherwise). Typical: `radius_cells()`.
+    /// Must be `>= 0`. Effective carve in `append_shell_aabbs` is
+    /// `max(carve_margin, radius_cells())`.
     int carve_margin = 0;
     /// Extra Chebyshev slack (cells) beyond `2*radius/resolution`.
     int terminal_gap = 2;

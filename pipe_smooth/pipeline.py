@@ -41,7 +41,7 @@ Obstacle = SphereObs | CapsuleObs | AabbObs
 
 METHODS = ("adam", "adam_annealed", "langevin", "elastic_qp", "interior_nlp")
 Method = Literal[*METHODS]
-ClearKind = Literal["capsule", "hull"]
+ClearKind = Literal["capsule", "hull", "ignore"]
 
 
 def obstacles_from_env(env: dict) -> list[Obstacle]:
@@ -142,7 +142,7 @@ def clearance_report(
     graphs: Sequence[OptimizeGraph],
     obstacles: Sequence[Obstacle] = (),
     *,
-    kind: Literal["capsule", "hull"] = "hull",
+    kind: Literal["capsule", "hull", "ignore"] = "hull",
     margin: float = 0.0,
 ) -> dict[str, Any]:
     """Hard clearance report (§8.1.1). Same proxy as the loop; strip soft ``margin``.
@@ -151,7 +151,21 @@ def clearance_report(
     ``d_req_hard = d_req - margin``; ``n_hit`` / ``ok`` count only hard violations
     (``d_req_hard - d_geom > 0``). ``max_shortfall`` is that max (0 if none).
     ``hard_obs`` / ``hard_grp`` are JSON-friendly ``{pair, shortfall}`` via ``.export()``.
+    ``kind='ignore'`` skips detection (debug).
     """
+    if kind == "ignore":
+        return {
+            "kind": kind,
+            "margin": float(margin),
+            "n_hit": 0,
+            "n_hit_obs": 0,
+            "n_hit_grp": 0,
+            "max_shortfall": 0.0,
+            "ok": True,
+            "hard_obs": [],
+            "hard_grp": [],
+        }
+
     if kind == "hull":
         narrow_obs, narrow_grp = _refresh_hull(graphs, obstacles, margin)
     else:
@@ -275,7 +289,6 @@ def run_stage1(
     method: Method = "adam_annealed",  # type: ignore[assignment]
     clear_kind: ClearKind = "capsule",
     weights: LossWeights | None = None,
-    obstacles: Sequence[Obstacle] | None = None,
     margin: float = 0.0,
     length_max: float = 8.0,
     steps: int = 200,
@@ -293,28 +306,31 @@ def run_stage1(
     graphs = build_graphs(
         env, length_max=length_max, out_dir=out, store_cfg=store_cfg
     )
-    obs = list(obstacles if obstacles is not None else obstacles_from_env(env))
+    obs = [] if clear_kind == "ignore" else obstacles_from_env(env)
     lay = layout(graphs)
     layout_path = out / "layout.json"
     lay.export(layout_path)
     store_cfg["layout"] = str(layout_path)
-    
+
     w = weights or LossWeights()
     weights_path = out / "weights.json"
     weights_path.write_text(json.dumps(asdict(w), indent=2))
     store_cfg["weights"] = str(weights_path)
-    
+
     rec = Recorder(out_dir=out, record_state=record_state, phase=method)
 
     def refresh_clear(gs):
+        if clear_kind == "ignore":
+            return [], []
         if clear_kind == "hull":
             return _refresh_hull(gs, obs, margin)
         return _refresh_capsule(gs, obs, margin)
 
     union_cb = (lambda gs: _refresh_union(gs)) if w.lam != 0.0 else None
+    # loss clear_kind is capsule|hull only; ignore → empty active set, capsule unused
     kw: dict[str, Any] = dict(
         steps=steps,
-        clear_kind=clear_kind,
+        clear_kind="capsule" if clear_kind == "ignore" else clear_kind,
         refresh_clear=refresh_clear,
         refresh_union=union_cb,
         recorder=rec,
@@ -388,12 +404,12 @@ def main() -> None:
         help="prepared env YAML",
     )
     parser.add_argument("-o", "--out-dir", default=str(root / "runs" / "stage1"))
-    parser.add_argument("-m", "--method", default="adam_annealed", choices=list(METHODS))
+    parser.add_argument("-m", "--method", default="adam", choices=list(METHODS))
     parser.add_argument(
         "--clear-kind",
         default="capsule",
-        choices=["capsule", "hull"],
-        help="narrowphase proxy for clear / accept",
+        choices=["capsule", "hull", "ignore"],
+        help="narrowphase proxy; 'ignore' skips all clearance (debug)",
     )
     parser.add_argument("--steps", type=int, default=50)
     parser.add_argument(

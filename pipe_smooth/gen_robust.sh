@@ -1,22 +1,20 @@
 #!/usr/bin/env bash
-# Robust batch for pipe_smooth Stage-1 eval: plane_slice × {easy,middle,hard}.
+# Robust batch for pipe_smooth Stage-1 eval: plane_slice + pillar_field × {easy,hard}.
 #
 # Unlike pipe_design/include/benchmark/gen_robust.sh:
 #   - path generator fixed to plane_slice (no axis_ray)
-#   - RADIUS is a required-style CLI arg (default larger than pipe_design's 0.5)
+#   - obstacle fixed to pillar_field
+#   - RADIUS is a CLI arg (default larger than pipe_design's 0.5)
 #
 # Layout:
-#   OUT_DIR/plane_slice/<pillar_field|corridor_rack>/<easy|middle|hard>/instance_*.yaml
+#   OUT_DIR/{easy,hard}/instance_*.yaml
 #
-# Rules (same plane_slice knobs as pipe_design):
-#   - num_groups >= 2; hard > middle > easy
-#   - plane_slice groups×terms: 3 / 8 / 12
-#   - each group terminals > 2
+# Rules:
+#   - easy: 3 groups × 3 terminals; hard: 8 groups × 8 terminals
 #   - low success → fill loop until NUM ok (or MAX_FILL_ROUNDS)
 #
 # Usage:
-#   ./gen_robust.sh [OUT_DIR] [NUM] [RADIUS] [OBSTACLE] [SHELL_MARGIN]
-# OBSTACLE:  pillar_field | corridor_rack | all    (default: all)
+#   ./gen_robust.sh [OUT_DIR] [NUM] [RADIUS] [SHELL_MARGIN]
 # SHELL_MARGIN: optional float; if omitted, main_gen default (0)
 # Defaults: OUT_DIR=<pipe_smooth>/data/bench  NUM=50  RADIUS=1.5
 #
@@ -27,25 +25,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="${1:-${SCRIPT_DIR}/data/bench}"
 NUM="${2:-50}"
 RADIUS="${3:-1.5}"
-OBSTACLE="${4:-all}"
-SHELL_MARGIN="${5:-}"
+SHELL_MARGIN="${4:-}"
 MAIN_GEN="${MAIN_GEN:-}"
 
 PLANE_SLICE_ATTEMPT_MULT="${PLANE_SLICE_ATTEMPT_MULT:-4}"
 MAX_FILL_ROUNDS="${MAX_FILL_ROUNDS:-20}"
 
-case "${OBSTACLE}" in
-  pillar_field|corridor_rack|all) ;;
-  *)
-    echo "error: OBSTACLE must be pillar_field | corridor_rack | all (got '${OBSTACLE}')" >&2
-    echo "usage: $0 [OUT_DIR] [NUM] [RADIUS] [OBSTACLE] [SHELL_MARGIN]" >&2
-    exit 1
-    ;;
-esac
-
-# Reject non-numeric / non-positive radius early.
 if ! awk -v r="${RADIUS}" 'BEGIN { exit !(r == r && r > 0) }'; then
   echo "error: RADIUS must be a positive float (got '${RADIUS}')" >&2
+  echo "usage: $0 [OUT_DIR] [NUM] [RADIUS] [SHELL_MARGIN]" >&2
   exit 1
 fi
 
@@ -74,59 +62,32 @@ SUMMARY="${OUT_DIR}/robust_summary.txt"
 
 log() { echo "$@" | tee -a "${SUMMARY}"; }
 
-# Larger default grid than pipe_design (r=0.5 / size=32): continuous tubes need room.
 SIZE="${SIZE:-48}"
-TERMINAL_GAP="${TERMINAL_GAP:-2}"   # slack beyond diameter; terminal_center_gap = diam + this
-
-# Obstacle paint (after corridor + shell).
-# CORRIDOR_MARGIN=-1 → main_gen uses radius_cells (scales with RADIUS).
-WITH_OBSTACLE=true
-OBSTACLE_DENSITY=0.4
+TERMINAL_GAP="${TERMINAL_GAP:-2}"
 CORRIDOR_MARGIN="${CORRIDOR_MARGIN:--1}"
+OBSTACLE_DENSITY=0.2
 OBSTACLE_MAX_ROUNDS=256
-MIN_EDGE=2
-MAX_EDGE=8
+MIN_EDGE=4
+MAX_EDGE=10
 CANDIDATES_PER_ROUND=32
-ISOMETRIC=true
+ISOMETRIC=false
 DIST_CAP=16
-DILATE_STEPS=2
 
 obstacle_args() {
-  if [[ "${WITH_OBSTACLE}" != "true" ]]; then
-    return 0
-  fi
   local args=(
-    --obstacle "${OBSTACLE_TYPE}"
+    --obstacle pillar_field
     --corridor_margin "${CORRIDOR_MARGIN}"
     --obstacle_max_rounds "${OBSTACLE_MAX_ROUNDS}"
+    --obstacle_density "${OBSTACLE_DENSITY}"
+    --min_edge "${MIN_EDGE}"
+    --max_edge "${MAX_EDGE}"
+    --candidates_per_round "${CANDIDATES_PER_ROUND}"
+    --dist_cap "${DIST_CAP}"
   )
-  case "${OBSTACLE_TYPE}" in
-    pillar_field)
-      args+=(
-        --obstacle_density "${OBSTACLE_DENSITY}"
-        --min_edge "${MIN_EDGE}"
-        --max_edge "${MAX_EDGE}"
-        --candidates_per_round "${CANDIDATES_PER_ROUND}"
-        --dist_cap "${DIST_CAP}"
-      )
-      if [[ "${ISOMETRIC}" == "true" ]]; then
-        args+=(--isometric)
-      fi
-      ;;
-    corridor_rack)
-      args+=(--dilate_steps "${DILATE_STEPS}")
-      ;;
-    *)
-      echo "error: OBSTACLE_TYPE must be pillar_field | corridor_rack (got '${OBSTACLE_TYPE}')" >&2
-      exit 1
-      ;;
-  esac
+  if [[ "${ISOMETRIC}" == "true" ]]; then
+    args+=(--isometric)
+  fi
   printf '%s\n' "${args[@]}"
-}
-
-count_yaml() {
-  local dest="$1"
-  find "${dest}" -maxdepth 1 -name 'instance_*.yaml' 2>/dev/null | wc -l | tr -d ' '
 }
 
 ingest_staging() {
@@ -145,15 +106,12 @@ ingest_staging() {
   echo "${have}"
 }
 
-# Generate one (obstacle, level) until NUM success files or rounds exhausted.
-# Args: obst level seed_base  [main_gen plane_slice flags...]
+# Args: level seed_base  [main_gen plane_slice flags...]
 run_one() {
-  local obst="$1" level="$2" seed_base="$3"
-  shift 3
-  OBSTACLE_TYPE="${obst}"
+  local level="$1" seed_base="$2"
+  shift 2
   local gen="plane_slice"
-
-  local dest="${OUT_DIR}/${gen}/${obst}/${level}"
+  local dest="${OUT_DIR}/${level}"
   mkdir -p "${dest}"
   find "${dest}" -maxdepth 1 -name 'instance_*.yaml' -delete 2>/dev/null || true
 
@@ -165,8 +123,8 @@ run_one() {
   local obst_args=()
   mapfile -t obst_args < <(obstacle_args)
 
-  log "=== ${gen} / ${obst} / ${level}  seed0=${seed_base}  radius=${RADIUS}  target=${NUM}  out=${dest} ==="
-  log "size=${SIZE}  terminal_gap=${TERMINAL_GAP}  obstacle=${OBSTACLE_TYPE}  corridor_margin=${CORRIDOR_MARGIN}  density=${OBSTACLE_DENSITY}  dilate_steps=${DILATE_STEPS}"
+  log "=== ${level}  (gen=${gen}, obst=pillar_field)  seed0=${seed_base}  radius=${RADIUS}  target=${NUM}  out=${dest} ==="
+  log "size=${SIZE}  terminal_gap=${TERMINAL_GAP}  corridor_margin=${CORRIDOR_MARGIN}  density=${OBSTACLE_DENSITY}"
 
   local have=0
   local seed="${seed_base}"
@@ -203,40 +161,24 @@ run_one() {
   done
 
   if (( have < NUM )); then
-    log "WARNING: only ${have}/${NUM} instances for ${gen}/${obst}/${level} after ${round} rounds"
+    log "WARNING: only ${have}/${NUM} instances for ${level} after ${round} rounds"
   fi
   log ""
   return 0
 }
 
-run_plane_slice_levels() {
-  local obst="$1"
-  # easy: 3 groups × 3 terminals
-  run_one "${obst}" easy 11000 \
-    --size "${SIZE}" --num_groups 3 --terminals 3,3,3 \
-    --subdomain_n 3 --plane_gap 3 --max_iterations 128
-
-  # hard: 8 groups × 8 terminals
-  run_one "${obst}" hard 12000 \
-    --size "${SIZE}" --num_groups 8 --terminals 8,8,8,8,8,8,8,8 \
-    --subdomain_n 5 --plane_gap 3 --max_iterations 128
-}
-
-OBSTACLES=()
-case "${OBSTACLE}" in
-  all) OBSTACLES=(pillar_field corridor_rack) ;;
-  *)   OBSTACLES=("${OBSTACLE}") ;;
-esac
-
-log "path_gen=plane_slice  obstacle=${OBSTACLE}  radius=${RADIUS}  out=${OUT_DIR}  target_num=${NUM}"
+log "path_gen=plane_slice  obstacle=pillar_field  radius=${RADIUS}  out=${OUT_DIR}  target_num=${NUM}"
 log "shell_margin=${SHELL_MARGIN:-(default)}  plane_slice_mult=${PLANE_SLICE_ATTEMPT_MULT}  max_fill_rounds=${MAX_FILL_ROUNDS}"
-log "size=${SIZE}  corridor_margin=${CORRIDOR_MARGIN}  pillar density=${OBSTACLE_DENSITY}  dilate_steps=${DILATE_STEPS}"
+log "size=${SIZE}  corridor_margin=${CORRIDOR_MARGIN}  pillar density=${OBSTACLE_DENSITY}"
 log "main_gen=${MAIN_GEN}"
 log ""
 
-for obst in "${OBSTACLES[@]}"; do
-  log "######## dataset plane_slice × ${obst} ########"
-  run_plane_slice_levels "${obst}"
-done
+run_one easy 11000 \
+  --size "${SIZE}" --num_groups 3 --terminals 3,3,3 \
+  --subdomain_n 3 --plane_gap 3 --max_iterations 128
+
+run_one hard 12000 \
+  --size "${SIZE}" --num_groups 8 --terminals 8,8,8,8,8,8,8,8 \
+  --subdomain_n 5 --plane_gap 3 --max_iterations 128
 
 log "done. summary: ${SUMMARY}"

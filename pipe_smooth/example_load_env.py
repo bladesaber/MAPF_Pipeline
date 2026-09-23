@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load pipe_design instance YAML(s) for pipe_smooth (obstacles ignored).
+"""Load pipe_design instance YAML(s) for pipe_smooth (keep obstacles).
 
 Usages: per group, randomly sample undirected terminal pairs (no reverse
 duplicates), then randomly orient each pair. Target count min(n+1, C(n,2));
@@ -23,12 +23,12 @@ ROOT = Path(__file__).resolve().parent
 OUT_DIR = ROOT / "data"
 DEFAULT_ENV = (
     ROOT.parents[0]
-    / "pipe_design/data/envs/plane_slice/pillar_field/easy/instance_0.yaml"
+    / "pipe_smooth/data/bench/easy/instance_0.yaml"
 )
 
 
 def load_env(yaml_path: str | Path, seed: int | None = None) -> dict:
-    """Read instance YAML; ignore obstacles. Return meta/grid/groups/paths/usages."""
+    """Read instance YAML. Return meta/grid/groups/paths/usages/obstacles."""
     src = Path(yaml_path).resolve()
     data = yaml.safe_load(src.read_text())
     meta = data.get("meta") or {}
@@ -36,6 +36,13 @@ def load_env(yaml_path: str | Path, seed: int | None = None) -> dict:
     res = float(grid.get("resolution", meta.get("resolution", 1.0)))
     usage_seed = meta.get("seed", 0) if seed is None else seed
     rng = random.Random(usage_seed)
+
+    raw_obs = data.get("obstacles") or {}
+    obstacles = {
+        "spheres": list(raw_obs.get("spheres") or []),
+        "capsules": list(raw_obs.get("capsules") or []),
+        "aabbs": list(raw_obs.get("aabbs") or []),
+    }
 
     groups_out = []
     for g in data.get("groups") or []:
@@ -95,6 +102,7 @@ def load_env(yaml_path: str | Path, seed: int | None = None) -> dict:
         "source": str(src),
         "meta": meta,
         "grid": grid,
+        "obstacles": obstacles,
         "groups": groups_out,
         "paths": paths_out,
         "usages": usages_out,
@@ -147,7 +155,13 @@ def main() -> None:
         env = load_env(src, seed=args.seed)
         dst = out_dir / src.name
         save_env(env, dst)
-        print(f"wrote {dst}  groups={len(env['groups'])}  usages={[u['usages'] for u in env['usages']]}")
+        print(
+            f"wrote {dst}  groups={len(env['groups'])}  "
+            f"obs=({len(env['obstacles']['spheres'])},"
+            f"{len(env['obstacles']['capsules'])},"
+            f"{len(env['obstacles']['aabbs'])})  "
+            f"usages={[u['usages'] for u in env['usages']]}"
+        )
 
 
 if __name__ == "__main__":
