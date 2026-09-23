@@ -1,7 +1,37 @@
-"""PyQt + PyVista viewer for GroupTree / PartitionedTree / OptimizeGraph."""
+"""Interactive PyQt + PyVista viewer for pipe_smooth topology stages.
+
+Inspect the three pipeline layers produced by ``build_graphs`` on a prepared
+env YAML (same input as the optimize pipeline):
+
+  GroupTree       — coarse undirected tree (edges + terminals / branch nodes)
+  PartitionedTree — trunk / junction labeled edges after §6.2 partition
+  OptimizeGraph   — densified Hermite nodes (red) and segments (blue)
+
+UI
+  File → Load env YAML…     load / reload an env; rebuilds trees, parts, graphs
+  View → GroupTree | …      switch which layer is drawn (full redraw)
+  Right toolbox             per-layer checkboxes; toggles actor visibility only
+    Groups                  show / hide a whole pipe group
+    Labeled edges           (partition) per ``gid|eid`` edge
+    UsagePath / Optimize…   optional usage overlays (off by default)
+
+  Partition also has a color mode: per labeled-edge hash, or trunk gray +
+  junction colored by complex Z.
+
+CLI
+  python -m pipe_smooth.vis_topology [env.yaml] [--resolution R]
+
+  env.yaml       optional path to prepared env; if omitted, use File → Load
+  --resolution   Hermite sample spacing (world length) for OptimizeGraph
+                 refresh / draw; smaller → denser blue curves (default: 0.1)
+
+Requires a working Qt platform plugin (sets QT_QPA_PLATFORM_PLUGIN_PATH from
+the active conda/prefix when needed).
+"""
 
 from __future__ import annotations
 
+import argparse
 import colorsys
 import hashlib
 import os
@@ -41,11 +71,12 @@ def _color(key: str) -> tuple[float, float, float]:
 
 
 class TopologyViewer(QMainWindow):
-    def __init__(self):
+    def __init__(self, resolution: float = 0.1):
         super().__init__()
         self.setWindowTitle("pipe_smooth topology viewer")
         self.resize(1400, 900)
 
+        self.resolution = float(resolution)
         self.trees = []
         self.parts = []
         self.graphs = []
@@ -389,7 +420,7 @@ class TopologyViewer(QMainWindow):
     def _draw_graphs(self):
         for g in self.graphs:
             # rebuild Hermite caches, then draw curves (not node chords)
-            g.refresh(backend="numpy", resolution=0.1)
+            g.refresh(backend="numpy", resolution=self.resolution)
             for sid, seg in g.segments.items():
                 self._poly(
                     np.asarray(seg.xyz, float),
@@ -425,7 +456,28 @@ class TopologyViewer(QMainWindow):
                 )
 
 
-def main():
+def main(argv: list[str] | None = None):
+    parser = argparse.ArgumentParser(
+        description="PyQt + PyVista viewer for pipe_smooth GroupTree / "
+        "PartitionedTree / OptimizeGraph.",
+    )
+    parser.add_argument(
+        "env",
+        nargs="?",
+        type=Path,
+        help="prepared env YAML (optional; else File → Load env YAML…)",
+    )
+    parser.add_argument(
+        "--resolution",
+        "-r",
+        type=float,
+        default=0.1,
+        help="Hermite sample spacing for OptimizeGraph draw (default: 0.1)",
+    )
+    args = parser.parse_args(argv)
+    if args.resolution <= 0:
+        parser.error("--resolution must be > 0")
+
     # Conda often ships libqxcb.so under $PREFIX/plugins/platforms, while
     # pip PyQt5 looks in site-packages/PyQt5/Qt5/plugins (may lack xcb).
     if not os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH"):
@@ -439,18 +491,18 @@ def main():
                 )
                 break
 
-    app = QApplication(sys.argv)
-    w = TopologyViewer()
+    app = QApplication([sys.argv[0]])
+    w = TopologyViewer(resolution=args.resolution)
     w.show()
-    if len(sys.argv) > 1 and sys.argv[1].endswith((".yaml", ".yml")):
-        env = yaml.safe_load(Path(sys.argv[1]).read_text())
+    if args.env is not None:
+        env = yaml.safe_load(args.env.read_text())
         built = build_graphs(env)
         w._bind_data(
             built["trees"],
             built["parts"],
             built["graphs"],
             TopologyViewer._domain_from_env(env),
-            title=f"topology — {Path(sys.argv[1]).name}",
+            title=f"topology — {args.env.name}",
         )
     sys.exit(app.exec_())
 

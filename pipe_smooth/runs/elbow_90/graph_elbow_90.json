@@ -1,0 +1,534 @@
+{
+  "id": "elbow_90",
+  "nodes": {
+    "a0": {
+      "pos": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": null,
+      "fixed_p": true,
+      "fixed_v": true,
+      "role": "port"
+    },
+    "a1": {
+      "pos": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.9999999999989999,
+        0.0,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "a2": {
+      "pos": [
+        2.0,
+        0.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.9999999999989999,
+        0.0,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "a3": {
+      "pos": [
+        3.0,
+        0.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.9999999999989999,
+        0.0,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "a4": {
+      "pos": [
+        4.0,
+        0.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.9999999999989999,
+        0.0,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "a5": {
+      "pos": [
+        5.0,
+        0.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.9999999999989999,
+        0.0,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "a6": {
+      "pos": [
+        6.0,
+        0.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.9999999999989999,
+        0.0,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "a7": {
+      "pos": [
+        7.0,
+        0.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.9999999999989999,
+        0.0,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "a8": {
+      "pos": [
+        8.0,
+        0.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.9999999999989999,
+        0.0,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "a9": {
+      "pos": [
+        9.0,
+        0.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.7071067811865475,
+        0.7071067811865475,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "b1": {
+      "pos": [
+        9.0,
+        1.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.0,
+        0.9999999999989999,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "b2": {
+      "pos": [
+        9.0,
+        2.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.0,
+        0.9999999999989999,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "b3": {
+      "pos": [
+        9.0,
+        3.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.0,
+        0.9999999999989999,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "b4": {
+      "pos": [
+        9.0,
+        4.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.0,
+        0.9999999999989999,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "b5": {
+      "pos": [
+        9.0,
+        5.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.0,
+        0.9999999999989999,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "b6": {
+      "pos": [
+        9.0,
+        6.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.0,
+        0.9999999999989999,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "b7": {
+      "pos": [
+        9.0,
+        7.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.0,
+        0.9999999999989999,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "b8": {
+      "pos": [
+        9.0,
+        8.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": [
+        0.0,
+        0.9999999999989999,
+        0.0
+      ],
+      "fixed_p": false,
+      "fixed_v": false,
+      "role": "trunk"
+    },
+    "b9": {
+      "pos": [
+        9.0,
+        9.0,
+        0.0
+      ],
+      "radius": 1.0,
+      "v": null,
+      "fixed_p": true,
+      "fixed_v": true,
+      "role": "port"
+    }
+  },
+  "segments": {
+    "s0": {
+      "id": "s0",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "a0",
+      "v": "a1",
+      "ts_count": 17
+    },
+    "s1": {
+      "id": "s1",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "a1",
+      "v": "a2",
+      "ts_count": 17
+    },
+    "s2": {
+      "id": "s2",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "a2",
+      "v": "a3",
+      "ts_count": 17
+    },
+    "s3": {
+      "id": "s3",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "a3",
+      "v": "a4",
+      "ts_count": 17
+    },
+    "s4": {
+      "id": "s4",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "a4",
+      "v": "a5",
+      "ts_count": 17
+    },
+    "s5": {
+      "id": "s5",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "a5",
+      "v": "a6",
+      "ts_count": 17
+    },
+    "s6": {
+      "id": "s6",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "a6",
+      "v": "a7",
+      "ts_count": 17
+    },
+    "s7": {
+      "id": "s7",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "a7",
+      "v": "a8",
+      "ts_count": 17
+    },
+    "s8": {
+      "id": "s8",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "a8",
+      "v": "a9",
+      "ts_count": 17
+    },
+    "s9": {
+      "id": "s9",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "a9",
+      "v": "b1",
+      "ts_count": 17
+    },
+    "s10": {
+      "id": "s10",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "b1",
+      "v": "b2",
+      "ts_count": 17
+    },
+    "s11": {
+      "id": "s11",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "b2",
+      "v": "b3",
+      "ts_count": 17
+    },
+    "s12": {
+      "id": "s12",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "b3",
+      "v": "b4",
+      "ts_count": 17
+    },
+    "s13": {
+      "id": "s13",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "b4",
+      "v": "b5",
+      "ts_count": 17
+    },
+    "s14": {
+      "id": "s14",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "b5",
+      "v": "b6",
+      "ts_count": 17
+    },
+    "s15": {
+      "id": "s15",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "b6",
+      "v": "b7",
+      "ts_count": 17
+    },
+    "s16": {
+      "id": "s16",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "b7",
+      "v": "b8",
+      "ts_count": 17
+    },
+    "s17": {
+      "id": "s17",
+      "edge": "e0",
+      "kind": "trunk",
+      "u": "b8",
+      "v": "b9",
+      "ts_count": 17
+    }
+  },
+  "edge_segs": {
+    "e0": [
+      "s0",
+      "s1",
+      "s2",
+      "s3",
+      "s4",
+      "s5",
+      "s6",
+      "s7",
+      "s8",
+      "s9",
+      "s10",
+      "s11",
+      "s12",
+      "s13",
+      "s14",
+      "s15",
+      "s16",
+      "s17"
+    ]
+  },
+  "junctions": {},
+  "usage_paths": [
+    {
+      "usage": [
+        "A",
+        "B"
+      ],
+      "edges": [
+        "e0"
+      ],
+      "edges_reverse": [
+        false
+      ],
+      "segments": [
+        "s0",
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+        "s5",
+        "s6",
+        "s7",
+        "s8",
+        "s9",
+        "s10",
+        "s11",
+        "s12",
+        "s13",
+        "s14",
+        "s15",
+        "s16",
+        "s17"
+      ],
+      "reverse": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "v_start": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "v_end": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  ]
+}

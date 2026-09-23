@@ -1,0 +1,10 @@
+{
+  "out_dir": "/home/admin123456/Desktop/work/MAPF_Pipeline/pipe_smooth/runs/elbow_90/run_001",
+  "weights": "/home/admin123456/Desktop/work/MAPF_Pipeline/pipe_smooth/runs/elbow_90/run_001/weights.json",
+  "layout": "/home/admin123456/Desktop/work/MAPF_Pipeline/pipe_smooth/runs/elbow_90/run_001/layout.json",
+  "recorder": "/home/admin123456/Desktop/work/MAPF_Pipeline/pipe_smooth/runs/elbow_90/run_001/recorder.pkl",
+  "graph": {
+    "elbow_90": "/home/admin123456/Desktop/work/MAPF_Pipeline/pipe_smooth/runs/elbow_90/run_001/graph_elbow_90.json"
+  },
+  "report": "/home/admin123456/Desktop/work/MAPF_Pipeline/pipe_smooth/runs/elbow_90/run_001/report.json"
+}

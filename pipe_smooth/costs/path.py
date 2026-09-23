@@ -55,22 +55,28 @@ def k_bend(
     dl = 0.5 * (ds[:-1] + ds[1:])
     wi = xp.ones((xyz.shape[0],), dtype=xyz.dtype) if w is None else xp.asarray(w)
 
-    # θ ∈ [0,π]; avoid arccos (singular as cos→1)
-    theta = xp.arctan2(
-        xp.linalg.norm(xp.cross(t[:-1], t[1:]), axis=-1),
-        xp.sum(t[:-1] * t[1:], axis=-1),
-    )
+    # θ ∈ [0,π]; avoid arccos (singular as cos→1).
+    # Smooth ||cross|| so JAX grad is finite when chords are parallel (θ→0).
+    c = xp.cross(t[:-1], t[1:])
+    cn = xp.sqrt(xp.sum(c * c, axis=-1) + _EPS)
+    theta = xp.arctan2(cn, xp.sum(t[:-1] * t[1:], axis=-1))
     K = xp.sum(wi[1:-1] * (theta ** 2) * (radius[1:-1] ** 2) / (dl + _EPS))
 
     if t_start is not None:
         ts = xp.asarray(t_start)
         ts = ts / (xp.linalg.norm(ts) + _EPS)
-        th0 = xp.arctan2(xp.linalg.norm(xp.cross(ts, t[0])), xp.sum(ts * t[0]))
+        c0 = xp.cross(ts, t[0])
+        th0 = xp.arctan2(
+            xp.sqrt(xp.sum(c0 * c0) + _EPS), xp.sum(ts * t[0])
+        )
         K = K + wi[0] * (th0 ** 2) * (radius[0] ** 2) / (ds[0] + _EPS)
     if t_end is not None:
         te = xp.asarray(t_end)
         te = te / (xp.linalg.norm(te) + _EPS)
-        th1 = xp.arctan2(xp.linalg.norm(xp.cross(t[-1], te)), xp.sum(t[-1] * te))
+        c1 = xp.cross(t[-1], te)
+        th1 = xp.arctan2(
+            xp.sqrt(xp.sum(c1 * c1) + _EPS), xp.sum(t[-1] * te)
+        )
         K = K + wi[-1] * (th1 ** 2) * (radius[-1] ** 2) / (ds[-1] + _EPS)
     return K
 
@@ -138,7 +144,8 @@ def k_menger(
     a = xyz[1:-1] - xyz[:-2]
     b = xyz[2:] - xyz[1:-1]
     c = xyz[2:] - xyz[:-2]
-    cross = xp.linalg.norm(xp.cross(a, b), axis=-1)
+    ab = xp.cross(a, b)
+    cross = xp.sqrt(xp.sum(ab * ab, axis=-1) + _EPS)
     denom = (
         xp.linalg.norm(a, axis=-1) * xp.linalg.norm(b, axis=-1) * xp.linalg.norm(c, axis=-1)
         + _EPS
@@ -151,14 +158,16 @@ def k_menger(
         ts = xp.asarray(t_start)
         ts = ts / (xp.linalg.norm(ts) + _EPS)
         t0 = (xyz[1] - xyz[0]) / (ds[0] + _EPS)
-        th0 = xp.arctan2(xp.linalg.norm(xp.cross(ts, t0)), xp.sum(ts * t0))
+        c0 = xp.cross(ts, t0)
+        th0 = xp.arctan2(xp.sqrt(xp.sum(c0 * c0) + _EPS), xp.sum(ts * t0))
         km0 = th0 / (ds[0] + _EPS)
         K = K + wi[0] * (km0 * radius[0]) ** 2 * ds[0]
     if t_end is not None:
         te = xp.asarray(t_end)
         te = te / (xp.linalg.norm(te) + _EPS)
         t1 = (xyz[-1] - xyz[-2]) / (ds[-1] + _EPS)
-        th1 = xp.arctan2(xp.linalg.norm(xp.cross(t1, te)), xp.sum(t1 * te))
+        c1 = xp.cross(t1, te)
+        th1 = xp.arctan2(xp.sqrt(xp.sum(c1 * c1) + _EPS), xp.sum(t1 * te))
         km1 = th1 / (ds[-1] + _EPS)
         K = K + wi[-1] * (km1 * radius[-1]) ** 2 * ds[-1]
     return K
@@ -180,7 +189,8 @@ def kappa_menger(xyz, t_start=None, t_end=None, backend: str = "numpy"):
     a = xyz[1:-1] - xyz[:-2]
     b = xyz[2:] - xyz[1:-1]
     c = xyz[2:] - xyz[:-2]
-    cross = xp.linalg.norm(xp.cross(a, b), axis=-1)
+    ab = xp.cross(a, b)
+    cross = xp.sqrt(xp.sum(ab * ab, axis=-1) + _EPS)
     denom = (
         xp.linalg.norm(a, axis=-1)
         * xp.linalg.norm(b, axis=-1)
@@ -193,13 +203,15 @@ def kappa_menger(xyz, t_start=None, t_end=None, backend: str = "numpy"):
         ts = xp.asarray(t_start)
         ts = ts / (xp.linalg.norm(ts) + _EPS)
         t0 = (xyz[1] - xyz[0]) / (ds[0] + _EPS)
-        th0 = xp.arctan2(xp.linalg.norm(xp.cross(ts, t0)), xp.sum(ts * t0))
+        c0 = xp.cross(ts, t0)
+        th0 = xp.arctan2(xp.sqrt(xp.sum(c0 * c0) + _EPS), xp.sum(ts * t0))
         kappa[0] = th0 / (ds[0] + _EPS)
     if t_end is not None:
         te = xp.asarray(t_end)
         te = te / (xp.linalg.norm(te) + _EPS)
         t1 = (xyz[-1] - xyz[-2]) / (ds[-1] + _EPS)
-        th1 = xp.arctan2(xp.linalg.norm(xp.cross(t1, te)), xp.sum(t1 * te))
+        c1 = xp.cross(t1, te)
+        th1 = xp.arctan2(xp.sqrt(xp.sum(c1 * c1) + _EPS), xp.sum(t1 * te))
         kappa[-1] = th1 / (ds[-1] + _EPS)
     return kappa
 

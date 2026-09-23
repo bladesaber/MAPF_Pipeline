@@ -99,8 +99,12 @@ def run_optimize(
     out_dir: str | Path = "runs/stage1",
     record_state: bool = False,
     verbose: bool = False,
+    **opt_kwargs: Any,
 ) -> dict[str, Any]:
-    """One optimizer pass from **current** graph state (solver unpacks best_x)."""
+    """One optimizer pass from **current** graph state (solver unpacks best_x).
+
+    ``opt_kwargs`` are forwarded to the selected solver (e.g. ``lr`` for adam).
+    """
     if method not in METHODS:
         raise ValueError(f"method must be one of {METHODS}, got {method!r}")
 
@@ -125,6 +129,7 @@ def run_optimize(
         recorder=rec,
         verbose=verbose,
     )
+    kw.update(opt_kwargs)
 
     t0 = time.perf_counter()
     if method == "adam":
@@ -161,6 +166,7 @@ def run_pipeline(
     out_dir: str | Path = "runs/stage1",
     record_state: bool = False,
     verbose: bool = False,
+    **opt_kwargs: Any,
 ) -> dict[str, Any]:
     """Optimize current graphs → report (+ dump under ``out_dir``)."""
     out = Path(out_dir)
@@ -184,6 +190,7 @@ def run_pipeline(
         out_dir=out,
         record_state=record_state,
         verbose=verbose,
+        **opt_kwargs,
     )
     lay, rec = opt["layout"], opt["recorder"]
     lay_path = out / "layout.json"
