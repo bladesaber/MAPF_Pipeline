@@ -353,7 +353,13 @@ def build_junctions(
             j = i + 1
             while j < len(fine) and label[fine[j]] == kind:
                 j += 1
-            travel = fine[i:j]
+            # Trunk owns the trunk↔junction segment: absorb adjacent interface
+            # nodes so consecutive labeled edges share an endpoint (no gap).
+            if kind == "trunk":
+                # Absorb adjacent interfaces (shared endpoints with junction runs).
+                travel = fine[max(0, i - 1) : min(len(fine), j + 1)]
+            else:
+                travel = fine[i:j]
             if kind == "junction" and len(travel) < 3:
                 raise ValueError(
                     f"junction run in group {tree.id} has {len(travel)} node(s), "
