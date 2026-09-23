@@ -1,7 +1,7 @@
-"""§6.4.1 — path length and curvature pieces.
+"""§6.4.1 — path chord energy and curvature pieces.
 
-Polyline samples: `k_bend` / `k_bend_approx` / `k_menger` / `k_fd` (bend **energy**).
-Pointwise Menger κ for reports: `kappa_menger`.
+Polyline samples: `path_length` (Σ Δs²), `k_bend` / `k_bend_approx` / `k_menger` /
+`k_fd` (bend **energy**). Pointwise Menger κ for reports: `kappa_menger`.
 Cubic Hermite segment: `k_hermite` (analytic κ(t)). Caller sums / weights costs.
 """
 
@@ -22,14 +22,18 @@ def softplus(z, sigma: float = 1e-2, backend: str = "numpy"):
 
 
 def path_length(xyz, w=None, backend: str = "numpy"):
-    """L_u = Σ w̄_i Δs_i,  w̄_i = (w_i + w_{i+1})/2."""
+    """L_u = Σ w̄_i Δs_i² (chord energy); w̄_i = (w_i + w_{i+1})/2.
+
+    Squared chords (no sqrt): same [length²] as ``space_cost``, stronger pull on
+    long gaps; α/η stay scale-comparable under geometric rescaling.
+    """
     xp = _backend(backend)
     xyz = xp.asarray(xyz)
-    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
+    d2 = xp.sum((xyz[1:] - xyz[:-1]) ** 2, axis=-1)
     if w is None:
-        return xp.sum(ds)
+        return xp.sum(d2)
     w = xp.asarray(w)
-    return xp.sum(0.5 * (w[:-1] + w[1:]) * ds)
+    return xp.sum(0.5 * (w[:-1] + w[1:]) * d2)
 
 
 def k_bend(
@@ -327,7 +331,10 @@ def k_hermite(
 
 
 def graph_length(graph: OptimizeGraph, backend: str = "numpy"):
-    """Σ length over Hermite segments; each seg once. Requires ``graph.refresh``."""
+    """Σ chord energy (path_length) over Hermite segments; each seg once.
+
+    Requires ``graph.refresh``.
+    """
     xp = _backend(backend)
     total = xp.asarray(0.0)
     for seg in graph.segments.values():

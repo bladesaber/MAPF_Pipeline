@@ -110,7 +110,7 @@ def path_report(
 ) -> dict[str, Any]:
     """Usage-path metrics (§8.1.2): per-usage → group → aggregate.
 
-    ``L`` / ``kappa_max`` from each usage polyline. ``V`` is voxel-union of
+    ``L`` / ``kr_max`` (= max κ·r) from each usage polyline. ``V`` is voxel-union of
     sample spheres (segments once) at group / aggregate.
     """
     groups: dict[str, Any] = {}
@@ -142,7 +142,7 @@ def path_report(
             key = f"{path.usage[0]}->{path.usage[1]}"
             usages[key] = {
                 "L": float(np.linalg.norm(xyz[1:] - xyz[:-1], axis=-1).sum()),
-                "kappa_max": float(np.max(kappa * radius)) if kappa.size else 0.0,
+                "kr_max": float(np.max(kappa * radius)) if kappa.size else 0.0,
                 "kappa": kappa.tolist(),
             }
         g_xyz = np.concatenate(g_xyz, axis=0) if g_xyz else np.zeros((0, 3))
@@ -150,12 +150,12 @@ def path_report(
         groups[g.id] = {
             "usages": usages,
             "L": sum(u["L"] for u in usages.values()),
-            "kappa_max": max((u["kappa_max"] for u in usages.values()), default=0.0),
+            "kr_max": max((u["kr_max"] for u in usages.values()), default=0.0),
             "V": tube_volume(g_xyz, g_r, voxel=voxel),
         }
     agg = {
         "L": sum(g["L"] for g in groups.values()),
-        "kappa_max": max((g["kappa_max"] for g in groups.values()), default=0.0),
+        "kr_max": max((g["kr_max"] for g in groups.values()), default=0.0),
         "V": sum(g["V"] for g in groups.values()),
     }
     return {"groups": groups, "aggregate": agg}

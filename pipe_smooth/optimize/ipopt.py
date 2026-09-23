@@ -11,7 +11,7 @@ Decision variable
 
 Objective (soft; minimize)
     J(x) = α L + β K + λ J_union
-    - L, K     : §6.4.1 path length / curvature (graph_length, graph_curvature)
+    - L, K     : §6.4.1 path chord energy ΣΔs² / curvature (graph_length, graph_curvature)
     - J_union  : §6.4.3 Chamfer on frozen union hits (union_cost)
     Clearance is NOT in J (moved to constraints). η J_space / μ_v are inequalities
     below (§7.1), not terms in J.
@@ -72,6 +72,7 @@ def interior_nlp(
     refresh_clear: Callable[[Sequence[OptimizeGraph]], Any] | None = None,
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 1,
+    log_every: int = 5,
     recorder: Recorder,
     verbose: bool = False,
 ) -> None:
@@ -93,7 +94,8 @@ def interior_nlp(
         refresh_clear: callback → frozen clear active set (outside AD)
         refresh_union: callback → frozen union hits for soft ``J_union``
         refresh_every: refresh period in outer steps
-        recorder: history / best-x logger (one record per outer round)
+        log_every: recorder period (plus first & last); IPOPT callbacks still sync
+        recorder: history / best-x logger (one record per logged outer round)
         verbose: IPOPT print_level / outer ``J``
     """
     if not recorder.phase:
@@ -119,10 +121,14 @@ def interior_nlp(
 
         def _obj_grad(xx):
             xx_j = jnp.asarray(xx, dtype=jnp.float32)
-            val, grad = loss_and_grad(
+            val, grad, parts = loss_and_grad(
                 xx_j, graphs, layout, w, clear_active=None, union_hits=union_hits
             )
-            return float(val), np.asarray(grad, dtype=np.float64).reshape(-1)
+            return (
+                float(val),
+                np.asarray(grad, dtype=np.float64).reshape(-1),
+                {k: float(v) for k, v in parts.items()},
+            )
 
         def _c_fn(xx):
             xx_j = jnp.asarray(xx, dtype=jnp.float32)
@@ -154,7 +160,7 @@ def interior_nlp(
                 np.asarray(Jc, dtype=np.float64).reshape(-1),
             )
 
-        val0, _ = _obj_grad(x)
+        val0, _, parts0 = _obj_grad(x)
 
         g0 = np.asarray(_c_fn(jnp.asarray(x, dtype=jnp.float32)), dtype=np.float64).reshape(-1)
         m = int(g0.size)
@@ -167,15 +173,16 @@ def interior_nlp(
                 self._jc = None
                 self.last_f: float | None = None
                 self.last_c: np.ndarray | None = None
+                self.last_parts: dict[str, float] = parts0
 
             def objective(self, xx):
-                f, self._df = _obj_grad(xx)
+                f, self._df, self.last_parts = _obj_grad(xx)
                 self.last_f = float(f)
                 return f
 
             def gradient(self, xx):
                 if self._df is None:
-                    _, self._df = _obj_grad(xx)
+                    _, self._df, self.last_parts = _obj_grad(xx)
                 df, self._df = self._df, None
                 return df
 
@@ -210,15 +217,18 @@ def interior_nlp(
         x, info = nlp.solve(x)
 
         # reuse last IPOPT callback evals (avoid extra _obj_grad / _c_fn)
-        val_f = float(info.get("obj_val", prob.last_f if prob.last_f is not None else val0))
-        g_f = prob.last_c
-        max_viol = float(np.max(g_f)) if g_f is not None and g_f.size else 0.0
-        recorder.record(
-            t, val_f, x, n_cons=m, max_viol=max_viol, status=int(info["status"])
-        )
-
-        if verbose:
-            print(f"interior_nlp {t}/{steps}  J={val_f:.6g}  m={m}  status={info['status']}")
+        if t == 1 or t == steps or t % log_every == 0:
+            val_f = float(info.get("obj_val", prob.last_f if prob.last_f is not None else val0))
+            g_f = prob.last_c
+            max_viol = float(np.max(g_f)) if g_f is not None and g_f.size else 0.0
+            recorder.record(
+                t, val_f, x, n_cons=m, max_viol=max_viol, status=int(info["status"]),
+                **prob.last_parts,  # type: ignore[arg-type]
+            )
+            if verbose:
+                print(f"interior_nlp {t}/{steps}  J={val_f:.6g}  m={m}  status={info['status']}")
+        elif verbose:
+            print(f"interior_nlp {t}/{steps}  m={m}  status={info['status']}")
         if info["status"] < 0:
             break
 

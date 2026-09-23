@@ -29,6 +29,7 @@ def adam(
     refresh_clear: Callable[[Sequence[OptimizeGraph]], Any] | None = None,
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 10,
+    log_every: int = 5,
     recorder: Recorder,
     verbose: bool = False,
 ) -> None:
@@ -40,7 +41,7 @@ def adam(
     - ``refresh_clear(graphs) -> clear_active``
     - ``refresh_union(graphs) -> {graph_id: hits}``
 
-    ``recorder`` logs J (and ``x`` if ``record_state``) each step.
+    ``recorder`` logs J / parts every ``log_every`` steps (plus first & last).
     """
     if not recorder.phase:
         recorder.phase = "adam"
@@ -63,7 +64,7 @@ def adam(
             if refresh_union is not None:
                 union_hits = refresh_union(graphs)
 
-        val, g = loss_and_grad(
+        val, g, parts = loss_and_grad(
             x,
             graphs,
             layout,
@@ -72,10 +73,11 @@ def adam(
             clear_kind=clear_kind,  # type: ignore[arg-type]
             union_hits=union_hits,
         )
-        val_f = float(val)
-        recorder.record(t, val_f, x)
-        if verbose and (t == 1 or t % max(1, steps // 10) == 0 or t == steps):
-            print(f"adam {t}/{steps}  J={val_f:.6g}")
+        if t == 1 or t == steps or t % log_every == 0:
+            val_f = float(val)
+            recorder.record(t, val_f, x, **{k: float(v) for k, v in parts.items()})  # type: ignore[arg-type]
+            if verbose:
+                print(f"adam {t}/{steps}  J={val_f:.6g}")
 
         m = beta1 * m + (1.0 - beta1) * g
         v = beta2 * v + (1.0 - beta2) * (g * g)
@@ -108,6 +110,7 @@ def adam_annealed(
     refresh_clear: Callable[[Sequence[OptimizeGraph]], Any] | None = None,
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 10,
+    log_every: int = 5,
     key: int = 0,
     recorder: Recorder,
     verbose: bool = False,
@@ -115,7 +118,7 @@ def adam_annealed(
     """Adam + annealed noise (§7.3.2): x ← x - η û + √(2ηT) ξ, T↓0.
 
     η = min(η_max, δ / (||û||+ε)). ``anneal``: ``linear`` → T=0 at last step;
-    ``exp`` → T = T0 * ρ^{t-1}.
+    ``exp`` → T = T0 * ρ^{t-1}. Logs every ``log_every`` steps (plus first & last).
     """
     if anneal not in ("linear", "exp"):
         raise ValueError(f"anneal must be 'linear' or 'exp', got {anneal!r}")
@@ -141,7 +144,7 @@ def adam_annealed(
             if refresh_union is not None:
                 union_hits = refresh_union(graphs)
 
-        val, g = loss_and_grad(
+        val, g, parts = loss_and_grad(
             x,
             graphs,
             layout,
@@ -150,7 +153,6 @@ def adam_annealed(
             clear_kind=clear_kind,  # type: ignore[arg-type]
             union_hits=union_hits,
         )
-        val_f = float(val)
 
         m = beta1 * m + (1.0 - beta1) * g
         v = beta2 * v + (1.0 - beta2) * (g * g)
@@ -163,9 +165,14 @@ def adam_annealed(
             T = T0 * (steps - t) / max(steps - 1, 1)
         else:
             T = T0 * (rho ** (t - 1))
-        recorder.record(t, val_f, x, eta=float(eta), T=float(T))
-        if verbose and (t == 1 or t % max(1, steps // 10) == 0 or t == steps):
-            print(f"adam_annealed {t}/{steps}  J={val_f:.6g}  η={float(eta):.3g}  T={float(T):.3g}")
+        if t == 1 or t == steps or t % log_every == 0:
+            val_f = float(val)
+            recorder.record(
+                t, val_f, x, eta=float(eta), T=float(T),
+                **{k: float(v) for k, v in parts.items()},  # type: ignore[arg-type]
+            )
+            if verbose:
+                print(f"adam_annealed {t}/{steps}  J={val_f:.6g}  η={float(eta):.3g}  T={float(T):.3g}")
 
         rng, sub = jax.random.split(rng)
         xi = jax.random.normal(sub, shape=x.shape, dtype=x.dtype)

@@ -9,7 +9,7 @@ Decision variable
 
 Objective (soft; minimize)
     J(x) = α L + β K + λ J_union
-    - L, K     : §6.4.1 path length / curvature (graph_length, graph_curvature)
+    - L, K     : §6.4.1 path chord energy ΣΔs² / curvature (graph_length, graph_curvature)
     - J_union  : §6.4.3 Chamfer on frozen union hits (union_cost)
     Clearance is NOT in J here (moved to constraints). η J_space / μ_v stay out
     of the SQP objective — they become inequalities below (§7.1).
@@ -162,6 +162,7 @@ def elastic_qp(
     refresh_clear: Callable[[Sequence[OptimizeGraph]], Any] | None = None,
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 5,
+    log_every: int = 5,
     recorder: Recorder,
     verbose: bool = False,
 ) -> None:
@@ -187,6 +188,7 @@ def elastic_qp(
         refresh_clear: callback → frozen clear active set (outside AD)
         refresh_union: callback → frozen union hits for soft ``J_union``
         refresh_every: refresh period in outer steps
+        log_every: recorder period (plus first & last)
         recorder: history / best-x logger
         verbose: print OSQP status / ``J``
     """
@@ -211,10 +213,9 @@ def elastic_qp(
             if refresh_union is not None:
                 union_hits = refresh_union(graphs)
 
-        val, grad = loss_and_grad(
+        val, grad, parts = loss_and_grad(
             x, graphs, layout, w, clear_active=None, union_hits=union_hits
         )
-        val_f = float(val)
 
         def c_fn(xx):
             unpack(xx, graphs, layout, backend="jax")
@@ -245,8 +246,13 @@ def elastic_qp(
         # Elastic QP: min ½||Δx||² + gradᵀΔx + w 1ᵀs
         #   g + Jg Δx - s ≤ 0,  s≥0,  |Δx|≤trust  (always feasible)
         m = c.size
-        max_viol = float(np.max(c)) if m else 0.0
-        recorder.record(t, val_f, x, n_cons=m, max_viol=max_viol)
+        if t == 1 or t == steps or t % log_every == 0:
+            val_f = float(val)
+            max_viol = float(np.max(c)) if m else 0.0
+            recorder.record(
+                t, val_f, x, n_cons=m, max_viol=max_viol,
+                **{k: float(v) for k, v in parts.items()},  # type: ignore[arg-type]
+            )
 
         P = sparse.block_diag(
             [sparse.eye(n, format="csc"), sparse.csc_matrix((m, m))], format="csc"
@@ -284,8 +290,8 @@ def elastic_qp(
             break
         x = x + jnp.asarray(res.x[:n], dtype=x.dtype)
 
-        if verbose and (t == 1 or t % max(1, steps // 5) == 0 or t == steps):
-            print(f"elastic_qp {t}/{steps}  J={val_f:.6g}  m={m}  status={res.info.status}")
+        if verbose and (t == 1 or t == steps or t % log_every == 0):
+            print(f"elastic_qp {t}/{steps}  J={float(val):.6g}  m={m}  status={res.info.status}")
 
     if recorder.best_x is None:
         raise RuntimeError("recorder.best_x is None; no step recorded a state")

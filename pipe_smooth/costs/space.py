@@ -1,6 +1,6 @@
 """§7.1 — sample spacing J_space + Hermite ||v|| scale hinge J_v.
 
-Soft AD: nonuniform Δs; optional ||γ'|| vs chord length (anti long-handle spikes).
+Soft AD: spacing energy Σ(Δs−mean)² (same [length²] as path chord energy); optional hinge.
 SQP: optional relative band residuals about mean Δs.
 """
 
@@ -14,7 +14,11 @@ _EPS = 1e-12
 
 
 def space_cost(xyz, eta: float = 1.0, ds_max=None, soft_sigma: float = 1e-2, backend: str = "numpy"):
-    """η Σ (Δs_i - mean(Δs))²; optional η Σ [Δs_i - Δs_max]_+^σ ²."""
+    """η Σ (Δs_i - mean(Δs))²; optional η Σ [Δs_i - Δs_max]_+^σ ².
+
+    Absolute spacing energy [length²], matched to ``path_length`` chord energy so
+    α/η stay scale-comparable under geometric rescaling.
+    """
     xp = _backend(backend)
     xyz = xp.asarray(xyz)
     ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)

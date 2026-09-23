@@ -295,7 +295,7 @@ def main() -> None:
     print(
         f"{out['method']}  {out['clear_kind']}  "
         f"ok={c['ok']}  n_hit={c['n_hit']}  "
-        f"L={p['L']:.4g}  κmax={p['kappa_max']:.4g}  "
+        f"L={p['L']:.4g}  kr_max={p['kr_max']:.4g}  "
         f"t={s['wall_time']:.3g}s  → {out['out_dir']}"
     )
 

@@ -31,6 +31,7 @@ def langevin(
     refresh_clear: Callable[[Sequence[OptimizeGraph]], Any] | None = None,
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 10,
+    log_every: int = 5,
     key: int = 0,
     recorder: Recorder,
     verbose: bool = False,
@@ -39,6 +40,7 @@ def langevin(
 
     η = min(η_max, δ / (||∇J||+ε)). ``anneal``: ``linear`` | ``exp`` (same as adam_annealed).
     Active sets only from ``refresh_clear`` / ``refresh_union`` (outside AD).
+    Logs every ``log_every`` steps (plus first & last).
     """
     if anneal not in ("linear", "exp"):
         raise ValueError(f"anneal must be 'linear' or 'exp', got {anneal!r}")
@@ -62,7 +64,7 @@ def langevin(
             if refresh_union is not None:
                 union_hits = refresh_union(graphs)
 
-        val, g = loss_and_grad(
+        val, g, parts = loss_and_grad(
             x,
             graphs,
             layout,
@@ -71,16 +73,20 @@ def langevin(
             clear_kind=clear_kind,  # type: ignore[arg-type]
             union_hits=union_hits,
         )
-        val_f = float(val)
 
         eta = jnp.minimum(eta_max, delta / (jnp.linalg.norm(g) + eps))
         if anneal == "linear":
             T = T0 * (steps - t) / max(steps - 1, 1)
         else:
             T = T0 * (rho ** (t - 1))
-        recorder.record(t, val_f, x, eta=float(eta), T=float(T))
-        if verbose and (t == 1 or t % max(1, steps // 10) == 0 or t == steps):
-            print(f"langevin {t}/{steps}  J={val_f:.6g}  η={float(eta):.3g}  T={float(T):.3g}")
+        if t == 1 or t == steps or t % log_every == 0:
+            val_f = float(val)
+            recorder.record(
+                t, val_f, x, eta=float(eta), T=float(T),
+                **{k: float(v) for k, v in parts.items()},  # type: ignore[arg-type]
+            )
+            if verbose:
+                print(f"langevin {t}/{steps}  J={val_f:.6g}  η={float(eta):.3g}  T={float(T):.3g}")
 
         rng, sub = jax.random.split(rng)
         xi = jax.random.normal(sub, shape=x.shape, dtype=x.dtype)
@@ -110,6 +116,7 @@ def langevin_ema(
     refresh_clear: Callable[[Sequence[OptimizeGraph]], Any] | None = None,
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 10,
+    log_every: int = 5,
     key: int = 0,
     recorder: Recorder,
     verbose: bool = False,
@@ -118,6 +125,7 @@ def langevin_ema(
 
     η_raw = min(η_max, δ/(||∇J||+ε)),  η̄ = β η̄ + (1-β) η_raw,
     then x ← x - η̄ ∇J + √(2 η̄ T) ξ. Same T anneal / refresh as ``langevin``.
+    Logs every ``log_every`` steps (plus first & last).
     """
     if anneal not in ("linear", "exp"):
         raise ValueError(f"anneal must be 'linear' or 'exp', got {anneal!r}")
@@ -142,7 +150,7 @@ def langevin_ema(
             if refresh_union is not None:
                 union_hits = refresh_union(graphs)
 
-        val, g = loss_and_grad(
+        val, g, parts = loss_and_grad(
             x,
             graphs,
             layout,
@@ -151,7 +159,6 @@ def langevin_ema(
             clear_kind=clear_kind,  # type: ignore[arg-type]
             union_hits=union_hits,
         )
-        val_f = float(val)
 
         eta_raw = jnp.minimum(eta_max, delta / (jnp.linalg.norm(g) + eps))
         eta_bar = beta * eta_bar + (1.0 - beta) * eta_raw
@@ -159,12 +166,17 @@ def langevin_ema(
             T = T0 * (steps - t) / max(steps - 1, 1)
         else:
             T = T0 * (rho ** (t - 1))
-        recorder.record(t, val_f, x, eta=float(eta_bar), T=float(T))
-        if verbose and (t == 1 or t % max(1, steps // 10) == 0 or t == steps):
-            print(
-                f"langevin_ema {t}/{steps}  J={val_f:.6g}  "
-                f"η̄={float(eta_bar):.3g}  T={float(T):.3g}"
+        if t == 1 or t == steps or t % log_every == 0:
+            val_f = float(val)
+            recorder.record(
+                t, val_f, x, eta=float(eta_bar), T=float(T),
+                **{k: float(v) for k, v in parts.items()},  # type: ignore[arg-type]
             )
+            if verbose:
+                print(
+                    f"langevin_ema {t}/{steps}  J={val_f:.6g}  "
+                    f"η̄={float(eta_bar):.3g}  T={float(T):.3g}"
+                )
 
         rng, sub = jax.random.split(rng)
         xi = jax.random.normal(sub, shape=x.shape, dtype=x.dtype)

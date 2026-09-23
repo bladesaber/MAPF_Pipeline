@@ -1,24 +1,22 @@
 """Optimize-bench viewer for fixed single-group test cases.
 
-Left:  OptimizeGraph (viz: point / point+line / point+line+tube).
-Mid:   LossWeights, ignore-obstacles, method/steps, progress, Start / Replay / Revert.
+Left:  OptimizeGraph + orange sphere obstacles (viz mode / usage arrows).
+Mid:   collapsible Optimize (weights + run) / Viz (mode + usage).
 Right: collapsible report (clearance / path / solve) + J-curve plot.
 
 Replay forces point mode and only updates node positions (no line/tube rebuild).
 
-Skeleton ``graph_<id>.json`` lives in the case folder (topology fixed). Each Start
-writes ``run_XXX/`` via ``pipeline.run_pipeline`` (``record_state=True``). Replay
-``unpack``s recorded ``x``; Revert deletes the latest run and restores the previous
-run (or the skeleton if none remain).
+Skeleton ``graph_<id>.json`` (+ optional ``obstacles.json``) lives in the case
+folder. Each Start writes ``run_XXX/`` via ``pipeline.run_pipeline``
+(``record_state=True``). Replay ``unpack``s recorded ``x``; Revert deletes the
+latest run and restores the previous run (or the skeleton if none remain).
 
 CLI
   python -m pipe_smooth.vis_bench [--save-dir DIR]
 
-  --save-dir   root for cases (default: ``pipe_smooth/runs``) → ``DIR/elbow_90/``
+  --save-dir   root for cases (default: ``pipe_smooth/runs``)
 
-Menu → Examples → Elbow 90… opens a dialog (count / resolution / radius), builds
-an L-polyline (``count`` waypoints per leg, spacing ``resolution``), exports the
-skeleton, and clears stale runs.
+Menu → Examples → Elbow 90… / S-curve + 2 obs… builds a case and clears stale runs.
 """
 
 from __future__ import annotations
@@ -60,6 +58,7 @@ from PyQt5.QtWidgets import (
 )
 from pyvistaqt import QtInteractor
 
+from pipe_smooth.collision import SphereObs
 from pipe_smooth.geometry.assemble import (
     HermiteNode,
     HermiteSegment,
@@ -88,7 +87,7 @@ _OPT_SPECS: dict[str, dict[str, tuple]] = {
         "beta1": ("float", 0.9),
         "beta2": ("float", 0.999),
         "eps": ("float", 1e-8),
-        "refresh_every": ("int", 10),
+        "refresh_every": ("int", 5),
     },
     "adam_annealed": {
         "eta_max": ("float", 1e-3),
@@ -100,7 +99,7 @@ _OPT_SPECS: dict[str, dict[str, tuple]] = {
         "beta2": ("float", 0.999),
         "eps": ("float", 1e-8),
         "key": ("int", 0),
-        "refresh_every": ("int", 10),
+        "refresh_every": ("int", 5),
     },
     "langevin": {
         "eta_max": ("float", 1e-3),
@@ -110,7 +109,7 @@ _OPT_SPECS: dict[str, dict[str, tuple]] = {
         "rho": ("float", 0.95),
         "eps": ("float", 1e-8),
         "key": ("int", 0),
-        "refresh_every": ("int", 10),
+        "refresh_every": ("int", 5),
     },
     "elastic_qp": {
         "trust": ("float", 0.1),
@@ -204,6 +203,100 @@ def make_elbow90(count: int = 5, resolution: float = 1.0, radius: float = 0.5) -
     return g
 
 
+def make_s_curve(
+    count: int = 5,
+    resolution: float = 1.0,
+    radius: float = 0.5,
+    obs_r0: float | None = None,
+    obs_r1: float | None = None,
+) -> tuple[OptimizeGraph, list[SphereObs]]:
+    """Planar S: +x, +y, -x, +y, +x. Two sphere obstacles sit in the concave bays."""
+    if count < 2:
+        raise ValueError(f"count must be >= 2, got {count}")
+    sp, r = float(resolution), float(radius)
+    W = (count - 1) * sp
+    nodes: dict[str, HermiteNode] = {}
+    chain: list[str] = []
+
+    def _add(nid: str, pos, *, fixed: bool = False, role: str = "trunk"):
+        nodes[nid] = HermiteNode(
+            pos=np.asarray(pos, float),
+            radius=r,
+            v=None,
+            fixed_p=fixed,
+            fixed_v=fixed,
+            role=role,
+        )
+        chain.append(nid)
+
+    for i in range(count):
+        _add(f"a{i}", [i * sp, 0.0, 0.0], fixed=(i == 0), role="port" if i == 0 else "trunk")
+    for j in range(1, count):
+        _add(f"b{j}", [W, j * sp, 0.0])
+    for k in range(1, count):
+        _add(f"c{k}", [W - k * sp, W, 0.0])
+    for m in range(1, count):
+        _add(f"d{m}", [0.0, W + m * sp, 0.0])
+    for n in range(1, count):
+        end = n == count - 1
+        _add(f"e{n}", [n * sp, 2.0 * W, 0.0], fixed=end, role="port" if end else "trunk")
+
+    segments: dict[str, HermiteSegment] = {}
+    seg_ids: list[str] = []
+    for i in range(len(chain) - 1):
+        u, v = chain[i], chain[i + 1]
+        p0, p1 = nodes[u].pos, nodes[v].pos
+        tang = p1 - p0
+        L = float(np.linalg.norm(tang))
+        tang = tang / (L + 1e-12)
+        if not nodes[u].fixed_v:
+            nodes[u].v = tang * L
+        if not nodes[v].fixed_v:
+            nodes[v].v = tang * L
+        sid = f"s{i}"
+        segments[sid] = HermiteSegment(id=sid, edge="e0", kind="trunk", u=u, v=v)
+        seg_ids.append(sid)
+
+    # soften four corners (±x ↔ ±y)
+    for nid, d in (
+        (f"a{count - 1}", np.array([1.0, 1.0, 0.0])),
+        (f"b{count - 1}", np.array([-1.0, 1.0, 0.0])),
+        (f"c{count - 1}", np.array([-1.0, 1.0, 0.0])),
+        (f"d{count - 1}", np.array([1.0, 1.0, 0.0])),
+    ):
+        node = nodes[nid]
+        if not node.fixed_v:
+            node.v = d / (np.linalg.norm(d) + 1e-12) * sp
+
+    g = OptimizeGraph(
+        id="s_curve",
+        nodes=nodes,
+        segments=segments,
+        edge_segs={"e0": list(seg_ids)},
+        junctions={},
+        usage_paths=[
+            OptimizeUsagePath(
+                usage=("A", "B"),
+                edges=["e0"],
+                edges_reverse=[False],
+                segments=seg_ids,
+                reverse=[False] * len(seg_ids),
+                v_start=np.array([sp, 0.0, 0.0]),
+                v_end=np.array([sp, 0.0, 0.0]),
+            )
+        ],
+    )
+    g.check_usage_tangents_colinear()
+    default_obs_r = max(r * 1.2, sp * 0.35)
+    r0 = float(default_obs_r if obs_r0 is None else obs_r0)
+    r1 = float(default_obs_r if obs_r1 is None else obs_r1)
+    obstacles = [
+        SphereObs(c=np.array([0.5 * W, 0.5 * W, 0.0]), r=r0, name="bay0"),
+        SphereObs(c=np.array([0.5 * W, 1.5 * W, 0.0]), r=r1, name="bay1"),
+    ]
+    return g, obstacles
+
+
 class _OptWorker(QThread):
     done = pyqtSignal(dict)
     fail = pyqtSignal(str)
@@ -240,6 +333,7 @@ class BenchViewer(QMainWindow):
         self.case_dir: Path | None = None
         self.resolution = 0.1
         self.graphs: list[OptimizeGraph] = []
+        self.obstacles: list = []
         self._last_run: Path | None = None
         self._worker: _OptWorker | None = None
         self._replay_xs: list = []
@@ -259,7 +353,11 @@ class BenchViewer(QMainWindow):
 
         mid = QWidget()
         mv = QVBoxLayout(mid)
-        mv.addWidget(QLabel("LossWeights"))
+        self.mid_box = QToolBox()
+        mv.addWidget(self.mid_box)
+
+        opt_w = QWidget()
+        ov = QVBoxLayout(opt_w)
         form = QFormLayout()
         self.weight_spins: dict[str, QDoubleSpinBox] = {}
         defaults = LossWeights()
@@ -271,21 +369,23 @@ class BenchViewer(QMainWindow):
             sp.setValue(float(getattr(defaults, f.name)))
             form.addRow(f.name, sp)
             self.weight_spins[f.name] = sp
-        mv.addLayout(form)
-
-        self.ignore_obs = QCheckBox("ignore obstacles")
-        self.ignore_obs.setChecked(True)
-        mv.addWidget(self.ignore_obs)
-
-        row_v = QHBoxLayout()
-        row_v.addWidget(QLabel("viz"))
-        self.viz_mode = QComboBox()
-        self.viz_mode.addItems(["point", "point+line", "point+line+tube"])
-        self.viz_mode.setCurrentText("point+line")
-        self.viz_mode.currentTextChanged.connect(self._on_viz_mode)
-        row_v.addWidget(self.viz_mode)
-        mv.addLayout(row_v)
-
+        ov.addLayout(form)
+        row_ck = QHBoxLayout()
+        row_ck.addWidget(QLabel("clear_kind"))
+        self.clear_kind = QComboBox()
+        self.clear_kind.addItems(["capsule", "hull", "ignore"])
+        self.clear_kind.setCurrentText("ignore")
+        row_ck.addWidget(self.clear_kind)
+        ov.addLayout(row_ck)
+        row_mg = QHBoxLayout()
+        row_mg.addWidget(QLabel("margin"))
+        self.margin = QDoubleSpinBox()
+        self.margin.setRange(0.0, 1e3)
+        self.margin.setDecimals(4)
+        self.margin.setSingleStep(0.1)
+        self.margin.setValue(0.0)
+        row_mg.addWidget(self.margin)
+        ov.addLayout(row_mg)
         row = QHBoxLayout()
         row.addWidget(QLabel("method"))
         self.method = QComboBox()
@@ -298,32 +398,46 @@ class BenchViewer(QMainWindow):
         self.steps.setRange(1, 100000)
         self.steps.setValue(50)
         row.addWidget(self.steps)
-        mv.addLayout(row)
-
-        mv.addWidget(QLabel("Optimizer"))
+        ov.addLayout(row)
         self.opt_form = QFormLayout()
         self.opt_widgets: dict[str, QWidget] = {}
-        mv.addLayout(self.opt_form)
+        ov.addLayout(self.opt_form)
         self._rebuild_opt_board(self.method.currentText())
-
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setFormat("%v / %m")
-        mv.addWidget(self.progress)
+        ov.addWidget(self.progress)
         self.progress_lbl = QLabel("")
-        mv.addWidget(self.progress_lbl)
-
+        ov.addWidget(self.progress_lbl)
         self.btn_start = QPushButton("Start")
         self.btn_replay = QPushButton("Replay")
         self.btn_revert = QPushButton("Revert")
         self.btn_start.clicked.connect(self._start)
         self.btn_replay.clicked.connect(self._replay)
         self.btn_revert.clicked.connect(self._revert)
-        mv.addWidget(self.btn_start)
-        mv.addWidget(self.btn_replay)
-        mv.addWidget(self.btn_revert)
-        mv.addStretch(1)
+        ov.addWidget(self.btn_start)
+        ov.addWidget(self.btn_replay)
+        ov.addWidget(self.btn_revert)
+        ov.addStretch(1)
+        self.mid_box.addItem(opt_w, "Optimize")
+
+        viz_w = QWidget()
+        vv = QVBoxLayout(viz_w)
+        row_v = QHBoxLayout()
+        row_v.addWidget(QLabel("mode"))
+        self.viz_mode = QComboBox()
+        self.viz_mode.addItems(["point", "point+line", "point+line+tube"])
+        self.viz_mode.setCurrentText("point+line")
+        self.viz_mode.currentTextChanged.connect(self._on_viz_mode)
+        row_v.addWidget(self.viz_mode)
+        vv.addLayout(row_v)
+        vv.addWidget(QLabel("Usage paths"))
+        self.usage_box = QVBoxLayout()
+        vv.addLayout(self.usage_box)
+        vv.addStretch(1)
+        self.mid_box.addItem(viz_w, "Viz")
+        self.usage_on: dict[str, bool] = {}
         split.addWidget(mid)
 
         right = QWidget()
@@ -357,8 +471,8 @@ class BenchViewer(QMainWindow):
         split.setStretchFactor(2, 1)
 
         m = self.menuBar().addMenu("&Examples")
-        act = m.addAction("Elbow 90…")
-        act.triggered.connect(self._example_elbow90)
+        m.addAction("Elbow 90…").triggered.connect(self._example_elbow90)
+        m.addAction("S-curve + 2 obs…").triggered.connect(self._example_s_curve)
 
         self.plotter.add_axes()
         self._set_busy(True)
@@ -418,7 +532,7 @@ class BenchViewer(QMainWindow):
     def _show_report(self, store_cfg: str | Path | None = None):
         """Load ``report`` / ``recorder`` from a run's ``store_cfg.json`` and refresh UI."""
         report: dict = {}
-        j_curve = None
+        rec = None
         if store_cfg is not None:
             cfg_path = Path(store_cfg)
             if cfg_path.is_dir():
@@ -430,7 +544,7 @@ class BenchViewer(QMainWindow):
                     report = json.loads(Path(rp).read_text())
                 rec_p = cfg.get("recorder")
                 if rec_p and Path(rec_p).exists():
-                    j_curve = Recorder.load(rec_p).J_curve()
+                    rec = Recorder.load(rec_p)
 
         clear = report.get("clearance") or {}
         for k, lab in self.clear_labels.items():
@@ -442,21 +556,24 @@ class BenchViewer(QMainWindow):
         agg = path.get("aggregate") or {}
         root_agg = QTreeWidgetItem(["aggregate", ""])
         self.path_tree.addTopLevelItem(root_agg)
-        for k in ("L", "kappa_max", "V"):
+        for k in ("L", "kr_max", "V"):
+            v = agg.get(k, agg.get("kappa_max") if k == "kr_max" else None)
             QTreeWidgetItem(
-                root_agg, [k, f"{float(agg[k]):.6g}" if k in agg else "—"]
+                root_agg, [k, f"{float(v):.6g}" if isinstance(v, (int, float)) else "—"]
             )
         for gid, gdat in (path.get("groups") or {}).items():
             gi = QTreeWidgetItem([f"group {gid}", ""])
             self.path_tree.addTopLevelItem(gi)
-            for k in ("L", "kappa_max", "V"):
-                if k in gdat:
-                    QTreeWidgetItem(gi, [k, f"{float(gdat[k]):.6g}"])
+            for k in ("L", "kr_max", "V"):
+                v = gdat.get(k, gdat.get("kappa_max") if k == "kr_max" else None)
+                if isinstance(v, (int, float)):
+                    QTreeWidgetItem(gi, [k, f"{float(v):.6g}"])
             for ukey, udat in (gdat.get("usages") or {}).items():
                 ui = QTreeWidgetItem(gi, [f"usage {ukey}", ""])
-                for k in ("L", "kappa_max"):
-                    if k in udat:
-                        QTreeWidgetItem(ui, [k, f"{float(udat[k]):.6g}"])
+                for k in ("L", "kr_max"):
+                    v = udat.get(k, udat.get("kappa_max") if k == "kr_max" else None)
+                    if isinstance(v, (int, float)):
+                        QTreeWidgetItem(ui, [k, f"{float(v):.6g}"])
         self.path_tree.expandToDepth(1)
 
         solve = report.get("solve") or {}
@@ -469,11 +586,19 @@ class BenchViewer(QMainWindow):
             self.solve_form.addRow(k, lab)
 
         self.j_ax.clear()
-        if j_curve is not None and len(j_curve):
-            self.j_ax.plot(np.arange(1, len(j_curve) + 1), j_curve, color="C0", lw=1.5)
+        hist = rec.history if rec is not None else []
+        if hist:
+            steps = np.arange(1, len(hist) + 1)
+            self.j_ax.plot(steps, [h["J"] for h in hist], color="C0", lw=1.5, label="J")
+            for k in ("L", "K", "space", "v", "union", "clear"):
+                if k in hist[0]:
+                    self.j_ax.plot(
+                        steps, [float(h.get(k, 0.0)) for h in hist], lw=1.1, label=k
+                    )
             self.j_ax.set_xlabel("step")
-            self.j_ax.set_ylabel("J")
-            self.j_ax.set_title("J curve")
+            self.j_ax.set_ylabel("cost")
+            self.j_ax.set_title("J / sub-costs")
+            self.j_ax.legend(fontsize=7, loc="best")
             self.j_ax.grid(True, alpha=0.3)
         else:
             self.j_ax.text(0.5, 0.5, "no J curve", ha="center", va="center")
@@ -514,15 +639,112 @@ class BenchViewer(QMainWindow):
             shutil.rmtree(p)
         self._last_run = None
         self.graphs = [make_elbow90(count, self.resolution, radius)]
+        self.obstacles = []
+        self._write_obstacles()
         for g in self.graphs:
             g.export(self.case_dir / f"graph_{g.id}.json")
         self.setWindowTitle(f"optimize bench — elbow_90  (n={count})")
+        self.clear_kind.setCurrentText("ignore")
         self._show_report(None)
         self.progress.setValue(0)
         self.progress_lbl.setText("")
         self._set_busy(False)
+        self._fill_usage_checks()
         self.redraw()
         self.plotter.reset_camera()
+
+    def _example_s_curve(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("S-curve + 2 obstacles")
+        form = QFormLayout(dlg)
+        sp_count = QSpinBox()
+        sp_count.setRange(2, 500)
+        sp_count.setValue(5)
+        sp_res = QDoubleSpinBox()
+        sp_res.setRange(1e-4, 1e4)
+        sp_res.setDecimals(4)
+        sp_res.setValue(1.0)
+        sp_rad = QDoubleSpinBox()
+        sp_rad.setRange(1e-4, 1e3)
+        sp_rad.setDecimals(4)
+        sp_rad.setValue(0.5)
+        sp_obs0 = QDoubleSpinBox()
+        sp_obs0.setRange(1e-4, 1e3)
+        sp_obs0.setDecimals(4)
+        sp_obs0.setValue(0.6)
+        sp_obs1 = QDoubleSpinBox()
+        sp_obs1.setRange(1e-4, 1e3)
+        sp_obs1.setDecimals(4)
+        sp_obs1.setValue(0.6)
+        form.addRow("count (per leg)", sp_count)
+        form.addRow("resolution (spacing)", sp_res)
+        form.addRow("pipe radius", sp_rad)
+        form.addRow("obs bay0 radius", sp_obs0)
+        form.addRow("obs bay1 radius", sp_obs1)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        form.addRow(buttons)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+
+        count = int(sp_count.value())
+        self.resolution = float(sp_res.value())
+        radius = float(sp_rad.value())
+        self.case_dir = self.save_dir / "s_curve"
+        self.case_dir.mkdir(parents=True, exist_ok=True)
+        for p in self._runs():
+            shutil.rmtree(p)
+        self._last_run = None
+        g, obs = make_s_curve(
+            count,
+            self.resolution,
+            radius,
+            obs_r0=float(sp_obs0.value()),
+            obs_r1=float(sp_obs1.value()),
+        )
+        self.graphs = [g]
+        self.obstacles = list(obs)
+        self._write_obstacles()
+        for gr in self.graphs:
+            gr.export(self.case_dir / f"graph_{gr.id}.json")
+        self.setWindowTitle(f"optimize bench — s_curve  (n={count})")
+        self.clear_kind.setCurrentText("capsule")
+        self._show_report(None)
+        self.progress.setValue(0)
+        self.progress_lbl.setText("")
+        self._set_busy(False)
+        self._fill_usage_checks()
+        self.redraw()
+        self.plotter.reset_camera()
+
+    def _write_obstacles(self):
+        assert self.case_dir is not None
+        spheres = [
+            {"c": np.asarray(o.c, float).tolist(), "r": float(o.r), "name": o.name}
+            for o in self.obstacles
+            if isinstance(o, SphereObs)
+        ]
+        (self.case_dir / "obstacles.json").write_text(
+            json.dumps({"spheres": spheres}, indent=2)
+        )
+
+    def _load_obstacles(self):
+        self.obstacles = []
+        if self.case_dir is None:
+            return
+        path = self.case_dir / "obstacles.json"
+        if not path.exists():
+            return
+        raw = json.loads(path.read_text())
+        for i, s in enumerate(raw.get("spheres") or []):
+            self.obstacles.append(
+                SphereObs(
+                    c=np.asarray(s["c"], float),
+                    r=float(s["r"]),
+                    name=str(s.get("name", f"sphere{i}")),
+                )
+            )
 
     def _next_run_dir(self) -> Path:
         assert self.case_dir is not None
@@ -540,11 +762,40 @@ class BenchViewer(QMainWindow):
         if self.graphs and not self._timer.isActive():
             self.redraw()
 
+    def _fill_usage_checks(self):
+        while self.usage_box.count():
+            item = self.usage_box.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        prev = dict(self.usage_on)
+        self.usage_on = {}
+        for g in self.graphs:
+            for up in g.usage_paths:
+                key = f"{g.id}|{up.usage[0]}->{up.usage[1]}"
+                self.usage_on[key] = prev.get(key, True)
+                cb = QCheckBox(key)
+                cb.setChecked(self.usage_on[key])
+                cb.toggled.connect(
+                    lambda on, k=key: (
+                        self.usage_on.__setitem__(k, on),
+                        self.redraw() if self.graphs and not self._timer.isActive() else None,
+                    )
+                )
+                self.usage_box.addWidget(cb)
+
     def redraw(self):
         mode = self.viz_mode.currentText()
         self._node_actors = {}
         self.plotter.clear()
         self.plotter.add_axes()
+        _cols = (
+            (0.90, 0.35, 0.20),
+            (0.20, 0.70, 0.35),
+            (0.25, 0.45, 0.95),
+            (0.90, 0.75, 0.15),
+            (0.70, 0.30, 0.80),
+        )
         for g in self.graphs:
             if mode != "point":
                 g.refresh(backend="numpy", resolution=max(self.resolution * 0.25, 1e-3))
@@ -558,6 +809,9 @@ class BenchViewer(QMainWindow):
                         line["radius"] = np.asarray(seg.radius, float)
                         tube = line.tube(scalars="radius", absolute=True, n_sides=12)
                         self.plotter.add_mesh(tube, color="lightblue", opacity=0.35)
+            else:
+                # still need samples for usage overlays
+                g.refresh(backend="numpy", resolution=max(self.resolution * 0.25, 1e-3))
             for nid, n in g.nodes.items():
                 actor = self.plotter.add_mesh(
                     pv.Sphere(radius=0.15, center=(0.0, 0.0, 0.0)),
@@ -567,6 +821,52 @@ class BenchViewer(QMainWindow):
                 pos = np.asarray(n.pos, float)
                 actor.SetPosition(float(pos[0]), float(pos[1]), float(pos[2]))
                 self._node_actors[(g.id, nid)] = actor
+
+            for up in g.usage_paths:
+                key = f"{g.id}|{up.usage[0]}->{up.usage[1]}"
+                if not self.usage_on.get(key, False):
+                    continue
+                chunks = []
+                for sid, rev in zip(up.segments, up.reverse):
+                    xyz = np.asarray(g.segments[sid].xyz, float)
+                    if rev:
+                        xyz = xyz[::-1]
+                    if chunks:
+                        xyz = xyz[1:]
+                    chunks.append(xyz)
+                if not chunks:
+                    continue
+                path = np.concatenate(chunks, axis=0)
+                if path.shape[0] < 2:
+                    continue
+                col = _cols[abs(hash(key)) % len(_cols)]
+                self.plotter.add_mesh(
+                    pv.lines_from_points(path), color=col, line_width=5
+                )
+                step = max(1, (path.shape[0] - 1) // 4)
+                tip = max(float(self.resolution) * 0.4, 0.12)
+                for i in range(0, path.shape[0] - 1, step):
+                    d = path[i + 1] - path[i]
+                    if float(np.linalg.norm(d)) < 1e-9:
+                        continue
+                    self.plotter.add_mesh(
+                        pv.Arrow(
+                            start=path[i],
+                            direction=d,
+                            tip_length=0.35,
+                            tip_radius=0.12,
+                            shaft_radius=0.04,
+                            scale=tip,
+                        ),
+                        color=col,
+                    )
+        for o in self.obstacles:
+            if isinstance(o, SphereObs):
+                self.plotter.add_mesh(
+                    pv.Sphere(radius=float(o.r), center=np.asarray(o.c, float)),
+                    color="orange",
+                    opacity=0.45,
+                )
         self.plotter.render()
 
     def _update_points(self):
@@ -598,11 +898,12 @@ class BenchViewer(QMainWindow):
         self._timer.stop()
         self.viz_mode.setEnabled(True)
         out = self._next_run_dir()
-        clear_kind = "ignore" if self.ignore_obs.isChecked() else "capsule"
+        clear_kind = self.clear_kind.currentText()
         steps = int(self.steps.value())
         kw = dict(
             method=self.method.currentText(),
             clear_kind=clear_kind,
+            margin=float(self.margin.value()),
             weights=self._weights(),
             steps=steps,
             out_dir=out,
@@ -614,7 +915,7 @@ class BenchViewer(QMainWindow):
         self.progress.setValue(0)
         self.progress_lbl.setText("starting…")
         self._set_busy(True)
-        self._worker = _OptWorker(self.graphs, [], kw)
+        self._worker = _OptWorker(self.graphs, self.obstacles, kw)
         self._worker.progress.connect(self._on_progress)
         self._worker.done.connect(self._on_opt_done)
         self._worker.fail.connect(self._on_opt_fail)
@@ -688,14 +989,17 @@ class BenchViewer(QMainWindow):
             if remain:
                 self._last_run = remain[-1]
                 self._load_graphs_from(remain[-1])
+                self._load_obstacles()
                 self._show_report(remain[-1])
             else:
                 self._load_graphs_from(self.case_dir)
+                self._load_obstacles()
                 self._show_report(None)
         except Exception as e:
             QMessageBox.critical(self, "Revert failed", str(e))
             return
         self._set_busy(False)
+        self._fill_usage_checks()
         self.redraw()
 
 

@@ -59,7 +59,7 @@ class HermiteSegment:
     kind: str  # trunk | junction
     u: str
     v: str
-    ts_count: int = 17  # sample count along [0,1]; set via ts_count_for / sampling
+    ts_count: int = 10  # sample count along [0,1]; set via ts_count_for / sampling
     
     ts: object | None = None  # (n,) cached parameters
     xyz: object | None = None  # (n, 3) cached samples along stored u→v
