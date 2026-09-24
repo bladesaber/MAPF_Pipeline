@@ -102,7 +102,7 @@ class HermiteSegment:
         if resolution <= 0:
             raise ValueError(f"resolution must be > 0, got {resolution}")
         L = float(hermite_length(np.asarray(p0), np.asarray(v0), np.asarray(p1), np.asarray(v1), backend="numpy"))
-        return max(2, int(math.ceil(L / resolution)))
+        return max(5, int(math.ceil(L / resolution)))
 
     def refresh(
         self,
@@ -118,9 +118,8 @@ class HermiteSegment:
         if resolution is not None:
             self.ts_count = self.ts_count_for(p0, v0, p1, v1, resolution)
         xp = _backend(backend)
-        n = max(2, int(self.ts_count))
-        self.ts = xp.linspace(0.0, 1.0, n)
-        self.xyz = sample_hermite(p0, v0, p1, v1, n=n, backend=backend)
+        self.ts = xp.linspace(0.0, 1.0, self.ts_count)
+        self.xyz = sample_hermite(p0, v0, p1, v1, n=self.ts_count, backend=backend)
         self.radius = (1.0 - self.ts) * float(r0) + self.ts * float(r1)
         return self
 
@@ -201,6 +200,7 @@ class OptimizeGraph:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {
+            "type": "OptimizeGraph",
             "id": self.id,
             "nodes": {nid: n.export() for nid, n in self.nodes.items()},
             "segments": {sid: s.export() for sid, s in self.segments.items()},

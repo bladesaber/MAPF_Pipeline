@@ -30,6 +30,7 @@ Obstacle = SphereObs | CapsuleObs | AabbObs
 METHODS = ("adam", "adam_annealed", "langevin", "elastic_qp", "interior_nlp")
 Method = Literal[*METHODS]
 ClearKind = Literal["capsule", "hull", "ignore"]
+UnionKind = Literal["chamfer", "ignore"]
 
 
 def load_obstacles(env: dict, clear_kind: ClearKind = "capsule") -> list[Obstacle]:
@@ -93,6 +94,7 @@ def run_optimize(
     *,
     method: Method = "adam_annealed",  # type: ignore[assignment]
     clear_kind: ClearKind = "capsule",
+    union_kind: UnionKind = "chamfer",
     weights: LossWeights | None = None,
     margin: float = 0.0,
     steps: int = 200,
@@ -108,9 +110,12 @@ def run_optimize(
 
     ``p_max_*`` seed packed clear/union buffer lengths (see ``PackLayout``).
     ``opt_kwargs`` are forwarded to the selected solver (e.g. ``lr`` for adam).
+    ``union_kind='ignore'`` skips junction Chamfer refresh (even if ``lam≠0``).
     """
     if method not in METHODS:
         raise ValueError(f"method must be one of {METHODS}, got {method!r}")
+    if union_kind not in ("chamfer", "ignore"):
+        raise ValueError(f"union_kind must be 'chamfer' or 'ignore', got {union_kind!r}")
 
     lay = layout(
         list(graphs),
@@ -129,7 +134,10 @@ def run_optimize(
             return refresh_hull(gs, obs, margin)
         return refresh_capsule(gs, obs, margin)
 
-    union_cb = (lambda gs: _refresh_union(gs)) if w.lam != 0.0 else None
+    if union_kind == "ignore" or w.lam == 0.0:
+        union_cb = None
+    else:
+        union_cb = lambda gs: _refresh_union(gs)
     kw: dict[str, Any] = dict(
         steps=steps,
         clear_kind="capsule" if clear_kind == "ignore" else clear_kind,
@@ -160,6 +168,7 @@ def run_optimize(
         "wall_time": wall_time,
         "method": method,
         "clear_kind": clear_kind,
+        "union_kind": union_kind,
     }
 
 
@@ -169,6 +178,7 @@ def run_pipeline(
     *,
     method: Method = "adam_annealed",  # type: ignore[assignment]
     clear_kind: ClearKind = "capsule",
+    union_kind: UnionKind = "chamfer",
     weights: LossWeights | None = None,
     margin: float = 0.0,
     steps: int = 200,
@@ -196,6 +206,7 @@ def run_pipeline(
         obs,
         method=method,
         clear_kind=clear_kind,
+        union_kind=union_kind,
         weights=w,
         margin=margin,
         steps=steps,
@@ -235,6 +246,7 @@ def run_pipeline(
     return {
         "method": method,
         "clear_kind": clear_kind,
+        "union_kind": union_kind,
         "report": report,
         "out_dir": str(out),
     }
@@ -259,6 +271,12 @@ def main() -> None:
         default="capsule",
         choices=["capsule", "hull", "ignore"],
         help="narrowphase proxy; 'ignore' skips all clearance (debug)",
+    )
+    parser.add_argument(
+        "--union-kind",
+        default="chamfer",
+        choices=["chamfer", "ignore"],
+        help="junction union; 'ignore' skips Chamfer refresh (debug)",
     )
     parser.add_argument("--steps", type=int, default=50)
     parser.add_argument(
@@ -298,6 +316,7 @@ def main() -> None:
         obs,
         method=args.method,
         clear_kind=args.clear_kind,
+        union_kind=args.union_kind,
         weights=weights,
         steps=args.steps,
         out_dir=args.out_dir,
@@ -308,7 +327,7 @@ def main() -> None:
     p = out["report"]["path"]["aggregate"]
     s = out["report"]["solve"]
     print(
-        f"{out['method']}  {out['clear_kind']}  "
+        f"{out['method']}  clear={out['clear_kind']}  union={out['union_kind']}  "
         f"ok={c['ok']}  n_hit={c['n_hit']}  "
         f"L={p['L']:.4g}  kr_max={p['kr_max']:.4g}  "
         f"t={s['wall_time']:.3g}s  → {out['out_dir']}"

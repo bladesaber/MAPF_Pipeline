@@ -144,6 +144,7 @@ class PartitionedTree:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {
+            "type": "PartitionedTree",
             "id": self.id,
             "nodes": {nid: n.export() for nid, n in self.nodes.items()},
             "labels": dict(self.labels),

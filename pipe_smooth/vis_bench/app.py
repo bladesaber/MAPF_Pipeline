@@ -16,7 +16,7 @@ CLI
 
   --save-dir   root for cases (default: ``pipe_smooth/runs``)
 
-Menu → Examples → Elbow 90… / S-curve + 2 obs… builds a case and clears stale runs.
+Menu → Examples → Elbow / S-curve / Spiral / Branch union / M-shape… builds a case and clears stale runs.
 """
 
 from __future__ import annotations
@@ -59,16 +59,20 @@ from PyQt5.QtWidgets import (
 from pyvistaqt import QtInteractor
 
 from pipe_smooth.collision import SphereObs
-from pipe_smooth.geometry.assemble import (
-    HermiteNode,
-    HermiteSegment,
-    OptimizeGraph,
-    OptimizeUsagePath,
-)
+from pipe_smooth.geometry.assemble import OptimizeGraph
 from pipe_smooth.optimize.loss import LossWeights
 from pipe_smooth.optimize.pack import PackLayout, unpack
 from pipe_smooth.optimize.recorder import Recorder
 from pipe_smooth.pipeline import METHODS, run_pipeline
+from pipe_smooth.vis_bench.conditions import (
+    MAX_BRANCH,
+    M_USAGE_PAIRS,
+    make_branch_union,
+    make_elbow90,
+    make_m_shape,
+    make_s_curve,
+    make_spiral_entangle,
+)
 
 _CLEAR_KEYS = (
     "kind",
@@ -127,175 +131,6 @@ _OPT_SPECS: dict[str, dict[str, tuple]] = {
         "refresh_every": ("int", 1),
     },
 }
-
-
-def make_elbow90(count: int = 5, resolution: float = 1.0, radius: float = 0.5) -> OptimizeGraph:
-    """L-path: ``count`` waypoints along +x, then ``count`` along +y (shared corner)."""
-    if count < 2:
-        raise ValueError(f"count must be >= 2, got {count}")
-    sp, r = float(resolution), float(radius)
-    nodes: dict[str, HermiteNode] = {}
-    chain: list[str] = []
-    for i in range(count):
-        nid = f"a{i}"
-        chain.append(nid)
-        nodes[nid] = HermiteNode(
-            pos=np.array([i * sp, 0.0, 0.0]),
-            radius=r,
-            v=None,
-            fixed_p=(i == 0),
-            fixed_v=(i == 0),
-            role="port" if i == 0 else "trunk",
-        )
-    corner = chain[-1]
-    for j in range(1, count):
-        nid = f"b{j}"
-        chain.append(nid)
-        is_end = j == count - 1
-        nodes[nid] = HermiteNode(
-            pos=np.array([(count - 1) * sp, j * sp, 0.0]),
-            radius=r,
-            v=None,
-            fixed_p=is_end,
-            fixed_v=is_end,
-            role="port" if is_end else "trunk",
-        )
-
-    segments: dict[str, HermiteSegment] = {}
-    seg_ids: list[str] = []
-    for i in range(len(chain) - 1):
-        u, v = chain[i], chain[i + 1]
-        p0, p1 = nodes[u].pos, nodes[v].pos
-        tang = p1 - p0
-        L = float(np.linalg.norm(tang))
-        tang = tang / (L + 1e-12)
-        if not nodes[u].fixed_v:
-            nodes[u].v = tang * L
-        if not nodes[v].fixed_v:
-            nodes[v].v = tang * L
-        sid = f"s{i}"
-        segments[sid] = HermiteSegment(id=sid, edge="e0", kind="trunk", u=u, v=v)
-        seg_ids.append(sid)
-
-    c = nodes[corner]
-    if not c.fixed_v:
-        c.v = (np.array([1.0, 1.0, 0.0]) / np.sqrt(2.0)) * sp
-
-    g = OptimizeGraph(
-        id="elbow_90",
-        nodes=nodes,
-        segments=segments,
-        edge_segs={"e0": list(seg_ids)},
-        junctions={},
-        usage_paths=[
-            OptimizeUsagePath(
-                usage=("A", "B"),
-                edges=["e0"],
-                edges_reverse=[False],
-                segments=seg_ids,
-                reverse=[False] * len(seg_ids),
-                v_start=np.array([sp, 0.0, 0.0]),
-                v_end=np.array([0.0, sp, 0.0]),
-            )
-        ],
-    )
-    g.check_usage_tangents_colinear()
-    return g
-
-
-def make_s_curve(
-    count: int = 5,
-    resolution: float = 1.0,
-    radius: float = 0.5,
-    obs_r0: float | None = None,
-    obs_r1: float | None = None,
-) -> tuple[OptimizeGraph, list[SphereObs]]:
-    """Planar S: +x, +y, -x, +y, +x. Two sphere obstacles sit in the concave bays."""
-    if count < 2:
-        raise ValueError(f"count must be >= 2, got {count}")
-    sp, r = float(resolution), float(radius)
-    W = (count - 1) * sp
-    nodes: dict[str, HermiteNode] = {}
-    chain: list[str] = []
-
-    def _add(nid: str, pos, *, fixed: bool = False, role: str = "trunk"):
-        nodes[nid] = HermiteNode(
-            pos=np.asarray(pos, float),
-            radius=r,
-            v=None,
-            fixed_p=fixed,
-            fixed_v=fixed,
-            role=role,
-        )
-        chain.append(nid)
-
-    for i in range(count):
-        _add(f"a{i}", [i * sp, 0.0, 0.0], fixed=(i == 0), role="port" if i == 0 else "trunk")
-    for j in range(1, count):
-        _add(f"b{j}", [W, j * sp, 0.0])
-    for k in range(1, count):
-        _add(f"c{k}", [W - k * sp, W, 0.0])
-    for m in range(1, count):
-        _add(f"d{m}", [0.0, W + m * sp, 0.0])
-    for n in range(1, count):
-        end = n == count - 1
-        _add(f"e{n}", [n * sp, 2.0 * W, 0.0], fixed=end, role="port" if end else "trunk")
-
-    segments: dict[str, HermiteSegment] = {}
-    seg_ids: list[str] = []
-    for i in range(len(chain) - 1):
-        u, v = chain[i], chain[i + 1]
-        p0, p1 = nodes[u].pos, nodes[v].pos
-        tang = p1 - p0
-        L = float(np.linalg.norm(tang))
-        tang = tang / (L + 1e-12)
-        if not nodes[u].fixed_v:
-            nodes[u].v = tang * L
-        if not nodes[v].fixed_v:
-            nodes[v].v = tang * L
-        sid = f"s{i}"
-        segments[sid] = HermiteSegment(id=sid, edge="e0", kind="trunk", u=u, v=v)
-        seg_ids.append(sid)
-
-    # soften four corners (±x ↔ ±y)
-    for nid, d in (
-        (f"a{count - 1}", np.array([1.0, 1.0, 0.0])),
-        (f"b{count - 1}", np.array([-1.0, 1.0, 0.0])),
-        (f"c{count - 1}", np.array([-1.0, 1.0, 0.0])),
-        (f"d{count - 1}", np.array([1.0, 1.0, 0.0])),
-    ):
-        node = nodes[nid]
-        if not node.fixed_v:
-            node.v = d / (np.linalg.norm(d) + 1e-12) * sp
-
-    g = OptimizeGraph(
-        id="s_curve",
-        nodes=nodes,
-        segments=segments,
-        edge_segs={"e0": list(seg_ids)},
-        junctions={},
-        usage_paths=[
-            OptimizeUsagePath(
-                usage=("A", "B"),
-                edges=["e0"],
-                edges_reverse=[False],
-                segments=seg_ids,
-                reverse=[False] * len(seg_ids),
-                v_start=np.array([sp, 0.0, 0.0]),
-                v_end=np.array([sp, 0.0, 0.0]),
-            )
-        ],
-    )
-    g.check_usage_tangents_colinear()
-    default_obs_r = max(r * 1.2, sp * 0.35)
-    r0 = float(default_obs_r if obs_r0 is None else obs_r0)
-    r1 = float(default_obs_r if obs_r1 is None else obs_r1)
-    obstacles = [
-        SphereObs(c=np.array([0.5 * W, 0.5 * W, 0.0]), r=r0, name="bay0"),
-        SphereObs(c=np.array([0.5 * W, 1.5 * W, 0.0]), r=r1, name="bay1"),
-    ]
-    return g, obstacles
-
 
 class _OptWorker(QThread):
     done = pyqtSignal(dict)
@@ -377,6 +212,13 @@ class BenchViewer(QMainWindow):
         self.clear_kind.setCurrentText("ignore")
         row_ck.addWidget(self.clear_kind)
         ov.addLayout(row_ck)
+        row_uk = QHBoxLayout()
+        row_uk.addWidget(QLabel("union_kind"))
+        self.union_kind = QComboBox()
+        self.union_kind.addItems(["chamfer", "ignore"])
+        self.union_kind.setCurrentText("ignore")
+        row_uk.addWidget(self.union_kind)
+        ov.addLayout(row_uk)
         row_mg = QHBoxLayout()
         row_mg.addWidget(QLabel("margin"))
         self.margin = QDoubleSpinBox()
@@ -486,6 +328,9 @@ class BenchViewer(QMainWindow):
         m = self.menuBar().addMenu("&Examples")
         m.addAction("Elbow 90…").triggered.connect(self._example_elbow90)
         m.addAction("S-curve + 2 obs…").triggered.connect(self._example_s_curve)
+        m.addAction("Spiral entangle…").triggered.connect(self._example_spiral_entangle)
+        m.addAction("Branch union…").triggered.connect(self._example_branch_union)
+        m.addAction("M-shape usages…").triggered.connect(self._example_m_shape)
 
         self.plotter.add_axes()
         self._set_busy(True)
@@ -731,6 +576,211 @@ class BenchViewer(QMainWindow):
         self.redraw()
         self.plotter.reset_camera()
 
+    def _example_spiral_entangle(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Spiral entangle (2 groups)")
+        form = QFormLayout(dlg)
+        sp_count = QSpinBox()
+        sp_count.setRange(3, 500)
+        sp_count.setValue(24)
+        sp_turns = QDoubleSpinBox()
+        sp_turns.setRange(0.25, 20.0)
+        sp_turns.setDecimals(2)
+        sp_turns.setValue(2.0)
+        sp_hr = QDoubleSpinBox()
+        sp_hr.setRange(1e-3, 1e3)
+        sp_hr.setDecimals(4)
+        sp_hr.setValue(2.0)
+        sp_pitch = QDoubleSpinBox()
+        sp_pitch.setRange(1e-3, 1e3)
+        sp_pitch.setDecimals(4)
+        sp_pitch.setValue(4.0)
+        sp_rad = QDoubleSpinBox()
+        sp_rad.setRange(1e-4, 1e3)
+        sp_rad.setDecimals(4)
+        sp_rad.setValue(0.6)
+        form.addRow("count (samples)", sp_count)
+        form.addRow("turns", sp_turns)
+        form.addRow("helix radius", sp_hr)
+        form.addRow("pitch (per turn)", sp_pitch)
+        form.addRow("pipe radius", sp_rad)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        form.addRow(buttons)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+
+        count = int(sp_count.value())
+        self.case_dir = self.save_dir / "spiral_entangle"
+        self.case_dir.mkdir(parents=True, exist_ok=True)
+        for p in self._runs():
+            shutil.rmtree(p)
+        self._last_run = None
+        self.graphs = make_spiral_entangle(
+            count,
+            turns=float(sp_turns.value()),
+            helix_r=float(sp_hr.value()),
+            pitch=float(sp_pitch.value()),
+            radius=float(sp_rad.value()),
+        )
+        n0 = self.graphs[0].nodes
+        self.resolution = float(np.linalg.norm(n0["n1"].pos - n0["n0"].pos))
+        self.obstacles = []
+        self._write_obstacles()
+        for gr in self.graphs:
+            gr.export(self.case_dir / f"graph_{gr.id}.json")
+        self.setWindowTitle(f"optimize bench — spiral_entangle  (n={count})")
+        self.clear_kind.setCurrentText("capsule")
+        self._show_report(None)
+        self.progress.setValue(0)
+        self.progress_lbl.setText("")
+        self._set_busy(False)
+        self._fill_usage_checks()
+        self.redraw()
+        self.plotter.reset_camera()
+
+    def _example_branch_union(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Branch union")
+        form = QFormLayout(dlg)
+        sp_count = QSpinBox()
+        sp_count.setRange(2, 500)
+        sp_count.setValue(4)
+        sp_nb = QSpinBox()
+        sp_nb.setRange(2, MAX_BRANCH)
+        sp_nb.setValue(3)
+        sp_res = QDoubleSpinBox()
+        sp_res.setRange(1e-4, 1e4)
+        sp_res.setDecimals(4)
+        sp_res.setValue(1.0)
+        sp_rad = QDoubleSpinBox()
+        sp_rad.setRange(1e-4, 1e3)
+        sp_rad.setDecimals(4)
+        sp_rad.setValue(0.5)
+        sp_gap = QDoubleSpinBox()
+        sp_gap.setRange(1e-4, 1e3)
+        sp_gap.setDecimals(4)
+        sp_gap.setValue(2.0)
+        form.addRow("count (per leg)", sp_count)
+        form.addRow(f"n_branch (≤{MAX_BRANCH})", sp_nb)
+        form.addRow("resolution (spacing)", sp_res)
+        form.addRow("pipe radius", sp_rad)
+        form.addRow("fork_gap", sp_gap)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        form.addRow(buttons)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+
+        count = int(sp_count.value())
+        n_branch = int(sp_nb.value())
+        self.resolution = float(sp_res.value())
+        self.case_dir = self.save_dir / "branch_union"
+        self.case_dir.mkdir(parents=True, exist_ok=True)
+        for p in self._runs():
+            shutil.rmtree(p)
+        self._last_run = None
+        g, tree, part = make_branch_union(
+            count,
+            n_branch=n_branch,
+            resolution=self.resolution,
+            radius=float(sp_rad.value()),
+            fork_gap=float(sp_gap.value()),
+        )
+        self.graphs = [g]
+        self.obstacles = []
+        self._write_obstacles()
+        tree.export(self.case_dir / f"tree_{tree.id}.json")
+        part.export(self.case_dir / f"partitioned_{part.id}.json")
+        g.export(self.case_dir / f"graph_{g.id}.json")
+        self.setWindowTitle(f"optimize bench — branch_union  (n={count}, b={n_branch})")
+        self.clear_kind.setCurrentText("ignore")
+        if "lam" in self.weight_spins:
+            self.weight_spins["lam"].setValue(1.0)
+        self.union_kind.setCurrentText("chamfer")
+        self._show_report(None)
+        self.progress.setValue(0)
+        self.progress_lbl.setText("")
+        self._set_busy(False)
+        self._fill_usage_checks()
+        self.redraw()
+        self.plotter.reset_camera()
+
+    def _example_m_shape(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("M-shape usages")
+        form = QFormLayout(dlg)
+        sp_step = QSpinBox()
+        sp_step.setRange(1, 500)
+        sp_step.setValue(2)
+        sp_height = QSpinBox()
+        sp_height.setRange(1, 500)
+        sp_height.setValue(2)
+        sp_res = QDoubleSpinBox()
+        sp_res.setRange(1e-4, 1e4)
+        sp_res.setDecimals(4)
+        sp_res.setValue(1.0)
+        sp_rad = QDoubleSpinBox()
+        sp_rad.setRange(1e-4, 1e3)
+        sp_rad.setDecimals(4)
+        sp_rad.setValue(0.5)
+        form.addRow("step (cells A–B)", sp_step)
+        form.addRow("height (cells)", sp_height)
+        form.addRow("resolution", sp_res)
+        form.addRow("pipe radius", sp_rad)
+        default_on = {("A", "B"), ("B", "C"), ("A", "C")}
+        usage_cbs: dict[tuple[str, str], QCheckBox] = {}
+        for pair in M_USAGE_PAIRS:
+            cb = QCheckBox(f"{pair[0]}→{pair[1]}")
+            cb.setChecked(pair in default_on)
+            usage_cbs[pair] = cb
+            form.addRow(cb)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        form.addRow(buttons)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+        selected = [p for p, cb in usage_cbs.items() if cb.isChecked()]
+        if not selected:
+            return
+
+        step = int(sp_step.value())
+        height = int(sp_height.value())
+        self.resolution = float(sp_res.value())
+        self.case_dir = self.save_dir / "m_shape"
+        self.case_dir.mkdir(parents=True, exist_ok=True)
+        for p in self._runs():
+            shutil.rmtree(p)
+        self._last_run = None
+        g, tree, part = make_m_shape(
+            step=step,
+            height=height,
+            resolution=self.resolution,
+            radius=float(sp_rad.value()),
+            usages=selected,
+        )
+        self.graphs = [g]
+        self.obstacles = []
+        self._write_obstacles()
+        tree.export(self.case_dir / f"tree_{tree.id}.json")
+        part.export(self.case_dir / f"partitioned_{part.id}.json")
+        g.export(self.case_dir / f"graph_{g.id}.json")
+        self.setWindowTitle(
+            f"optimize bench — m_shape  (step={step}, h={height}, usages={len(selected)})"
+        )
+        self.clear_kind.setCurrentText("ignore")
+        self.union_kind.setCurrentText("chamfer")
+        self._show_report(None)
+        self.progress.setValue(0)
+        self.progress_lbl.setText("")
+        self._set_busy(False)
+        self._fill_usage_checks()
+        self.redraw()
+        self.plotter.reset_camera()
+
     def _write_obstacles(self):
         assert self.case_dir is not None
         spheres = [
@@ -827,7 +877,7 @@ class BenchViewer(QMainWindow):
                 g.refresh(backend="numpy", resolution=max(self.resolution * 0.25, 1e-3))
             for nid, n in g.nodes.items():
                 actor = self.plotter.add_mesh(
-                    pv.Sphere(radius=0.15, center=(0.0, 0.0, 0.0)),
+                    pv.Sphere(radius=0.075, center=(0.0, 0.0, 0.0)),
                     color="red",
                     name=f"n:{g.id}:{nid}",
                 )
@@ -916,6 +966,7 @@ class BenchViewer(QMainWindow):
         kw = dict(
             method=self.method.currentText(),
             clear_kind=clear_kind,
+            union_kind=self.union_kind.currentText(),
             margin=float(self.margin.value()),
             p_max_obs=int(self.p_max_obs.value()),
             p_max_grp=int(self.p_max_grp.value()),
@@ -1020,14 +1071,14 @@ class BenchViewer(QMainWindow):
 
 
 def main(argv: list[str] | None = None):
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description="pipe_smooth optimize bench viewer")
     parser.add_argument(
         "--save-dir",
         "-o",
         type=Path,
         default=root / "runs",
-        help="root for cases (default: pipe_smooth/runs → runs/elbow_90/)",
+        help="root for cases (default: pipe_smooth/runs)",
     )
     args = parser.parse_args(argv)
 

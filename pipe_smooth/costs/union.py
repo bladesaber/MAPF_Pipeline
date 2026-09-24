@@ -64,7 +64,7 @@ def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]
                 if seg.edge not in edge_set:
                     continue
                 ts, xyz, radius = seg.samples(backend="numpy")
-                ts = np.asarray(ts, float)
+                ts = np.asarray(ts, float)                
                 xyz = np.asarray(xyz, float)
                 radius = np.asarray(radius, float)
                 # Interiors only — endpoints are ports/joints, not union Chamfer.

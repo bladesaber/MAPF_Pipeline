@@ -87,6 +87,7 @@ class GroupTree:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {
+            "type": "GroupTree",
             "id": self.id,
             "nodes": {nid: n.export() for nid, n in self.nodes.items()},
             "edges": [e.export() for e in self.edges],
@@ -186,6 +187,15 @@ def build_tree(group: dict, paths: dict, usages: dict, tol: float = 1e-6) -> Gro
             if pair not in edges[ei].usages:
                 edges[ei].usages.append(pair)
             cur = x
+
+    # Terminals must be leaves (degree 1); a deg≥2 "port" is a topology bug.
+    for tid, nid in terminal_node.items():
+        d = len(adj[nid])
+        if d != 1:
+            raise ValueError(
+                f"terminal {tid} (node {nid}) in group {group['id']} has degree {d}, "
+                f"expected 1"
+            )
 
     return GroupTree(
         id=group["id"],
