@@ -118,7 +118,7 @@ class HermiteSegment:
         if resolution is not None:
             self.ts_count = self.ts_count_for(p0, v0, p1, v1, resolution)
         xp = _backend(backend)
-        self.ts = xp.linspace(0.0, 1.0, self.ts_count)
+        self.ts = xp.linspace(0.0, 1.0, self.ts_count)        
         self.xyz = sample_hermite(p0, v0, p1, v1, n=self.ts_count, backend=backend)
         self.radius = (1.0 - self.ts) * float(r0) + self.ts * float(r1)
         return self
@@ -459,10 +459,13 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
                 seg_L = float(np.linalg.norm(p1 - p0))
                 tang = unit(p1 - p0, backend="numpy")
                 u, v_id = chain_ids[j], chain_ids[j + 1]
+                
+                # FIXME: there is very critical problem here
                 if not nodes_out[u].fixed_v:
                     nodes_out[u].v = tang * seg_L
                 if not nodes_out[v_id].fixed_v:
                     nodes_out[v_id].v = tang * seg_L
+                
                 sid = f"{e.id}_{i}_{j}"
                 segments[sid] = HermiteSegment(
                     id=sid, edge=e.id, kind=e.kind, u=u, v=v_id

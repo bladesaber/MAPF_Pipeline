@@ -437,7 +437,7 @@ class TopologyViewer(QMainWindow):
                 )
             for nid, n in g.nodes.items():
                 actor = self.plotter.add_mesh(
-                    pv.Sphere(radius=0.1, center=n.pos),
+                    pv.Sphere(radius=0.01, center=n.pos),
                     color="red",
                     name=f"opt_n:{g.id}:{nid}",
                 )
