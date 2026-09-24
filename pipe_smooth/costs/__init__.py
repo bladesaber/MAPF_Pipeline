@@ -16,6 +16,10 @@ from .clear import (
     clear_hull_active,
     clear_capsule_active_constraint,
     clear_hull_active_constraint,
+    pack_capsule_active,
+    clear_capsule_packed,
+    pack_hull_active,
+    clear_hull_packed,
 )
 from .space import (
     space_cost,
@@ -43,6 +47,10 @@ __all__ = [
     "clear_hull_active",
     "clear_capsule_active_constraint",
     "clear_hull_active_constraint",
+    "pack_capsule_active",
+    "clear_capsule_packed",
+    "pack_hull_active",
+    "clear_hull_packed",
     "space_cost",
     "graph_space",
     "graph_tangent_reg",

@@ -4,6 +4,7 @@ Free: node.pos if not fixed_p; derivative v = (vx, vy, vz) if not fixed_v.
 ||v|| is the tangent scale (old σ). Ports / clamped interfaces stay out of x
 via HermiteNode.fixed_p / fixed_v.
 
+Also holds static ends gather + clear hit caps for JIT clearance.
 Weighted J / ∇J: see ``optimize.loss.loss_and_grad``.
 """
 
@@ -11,9 +12,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from pipe_smooth.geometry.assemble import OptimizeGraph
 from pipe_smooth.utils import backend as _backend
@@ -21,13 +24,24 @@ from pipe_smooth.utils import backend as _backend
 
 @dataclass
 class PackLayout:
-    """slots: (graph_index, node_id, field, offset). field is 'pos' (3) or 'dir' (3)."""
+    """Free DOF slots + ends gather table + fixed clear hit budgets.
 
-    slots: list[tuple[int, str, str, int]]
-    n: int
+    slots: (graph_index, node_id, field, offset); field is 'pos' (3) or 'dir' (3).
+    ``ends_off[s, k] >= 0`` → ``x[off:off+3]``; else ``ends_const[s, k]``.
+    Field order k: p0, v0, p1, v1 (same as ``hermite_ends``).
+    """
+
+    slots: list[tuple[int, str, str, int]]  # (graph_index, node_id, 'pos'|'dir', offset in x)
+    n: int  # length of packed free-DOF vector x
+    # --- clear / ends gather (for JIT-stable clearance) ---
+    seg_index: dict[tuple[str, str], int] = field(default_factory=dict)  # (group_id, seg_id) → row s in ends_*
+    ends_off: np.ndarray = field(default_factory=lambda: np.zeros((0, 4), dtype=np.int32))  # (S,4) x-offsets for p0,v0,p1,v1; -1 = const
+    ends_const: np.ndarray = field(default_factory=lambda: np.zeros((0, 4, 3), dtype=np.float64))  # (S,4,3) fixed/port values when ends_off < 0
+    p_max_obs: int = 0  # max packed obstacle–seg hits (fixed buffer length)
+    p_max_grp: int = 0  # max packed group–group hits (fixed buffer length)
 
     def export(self, path: str | Path) -> None:
-        """Write layout JSON for resume / viz (pairs with recorded ``x``)."""
+        """Write DOF layout JSON for resume / viz (pairs with recorded ``x``)."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {
@@ -36,17 +50,90 @@ class PackLayout:
         }
         path.write_text(json.dumps(data, indent=2))
 
+    @staticmethod
+    def clear_gather(
+        graphs: Sequence[OptimizeGraph],
+        slots: list[tuple[int, str, str, int]],
+    ) -> tuple[dict[tuple[str, str], int], np.ndarray, np.ndarray]:
+        """Map each Hermite seg → (x-offset | const) for (p0,v0,p1,v1)."""
+        off_map = {(gi, nid, fld): off for gi, nid, fld, off in slots}
+        seg_index: dict[tuple[str, str], int] = {}
+        rows_offset: list[list[int]] = []
+        rows_const: list[list[list[float]]] = []
+        for gi, g in enumerate(graphs):
+            for sid, (p0, v0, p1, v1) in g.hermite_ends(backend="numpy").items():
+                seg = g.segments[sid]
+                row_offset: list[int] = []
+                row_const: list[list[float]] = []
+                for nid, fld, val in (
+                    (seg.u, "pos", p0),
+                    (seg.u, "dir", v0),
+                    (seg.v, "pos", p1),
+                    (seg.v, "dir", v1),
+                ):
+                    key = (gi, nid, fld)
+                    if key in off_map:
+                        row_offset.append(int(off_map[key]))  # x-offset for p0,v0,p1,v1
+                        row_const.append([0.0, 0.0, 0.0])  # default value for fixed/port
+                    else:
+                        row_offset.append(-1)  # -1 = const value
+                        row_const.append(np.asarray(val, dtype=float).reshape(3).tolist())  # fixed/port value
+                seg_index[(g.id, sid)] = len(rows_offset)  # (group_id, seg_id) → row s in ends_*
+                rows_offset.append(row_offset)
+                rows_const.append(row_const)
+        if rows_offset:
+            ends_off = np.asarray(rows_offset, dtype=np.int32)
+            ends_const = np.asarray(rows_const, dtype=np.float64)
+        else:
+            ends_off = np.zeros((0, 4), dtype=np.int32)
+            ends_const = np.zeros((0, 4, 3), dtype=np.float64)
+        return seg_index, ends_off, ends_const
+
+    def ends_from_x(self, x, backend: str = "numpy"):
+        """``ends[S,4,3]`` from packed ``x`` (same semantics as ``hermite_ends``)."""
+        xp = _backend(backend)
+        x = xp.asarray(x)
+        off = xp.asarray(self.ends_off)
+        const = xp.asarray(self.ends_const)
+        safe = xp.maximum(off, 0)
+        from_x = x[safe[:, :, None] + xp.arange(3)]
+        return xp.where(off[..., None] >= 0, from_x, const)
+
     @classmethod
-    def load(cls, path: str | Path) -> "PackLayout":
+    def load(
+        cls,
+        path: str | Path,
+        graphs: Sequence[OptimizeGraph] | None = None,
+        p_max_obs: int | None = None,
+        p_max_grp: int | None = None,
+    ) -> "PackLayout":
+        """Load DOF slots; if ``graphs`` and both ``p_max_*`` set, also fill clear gather."""
         data = json.loads(Path(path).read_text())
         slots = [
-            (int(gi), str(nid), str(field), int(off))
-            for gi, nid, field, off in data["slots"]
+            (int(gi), str(nid), str(fld), int(off))
+            for gi, nid, fld, off in data["slots"]
         ]
-        return cls(slots=slots, n=int(data["n"]))
+        n = int(data["n"])
+        if graphs is not None and p_max_obs is not None and p_max_grp is not None:
+            seg_index, ends_off, ends_const = cls.clear_gather(graphs, slots)
+            return cls(
+                slots=slots,
+                n=n,
+                seg_index=seg_index,
+                ends_off=ends_off,
+                ends_const=ends_const,
+                p_max_obs=int(p_max_obs),
+                p_max_grp=int(p_max_grp),
+            )
+        return cls(slots=slots, n=n)
 
 
-def layout(graphs: Sequence[OptimizeGraph]) -> PackLayout:
+def layout(
+    graphs: Sequence[OptimizeGraph],
+    p_max_obs: int = 0,
+    p_max_grp: int = 0,
+) -> PackLayout:
+    """Free DOF slots + clear gather from ``hermite_ends``; store hit caps."""
     slots: list[tuple[int, str, str, int]] = []
     n = 0
     for gi, g in enumerate(graphs):
@@ -57,7 +144,17 @@ def layout(graphs: Sequence[OptimizeGraph]) -> PackLayout:
             if not node.fixed_v and node.v is not None:
                 slots.append((gi, nid, "dir", n))
                 n += 3  # free derivative (vx, vy, vz); ||v|| is the tangent scale
-    return PackLayout(slots, n)
+
+    seg_index, ends_off, ends_const = PackLayout.clear_gather(graphs, slots)
+    return PackLayout(
+        slots=slots,
+        n=n,
+        seg_index=seg_index,
+        ends_off=ends_off,
+        ends_const=ends_const,
+        p_max_obs=int(p_max_obs),
+        p_max_grp=int(p_max_grp),
+    )
 
 
 def pack(graphs: Sequence[OptimizeGraph], layout: PackLayout, backend: str = "numpy"):

@@ -9,7 +9,14 @@ from typing import Any, Literal
 import jax
 import numpy as np
 
-from pipe_smooth.costs.clear import clear_capsule_active, clear_hull_active
+from pipe_smooth.costs.clear import (
+    clear_capsule_active,
+    clear_hull_active,
+    pack_capsule_active,
+    clear_capsule_packed,
+    pack_hull_active,
+    clear_hull_packed,
+)
 from pipe_smooth.costs.path import graph_curvature, graph_length
 from pipe_smooth.costs.space import graph_space, graph_tangent_reg
 from pipe_smooth.costs.union import union_cost
@@ -76,85 +83,6 @@ def total_loss(
     return j, parts
 
 
-# FIXME: re-JIT again and agin is very critical to performance
-def _arr_key(a) -> tuple:
-    return tuple(float(x) for x in np.asarray(a, dtype=float).ravel())
-
-
-def _clear_key(clear_active) -> Any:
-    """Content signature (not object id) so identical active sets share one jit."""
-    if clear_active is None:
-        return None
-    obs, grp = clear_active
-    obs_k = []
-    for p in obs:
-        if hasattr(p, "hits"):
-            hits = tuple(
-                (
-                    float(h.hermite_t0),
-                    float(h.hermite_t1),
-                    float(h.chord_t),
-                    _arr_key(h.qb),
-                    float(h.sign),
-                    float(h.d_req),
-                )
-                for h in p.hits
-            )
-            obs_k.append((p.group_id, p.seg_id, p.obs_name, hits))
-        else:  # hull flat pair
-            obs_k.append(
-                (
-                    p.group_id,
-                    p.seg_id,
-                    p.obs_name,
-                    float(p.hermite_t0),
-                    float(p.hermite_t1),
-                    _arr_key(p.weights),
-                    _arr_key(p.qb),
-                    float(p.sign),
-                    float(p.d_req),
-                    _arr_key(p.shift),
-                )
-            )
-    grp_k = []
-    for p in grp:
-        if hasattr(p, "hits"):
-            hits = tuple(
-                (
-                    float(h.hermite_t0_a),
-                    float(h.hermite_t1_a),
-                    float(h.chord_t_a),
-                    float(h.hermite_t0_b),
-                    float(h.hermite_t1_b),
-                    float(h.chord_t_b),
-                    float(h.sign),
-                    float(h.d_req),
-                )
-                for h in p.hits
-            )
-            grp_k.append((p.group_a, p.seg_a, p.group_b, p.seg_b, hits))
-        else:
-            grp_k.append(
-                (
-                    p.group_a,
-                    p.seg_a,
-                    p.group_b,
-                    p.seg_b,
-                    float(p.hermite_t0_a),
-                    float(p.hermite_t1_a),
-                    _arr_key(p.weights_a),
-                    float(p.hermite_t0_b),
-                    float(p.hermite_t1_b),
-                    _arr_key(p.weights_b),
-                    float(p.sign),
-                    float(p.d_req),
-                    _arr_key(p.shift_a),
-                    _arr_key(p.shift_b),
-                )
-            )
-    return (tuple(obs_k), tuple(grp_k))
-
-
 def _union_key(union_hits) -> Any:
     if not union_hits:
         return None
@@ -164,7 +92,7 @@ def _union_key(union_hits) -> Any:
     )
 
 
-# Recompiled when active-set signature / weights / layout identity change.
+# Recompiled when layout budgets / union structure / weights change — not clear hit values.
 _vg_cache: dict[str, Any] = {"key": None, "fn": None}
 
 
@@ -186,7 +114,8 @@ def loss_and_grad(
     key = (
         id(graphs),
         id(layout),
-        _clear_key(clear_active),
+        layout.p_max_obs,
+        layout.p_max_grp,
         _union_key(union_hits),
         clear_kind,
         w.alpha,
@@ -198,15 +127,15 @@ def loss_and_grad(
         w.mu_v,
     )
     if _vg_cache["key"] != key:
-        def f(xx):
+
+        def f(xx, obs_b, grp_b):
             unpack(xx, graphs, layout, backend="jax")
             for g in graphs:
                 g.refresh(backend="jax")
-            return total_loss(
+            j, parts = total_loss(
                 graphs,
                 weights,
-                clear_active=clear_active,
-                clear_kind=clear_kind,
+                clear_active=None,
                 union_hits=union_hits,
                 backend="jax",
             )

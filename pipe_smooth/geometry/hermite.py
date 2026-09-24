@@ -18,8 +18,19 @@ def unit(dx, backend: str = "numpy"):
     return dx / (xp.linalg.norm(dx) + 1e-12)
 
 
+def _t_for_p(t, p, xp):
+    """Expand ``t`` so it broadcasts against ``p`` with shape (..., 3)."""
+    t, p = xp.asarray(t), xp.asarray(p)
+    if t.ndim > 0:
+        t = t[..., None]
+    return t, p
+
+
 def eval_hermite(p0, v0, p1, v1, t, backend: str = "numpy"):
-    """γ(t), t in [0, 1]. p and v are (3,); v is the end derivative γ' (not unit)."""
+    """γ(t), t in [0, 1]. ``p``/``v`` are (..., 3); ``t`` scalar or broadcastable."""
+    xp = _backend(backend)
+    t, p0 = _t_for_p(t, p0, xp)
+    v0, p1, v1 = xp.asarray(v0), xp.asarray(p1), xp.asarray(v1)
     t2, t3 = t * t, t * t * t
     h00 = 2 * t3 - 3 * t2 + 1
     h10 = t3 - 2 * t2 + t
@@ -30,6 +41,9 @@ def eval_hermite(p0, v0, p1, v1, t, backend: str = "numpy"):
 
 def eval_hermite_d1(p0, v0, p1, v1, t, backend: str = "numpy"):
     """dγ/dt. Same conventions as eval_hermite."""
+    xp = _backend(backend)
+    t, p0 = _t_for_p(t, p0, xp)
+    v0, p1, v1 = xp.asarray(v0), xp.asarray(p1), xp.asarray(v1)
     t2 = t * t
     dh00 = 6 * t2 - 6 * t
     dh10 = 3 * t2 - 4 * t + 1
@@ -40,6 +54,9 @@ def eval_hermite_d1(p0, v0, p1, v1, t, backend: str = "numpy"):
 
 def eval_hermite_d2(p0, v0, p1, v1, t, backend: str = "numpy"):
     """d²γ/dt². Same conventions as eval_hermite."""
+    xp = _backend(backend)
+    t, p0 = _t_for_p(t, p0, xp)
+    v0, p1, v1 = xp.asarray(v0), xp.asarray(p1), xp.asarray(v1)
     d2h00 = 12 * t - 6
     d2h10 = 6 * t - 4
     d2h01 = -12 * t + 6
@@ -57,14 +74,7 @@ def eval_hermite_kappa(p0, v0, p1, v1, t, backend: str = "numpy"):
 
 def eval_hermite_ts(p0, v0, p1, v1, ts, backend: str = "numpy"):
     """γ(ts) for many parameters. `ts` shape (n,) → points (n, 3). Vectorized."""
-    xp = _backend(backend)
-    ts = xp.asarray(ts)
-    t2, t3 = ts * ts, ts * ts * ts
-    h00 = (2 * t3 - 3 * t2 + 1)[:, None]
-    h10 = (t3 - 2 * t2 + ts)[:, None]
-    h01 = (-2 * t3 + 3 * t2)[:, None]
-    h11 = (t3 - t2)[:, None]
-    return h00 * p0 + h10 * v0 + h01 * p1 + h11 * v1
+    return eval_hermite(p0, v0, p1, v1, ts, backend=backend)
 
 
 def sample_hermite(p0, v0, p1, v1, n: int = 16, backend: str = "numpy"):
@@ -85,13 +95,33 @@ def hermite_length(p0, v0, p1, v1, backend: str = "numpy"):
 
 
 def hermite_bezier_controls(p0, v0, p1, v1, backend: str = "numpy"):
-    """Hermite → Bézier controls C0..C3, shape (4, 3). Curve ⊂ CH{Ci}."""
+    """Hermite → Bézier controls C0..C3, shape (4, 3) or (..., 4, 3). Curve ⊂ CH{Ci}."""
     xp = _backend(backend)
+    p0, v0, p1, v1 = xp.asarray(p0), xp.asarray(v0), xp.asarray(p1), xp.asarray(v1)
     c0 = p0
     c1 = p0 + v0 / 3.0
     c2 = p1 - v1 / 3.0
     c3 = p1
-    return xp.stack([c0, c1, c2, c3], axis=0)
+    axis = 0 if p0.ndim == 1 else p0.ndim - 1
+    return xp.stack([c0, c1, c2, c3], axis=axis)
+
+
+def hermite_bezier_on_interval(p0, v0, p1, v1, ta, tb, backend: str = "numpy"):
+    """Bézier controls of the Hermite cubic restricted to [ta, tb].
+
+    Same cubic as ``bezier_on_interval(hermite_bezier_controls(...), ta, tb)``.
+    ``p``/``v`` are (3,) or (P, 3); ``ta``/``tb`` scalar or (P,). Returns (4, 3) or (P, 4, 3).
+    """
+    xp = _backend(backend)
+    ta, tb = xp.asarray(ta), xp.asarray(tb)
+    dt = tb - ta
+    if dt.ndim > 0:
+        dt = dt[..., None]
+    pa = eval_hermite(p0, v0, p1, v1, ta, backend=backend)
+    pb = eval_hermite(p0, v0, p1, v1, tb, backend=backend)
+    va = dt * eval_hermite_d1(p0, v0, p1, v1, ta, backend=backend)
+    vb = dt * eval_hermite_d1(p0, v0, p1, v1, tb, backend=backend)
+    return hermite_bezier_controls(pa, va, pb, vb, backend=backend)
 
 
 def hermite_convex_hull(p0, v0, p1, v1, backend: str = "numpy"):

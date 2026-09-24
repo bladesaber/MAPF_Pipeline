@@ -8,6 +8,7 @@ from .hermite import (
     unit,
     hermite_length,
     hermite_bezier_controls,
+    hermite_bezier_on_interval,
     hermite_convex_hull,
     bezier_on_interval,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "unit",
     "hermite_length",
     "hermite_bezier_controls",
+    "hermite_bezier_on_interval",
     "hermite_convex_hull",
     "bezier_on_interval",
     "HermiteNode",
