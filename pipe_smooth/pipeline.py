@@ -96,6 +96,9 @@ def run_optimize(
     weights: LossWeights | None = None,
     margin: float = 0.0,
     steps: int = 200,
+    p_max_obs: int = 128,
+    p_max_grp: int = 128,
+    p_max_union: int = 64,
     out_dir: str | Path = "runs/stage1",
     record_state: bool = False,
     verbose: bool = False,
@@ -103,12 +106,18 @@ def run_optimize(
 ) -> dict[str, Any]:
     """One optimizer pass from **current** graph state (solver unpacks best_x).
 
+    ``p_max_*`` seed packed clear/union buffer lengths (see ``PackLayout``).
     ``opt_kwargs`` are forwarded to the selected solver (e.g. ``lr`` for adam).
     """
     if method not in METHODS:
         raise ValueError(f"method must be one of {METHODS}, got {method!r}")
 
-    lay = layout(list(graphs))
+    lay = layout(
+        list(graphs),
+        p_max_obs=p_max_obs,
+        p_max_grp=p_max_grp,
+        p_max_union=p_max_union,
+    )
     w = weights or LossWeights()
     rec = Recorder(out_dir=out_dir, record_state=record_state, phase=method)
     obs = list(obstacles)
@@ -163,6 +172,9 @@ def run_pipeline(
     weights: LossWeights | None = None,
     margin: float = 0.0,
     steps: int = 200,
+    p_max_obs: int = 128,
+    p_max_grp: int = 128,
+    p_max_union: int = 64,
     out_dir: str | Path = "runs/stage1",
     record_state: bool = False,
     verbose: bool = False,
@@ -187,6 +199,9 @@ def run_pipeline(
         weights=w,
         margin=margin,
         steps=steps,
+        p_max_obs=p_max_obs,
+        p_max_grp=p_max_grp,
+        p_max_union=p_max_union,
         out_dir=out,
         record_state=record_state,
         verbose=verbose,

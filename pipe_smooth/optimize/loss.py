@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
+from warnings import warn
 
 import jax
+import numpy as np
 
 from pipe_smooth.costs.clear import (
     clear_capsule_active,
@@ -22,6 +24,7 @@ from pipe_smooth.costs.union import union_cost, pack_union_hits, union_cost_pack
 
 from pipe_smooth.geometry.assemble import OptimizeGraph
 from pipe_smooth.optimize.pack import PackLayout, unpack
+from pipe_smooth.optimize.pack_helper import sync_layout_budgets
 from pipe_smooth.utils import backend as _backend
 
 
@@ -137,10 +140,40 @@ def loss_and_grad(
     w = weights
     empty_clear = ([], [])
     active = clear_active if clear_active is not None else empty_clear
+    obs_l, grp_l = active
+    if clear_kind == "hull":
+        n_obs, n_grp = len(obs_l), len(grp_l)
+    else:
+        n_obs = sum(len(p.hits) for p in obs_l)
+        n_grp = sum(len(p.hits) for p in grp_l)
+    n_union = 0
+    if union_hits:
+        for hits in union_hits.values():
+            for h in hits:
+                n_union += int(np.asarray(h.ts_a).reshape(-1).shape[0])
+    # TODO: non-stable version
+    # sync_layout_budgets(layout, n_obs=n_obs, n_grp=n_grp, n_union=n_union)
+
+    obs_l, grp_l = list(obs_l), list(grp_l)
+    rng = np.random.default_rng()
+    if n_obs > layout.p_max_obs:
+        warn(
+            f"clear obs slots {n_obs} > p_max_obs={layout.p_max_obs}; shuffle+truncate",
+            stacklevel=2,
+        )
+        rng.shuffle(obs_l)
+    if n_grp > layout.p_max_grp:
+        warn(
+            f"clear grp slots {n_grp} > p_max_grp={layout.p_max_grp}; shuffle+truncate",
+            stacklevel=2,
+        )
+        rng.shuffle(grp_l)
+    active = (obs_l, grp_l)
     if clear_kind == "capsule":
         obs_b, grp_b = pack_capsule_active(active, layout, backend="jax")
     else:
         obs_b, grp_b = pack_hull_active(active, layout, backend="jax")
+    
     union_b = pack_union_hits(union_hits, layout, backend="jax")
 
     key = (

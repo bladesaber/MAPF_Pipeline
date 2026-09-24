@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from itertools import combinations
 from typing import TYPE_CHECKING, Any, Mapping, Sequence
+from warnings import warn
 
 import numpy as np
 from sklearn.neighbors import KDTree
@@ -163,7 +164,7 @@ def pack_union_hits(
     layout: PackLayout,
     backend: str = "numpy",
 ) -> dict[str, Any]:
-    """Flatten all Chamfer samples into a fixed buffer (truncate at ``p_max_union``)."""
+    """Flatten Chamfer samples into a fixed buffer (truncate at ``p_max_union``)."""
     xp = _backend(backend)
     U = layout.p_max_union
     idx = layout.seg_index
@@ -178,24 +179,34 @@ def pack_union_hits(
     if not union_hits or U <= 0:
         return {k: xp.asarray(v) for k, v in buf.items()}
 
+    rows: list[tuple[str, UnionHit]] = [
+        (gid, h) for gid, hits in union_hits.items() for h in hits
+    ]
+    n_union = sum(int(np.asarray(h.ts_a).reshape(-1).shape[0]) for _, h in rows)
+    if n_union > U:
+        warn(
+            f"union samples {n_union} > p_max_union={U}; shuffle+truncate",
+            stacklevel=2,
+        )
+        np.random.default_rng().shuffle(rows)
+
     i = 0
-    for gid, hits in union_hits.items():
-        for h in hits:
-            if i >= U:
-                return {k: xp.asarray(v) for k, v in buf.items()}
-            ta = np.asarray(h.ts_a, float).reshape(-1)
-            tb = np.asarray(h.ts_b, float).reshape(-1)
-            ds = np.asarray(h.ds_a, float).reshape(-1)
-            n = min(int(ta.shape[0]), U - i)
-            sa, sb = idx[(gid, h.seg_a)], idx[(gid, h.seg_b)]
-            sl = slice(i, i + n)
-            buf["seg_a"][sl] = sa
-            buf["seg_b"][sl] = sb
-            buf["t_a"][sl] = ta[:n]
-            buf["t_b"][sl] = tb[:n]
-            buf["ds_a"][sl] = ds[:n]
-            buf["mask"][sl] = 1.0
-            i += n
+    for gid, h in rows:
+        if i >= U:
+            break
+        ta = np.asarray(h.ts_a, float).reshape(-1)
+        tb = np.asarray(h.ts_b, float).reshape(-1)
+        ds = np.asarray(h.ds_a, float).reshape(-1)
+        n = min(int(ta.shape[0]), U - i)
+        sa, sb = idx[(gid, h.seg_a)], idx[(gid, h.seg_b)]
+        sl = slice(i, i + n)
+        buf["seg_a"][sl] = sa
+        buf["seg_b"][sl] = sb
+        buf["t_a"][sl] = ta[:n]
+        buf["t_b"][sl] = tb[:n]
+        buf["ds_a"][sl] = ds[:n]
+        buf["mask"][sl] = 1.0
+        i += n
     return {k: xp.asarray(v) for k, v in buf.items()}
 
 

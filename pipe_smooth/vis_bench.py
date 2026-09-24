@@ -386,6 +386,19 @@ class BenchViewer(QMainWindow):
         self.margin.setValue(0.0)
         row_mg.addWidget(self.margin)
         ov.addLayout(row_mg)
+        for name, default in (
+            ("p_max_obs", 128),
+            ("p_max_grp", 128),
+            ("p_max_union", 64),
+        ):
+            row_p = QHBoxLayout()
+            row_p.addWidget(QLabel(name))
+            sp = QSpinBox()
+            sp.setRange(0, 10**7)
+            sp.setValue(int(default))
+            row_p.addWidget(sp)
+            ov.addLayout(row_p)
+            setattr(self, name, sp)
         row = QHBoxLayout()
         row.addWidget(QLabel("method"))
         self.method = QComboBox()
@@ -904,6 +917,9 @@ class BenchViewer(QMainWindow):
             method=self.method.currentText(),
             clear_kind=clear_kind,
             margin=float(self.margin.value()),
+            p_max_obs=int(self.p_max_obs.value()),
+            p_max_grp=int(self.p_max_grp.value()),
+            p_max_union=int(self.p_max_union.value()),
             weights=self._weights(),
             steps=steps,
             out_dir=out,
