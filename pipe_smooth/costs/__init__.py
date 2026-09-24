@@ -28,7 +28,7 @@ from .space import (
     graph_space_band_constraint,
     graph_tangent_constraint,
 )
-from .union import UnionHit, find_union_pairs, union_cost
+from .union import UnionHit, find_union_pairs, union_cost, pack_union_hits, union_cost_packed
 from .volume import tube_volume
 
 __all__ = [
@@ -59,5 +59,7 @@ __all__ = [
     "UnionHit",
     "find_union_pairs",
     "union_cost",
+    "pack_union_hits",
+    "union_cost_packed",
     "tube_volume",
 ]

@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import jax
-import numpy as np
 
 from pipe_smooth.costs.clear import (
     clear_capsule_active,
@@ -19,7 +18,7 @@ from pipe_smooth.costs.clear import (
 )
 from pipe_smooth.costs.path import graph_curvature, graph_length
 from pipe_smooth.costs.space import graph_space, graph_tangent_reg
-from pipe_smooth.costs.union import union_cost
+from pipe_smooth.costs.union import union_cost, pack_union_hits, union_cost_packed
 
 from pipe_smooth.geometry.assemble import OptimizeGraph
 from pipe_smooth.optimize.pack import PackLayout, unpack
@@ -46,11 +45,18 @@ def total_loss(
     clear_active=None,
     clear_kind: Literal["capsule", "hull"] = "capsule",
     union_hits: dict[str, Any] | None = None,
+    layout: PackLayout | None = None,
+    x=None,
+    clear_obs_buf: dict[str, Any] | None = None,
+    clear_grp_buf: dict[str, Any] | None = None,
+    union_buf: dict[str, Any] | None = None,
     backend: str = "numpy",
 ):
     """(J, parts) with frozen active clearance / union sets (outside AD detection).
 
-    ``parts`` holds weighted contributions: L, K, space, v, union, clear.
+    Prefer packed buffers (``clear_*_buf`` / ``union_buf`` + ``layout`` + ``x``) for
+    JIT-stable clear/union. Legacy ``clear_active`` / ``union_hits`` still work.
+    ``parts``: L, K, space, v, union, clear.
     """
     xp = _backend(backend)
     w = weights
@@ -65,34 +71,52 @@ def total_loss(
             parts["space"] = parts["space"] + graph_space(g, eta=w.eta, backend=backend)
         if w.mu_v != 0.0:
             parts["v"] = parts["v"] + graph_tangent_reg(g, mu=w.mu_v, backend=backend)
-        if union_hits and g.id in union_hits and w.lam != 0.0:
-            parts["union"] = parts["union"] + union_cost(
-                union_hits[g.id], g, lam=w.lam, backend=backend
+
+    if w.lam != 0.0:
+        if union_buf is not None and layout is not None and x is not None:
+            parts["union"] = union_cost_packed(
+                x, union_buf, layout, lam=w.lam, backend=backend
+            )
+        elif union_hits:
+            for g in graphs:
+                if g.id in union_hits:
+                    parts["union"] = parts["union"] + union_cost(
+                        union_hits[g.id], g, lam=w.lam, backend=backend
+                    )
+
+    if w.mu_obs != 0.0 or w.mu_grp != 0.0:
+        if (
+            clear_obs_buf is not None
+            and clear_grp_buf is not None
+            and layout is not None
+            and x is not None
+        ):
+            clear_fn = clear_capsule_packed if clear_kind == "capsule" else clear_hull_packed
+            parts["clear"] = clear_fn(
+                x,
+                clear_obs_buf,
+                clear_grp_buf,
+                layout,
+                mu_obs=w.mu_obs,
+                mu_grp=w.mu_grp,
+                backend=backend,
+            )
+        elif clear_active is not None:
+            clear_fn = clear_capsule_active if clear_kind == "capsule" else clear_hull_active
+            parts["clear"] = clear_fn(
+                clear_active,
+                graphs,
+                mu_obs=w.mu_obs,
+                mu_grp=w.mu_grp,
+                backend=backend,
             )
 
-    if clear_active is not None and (w.mu_obs != 0.0 or w.mu_grp != 0.0):
-        clear_fn = clear_capsule_active if clear_kind == "capsule" else clear_hull_active
-        parts["clear"] = clear_fn(
-            clear_active,
-            graphs,
-            mu_obs=w.mu_obs,
-            mu_grp=w.mu_grp,
-            backend=backend,
-        )
     j = parts["L"] + parts["K"] + parts["space"] + parts["v"] + parts["union"] + parts["clear"]
     return j, parts
 
 
-def _union_key(union_hits) -> Any:
-    if not union_hits:
-        return None
-    return tuple(
-        (gid, tuple((h.seg_a, h.seg_b, int(np.asarray(h.ts_a).shape[0])) for h in hits))
-        for gid, hits in sorted(union_hits.items())
-    )
-
-
-# Recompiled when layout budgets / union structure / weights change — not clear hit values.
+# Recompiled when layout budgets / clear_kind / weights / graph identity change
+# — not when packed clear/union buffer *values* change.
 _vg_cache: dict[str, Any] = {"key": None, "fn": None}
 
 
@@ -106,17 +130,25 @@ def loss_and_grad(
     clear_kind: Literal["capsule", "hull"] = "capsule",
     union_hits: dict[str, Any] | None = None,
 ):
-    """(J, ∇_x J, parts). Unpack → refresh → total_loss; detection stays outside.
+    """(J, ∇_x J, parts). Unpack → refresh → packed clear/union on ``x``.
 
-    ``jit`` while active-set *content signature* is unchanged (not ``id(...)``).
+    Packs active sets outside AD; ``jit`` only depends on fixed ``p_max_*`` shapes.
     """
     w = weights
+    empty_clear = ([], [])
+    active = clear_active if clear_active is not None else empty_clear
+    if clear_kind == "capsule":
+        obs_b, grp_b = pack_capsule_active(active, layout, backend="jax")
+    else:
+        obs_b, grp_b = pack_hull_active(active, layout, backend="jax")
+    union_b = pack_union_hits(union_hits, layout, backend="jax")
+
     key = (
         id(graphs),
         id(layout),
         layout.p_max_obs,
         layout.p_max_grp,
-        _union_key(union_hits),
+        layout.p_max_union,
         clear_kind,
         w.alpha,
         w.beta,
@@ -128,20 +160,24 @@ def loss_and_grad(
     )
     if _vg_cache["key"] != key:
 
-        def f(xx, obs_b, grp_b):
+        def f(xx, obs_buf, grp_buf, uni_buf):
             unpack(xx, graphs, layout, backend="jax")
             for g in graphs:
                 g.refresh(backend="jax")
-            j, parts = total_loss(
+            return total_loss(
                 graphs,
                 weights,
-                clear_active=None,
-                union_hits=union_hits,
+                clear_kind=clear_kind,
+                layout=layout,
+                x=xx,
+                clear_obs_buf=obs_buf,
+                clear_grp_buf=grp_buf,
+                union_buf=uni_buf,
                 backend="jax",
             )
 
-        _vg_cache["fn"] = jax.jit(jax.value_and_grad(f, has_aux=True))
+        _vg_cache["fn"] = jax.jit(jax.value_and_grad(f, argnums=0, has_aux=True))
         _vg_cache["key"] = key
 
-    (val, parts), grad = _vg_cache["fn"](x)
+    (val, parts), grad = _vg_cache["fn"](x, obs_b, grp_b, union_b)
     return val, grad, parts

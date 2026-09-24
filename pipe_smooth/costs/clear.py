@@ -37,6 +37,12 @@ def phi(d_geom, d_req, soft_sigma: float = 1e-2, backend: str = "numpy"):
     return gap ** 2
 
 
+def _safe_norm(delta, backend: str = "numpy"):
+    """‖δ‖ with ε so padded / coincident witnesses do not NaN the VJP."""
+    xp = _backend(backend)
+    return xp.sqrt(xp.sum(delta * delta, axis=-1) + 1e-12)
+
+
 def clear_balls(
     a,
     b,
@@ -348,7 +354,7 @@ def clear_capsule_packed(
         qa = (1.0 - tc) * eval_hermite(
             p0, v0, p1, v1, obs_buf["hermite_t0"], backend=backend
         ) + tc * eval_hermite(p0, v0, p1, v1, obs_buf["hermite_t1"], backend=backend)
-        d_geom = obs_buf["sign"] * xp.linalg.norm(qa - obs_buf["qb"], axis=-1)
+        d_geom = obs_buf["sign"] * _safe_norm(qa - obs_buf["qb"], backend=backend)
         j = j + mu_obs * xp.sum(
             obs_buf["mask"] * phi(d_geom, obs_buf["d_req"], soft_sigma=soft_sigma, backend=backend)
         )
@@ -365,7 +371,7 @@ def clear_capsule_packed(
         qb = (1.0 - tb) * eval_hermite(
             b0, bv0, b1, bv1, grp_buf["hermite_t0_b"], backend=backend
         ) + tb * eval_hermite(b0, bv0, b1, bv1, grp_buf["hermite_t1_b"], backend=backend)
-        d_geom = grp_buf["sign"] * xp.linalg.norm(qa - qb, axis=-1)
+        d_geom = grp_buf["sign"] * _safe_norm(qa - qb, backend=backend)
         j = j + mu_grp * xp.sum(
             grp_buf["mask"] * phi(d_geom, grp_buf["d_req"], soft_sigma=soft_sigma, backend=backend)
         )
@@ -468,7 +474,7 @@ def clear_hull_packed(
             p0, v0, p1, v1, obs_buf["hermite_t0"], obs_buf["hermite_t1"], backend=backend
         )
         qa = xp.einsum("pi,pij->pj", obs_buf["weights"], C_sub + obs_buf["shift"])
-        d_geom = obs_buf["sign"] * xp.linalg.norm(qa - obs_buf["qb"], axis=-1)
+        d_geom = obs_buf["sign"] * _safe_norm(qa - obs_buf["qb"], backend=backend)
         j = j + mu_obs * xp.sum(
             obs_buf["mask"] * phi(d_geom, obs_buf["d_req"], soft_sigma=soft_sigma, backend=backend)
         )
@@ -485,7 +491,7 @@ def clear_hull_packed(
         )
         qa = xp.einsum("pi,pij->pj", grp_buf["weights_a"], Ca_sub + grp_buf["shift_a"])
         qb = xp.einsum("pi,pij->pj", grp_buf["weights_b"], Cb_sub + grp_buf["shift_b"])
-        d_geom = grp_buf["sign"] * xp.linalg.norm(qa - qb, axis=-1)
+        d_geom = grp_buf["sign"] * _safe_norm(qa - qb, backend=backend)
         j = j + mu_grp * xp.sum(
             grp_buf["mask"] * phi(d_geom, grp_buf["d_req"], soft_sigma=soft_sigma, backend=backend)
         )

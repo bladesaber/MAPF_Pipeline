@@ -58,3 +58,4 @@ pipe_design/tools/data/movingai/**/report/**
 
 # path smoothing results
 /pipe_smooth/data
+/pipe_smooth/runs

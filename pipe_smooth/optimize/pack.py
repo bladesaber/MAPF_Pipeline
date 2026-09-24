@@ -4,7 +4,7 @@ Free: node.pos if not fixed_p; derivative v = (vx, vy, vz) if not fixed_v.
 ||v|| is the tangent scale (old σ). Ports / clamped interfaces stay out of x
 via HermiteNode.fixed_p / fixed_v.
 
-Also holds static ends gather + clear hit caps for JIT clearance.
+Also holds static ends gather + clear/union hit caps for JIT-stable costs.
 Weighted J / ∇J: see ``optimize.loss.loss_and_grad``.
 """
 
@@ -24,7 +24,7 @@ from pipe_smooth.utils import backend as _backend
 
 @dataclass
 class PackLayout:
-    """Free DOF slots + ends gather table + fixed clear hit budgets.
+    """Free DOF slots + ends gather table + fixed clear/union hit budgets.
 
     slots: (graph_index, node_id, field, offset); field is 'pos' (3) or 'dir' (3).
     ``ends_off[s, k] >= 0`` → ``x[off:off+3]``; else ``ends_const[s, k]``.
@@ -33,12 +33,13 @@ class PackLayout:
 
     slots: list[tuple[int, str, str, int]]  # (graph_index, node_id, 'pos'|'dir', offset in x)
     n: int  # length of packed free-DOF vector x
-    # --- clear / ends gather (for JIT-stable clearance) ---
+    # --- ends gather (for JIT-stable clearance / union) ---
     seg_index: dict[tuple[str, str], int] = field(default_factory=dict)  # (group_id, seg_id) → row s in ends_*
-    ends_off: np.ndarray = field(default_factory=lambda: np.zeros((0, 4), dtype=np.int32))  # (S,4) x-offsets for p0,v0,p1,v1; -1 = const
-    ends_const: np.ndarray = field(default_factory=lambda: np.zeros((0, 4, 3), dtype=np.float64))  # (S,4,3) fixed/port values when ends_off < 0
-    p_max_obs: int = 0  # max packed obstacle–seg hits (fixed buffer length)
-    p_max_grp: int = 0  # max packed group–group hits (fixed buffer length)
+    ends_off: np.ndarray = field(default_factory=lambda: np.zeros((0, 4), dtype=np.int32))  # (S,4) x-offsets; -1 = const
+    ends_const: np.ndarray = field(default_factory=lambda: np.zeros((0, 4, 3), dtype=np.float64))  # (S,4,3) when ends_off < 0
+    p_max_obs: int = 0  # max packed obstacle–seg hits
+    p_max_grp: int = 0  # max packed group–group hits
+    p_max_union: int = 0  # max packed union Chamfer samples (all graphs flattened)
 
     def export(self, path: str | Path) -> None:
         """Write DOF layout JSON for resume / viz (pairs with recorded ``x``)."""
@@ -106,15 +107,21 @@ class PackLayout:
         graphs: Sequence[OptimizeGraph] | None = None,
         p_max_obs: int | None = None,
         p_max_grp: int | None = None,
+        p_max_union: int | None = None,
     ) -> "PackLayout":
-        """Load DOF slots; if ``graphs`` and both ``p_max_*`` set, also fill clear gather."""
+        """Load DOF slots; if ``graphs`` and all ``p_max_*`` set, also fill ends gather."""
         data = json.loads(Path(path).read_text())
         slots = [
             (int(gi), str(nid), str(fld), int(off))
             for gi, nid, fld, off in data["slots"]
         ]
         n = int(data["n"])
-        if graphs is not None and p_max_obs is not None and p_max_grp is not None:
+        if (
+            graphs is not None
+            and p_max_obs is not None
+            and p_max_grp is not None
+            and p_max_union is not None
+        ):
             seg_index, ends_off, ends_const = cls.clear_gather(graphs, slots)
             return cls(
                 slots=slots,
@@ -124,6 +131,7 @@ class PackLayout:
                 ends_const=ends_const,
                 p_max_obs=int(p_max_obs),
                 p_max_grp=int(p_max_grp),
+                p_max_union=int(p_max_union),
             )
         return cls(slots=slots, n=n)
 
@@ -132,8 +140,9 @@ def layout(
     graphs: Sequence[OptimizeGraph],
     p_max_obs: int = 0,
     p_max_grp: int = 0,
+    p_max_union: int = 0,
 ) -> PackLayout:
-    """Free DOF slots + clear gather from ``hermite_ends``; store hit caps."""
+    """Free DOF slots + ends gather; store clear/union hit caps."""
     slots: list[tuple[int, str, str, int]] = []
     n = 0
     for gi, g in enumerate(graphs):
@@ -154,6 +163,7 @@ def layout(
         ends_const=ends_const,
         p_max_obs=int(p_max_obs),
         p_max_grp=int(p_max_grp),
+        p_max_union=int(p_max_union),
     )
 
 

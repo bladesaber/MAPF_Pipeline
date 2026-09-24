@@ -3,20 +3,26 @@
 Detection: sample interiors on Z's edges; KD-tree NN; freeze hits with d < d_hi.
 Cost: re-eval Hermite at frozen ts; λ Σ ||x_a-x_b||² Δs_a (Chamfer source weight).
 Requires refresh.
+
+Packed path (``pack_union_hits`` + ``union_cost_packed``): flatten Chamfer samples
+into fixed-length buffers + ``PackLayout.ends_from_x`` for stable JAX JIT.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import combinations
-from typing import Sequence
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
 import numpy as np
 from sklearn.neighbors import KDTree
 
 from pipe_smooth.utils import backend as _backend
 from pipe_smooth.geometry.assemble import OptimizeGraph
-from pipe_smooth.geometry.hermite import eval_hermite_ts
+from pipe_smooth.geometry.hermite import eval_hermite, eval_hermite_ts
+
+if TYPE_CHECKING:
+    from pipe_smooth.optimize.pack import PackLayout
 
 
 @dataclass(frozen=True)
@@ -36,7 +42,7 @@ class UnionHit:
     ts_a: np.ndarray  # (M,)
     ts_b: np.ndarray  # (M,)
     d: np.ndarray  # (M,) detection distance (debug / diagnostics)
-    ds_a: np.ndarray  # (M,) arc-length weight on source samples
+    ds_a: np.ndarray  # (M,) arc-length weight on source samples (Δs)
 
 
 def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]:
@@ -72,8 +78,8 @@ def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]
                 rads.append(radius)
                 eids.append(np.full(m, seg.edge, dtype=object))
                 sids.append(np.full(m, sid, dtype=object))
-                tvals.append(ts)
-                dls.append(dl)
+                tvals.append(ts)  # ts on full chain, then take interior samples (ROADMAP t)
+                dls.append(dl)  # Δs on full chain, then take interior samples (ROADMAP Δℓ)
             if pts:
                 curves[path.usage] = (
                     np.concatenate(pts),
@@ -150,3 +156,63 @@ def union_cost(
         d2 = xp.sum((xa - xb) ** 2, axis=-1)
         j = j + xp.sum(d2 * xp.asarray(h.ds_a))
     return lam * j
+
+
+def pack_union_hits(
+    union_hits: Mapping[str, Sequence[UnionHit]] | None,
+    layout: PackLayout,
+    backend: str = "numpy",
+) -> dict[str, Any]:
+    """Flatten all Chamfer samples into a fixed buffer (truncate at ``p_max_union``)."""
+    xp = _backend(backend)
+    U = layout.p_max_union
+    idx = layout.seg_index
+    buf = {
+        "seg_a": np.zeros(U, np.int32),
+        "seg_b": np.zeros(U, np.int32),
+        "t_a": np.zeros(U),
+        "t_b": np.zeros(U),
+        "ds_a": np.zeros(U),
+        "mask": np.zeros(U),
+    }
+    if not union_hits or U <= 0:
+        return {k: xp.asarray(v) for k, v in buf.items()}
+
+    i = 0
+    for gid, hits in union_hits.items():
+        for h in hits:
+            if i >= U:
+                return {k: xp.asarray(v) for k, v in buf.items()}
+            ta = np.asarray(h.ts_a, float).reshape(-1)
+            tb = np.asarray(h.ts_b, float).reshape(-1)
+            ds = np.asarray(h.ds_a, float).reshape(-1)
+            n = min(int(ta.shape[0]), U - i)
+            sa, sb = idx[(gid, h.seg_a)], idx[(gid, h.seg_b)]
+            sl = slice(i, i + n)
+            buf["seg_a"][sl] = sa
+            buf["seg_b"][sl] = sb
+            buf["t_a"][sl] = ta[:n]
+            buf["t_b"][sl] = tb[:n]
+            buf["ds_a"][sl] = ds[:n]
+            buf["mask"][sl] = 1.0
+            i += n
+    return {k: xp.asarray(v) for k, v in buf.items()}
+
+
+def union_cost_packed(
+    x,
+    buf: dict[str, Any],
+    layout: PackLayout,
+    lam: float = 1.0,
+    backend: str = "numpy",
+):
+    """Soft J_union from packed Chamfer samples; fixed shape → JIT-stable."""
+    xp = _backend(backend)
+    if layout.p_max_union <= 0:
+        return xp.asarray(0.0)
+    ends = layout.ends_from_x(x, backend=backend)
+    Ea, Eb = ends[buf["seg_a"]], ends[buf["seg_b"]]
+    xa = eval_hermite(Ea[:, 0], Ea[:, 1], Ea[:, 2], Ea[:, 3], buf["t_a"], backend=backend)
+    xb = eval_hermite(Eb[:, 0], Eb[:, 1], Eb[:, 2], Eb[:, 3], buf["t_b"], backend=backend)
+    d2 = xp.sum((xa - xb) ** 2, axis=-1)
+    return lam * xp.sum(buf["mask"] * d2 * buf["ds_a"])
