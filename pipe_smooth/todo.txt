@@ -1,10 +1,4 @@
 
-branch test
-
-
-
-Coordinates must not have minimums more than maximums
-
 
 
 union cost has big problem, it is scale by radius

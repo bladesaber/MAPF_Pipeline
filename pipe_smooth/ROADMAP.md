@@ -38,9 +38,9 @@ $$
 | Symbol | Role | Soft / hard |
 |--------|------|-------------|
 | $X$ | Centerline parameters (shared trunk + private junction controls) | decision |
-| $L,K$ | Manifold length (each Hermite **once**) + curvature (seg interiors **once**, usage **joints** once) (§6.4.1) | soft |
+| $L,K$ | Chord energy $\sum\Delta s^{2}$ (each Hermite **once**) + curvature (seg interiors **once**, usage **joints** once) (§6.4.1) | soft |
 | $J_{\mathrm{clear}}$ | Obstacle + cross-group tube separation (§6.4.2) | soft in loop; **hard** at accept |
-| $J_{\mathrm{union}}$ | Junction-bundle compactness via sample Chamfer (§6.4.3) | soft |
+| $J_{\mathrm{union}}$ | Junction-bundle compactness via radius-normalized Chamfer (§6.4.3) | soft |
 | Topology / ports / interface | Connectivity, fixed ends, $C^{0}/C^{1}$ clamps | **hard** (by construction) |
 
 **Why usages matter:** shared trunk nodes couple directions. Optimizing only shared polylines can make $A \to C$, $B \to C$ smooth while $A \to B$ stays sharp. Usages $\mathcal{U}$ still drive **path assembly**, **junction private DOF**, **union**, and **which segment–segment joints** enter $K$; Stage 1 does **not** naively $\sum_u L_u$ (that multi-counts shared trunk material)—see §6.4.1.
@@ -55,7 +55,7 @@ Classical path / trajectory smoothing (robotics TEB/CHOMP, single B-spline fairi
 |--------|----------------------|--------------|
 | Occupancy | Pass-and-release (time / moving agent) | **Permanent** tubes stay; clearance is static geometry |
 | Structure | Single $s$–$t$ line | **Tree / branched** manifold: $n\!\ge\!3$ joins, and nearby branch points on one trunk (short shared segments) |
-| Cost scope | One path’s length / curvature | **Usage-assembled** paths; $L$ once per shared piece, $K$ covers all usage joints (§6.4.1) |
+| Cost scope | One path’s length / curvature | **Usage-assembled** paths; chord energy $L$ once per shared piece, $K$ covers all usage joints (§6.4.1) |
 | Geometry | Often centerline / thin agent | Finite **radius** capsules; self- and cross-group volume |
 | Domain | Often open or mild | Tight $\Omega$ → large $\kappa$ may be necessary (soft $K$) |
 | Ends | Usually fixed $s,t$ (pose optional) | Fixed ports **plus** line-axis alignment (terminal sits on / along a prescribed axis) |
@@ -460,27 +460,31 @@ $$
 | Symbol | Meaning |
 |--------|---------|
 | $\mathcal{E}$ | Hermite segments (trunk + junction); each **once** |
-| $L_e$ | Sampled length of segment $e$ (same discrete $L$ as below on that piece) |
+| $L_e$ | Chord **energy** of segment $e$ (same discrete $L$ as below on that piece); $[{\mathrm{length}}^{2}]$ |
 | $K_e^{\mathrm{int}}$ | Interior bend on $e$ only (polyline $k_*$ or analytic $k_{\mathrm{hermite}}$) |
 | $\mathcal{J}$ | Unordered joints $\{e,e'\}$ discovered by walking usages; `seen_joint` |
 | $K_{e,e'}^{\mathrm{joint}}$ | One interface turn (e.g. 3-point window $\mathrm{prev}[-2:]\mathbin{++}\mathrm{xyz}[1:2]$) |
 
-**Why not $\sum_u L_u$:** shared trunk is one physical centerline; summing per usage multiplies its length by how many flows use it and over-pulls the trunk. **Why still walk usages for $K$:** Y-junction conflicts live at **which segments meet**; every distinct joint must enter $K$ once even if a shared segment’s interior was already scored.
+**Why not $\sum_u L_u$:** shared trunk is one physical centerline; summing per usage multiplies its energy by how many flows use it and over-pulls the trunk. **Why still walk usages for $K$:** Y-junction conflicts live at **which segments meet**; every distinct joint must enter $K$ once even if a shared segment’s interior was already scored.
 
 Discrete kernels below define $L$ / bend on a point sequence (one segment, one joint window, or a full $\gamma_u$ if debugging). Optional per-usage weights $(\alpha_u,\beta_u)$ are **not** the Stage 1 default.
 
-**(1) Length** (on a sample chain)
+**(1) Chord energy** (on a sample chain; `path_length`)
+
+Prefer squared chords over arc length: no $\sqrt{\cdot}$ in the AD path, stronger pull on long gaps, and the same $[\mathrm{length}^{2}]$ as $J_{\mathrm{space}}=\eta\sum(\Delta s-\overline{\Delta s})^{2}$ so $\alpha/\eta$ stay scale-comparable under geometric rescaling.
 
 $$
 L
 =
 \sum_{i}
-\bar w_{i}\,\Delta s_{i},
+\bar w_{i}\,\Delta s_{i}^{2},
+\qquad
+\Delta s_{i}=\|x_{i+1}-x_{i}\|_{2},
 \qquad
 \bar w_{i}=\tfrac12(w_{i}+w_{i+1}).
 $$
 
-Optional excess-length vs a reference $L^{0}$: $L^{\mathrm{ex}}=[L-L^{0}]_+^\sigma$. Default Stage 1: plain $L$ over $\mathcal{E}$.
+(Implementation accumulates $\sum\|x_{i+1}-x_{i}\|_{2}^{2}$ directly—no norm.) Optional excess vs a reference $L^{0}$: $L^{\mathrm{ex}}=[L-L^{0}]_+^\sigma$. Default Stage 1: plain $L$ over $\mathcal{E}$. Report true polyline length separately in diagnostics (§8), not as this soft term.
 
 **(2) Curvature** (soft preference, not hard $\kappa_{\max}$; **radius-aware**)
 
@@ -650,21 +654,27 @@ Private junction patches are under-determined under $L,K$ alone. $J_{\mathrm{uni
 
 Let $\gamma_u^{Z}=\{x_{u,i}:i\in\mathcal{I}_u^{Z}\}$ be samples of usage $u$ **inside** complex $Z$, and $\mathcal{U}_Z$ the usages through $Z$.
 
-**Symmetric Chamfer on centerlines** (radius-scaled threshold)
+**Symmetric Chamfer on centerlines** (radius-scaled gate **and** residual)
 
-Large separation inside $Z$ is often a **real branch** (cond2), not a bundling failure. Use a pairwise cutoff so union acts only while centerlines are still “the same bundle”:
+Large separation inside $Z$ is often a **real branch** (cond2), not a bundling failure. Use a pairwise cutoff so union acts only while centerlines are still “the same bundle”. The soft residual is **normalized by the same radius sum** as the gate—otherwise thick tubes (larger $d_{\mathrm{hi}}$) would pay larger absolute $d^{2}$ for the same relative separation (`union.py`).
 
 $$
-d_{\mathrm{hi}}(x_{u,i},\gamma_v)
-=
-\alpha\,(r_{u,i}+r_{v,\star}),
+\begin{aligned}
+r_{\Sigma}(x_{u,i},\gamma_v)
+&=
+r_{u,i}+r_{v,\star},
 \qquad
-\psi(d;d_{\mathrm{hi}})
-=
+d_{\mathrm{hi}}
+&=
+\alpha\,r_{\Sigma},
+\\[0.4em]
+\psi(d;r_{\Sigma})
+&=
 \begin{cases}
-d^{2} & d < d_{\mathrm{hi}}, \\
+\displaystyle\Bigl(\frac{d}{r_{\Sigma}}\Bigr)^{2} & d < d_{\mathrm{hi}}, \\[0.6em]
 0 & d \ge d_{\mathrm{hi}},
 \end{cases}
+\end{aligned}
 $$
 
 with $r_{v,\star}$ the radius at the nearest sample on $\gamma_v$, and $\alpha\sim O(1)$ an open knob.  
@@ -677,17 +687,17 @@ d(x,\gamma)
 \min_{y\in\gamma}\|x-y\|_2,
 \qquad
 \Delta s_{u,i}
-=
+&=
 \tfrac12\big(\|x_{u,i}-x_{u,i-1}\|_2+\|x_{u,i+1}-x_{u,i}\|_2\big),
 \\[0.4em]
 \mathrm{Ch}(\gamma_u^{Z},\gamma_v^{Z})
 &=
 \sum_{i\in\mathcal{I}_u^{Z}}
-\psi\big(d(x_{u,i},\gamma_v^{Z});\,d_{\mathrm{hi}}(x_{u,i},\gamma_v^{Z})\big)\,
+\psi\big(d(x_{u,i},\gamma_v^{Z});\,r_{\Sigma}(x_{u,i},\gamma_v^{Z})\big)\,
 \Delta s_{u,i}
 \;+\;
 \sum_{j\in\mathcal{I}_v^{Z}}
-\psi\big(d(x_{v,j},\gamma_u^{Z});\,d_{\mathrm{hi}}(x_{v,j},\gamma_u^{Z})\big)\,
+\psi\big(d(x_{v,j},\gamma_u^{Z});\,r_{\Sigma}(x_{v,j},\gamma_u^{Z})\big)\,
 \Delta s_{v,j},
 \\[0.4em]
 J_{\mathrm{union}}
@@ -699,6 +709,8 @@ J_{\mathrm{union}}
 \end{aligned}
 $$
 
+Detection freezes hits with $d<\alpha r_{\Sigma}$ and stores $r_{\Sigma}$ (and $\Delta s$) outside AD; the soft cost re-evaluates Hermite at frozen $t$ and accumulates $\psi\,\Delta s$.
+
 Optional tube-aware residual (encourage overlap of solids, not only centerlines):
 
 $$
@@ -709,10 +721,10 @@ d(x_{u,i},\gamma_v)-(r_{u,i}+r_{v,\star})
 \big]_+^\sigma,
 $$
 
-with $r_{v,\star}$ the radius at the nearest sample on $\gamma_v$; substitute $d^{2}$ by $(d^{\mathrm{tube}})^{2}$ in $\mathrm{Ch}$ if desired.
+with $r_{v,\star}$ the radius at the nearest sample on $\gamma_v$; substitute $(d/r_{\Sigma})^{2}$ by $(d^{\mathrm{tube}}/r_{\Sigma})^{2}$ (or bare $(d^{\mathrm{tube}})^{2}$) in $\mathrm{Ch}$ if desired.
 
 
-**Balance:** large $\lambda$ collapses toward cond1 (sharp $A\!\to\!B$); small $\lambda$ allows fat non-overlapping bows. Tune against $K_u$ on the sharpest usage; prefer continuation (raise $\lambda$ after junction DOF are unlocked).
+**Balance:** large $\lambda$ collapses toward cond1 (sharp $A\!\to\!B$); small $\lambda$ allows fat non-overlapping bows. Tune against $K_u$ on the sharpest usage; prefer continuation (raise $\lambda$ after junction DOF are unlocked). Radius-normalized $\psi$ keeps $\lambda$ comparable across tube sizes.
 
 **Do not** use unpaired control-point distances as the primary union term.
 
@@ -866,11 +878,13 @@ Uniform-$t$ Hermite samples can be **evaded** in two coupled ways: stretch $\|\g
 
 #### 7.1.1 Sample spacing $J_{\mathrm{space}}$
 
-**Failure mode (v1).** With fixed-$N$ samples in parameter $t$, the optimizer can enlarge $\|\gamma'(t)\|$ (hence $\Delta s$) in high-cost regions so fewer samples land there—clearance at samples drops while the continuous curve still grazes or tunnels. Point-only $J_{\mathrm{clear}}$ without $\Delta s$ weight makes this worse; total length $L$ does not block short tunnels between safe samples.
+**Failure mode (v1).** With fixed-$N$ samples in parameter $t$, the optimizer can enlarge $\|\gamma'(t)\|$ (hence $\Delta s$) in high-cost regions so fewer samples land there—clearance at samples drops while the continuous curve still grazes or tunnels. Point-only $J_{\mathrm{clear}}$ without $\Delta s$ weight makes this worse; chord energy $L=\sum\Delta s^{2}$ does not by itself block short tunnels between safe samples.
 
 **Dual representation.** Same intent (nearly uniform spacing); form depends on the solver.
 
 **(1) Gradient / AD — soft cost** (Stage-1 main loop)
+
+Spacing **energy** with the same $[\mathrm{length}^{2}]$ as path chord energy $L$, so $\alpha/\eta$ track under geometric rescaling:
 
 $$
 \overline{\Delta s}_u
@@ -1272,7 +1286,7 @@ Report on **usage polylines** for $L$/$\kappa$; **$V$** is voxel-union solid vol
 
 | Metric | Definition | Notes |
 |--------|------------|--------|
-| $L_u$ | Polyline length of usage $u$ | Group / aggregate = sum of usages |
+| $L_u$ | True polyline length of usage $u$ (diagnostic; soft stage uses chord energy $\sum\Delta s^{2}$) | Group / aggregate = sum of usages |
 | $\kappa_{\max}$ | $\max(\kappa^{\mathrm{M}} r)$ via `kappa_menger` | Port ends: $\kappa\approx\theta/\Delta s$; not $\int(\kappa r)^{2}$ |
 | $V$ | `tube_volume(xyz, r)` voxel union of sample spheres | Segments once; overlap once. Stage-2 CAD Boolean later |
 #### 8.1.3 Solve process

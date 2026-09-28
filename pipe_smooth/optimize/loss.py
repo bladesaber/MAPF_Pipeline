@@ -36,7 +36,7 @@ class LossWeights:
     beta: float = 1.0  # curvature K (§6.4.1)
     mu_obs: float = 1.0  # obstacle clearance J_obs (§6.4.2)
     mu_grp: float = 1.0  # cross-group clearance J_grp (§6.4.2)
-    lam: float = 0.1  # junction union Chamfer J_union (§6.4.3)
+    lam: float = 0.1  # junction union Chamfer J_union; (d/(r_a+r_b))² Δs (§6.4.3)
     eta: float = 10.0  # spacing energy J_space=Σ(Δs−mean)² (§7.1); [length²] vs α
     mu_v: float = 0.0  # Hermite ||v|| scale hinge J_v (§7.1)
 

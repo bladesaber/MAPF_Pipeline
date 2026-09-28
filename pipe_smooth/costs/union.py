@@ -1,7 +1,8 @@
 """§6.4.3 — junction union: pair finding (outside AD) + soft cost (AD).
 
 Detection: sample interiors on Z's edges; KD-tree NN; freeze hits with d < d_hi.
-Cost: re-eval Hermite at frozen ts; λ Σ ||x_a-x_b||² Δs_a (Chamfer source weight).
+Cost: re-eval Hermite at frozen ts;
+  λ Σ (||x_a-x_b|| / (r_a+r_b))² Δs_a  (radius-normalized Chamfer).
 Requires refresh.
 
 Packed path (``pack_union_hits`` + ``union_cost_packed``): flatten Chamfer samples
@@ -25,6 +26,8 @@ from pipe_smooth.geometry.hermite import eval_hermite, eval_hermite_ts
 if TYPE_CHECKING:
     from pipe_smooth.optimize.pack import PackLayout
 
+_EPS = 1e-12
+
 
 @dataclass(frozen=True)
 class UnionHit:
@@ -33,6 +36,7 @@ class UnionHit:
     One record per (junction, edge_a, edge_b, seg_a, seg_b); arrays length (M,).
     ``ts_*`` are Hermite parameters in stored u→v (same as ``HermiteSegment.samples``).
     ``ds_a`` is source-sample Δs (½ of adjacent chords) for Chamfer weight.
+    ``r_sum`` is frozen ``r_a + r_b`` at detection (same scale as ``d_hi``).
     """
 
     junction: str
@@ -44,6 +48,7 @@ class UnionHit:
     ts_b: np.ndarray  # (M,)
     d: np.ndarray  # (M,) detection distance (debug / diagnostics)
     ds_a: np.ndarray  # (M,) arc-length weight on source samples (Δs)
+    r_sum: np.ndarray  # (M,) r_a + r_b at detection (cost normalizer)
 
 
 def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]:
@@ -64,7 +69,7 @@ def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]
                 if seg.edge not in edge_set:
                     continue
                 ts, xyz, radius = seg.samples(backend="numpy")
-                ts = np.asarray(ts, float)                
+                ts = np.asarray(ts, float)
                 xyz = np.asarray(xyz, float)
                 radius = np.asarray(radius, float)
                 # Interiors only — endpoints are ports/joints, not union Chamfer.
@@ -102,7 +107,8 @@ def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]
                 d, jj = tree.query(src_x, k=1)
                 d = np.asarray(d, float).reshape(-1)
                 jj = np.asarray(jj, int).reshape(-1)
-                mask = d < float(alpha) * (src_r + dst_r[jj])
+                r_sum = src_r + dst_r[jj]
+                mask = d < float(alpha) * r_sum
                 if not np.any(mask):
                     continue
                 jj_m = jj[mask]
@@ -114,6 +120,7 @@ def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]
                 ta_m = src_t[mask]
                 tb_m = dst_t[jj_m]
                 dl_m = src_dl[mask]
+                rs_m = r_sum[mask]
 
                 rec = np.empty(
                     d_m.shape[0],
@@ -134,6 +141,7 @@ def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]
                             tb_m[m],
                             d_m[m],
                             dl_m[m],
+                            rs_m[m],
                         )
                     )
     return hits
@@ -145,7 +153,7 @@ def union_cost(
     lam: float = 1.0,
     backend: str = "numpy",
 ):
-    """Soft J_union (§6.4.3): λ Σ ||x_a(t_a)-x_b(t_b)||² Δs_a on frozen Chamfer hits."""
+    """Soft J_union (§6.4.3): λ Σ (||x_a-x_b||/(r_a+r_b))² Δs_a on frozen hits."""
     xp = _backend(backend)
     ends = graph.hermite_ends(backend=backend)
     j = xp.asarray(0.0)
@@ -155,7 +163,8 @@ def union_cost(
         xa = eval_hermite_ts(a0, av0, a1, av1, h.ts_a, backend=backend)
         xb = eval_hermite_ts(b0, bv0, b1, bv1, h.ts_b, backend=backend)
         d2 = xp.sum((xa - xb) ** 2, axis=-1)
-        j = j + xp.sum(d2 * xp.asarray(h.ds_a))
+        r2 = xp.asarray(h.r_sum) ** 2 + _EPS
+        j = j + xp.sum(d2 / r2 * xp.asarray(h.ds_a))
     return lam * j
 
 
@@ -174,6 +183,7 @@ def pack_union_hits(
         "t_a": np.zeros(U),
         "t_b": np.zeros(U),
         "ds_a": np.zeros(U),
+        "r_sum": np.zeros(U),
         "mask": np.zeros(U),
     }
     if not union_hits or U <= 0:
@@ -197,6 +207,7 @@ def pack_union_hits(
         ta = np.asarray(h.ts_a, float).reshape(-1)
         tb = np.asarray(h.ts_b, float).reshape(-1)
         ds = np.asarray(h.ds_a, float).reshape(-1)
+        rs = np.asarray(h.r_sum, float).reshape(-1)
         n = min(int(ta.shape[0]), U - i)
         sa, sb = idx[(gid, h.seg_a)], idx[(gid, h.seg_b)]
         sl = slice(i, i + n)
@@ -205,6 +216,7 @@ def pack_union_hits(
         buf["t_a"][sl] = ta[:n]
         buf["t_b"][sl] = tb[:n]
         buf["ds_a"][sl] = ds[:n]
+        buf["r_sum"][sl] = rs[:n]
         buf["mask"][sl] = 1.0
         i += n
     return {k: xp.asarray(v) for k, v in buf.items()}
@@ -226,4 +238,5 @@ def union_cost_packed(
     xa = eval_hermite(Ea[:, 0], Ea[:, 1], Ea[:, 2], Ea[:, 3], buf["t_a"], backend=backend)
     xb = eval_hermite(Eb[:, 0], Eb[:, 1], Eb[:, 2], Eb[:, 3], buf["t_b"], backend=backend)
     d2 = xp.sum((xa - xb) ** 2, axis=-1)
-    return lam * xp.sum(buf["mask"] * d2 * buf["ds_a"])
+    r2 = buf["r_sum"] ** 2 + _EPS
+    return lam * xp.sum(buf["mask"] * d2 / r2 * buf["ds_a"])

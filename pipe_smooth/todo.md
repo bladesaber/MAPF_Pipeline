@@ -23,7 +23,8 @@ Need an **obstacle fusion / coarsening** stage before clear / union:
 Related band-aids already in place: `p_max_obs` / `p_max_grp` / `p_max_union` truncate — replace with fusion so budgets stay stable without silently dropping hot hits.
 
 
-### union cost has big problem, it is scale by radius
+### union cost radius scale — done
+`J_union` uses `(d/(r_a+r_b))² Δs` with frozen `r_sum` in `UnionHit` / packed buf.
 
 ### 关于当前相邻segment reverse存在不一致问题
 解决方法1: 
