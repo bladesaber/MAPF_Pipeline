@@ -60,7 +60,11 @@ class HermiteSegment:
     u: str
     v: str
     ts_count: int = 10  # sample count along [0,1]; set via ts_count_for / sampling
-    
+    # stored Hermite ends use (u_sign * nodes[u].v, v_sign * nodes[v].v);
+    # assemble may leave None until usage-reverse resolve
+    u_sign: float | None = 1.0
+    v_sign: float | None = 1.0
+
     ts: object | None = None  # (n,) cached parameters
     xyz: object | None = None  # (n, 3) cached samples along stored u→v
     radius: object | None = None  # (n,) linear radius along stored u→v
@@ -74,6 +78,8 @@ class HermiteSegment:
             "u": self.u,
             "v": self.v,
             "ts_count": int(self.ts_count),
+            "u_sign": self.u_sign,
+            "v_sign": self.v_sign,
         }
 
     @classmethod
@@ -85,6 +91,8 @@ class HermiteSegment:
             u=str(data["u"]),
             v=str(data["v"]),
             ts_count=int(data.get("ts_count", 17)),
+            u_sign=float(data.get("u_sign", 1.0)),
+            v_sign=float(data.get("v_sign", 1.0)),
         )
 
     def radius_at(self, t: float, nodes: dict[str, HermiteNode]) -> float:
@@ -262,7 +270,9 @@ class OptimizeGraph:
                 seg = self.segments[sid]
                 nu, nv = self.nodes[seg.u], self.nodes[seg.v]
                 p0, p1 = nu.pos, nv.pos
-                v0, v1 = nu.v, nv.v
+                # xp.asarray keeps JAX tracers; np.asarray would break AD
+                v0 = None if nu.v is None else seg.u_sign * xp.asarray(nu.v)  # type: ignore
+                v1 = None if nv.v is None else seg.v_sign * xp.asarray(nv.v)  # type: ignore
                 if rev:
                     if i == 0:
                         v1 = -v_start
@@ -354,11 +364,11 @@ class OptimizeGraph:
             seg = self.segments[sid]
             nu, nv = self.nodes[seg.u], self.nodes[seg.v]
             if rev:
-                p0, v0 = nv.pos, -nv.v  # type: ignore
-                p1, v1 = nu.pos, -nu.v  # type: ignore
+                p0, v0 = nv.pos, -seg.v_sign * nv.v  # type: ignore
+                p1, v1 = nu.pos, -seg.u_sign * nu.v  # type: ignore
             else:
-                p0, v0 = nu.pos, nu.v
-                p1, v1 = nv.pos, nv.v
+                p0, v0 = nu.pos, seg.u_sign * nu.v  # type: ignore
+                p1, v1 = nv.pos, seg.v_sign * nv.v  # type: ignore
             if i == 0:
                 v0 = path.v_start
             if i == nseg - 1:
@@ -395,7 +405,6 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
     for Z in junction.complexes:
         shared.update(Z.interfaces)
 
-    by_eid = {e.id: e for e in list(junction.trunk_edges) + list(junction.junction_edges)}
     nodes_out: dict[str, HermiteNode] = {}
     segments: dict[str, HermiteSegment] = {}
     edge_segs: dict[str, list[str]] = {}  # eid -> hermite segment ids along e.nodes
@@ -406,7 +415,7 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
             nodes_out[kid] = HermiteNode(
                 pos=np.asarray(pos, dtype=float),
                 radius=float(radius),
-                v=None if is_port else np.array([1.0, 0.0, 0.0]),
+                v=None,  # unset until densify / port clamp
                 fixed_p=is_port,
                 fixed_v=is_port,
                 role=role,
@@ -459,27 +468,45 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
                 seg_L = float(np.linalg.norm(p1 - p0))
                 tang = unit(p1 - p0, backend="numpy")
                 u, v_id = chain_ids[j], chain_ids[j + 1]
-                
-                # FIXME: there is very critical problem here
-                if not nodes_out[u].fixed_v:
-                    nodes_out[u].v = tang * seg_L
-                if not nodes_out[v_id].fixed_v:
-                    nodes_out[v_id].v = tang * seg_L
-                
+
+                if e.kind == "trunk":
+                    # trunk anchors node.v; stored frame signs are +1
+                    if not nodes_out[u].fixed_v and nodes_out[u].v is None:
+                        nodes_out[u].v = tang * seg_L
+                    if not nodes_out[v_id].fixed_v and nodes_out[v_id].v is None:
+                        nodes_out[v_id].v = tang * seg_L
+                    u_sign = v_sign = 1.0
+                else:
+                    # junction: init unset knots; interface already set → sign later
+                    if nodes_out[u].v is None and not nodes_out[u].fixed_v:
+                        nodes_out[u].v = tang * seg_L
+                        u_sign = 1.0
+                    else:
+                        u_sign = None if not nodes_out[u].fixed_v else 1.0
+                    if nodes_out[v_id].v is None and not nodes_out[v_id].fixed_v:
+                        nodes_out[v_id].v = tang * seg_L
+                        v_sign = 1.0
+                    else:
+                        v_sign = None if not nodes_out[v_id].fixed_v else 1.0
+
                 sid = f"{e.id}_{i}_{j}"
                 segments[sid] = HermiteSegment(
-                    id=sid, edge=e.id, kind=e.kind, u=u, v=v_id
+                    id=sid, edge=e.id, kind=e.kind, u=u, v=v_id,
+                    u_sign=u_sign, v_sign=v_sign,
                 )
                 segs_here.append(sid)
         edge_segs[e.id] = segs_here
 
-    # walk usages; densify each labeled edge at most once
+    # trunk first (anchors shared v), then junction
+    for e in junction.trunk_edges:
+        densify_edge(e)
+    for e in junction.junction_edges:
+        densify_edge(e)
+
     usage_paths = []
     for up in junction.usage_paths:
         seg_ids, rev_flags = [], []
         for eid, rev in zip(up.edges, up.reverse):
-            if eid not in edge_segs:
-                densify_edge(by_eid[eid])
             segs = list(edge_segs[eid])
             if rev:
                 segs.reverse()
@@ -497,6 +524,39 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
                 v_end=np.asarray(up.v_end, dtype=float) * float(up.sigma_end),
             )
         )
+
+    # fill junction interface signs from travel continuity (adjacent reverse)
+    for path in usage_paths:
+        for i in range(len(path.segments) - 1):
+            sa, ra = path.segments[i], path.reverse[i]
+            sb, rb = path.segments[i + 1], path.reverse[i + 1]
+            A, B = segments[sa], segments[sb]
+            sA, sB = (-1.0 if ra else 1.0), (-1.0 if rb else 1.0)
+            eA = A.u_sign if ra else A.v_sign
+            eB = B.v_sign if rb else B.u_sign
+            if eA is None and eB is None:
+                raise RuntimeError(f"both signs unset at joint {sa}|{sb}")
+            if eA is None:
+                eA = sA * sB * eB  # type: ignore[operator]
+                if ra:
+                    A.u_sign = eA
+                else:
+                    A.v_sign = eA
+            elif eB is None:
+                eB = sB * sA * eA
+                if rb:
+                    B.v_sign = eB
+                else:
+                    B.u_sign = eB
+            else:
+                if not np.isclose(sA * eA, sB * eB):
+                    raise RuntimeError(
+                        f"sign mismatch at joint {sa}|{sb}: {sA*eA} vs {sB*eB}"
+                    )
+
+    for sid, seg in segments.items():
+        if seg.u_sign is None or seg.v_sign is None:
+            raise RuntimeError(f"segment {sid}: unresolved u_sign/v_sign")
 
     g = OptimizeGraph(
         id=junction.id,

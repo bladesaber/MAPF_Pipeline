@@ -37,6 +37,8 @@ class PackLayout:
     seg_index: dict[tuple[str, str], int] = field(default_factory=dict)  # (group_id, seg_id) → row s in ends_*
     ends_off: np.ndarray = field(default_factory=lambda: np.zeros((0, 4), dtype=np.int32))  # (S,4) x-offsets; -1 = const
     ends_const: np.ndarray = field(default_factory=lambda: np.zeros((0, 4, 3), dtype=np.float64))  # (S,4,3) when ends_off < 0
+    # (S,4): scale on from-x ends only; pos=1, dir=u_sign/v_sign (const already signed)
+    ends_sign: np.ndarray = field(default_factory=lambda: np.zeros((0, 4), dtype=np.float64))
     p_max_obs: int = 0  # max packed obstacle–seg hits
     p_max_grp: int = 0  # max packed group–group hits
     p_max_union: int = 0  # max packed union Chamfer samples (all graphs flattened)
@@ -55,12 +57,13 @@ class PackLayout:
     def clear_gather(
         graphs: Sequence[OptimizeGraph],
         slots: list[tuple[int, str, str, int]],
-    ) -> tuple[dict[tuple[str, str], int], np.ndarray, np.ndarray]:
+    ) -> tuple[dict[tuple[str, str], int], np.ndarray, np.ndarray, np.ndarray]:
         """Map each Hermite seg → (x-offset | const) for (p0,v0,p1,v1)."""
         off_map = {(gi, nid, fld): off for gi, nid, fld, off in slots}
         seg_index: dict[tuple[str, str], int] = {}
         rows_offset: list[list[int]] = []
         rows_const: list[list[list[float]]] = []
+        rows_sign: list[list[float]] = []
         for gi, g in enumerate(graphs):
             for sid, (p0, v0, p1, v1) in g.hermite_ends(backend="numpy").items():
                 seg = g.segments[sid]
@@ -82,13 +85,16 @@ class PackLayout:
                 seg_index[(g.id, sid)] = len(rows_offset)  # (group_id, seg_id) → row s in ends_*
                 rows_offset.append(row_offset)
                 rows_const.append(row_const)
+                rows_sign.append([1.0, float(seg.u_sign), 1.0, float(seg.v_sign)])  # type: ignore
         if rows_offset:
             ends_off = np.asarray(rows_offset, dtype=np.int32)
             ends_const = np.asarray(rows_const, dtype=np.float64)
+            ends_sign = np.asarray(rows_sign, dtype=np.float64)
         else:
             ends_off = np.zeros((0, 4), dtype=np.int32)
             ends_const = np.zeros((0, 4, 3), dtype=np.float64)
-        return seg_index, ends_off, ends_const
+            ends_sign = np.zeros((0, 4), dtype=np.float64)
+        return seg_index, ends_off, ends_const, ends_sign
 
     def ends_from_x(self, x, backend: str = "numpy"):
         """``ends[S,4,3]`` from packed ``x`` (same semantics as ``hermite_ends``)."""
@@ -96,8 +102,9 @@ class PackLayout:
         x = xp.asarray(x)
         off = xp.asarray(self.ends_off)
         const = xp.asarray(self.ends_const)
+        sign = xp.asarray(self.ends_sign)[..., None]
         safe = xp.maximum(off, 0)
-        from_x = x[safe[:, :, None] + xp.arange(3)]
+        from_x = x[safe[:, :, None] + xp.arange(3)] * sign
         return xp.where(off[..., None] >= 0, from_x, const)
 
     @classmethod
@@ -122,13 +129,14 @@ class PackLayout:
             and p_max_grp is not None
             and p_max_union is not None
         ):
-            seg_index, ends_off, ends_const = cls.clear_gather(graphs, slots)
+            seg_index, ends_off, ends_const, ends_sign = cls.clear_gather(graphs, slots)
             return cls(
                 slots=slots,
                 n=n,
                 seg_index=seg_index,
                 ends_off=ends_off,
                 ends_const=ends_const,
+                ends_sign=ends_sign,
                 p_max_obs=int(p_max_obs),
                 p_max_grp=int(p_max_grp),
                 p_max_union=int(p_max_union),
@@ -154,13 +162,14 @@ def layout(
                 slots.append((gi, nid, "dir", n))
                 n += 3  # free derivative (vx, vy, vz); ||v|| is the tangent scale
 
-    seg_index, ends_off, ends_const = PackLayout.clear_gather(graphs, slots)
+    seg_index, ends_off, ends_const, ends_sign = PackLayout.clear_gather(graphs, slots)
     return PackLayout(
         slots=slots,
         n=n,
         seg_index=seg_index,
         ends_off=ends_off,
         ends_const=ends_const,
+        ends_sign=ends_sign,
         p_max_obs=int(p_max_obs),
         p_max_grp=int(p_max_grp),
         p_max_union=int(p_max_union),

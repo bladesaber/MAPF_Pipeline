@@ -48,6 +48,7 @@ from PyQt5.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QFileDialog,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -83,10 +84,13 @@ class TopologyViewer(QMainWindow):
         self.domain = None  # (sx, sy, sz) world extents, or None
         self.layer = "tree"  # tree | partition | optimize
         self.part_mode = "labeled"  # labeled | trunk_junc
+        self.show_tangents = False
+        self.tangent_ratio = 2.0  # arrow length = ||stored v|| * ratio
         self.group_on: dict[str, bool] = {}
         self.part_edge_on: dict[str, bool] = {}  # "gid|eid"
         self.part_usage_on: dict[str, bool] = {}  # "gid|A->B"
         self.opt_usage_on: dict[str, bool] = {}
+        self.opt_seg_on: dict[str, bool] = {}  # "gid|sid"
         self._actors: dict[str, object] = {}
 
         split = QSplitter()
@@ -143,6 +147,9 @@ class TopologyViewer(QMainWindow):
         self.lay_opt.addWidget(QLabel("Groups"))
         self.opt_group_box = QVBoxLayout()
         self.lay_opt.addLayout(self.opt_group_box)
+        self.lay_opt.addWidget(QLabel("HermiteSegments"))
+        self.opt_seg_box = QVBoxLayout()
+        self.lay_opt.addLayout(self.opt_seg_box)
         self.lay_opt.addWidget(QLabel("OptimizeUsagePath"))
         self.opt_usage_box = QVBoxLayout()
         self.lay_opt.addLayout(self.opt_usage_box)
@@ -159,15 +166,11 @@ class TopologyViewer(QMainWindow):
         sc.setWidget(inner)
         return sc
 
-    def _build_menu(self):
-        m_file = self.menuBar().addMenu("&File")
-        act_load = QAction("&Load env YAML…", self)
-        act_load.triggered.connect(self.load_env)
-        m_file.addAction(act_load)
-
+    def _add_view_settings_menus(self):
         m_view = self.menuBar().addMenu("&View")
         grp = QActionGroup(self)
         grp.setExclusive(True)
+        self._view_acts: dict[str, QAction] = {}
         for name, key in (
             ("GroupTree", "tree"),
             ("PartitionedTree", "partition"),
@@ -178,6 +181,44 @@ class TopologyViewer(QMainWindow):
             act.triggered.connect(lambda _=False, k=key: self._set_layer(k))
             grp.addAction(act)
             m_view.addAction(act)
+            self._view_acts[key] = act
+        m_view.addSeparator()
+        act_t = QAction("Show Hermite &tangents", self, checkable=True)
+        act_t.setChecked(self.show_tangents)
+        act_t.toggled.connect(self._set_show_tangents)
+        m_view.addAction(act_t)
+
+        m_set = self.menuBar().addMenu("&Settings")
+        m_set.addAction("Tangent scale &ratio…").triggered.connect(
+            self._edit_tangent_ratio
+        )
+
+    def _set_show_tangents(self, on: bool):
+        self.show_tangents = bool(on)
+        if self.layer == "optimize":
+            self.redraw()
+
+    def _edit_tangent_ratio(self):
+        val, ok = QInputDialog.getDouble(
+            self,
+            "Tangent scale",
+            "display length = ||v|| × ratio",
+            self.tangent_ratio,
+            0.01,
+            100.0,
+            2,
+        )
+        if ok:
+            self.tangent_ratio = float(val)
+            if self.layer == "optimize" and self.show_tangents:
+                self.redraw()
+
+    def _build_menu(self):
+        m_file = self.menuBar().addMenu("&File")
+        act_load = QAction("&Load env YAML…", self)
+        act_load.triggered.connect(self.load_env)
+        m_file.addAction(act_load)
+        self._add_view_settings_menus()
 
     def _set_layer(self, layer: str):
         self.layer = layer
@@ -227,14 +268,26 @@ class TopologyViewer(QMainWindow):
                 on = self.group_on.get(key.split("|", 1)[0], True) and self.part_usage_on.get(
                     key, False
                 )
-            elif kind in ("opt", "opt_n", "opt_v"):
+            elif kind == "opt":
+                on = self.group_on.get(bits[1], True) and self.opt_seg_on.get(
+                    f"{bits[1]}|{bits[2]}", True
+                )
+            elif kind == "opt_t":
+                parts = name.split(":")
+                gid, sid = parts[1], parts[2]
+                on = (
+                    self.show_tangents
+                    and self.group_on.get(gid, True)
+                    and self.opt_seg_on.get(f"{gid}|{sid}", True)
+                )
+            elif kind in ("opt_n", "opt_v"):
                 on = self.group_on.get(bits[1], True)
             elif kind == "opt_u":
                 key = name[len("opt_u:") :]
                 on = self.group_on.get(key.split("|", 1)[0], True) and self.opt_usage_on.get(
                     key, False
                 )
-            actor.SetVisibility(bool(on)) # type: ignore
+            actor.SetVisibility(bool(on))  # type: ignore
         self.plotter.render()
 
     def _bind_data(self, trees, parts, graphs, domain, title: str | None = None):
@@ -256,6 +309,9 @@ class TopologyViewer(QMainWindow):
             for g in self.graphs
             for up in g.usage_paths
         }
+        self.opt_seg_on = {
+            f"{g.id}|{sid}": True for g in self.graphs for sid in g.segments
+        }
         self._fill_checks(self.tree_group_box, gids, self.group_on)
         self._fill_checks(self.part_group_box, gids, self.group_on)
         self._fill_checks(self.opt_group_box, gids, self.group_on)
@@ -265,6 +321,7 @@ class TopologyViewer(QMainWindow):
         self._fill_checks(
             self.part_usage_box, sorted(self.part_usage_on), self.part_usage_on
         )
+        self._fill_checks(self.opt_seg_box, sorted(self.opt_seg_on), self.opt_seg_on)
         self._fill_checks(
             self.opt_usage_box, sorted(self.opt_usage_on), self.opt_usage_on
         )
@@ -341,6 +398,26 @@ class TopologyViewer(QMainWindow):
         )
         if name is not None:
             self._actors[name] = actor
+
+    def _arrow(self, origin, vel, color, name):
+        """Hermite end arrow; world length = ||vel|| * tangent_ratio."""
+        vel = np.asarray(vel, float).reshape(3)
+        n = float(np.linalg.norm(vel))
+        if n < 1e-12:
+            return
+        actor = self.plotter.add_mesh(
+            pv.Arrow(
+                start=np.asarray(origin, float).reshape(3),
+                direction=vel / n,
+                tip_length=0.35,
+                tip_radius=0.12,
+                shaft_radius=0.04,
+                scale=n * self.tangent_ratio,
+            ),
+            color=color,
+            name=name,
+        )
+        self._actors[name] = actor
 
     def _draw_trees(self):
         for t in self.trees:
@@ -428,6 +505,7 @@ class TopologyViewer(QMainWindow):
         for g in self.graphs:
             # rebuild Hermite caches, then draw curves (not node chords)
             g.refresh(backend="numpy", resolution=self.resolution)
+            ends = g.hermite_ends(backend="numpy")
             for sid, seg in g.segments.items():
                 self._poly(
                     np.asarray(seg.xyz, float),
@@ -435,6 +513,10 @@ class TopologyViewer(QMainWindow):
                     width=3,
                     name=f"opt:{g.id}:{sid}",
                 )
+                if self.show_tangents:
+                    p0, v0, p1, v1 = ends[sid]
+                    self._arrow(p0, v0, "lime", f"opt_t:{g.id}:{sid}:u")
+                    self._arrow(p1, v1, "orange", f"opt_t:{g.id}:{sid}:v")
             for nid, n in g.nodes.items():
                 actor = self.plotter.add_mesh(
                     pv.Sphere(radius=0.01, center=n.pos),

@@ -175,6 +175,7 @@ class BenchViewer(QMainWindow):
         self._replay_i = 0
         self._replay_lay: PackLayout | None = None
         self._node_actors: dict[tuple[str, str], object] = {}
+        self._usage_actors: list[tuple[str, object]] = []  # (usage key, actor)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._replay_tick)
 
@@ -836,20 +837,27 @@ class BenchViewer(QMainWindow):
         for g in self.graphs:
             for up in g.usage_paths:
                 key = f"{g.id}|{up.usage[0]}->{up.usage[1]}"
-                self.usage_on[key] = prev.get(key, True)
+                self.usage_on[key] = prev.get(key, False)
                 cb = QCheckBox(key)
                 cb.setChecked(self.usage_on[key])
                 cb.toggled.connect(
                     lambda on, k=key: (
                         self.usage_on.__setitem__(k, on),
-                        self.redraw() if self.graphs and not self._timer.isActive() else None,
+                        self._sync_usage_vis(),
                     )
                 )
                 self.usage_box.addWidget(cb)
 
+    def _sync_usage_vis(self):
+        """Toggle usage overlays only — no Hermite rebuild."""
+        for key, actor in self._usage_actors:
+            actor.SetVisibility(bool(self.usage_on.get(key, False)))  # type: ignore
+        self.plotter.render()
+
     def redraw(self):
         mode = self.viz_mode.currentText()
         self._node_actors = {}
+        self._usage_actors = []
         self.plotter.clear()
         self.plotter.add_axes()
         _cols = (
@@ -860,8 +868,8 @@ class BenchViewer(QMainWindow):
             (0.70, 0.30, 0.80),
         )
         for g in self.graphs:
+            g.refresh(backend="numpy", resolution=max(self.resolution * 0.25, 1e-3))
             if mode != "point":
-                g.refresh(backend="numpy", resolution=max(self.resolution * 0.25, 1e-3))
                 for seg in g.segments.values():
                     xyz = np.asarray(seg.xyz, float)
                     if xyz.ndim != 2 or xyz.shape[0] < 2:
@@ -872,9 +880,6 @@ class BenchViewer(QMainWindow):
                         line["radius"] = np.asarray(seg.radius, float)
                         tube = line.tube(scalars="radius", absolute=True, n_sides=12)
                         self.plotter.add_mesh(tube, color="lightblue", opacity=0.35)
-            else:
-                # still need samples for usage overlays
-                g.refresh(backend="numpy", resolution=max(self.resolution * 0.25, 1e-3))
             for nid, n in g.nodes.items():
                 actor = self.plotter.add_mesh(
                     pv.Sphere(radius=0.075, center=(0.0, 0.0, 0.0)),
@@ -887,8 +892,6 @@ class BenchViewer(QMainWindow):
 
             for up in g.usage_paths:
                 key = f"{g.id}|{up.usage[0]}->{up.usage[1]}"
-                if not self.usage_on.get(key, False):
-                    continue
                 chunks = []
                 for sid, rev in zip(up.segments, up.reverse):
                     xyz = np.asarray(g.segments[sid].xyz, float)
@@ -903,16 +906,18 @@ class BenchViewer(QMainWindow):
                 if path.shape[0] < 2:
                     continue
                 col = _cols[abs(hash(key)) % len(_cols)]
-                self.plotter.add_mesh(
-                    pv.lines_from_points(path), color=col, line_width=5
+                line_actor = self.plotter.add_mesh(
+                    pv.lines_from_points(path), color=col, line_width=5, name=f"u:{key}"
                 )
+                self._usage_actors.append((key, line_actor))
                 step = max(1, (path.shape[0] - 1) // 4)
                 tip = max(float(self.resolution) * 0.4, 0.12)
+                ai = 0
                 for i in range(0, path.shape[0] - 1, step):
                     d = path[i + 1] - path[i]
                     if float(np.linalg.norm(d)) < 1e-9:
                         continue
-                    self.plotter.add_mesh(
+                    arr = self.plotter.add_mesh(
                         pv.Arrow(
                             start=path[i],
                             direction=d,
@@ -922,7 +927,10 @@ class BenchViewer(QMainWindow):
                             scale=tip,
                         ),
                         color=col,
+                        name=f"u:{key}:a{ai}",
                     )
+                    self._usage_actors.append((key, arr))
+                    ai += 1
         for o in self.obstacles:
             if isinstance(o, SphereObs):
                 self.plotter.add_mesh(
@@ -930,7 +938,7 @@ class BenchViewer(QMainWindow):
                     color="orange",
                     opacity=0.45,
                 )
-        self.plotter.render()
+        self._sync_usage_vis()
 
     def _update_points(self):
         for g in self.graphs:

@@ -22,8 +22,6 @@ import sys
 from pathlib import Path
 
 from PyQt5.QtWidgets import (
-    QAction,
-    QActionGroup,
     QApplication,
     QFileDialog,
     QMessageBox,
@@ -55,22 +53,7 @@ class TopologyJsonViewer(TopologyViewer):
     def _build_menu(self):
         m_file = self.menuBar().addMenu("&File")
         m_file.addAction("&Load JSON…").triggered.connect(self.load_json)
-
-        m_view = self.menuBar().addMenu("&View")
-        grp = QActionGroup(self)
-        grp.setExclusive(True)
-        self._view_acts: dict[str, QAction] = {}
-        for name, key in (
-            ("GroupTree", "tree"),
-            ("PartitionedTree", "partition"),
-            ("OptimizeGraph", "optimize"),
-        ):
-            act = QAction(name, self, checkable=True)
-            act.setChecked(key == "tree")
-            act.triggered.connect(lambda _=False, k=key: self._set_layer(k))
-            grp.addAction(act)
-            m_view.addAction(act)
-            self._view_acts[key] = act
+        self._add_view_settings_menus()
 
     def redraw(self):
         self.plotter.clear()
@@ -110,6 +93,9 @@ class TopologyJsonViewer(TopologyViewer):
             for g in self.graphs
             for up in g.usage_paths
         }
+        self.opt_seg_on = {
+            f"{g.id}|{sid}": True for g in self.graphs for sid in g.segments
+        }
         self._fill_checks(self.tree_group_box, gids, self.group_on)
         self._fill_checks(self.part_group_box, gids, self.group_on)
         self._fill_checks(self.opt_group_box, gids, self.group_on)
@@ -119,6 +105,7 @@ class TopologyJsonViewer(TopologyViewer):
         self._fill_checks(
             self.part_usage_box, sorted(self.part_usage_on), self.part_usage_on
         )
+        self._fill_checks(self.opt_seg_box, sorted(self.opt_seg_on), self.opt_seg_on)
         self._fill_checks(
             self.opt_usage_box, sorted(self.opt_usage_on), self.opt_usage_on
         )
