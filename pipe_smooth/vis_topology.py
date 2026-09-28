@@ -5,9 +5,10 @@ Loads one or more of:
   tree_*.json / type=GroupTree
   partitioned_*.json / type=PartitionedTree
   graph_*.json / type=OptimizeGraph
+  obstacles.json          (optional sibling in a run folder)
 
 UI mirrors ``vis_instance_topology`` (layer view + toolbox toggles).
-File → Load JSON… accepts multi-select.
+File → Load JSON… / Load obstacles….
 
 CLI
   python -m pipe_smooth.vis_topology [file_or_dir ...] [--resolution R]
@@ -22,11 +23,13 @@ import sys
 from pathlib import Path
 
 from PyQt5.QtWidgets import (
+    QAction,
     QApplication,
     QFileDialog,
     QMessageBox,
 )
 from pipe_smooth.geometry.assemble import OptimizeGraph
+from pipe_smooth.pipeline import load_obstacles_file
 from pipe_smooth.topology.junction import PartitionedTree
 from pipe_smooth.topology.tree import GroupTree
 from pipe_smooth.vis_instance_topology import TopologyViewer
@@ -53,13 +56,19 @@ class TopologyJsonViewer(TopologyViewer):
     def _build_menu(self):
         m_file = self.menuBar().addMenu("&File")
         m_file.addAction("&Load JSON…").triggered.connect(self.load_json)
+        act_obs = QAction("Load &obstacles…", self)
+        act_obs.triggered.connect(self.load_obstacles_dialog)
+        m_file.addAction(act_obs)
         self._add_view_settings_menus()
 
     def redraw(self):
         self.plotter.clear()
         self.plotter.add_axes()
         self._actors = {}
+        self._obs_actors = []
+        self._domain_actor = None
         self._draw_domain()
+        self._draw_obstacles()
         if self.layer == "tree":
             self._draw_trees()
         elif self.layer == "partition":
@@ -67,9 +76,21 @@ class TopologyJsonViewer(TopologyViewer):
         else:
             self._draw_graphs()
         self._sync_vis()
+        self._refresh_clip_extents()
+        self._sync_clip()
 
-    def _bind_data(self, trees, parts, graphs, domain, title: str | None = None):
+    def _bind_data(
+        self,
+        trees,
+        parts,
+        graphs,
+        domain,
+        title: str | None = None,
+        obstacles=None,
+    ):
         self.trees, self.parts, self.graphs, self.domain = trees, parts, graphs, domain
+        if obstacles is not None:
+            self.obstacles = list(obstacles)
         gids = list(
             dict.fromkeys(
                 [t.id for t in self.trees]
@@ -111,10 +132,13 @@ class TopologyJsonViewer(TopologyViewer):
         )
         if title:
             self.setWindowTitle(title)
+        if self.domain is not None:
+            self._clip_lo = (0.0, 0.0, 0.0)
+            self._clip_extents = tuple(float(x) for x in self.domain)  # type: ignore
         self.redraw()
         self.plotter.reset_camera()
 
-    def _ingest(self, paths: list[Path]):
+    def _ingest(self, paths: list[Path], obstacles=None):
         trees, parts, graphs = [], [], []
         for path in paths:
             kind, obj = _detect_load(path)
@@ -139,7 +163,15 @@ class TopologyJsonViewer(TopologyViewer):
         names = ", ".join(p.name for p in paths[:3])
         if len(paths) > 3:
             names += f" +{len(paths) - 3}"
-        self._bind_data(trees, parts, graphs, None, title=f"topology — {names}")
+        # Prefer explicit obstacles; else sibling obstacles.json next to first file
+        obs = obstacles
+        if obs is None and paths:
+            sibling = paths[0].parent / "obstacles.json"
+            if sibling.is_file():
+                obs = load_obstacles_file(sibling, "capsule")
+        self._bind_data(
+            trees, parts, graphs, None, title=f"topology — {names}", obstacles=obs
+        )
 
     def load_json(self):
         root = Path(__file__).resolve().parent / "runs"
@@ -174,6 +206,12 @@ def main(argv: list[str] | None = None):
         default=0.1,
         help="Hermite sample spacing for OptimizeGraph draw (default: 0.1)",
     )
+    parser.add_argument(
+        "--obstacles",
+        type=Path,
+        default=None,
+        help="obstacles JSON/YAML (else sibling obstacles.json in a folder)",
+    )
     args = parser.parse_args(argv)
     if args.resolution <= 0:
         parser.error("--resolution must be > 0")
@@ -194,6 +232,9 @@ def main(argv: list[str] | None = None):
     w.show()
 
     files: list[Path] = []
+    obs = None
+    if args.obstacles is not None:
+        obs = load_obstacles_file(args.obstacles, "capsule")
     for p in args.paths:
         if p.is_dir():
             files.extend(
@@ -203,11 +244,13 @@ def main(argv: list[str] | None = None):
                     + list(p.glob("graph_*.json"))
                 )
             )
+            if obs is None and (p / "obstacles.json").is_file():
+                obs = load_obstacles_file(p / "obstacles.json", "capsule")
         elif p.is_file():
             files.append(p)
     if files:
         try:
-            w._ingest(files)
+            w._ingest(files, obstacles=obs)
         except Exception as e:
             QMessageBox.critical(w, "Load failed", str(e))
 

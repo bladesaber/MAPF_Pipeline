@@ -14,3 +14,31 @@ union cost has big problem, it is scale by radius
 	1. 但由于两端点距离会影响这个度量,所以应该以端点距离作为基,从而无量纲化
 	2. P1,P2的向量角度差与幅度差决定最大曲率
 	所以为每个HermiteSegment添加端点sign也是一个解决方法
+	
+
+
+
+./pipe_smooth/run_instances.sh data/easy -j 4 -m adam \
+  --two-stage --coarse-step 500 --refine-step 200 \
+  --coarse-step-size 0.1 --refine-step-size 0.01 \
+  --clear-kind capsule --union-kind chamfer --margin-ratio 1.5 \
+  --p-max-obs 100000 --p-max-grp 100000 --p-max-union 100000
+  
+  
+./pipe_smooth/run_instances.sh data/easy -j 8 -m adam \
+  --two-stage --coarse-step 500 --refine-step 200 \
+  --coarse-step-size 0.1 --refine-step-size 0.01 \
+  --clear-kind capsule --union-kind chamfer --margin-ratio 1.5 \
+  --p-max-obs 1024 --p-max-grp 1024 --p-max-union 512
+ 
+./pipe_smooth/run_instances.sh data/easy -j 8 -m adam \
+  --two-stage --coarse-step 500 --refine-step 200 \
+  --coarse-step-size 0.1 --refine-step-size 0.01 \
+  --clear-kind ignore --union-kind chamfer --margin-ratio 1.5 \
+  --p-max-obs 1024 --p-max-grp 1024 --p-max-union 512
+  
+./run_instances.sh data/easy data/hard -j 10 -m all \
+  --two-stage --coarse-step 500 --refine-step 200 \
+  --coarse-step-size 0.1 --refine-step-size 0.01 \
+  --clear-kind all --union-kind chamfer --margin-ratio 1.5 \
+  --p-max-obs 1024 --p-max-grp 1024 --p-max-union 512

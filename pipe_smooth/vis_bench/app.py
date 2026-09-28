@@ -94,7 +94,7 @@ _OPT_SPECS: dict[str, dict[str, tuple]] = {
         "refresh_every": ("int", 5),
     },
     "adam_annealed": {
-        "eta_max": ("float", 1e-3),
+        "eta_max": ("float", 1e-2),
         "delta": ("float", 1e-2),
         "T0": ("float", 1e-3),
         "anneal": ("choice", "linear", ("linear", "exp")),
@@ -106,7 +106,7 @@ _OPT_SPECS: dict[str, dict[str, tuple]] = {
         "refresh_every": ("int", 5),
     },
     "langevin": {
-        "eta_max": ("float", 1e-3),
+        "eta_max": ("float", 1e-2),
         "delta": ("float", 1e-2),
         "T0": ("float", 1e-3),
         "anneal": ("choice", "linear", ("linear", "exp")),

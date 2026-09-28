@@ -9,7 +9,11 @@ env YAML (same input as the optimize pipeline):
 
 UI
   File → Load env YAML…     load / reload an env; rebuilds trees, parts, graphs
+  File → Load obstacles…    load spheres/capsules/aabbs JSON or env YAML
   View → GroupTree | …      switch which layer is drawn (full redraw)
+  View → Point | Point+line | Point+tube   edge draw mode
+  View → Obstacles          show / hide env obstacles (AABB / capsule / sphere)
+  Clip bar                  axis-aligned clip plane (X/Y/Z + slider)
   Right toolbox             per-layer checkboxes; toggles actor visibility only
     Groups                  show / hide a whole pipe group
     Labeled edges           (partition) per ``gid|eid`` edge
@@ -41,27 +45,33 @@ from pathlib import Path
 import numpy as np
 import pyvista as pv
 import yaml
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QAction,
     QActionGroup,
     QApplication,
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QFileDialog,
+    QHBoxLayout,
     QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
     QRadioButton,
     QScrollArea,
+    QSlider,
     QSplitter,
     QToolBox,
     QVBoxLayout,
     QWidget,
 )
 from pyvistaqt import QtInteractor
+from vtkmodules.vtkCommonDataModel import vtkPlane
 
-from pipe_smooth.pipeline import build_graphs
+from pipe_smooth.collision import AabbObs, CapsuleObs, SphereObs
+from pipe_smooth.pipeline import build_graphs, load_obstacles, load_obstacles_file
 
 
 def _color(key: str) -> tuple[float, float, float]:
@@ -84,6 +94,7 @@ class TopologyViewer(QMainWindow):
         self.domain = None  # (sx, sy, sz) world extents, or None
         self.layer = "tree"  # tree | partition | optimize
         self.part_mode = "labeled"  # labeled | trunk_junc
+        self.draw_mode = "point+line"  # point | point+line | point+tube
         self.show_tangents = False
         self.tangent_ratio = 2.0  # arrow length = ||stored v|| * ratio
         self.group_on: dict[str, bool] = {}
@@ -91,10 +102,45 @@ class TopologyViewer(QMainWindow):
         self.part_usage_on: dict[str, bool] = {}  # "gid|A->B"
         self.opt_usage_on: dict[str, bool] = {}
         self.opt_seg_on: dict[str, bool] = {}  # "gid|sid"
+        self.obstacles: list = []
+        self.show_obstacles = True
         self._actors: dict[str, object] = {}
+        self._obs_actors: list[object] = []
+        self._domain_actor = None
+        self._clip_lo = (0.0, 0.0, 0.0)
+        self._clip_extents = (1.0, 1.0, 1.0)
+        self._clip_plane = vtkPlane()
+
+        central = QWidget()
+        root = QVBoxLayout(central)
+        root.setContentsMargins(0, 0, 0, 0)
+        self.setCentralWidget(central)
+
+        clip_bar = QHBoxLayout()
+        self.clip_cb = QCheckBox("Clip")
+        self.clip_cb.setChecked(False)
+        self.clip_cb.stateChanged.connect(self._sync_clip)
+        self.clip_axis = QComboBox()
+        self.clip_axis.addItems(["X", "Y", "Z"])
+        self.clip_axis.setFixedWidth(48)
+        self.clip_axis.currentIndexChanged.connect(self._sync_clip)
+        self.clip_slider = QSlider(Qt.Horizontal)  # type: ignore
+        self.clip_slider.setRange(0, 1000)
+        self.clip_slider.setValue(500)
+        self.clip_slider.setFixedWidth(160)
+        self.clip_slider.valueChanged.connect(self._sync_clip)
+        self.clip_pos_lbl = QLabel("—")
+        self.clip_pos_lbl.setMinimumWidth(64)
+        clip_bar.addWidget(self.clip_cb)
+        clip_bar.addWidget(QLabel("Axis"))
+        clip_bar.addWidget(self.clip_axis)
+        clip_bar.addWidget(self.clip_slider)
+        clip_bar.addWidget(self.clip_pos_lbl)
+        clip_bar.addStretch(1)
+        root.addLayout(clip_bar)
 
         split = QSplitter()
-        self.setCentralWidget(split)
+        root.addWidget(split)
         self.plotter = QtInteractor(self)  # type: ignore
         split.addWidget(self.plotter.interactor)
 
@@ -183,20 +229,48 @@ class TopologyViewer(QMainWindow):
             m_view.addAction(act)
             self._view_acts[key] = act
         m_view.addSeparator()
+        mode_grp = QActionGroup(self)
+        mode_grp.setExclusive(True)
+        for name, key in (
+            ("&Point", "point"),
+            ("Point + &line", "point+line"),
+            ("Point + t&ube", "point+tube"),
+        ):
+            act = QAction(name, self, checkable=True)
+            act.setChecked(key == self.draw_mode)
+            act.triggered.connect(lambda _=False, k=key: self._set_draw_mode(k))
+            mode_grp.addAction(act)
+            m_view.addAction(act)
+        m_view.addSeparator()
         act_t = QAction("Show Hermite &tangents", self, checkable=True)
         act_t.setChecked(self.show_tangents)
         act_t.toggled.connect(self._set_show_tangents)
         m_view.addAction(act_t)
+        act_o = QAction("&Obstacles", self, checkable=True)
+        act_o.setChecked(self.show_obstacles)
+        act_o.toggled.connect(self._set_show_obstacles)
+        m_view.addAction(act_o)
+        self._act_obstacles = act_o
 
         m_set = self.menuBar().addMenu("&Settings")
         m_set.addAction("Tangent scale &ratio…").triggered.connect(
             self._edit_tangent_ratio
         )
 
+    def _set_draw_mode(self, mode: str):
+        self.draw_mode = mode
+        self.redraw()
+
     def _set_show_tangents(self, on: bool):
         self.show_tangents = bool(on)
         if self.layer == "optimize":
             self.redraw()
+
+    def _set_show_obstacles(self, on: bool):
+        self.show_obstacles = bool(on)
+        for actor in self._obs_actors:
+            actor.SetVisibility(self.show_obstacles)  # type: ignore
+        self.plotter.render()
 
     def _edit_tangent_ratio(self):
         val, ok = QInputDialog.getDouble(
@@ -218,6 +292,9 @@ class TopologyViewer(QMainWindow):
         act_load = QAction("&Load env YAML…", self)
         act_load.triggered.connect(self.load_env)
         m_file.addAction(act_load)
+        act_obs = QAction("Load &obstacles…", self)
+        act_obs.triggered.connect(self.load_obstacles_dialog)
+        m_file.addAction(act_obs)
         self._add_view_settings_menus()
 
     def _set_layer(self, layer: str):
@@ -290,8 +367,17 @@ class TopologyViewer(QMainWindow):
             actor.SetVisibility(bool(on))  # type: ignore
         self.plotter.render()
 
-    def _bind_data(self, trees, parts, graphs, domain, title: str | None = None):
+    def _bind_data(
+        self,
+        trees,
+        parts,
+        graphs,
+        domain,
+        title: str | None = None,
+        obstacles=None,
+    ):
         self.trees, self.parts, self.graphs, self.domain = trees, parts, graphs, domain
+        self.obstacles = list(obstacles or [])
         gids = [t.id for t in self.trees]
         self.group_on = {g: True for g in gids}
         self.part_edge_on = {
@@ -327,6 +413,9 @@ class TopologyViewer(QMainWindow):
         )
         if title:
             self.setWindowTitle(title)
+        if self.domain is not None:
+            self._clip_lo = (0.0, 0.0, 0.0)
+            self._clip_extents = tuple(float(x) for x in self.domain)  # type: ignore
         self.redraw()
         self.plotter.reset_camera()
 
@@ -349,16 +438,43 @@ class TopologyViewer(QMainWindow):
                 built["graphs"],
                 self._domain_from_env(env),
                 title=f"topology — {Path(path).name}",
+                obstacles=load_obstacles(env, "capsule"),
             )
         except Exception as e:
             QMessageBox.critical(self, "Load failed", str(e))
+
+    def load_obstacles_dialog(self):
+        root = Path(__file__).resolve().parents[1]
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load obstacles",
+            str(root / "data"),
+            "Obstacles (*.json *.yaml *.yml);;All (*)",
+        )
+        if not path:
+            return
+        try:
+            self.obstacles = load_obstacles_file(path, "capsule")
+            self.show_obstacles = True
+            if getattr(self, "_act_obstacles", None) is not None:
+                self._act_obstacles.blockSignals(True)
+                self._act_obstacles.setChecked(True)
+                self._act_obstacles.blockSignals(False)
+            self.redraw()
+        except Exception as e:
+            QMessageBox.critical(self, "Load obstacles failed", str(e))
 
     def redraw(self):
         self.plotter.clear()
         self.plotter.add_axes()
         self._actors = {}
+        self._obs_actors = []
+        self._domain_actor = None
         self._draw_domain()
+        self._draw_obstacles()
         if not self.trees:
+            self._refresh_clip_extents()
+            self._sync_clip()
             self.plotter.render()
             return
         if self.layer == "tree":
@@ -368,6 +484,85 @@ class TopologyViewer(QMainWindow):
         else:
             self._draw_graphs()
         self._sync_vis()
+        self._refresh_clip_extents()
+        self._sync_clip()
+
+    def _refresh_clip_extents(self) -> None:
+        """Keep clip slider range aligned with domain, or scene bounds if no domain."""
+        if self.domain is not None:
+            self._clip_lo = (0.0, 0.0, 0.0)
+            self._clip_extents = tuple(float(x) for x in self.domain)  # type: ignore
+            return
+        try:
+            b = self.plotter.bounds
+        except Exception:
+            return
+        if b is None or len(b) < 6:
+            return
+        self._clip_lo = (float(b[0]), float(b[2]), float(b[4]))
+        self._clip_extents = (
+            max(float(b[1] - b[0]), 1e-6),
+            max(float(b[3] - b[2]), 1e-6),
+            max(float(b[5] - b[4]), 1e-6),
+        )
+
+    def _plane_from_controls(self) -> tuple[list[float], list[float]]:
+        """Origin/normal from axis + slider; updates position label."""
+        ox, oy, oz = self._clip_lo
+        ex, ey, ez = self._clip_extents
+        axis = self.clip_axis.currentIndex()
+        t = self.clip_slider.value() / 1000.0
+        lo = (ox, oy, oz)
+        sizes = (ex, ey, ez)
+        origin = [ox + ex * 0.5, oy + ey * 0.5, oz + ez * 0.5]
+        origin[axis] = lo[axis] + t * sizes[axis]
+        normal = [0.0, 0.0, 0.0]
+        normal[axis] = 1.0
+        self.clip_pos_lbl.setText(f"{'XYZ'[axis]}={origin[axis]:.1f}")
+        return origin, normal
+
+    def _sync_clip(self, *_args: object) -> None:
+        """Axis-aligned clip on domain / topology / obstacle actors."""
+        origin, normal = self._plane_from_controls()
+        self._clip_plane.SetOrigin(*origin)
+        self._clip_plane.SetNormal(*normal)
+        enabled = self.clip_cb.isChecked()
+        actors = list(self._actors.values()) + list(self._obs_actors)
+        if self._domain_actor is not None:
+            actors.append(self._domain_actor)
+        for a in actors:
+            mapper = a.GetMapper()  # type: ignore
+            if mapper is None:
+                continue
+            mapper.RemoveAllClippingPlanes()
+            if enabled:
+                mapper.AddClippingPlane(self._clip_plane)
+        self.plotter.render()
+
+    def _draw_obstacles(self):
+        """Orange translucent obstacle meshes; visibility from View → Obstacles."""
+        for i, o in enumerate(self.obstacles):
+            name = f"obs:{i}"
+            if isinstance(o, SphereObs):
+                mesh = pv.Sphere(radius=float(o.r), center=np.asarray(o.c, float))
+            elif isinstance(o, CapsuleObs):
+                a = np.asarray(o.a, float)
+                b = np.asarray(o.b, float)
+                line = pv.lines_from_points(np.vstack([a, b]))
+                mesh = line.tube(radius=float(o.r))
+            elif isinstance(o, AabbObs):
+                mn = np.asarray(o.mn, float)
+                mx = np.asarray(o.mx, float)
+                mesh = pv.Box(
+                    bounds=(float(mn[0]), float(mx[0]), float(mn[1]), float(mx[1]), float(mn[2]), float(mx[2]))
+                )
+            else:
+                continue
+            actor = self.plotter.add_mesh(
+                mesh, color="gray", opacity=0.35, name=name
+            )
+            actor.SetVisibility(bool(self.show_obstacles))  # type: ignore
+            self._obs_actors.append(actor)
 
     @staticmethod
     def _domain_from_env(env: dict):
@@ -382,20 +577,38 @@ class TopologyViewer(QMainWindow):
         )
 
     def _draw_domain(self):
+        self._domain_actor = None
         if self.domain is None:
             return
         sx, sy, sz = self.domain
         box = pv.Box(bounds=(0.0, sx, 0.0, sy, 0.0, sz))
-        self.plotter.add_mesh(box, style="wireframe", color="white", line_width=2)
+        self._domain_actor = self.plotter.add_mesh(
+            box, style="wireframe", color="white", line_width=2
+        )
+        self._clip_lo = (0.0, 0.0, 0.0)
+        self._clip_extents = (float(sx), float(sy), float(sz))
 
-    def _poly(self, xyz, color, width=3, name=None):
-        """Connected polyline (add_lines needs paired endpoints, not a chain)."""
+    def _poly(self, xyz, color, width=3, name=None, radius=None):
+        """Path as line / tube, or skip in point-only mode.
+
+        ``radius``: float or (N,) matching ``xyz`` — used only for point+tube.
+        """
+        if self.draw_mode == "point":
+            return
         xyz = np.asarray(xyz, float)
         if xyz.ndim != 2 or xyz.shape[0] < 2:
             return
-        actor = self.plotter.add_mesh(
-            pv.lines_from_points(xyz), color=color, line_width=width, name=name
-        )
+        line = pv.lines_from_points(xyz)
+        if self.draw_mode == "point+tube":
+            r = np.asarray(radius, float).reshape(-1)
+            if r.size == 1:
+                mesh = line.tube(radius=float(r[0]))
+            else:
+                line["radius"] = r
+                mesh = line.tube(scalars="radius", absolute=True)
+            actor = self.plotter.add_mesh(mesh, color=color, name=name)
+        else:
+            actor = self.plotter.add_mesh(line, color=color, line_width=width, name=name)
         if name is not None:
             self._actors[name] = actor
 
@@ -423,7 +636,11 @@ class TopologyViewer(QMainWindow):
         for t in self.trees:
             for e in t.edges:
                 self._poly(
-                    e.xyz, _color(f"{t.id}:{e.id}"), width=3, name=f"tree:{t.id}:{e.id}"
+                    e.xyz,
+                    _color(f"{t.id}:{e.id}"),
+                    width=3,
+                    name=f"tree:{t.id}:{e.id}",
+                    radius=e.radius,
                 )
                 for i, p in enumerate(e.xyz):
                     actor = self.plotter.add_mesh(
@@ -447,6 +664,9 @@ class TopologyViewer(QMainWindow):
     def _edge_xyz(self, part, edge):
         return np.asarray([part.nodes[nid].pos for nid in edge.nodes], float)
 
+    def _edge_radius(self, part, edge):
+        return np.asarray([part.nodes[nid].radius for nid in edge.nodes], float)
+
     def _draw_parts(self):
         for p in self.parts:
             edge_to_z = {}
@@ -464,7 +684,9 @@ class TopologyViewer(QMainWindow):
                     col = (0.55, 0.55, 0.55)
                 else:
                     col = _color(f"{p.id}:{edge_to_z.get(e.id, e.id)}")
-                self._poly(xyz, col, width=3, name=f"part:{p.id}:{e.id}")
+                self._poly(
+                    xyz, col, width=3, name=f"part:{p.id}:{e.id}", radius=self._edge_radius(p, e)
+                )
 
             for nid, n in p.nodes.items():
                 if p.labels.get(nid) == "junction":
@@ -483,15 +705,17 @@ class TopologyViewer(QMainWindow):
 
             for up in p.usage_paths:
                 key = f"{p.id}|{up.usage[0]}->{up.usage[1]}"
-                pts = []
+                pts, rads = [], []
                 for eid, rev in zip(up.edges, up.reverse):
                     e = by_id[eid]
                     xyz = self._edge_xyz(p, e)
+                    rr = self._edge_radius(p, e)
                     if rev:
-                        xyz = xyz[::-1]
+                        xyz, rr = xyz[::-1], rr[::-1]
                     if pts:
-                        xyz = xyz[1:]
+                        xyz, rr = xyz[1:], rr[1:]
                     pts.append(xyz)
+                    rads.append(rr)
                 if not pts:
                     continue
                 self._poly(
@@ -499,6 +723,7 @@ class TopologyViewer(QMainWindow):
                     _color(key),
                     width=6,
                     name=f"part_u:{key}",
+                    radius=np.concatenate(rads, axis=0),
                 )
 
     def _draw_graphs(self):
@@ -512,6 +737,7 @@ class TopologyViewer(QMainWindow):
                     "blue",
                     width=3,
                     name=f"opt:{g.id}:{sid}",
+                    radius=np.asarray(seg.radius, float),
                 )
                 if self.show_tangents:
                     p0, v0, p1, v1 = ends[sid]
@@ -527,14 +753,17 @@ class TopologyViewer(QMainWindow):
 
             for up in g.usage_paths:
                 key = f"{g.id}|{up.usage[0]}->{up.usage[1]}"
-                pts = []
+                pts, rads = [], []
                 for sid, rev in zip(up.segments, up.reverse):
-                    xyz = np.asarray(g.segments[sid].xyz, float)
+                    seg = g.segments[sid]
+                    xyz = np.asarray(seg.xyz, float)
+                    rr = np.asarray(seg.radius, float)
                     if rev:
-                        xyz = xyz[::-1]
+                        xyz, rr = xyz[::-1], rr[::-1]
                     if pts:
-                        xyz = xyz[1:]
+                        xyz, rr = xyz[1:], rr[1:]
                     pts.append(xyz)
+                    rads.append(rr)
                 if not pts:
                     continue
                 self._poly(
@@ -542,6 +771,7 @@ class TopologyViewer(QMainWindow):
                     _color(key),
                     width=6,
                     name=f"opt_u:{key}",
+                    radius=np.concatenate(rads, axis=0),
                 )
 
 
@@ -592,6 +822,7 @@ def main(argv: list[str] | None = None):
             built["graphs"],
             TopologyViewer._domain_from_env(env),
             title=f"topology — {args.env.name}",
+            obstacles=load_obstacles(env, "capsule"),
         )
     sys.exit(app.exec_())
 

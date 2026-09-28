@@ -1,77 +1,100 @@
 # pipe_smooth
 
-Stage-1 centerline refine after discrete routing (`pipe_design`). Hermite graphs + soft/hard clearance; metrics in `report.json`.
+Stage-1 centerline refine after discrete routing (`pipe_design`). Hermite graphs, soft/hard clearance, junction union; metrics in `report.json`.
 
-See `ROADMAP.md` for the method. Package survey: `package.md`.
+Method details: `ROADMAP.md`.
 
 ---
 
-## Generate eval instances (`gen_robust.sh`)
+## Generate instances — `gen_robust.sh`
 
-Batch-build **plane_slice** + **pillar_field** layouts for Stage-1 eval via `pipe_design`’s `main_gen`.
-
-### Prerequisites
-
-Build `main_gen` first (or set `MAIN_GEN`):
-
-```bash
-# from repo root, typical
-cmake -S pipe_design -B pipe_design/build && cmake --build pipe_design/build --target main_gen
-```
-
-Script looks for `pipe_design/build/main_gen` by default.
-
-### Usage
+Needs `pipe_design`’s `main_gen` (or `MAIN_GEN=/path/to/main_gen`).
 
 ```bash
 cd pipe_smooth
-chmod +x gen_robust.sh   # once
-
 ./gen_robust.sh [OUT_DIR] [NUM] [RADIUS] [SHELL_MARGIN]
+# default → data/bench/{easy,hard}/instance_*.yaml  (50 each, r=1.5)
 ```
 
-| Arg | Default | Meaning |
-|-----|---------|---------|
-| `OUT_DIR` | `pipe_smooth/data/bench` | Output root |
-| `NUM` | `50` | Target YAMLs per level (`easy` / `hard`) |
-| `RADIUS` | `1.5` | Pipe radius (must be `> 0`) |
-| `SHELL_MARGIN` | *(omit)* | Optional; else `main_gen` default |
+| level | layout |
+|-------|--------|
+| easy  | 3 groups × 3 terminals |
+| hard  | 8 groups × 8 terminals |
 
-Examples:
+Generator: `plane_slice` + `pillar_field`. Optional env: `SIZE`, `CORRIDOR_MARGIN`, `MAX_FILL_ROUNDS`.  
+Prepared sets used for experiments: `data/easy`, `data/hard`.
+
+---
+
+## Batch optimize — `run_instances.sh`
+
+Parallel Stage-1 over `instance_*.yaml` in **folders × methods × clear-kinds**.  
+Writes `runs/<folder>/<method>/<clear_kind>/instance_*/`.
 
 ```bash
-# defaults → data/bench, 50 each, r=1.5
-./gen_robust.sh
-
-# custom out + count + radius
-./gen_robust.sh ./data/bench_r2 20 2.0
-
-# set binary explicitly
-MAIN_GEN=/path/to/main_gen ./gen_robust.sh
+cd pipe_smooth
+./run_instances.sh data/easy data/hard -j 8 -m all --clear-kind all \
+  --two-stage --coarse-step 500 --refine-step 200 \
+  --coarse-step-size 0.1 --refine-step-size 0.01 \
+  --union-kind chamfer --margin-ratio 1.5 \
+  --p-max-obs 1024 --p-max-grp 1024 --p-max-union 512
 ```
 
-Optional env knobs: `SIZE` (default 48), `CORRIDOR_MARGIN`, `PLANE_SLICE_ATTEMPT_MULT`, `MAX_FILL_ROUNDS`.
+| flag | role |
+|------|------|
+| `DATA_DIR …` | one or more instance folders (cwd or under `pipe_smooth/`) |
+| `-j` | parallel workers |
+| `-m` | method, comma-list, or `all` (`adam` / `adam_annealed` / `langevin` / `elastic_qp` / `interior_nlp`) |
+| `--clear-kind` | `capsule` / `hull` / `ignore`, comma-list, or `all` (`ignore` → out dir `_without_obs`) |
+| `--coarse-step` / `--refine-step` | iters per stage (`--refine-step` also used if `--no-two-stage`) |
+| `--coarse-step-size` / `--refine-step-size` | stage step size (see table below) |
+| `--margin-ratio` | clear soft pad = ratio × stage step size (want > 1) |
+| `--union-kind` | `chamfer` / `ignore` (skip junction Chamfer refresh) |
+| `--p-max-obs/grp/union` | packed hit budgets |
+| `--refresh-every` | re-detect clear/union active sets every N steps |
+| `--two-stage` / `--no-two-stage` | |
 
-### Output layout
+**Stage step size → solver kw**
 
-```text
-OUT_DIR/
-  robust_summary.txt
-  easy/instance_*.yaml
-  hard/instance_*.yaml
-```
+| method | `*_step_size` sets |
+|--------|--------------------|
+| `adam` | `lr` |
+| `adam_annealed` / `langevin` | `delta` and `eta_max` (kept equal; Langevin EM rate = trust length) |
+| `elastic_qp` | `trust` |
+| `interior_nlp` | no step-size key (two-stage falls back to a single pass) |
 
-- **easy**: 3 groups × 3 terminals  
-- **hard**: 8 groups × 8 terminals  
-- Obstacle always `pillar_field`; generator always `plane_slice`.
-
-Low success → fill rounds until `NUM` or `MAX_FILL_ROUNDS`.
-
-### Next: Stage-1 run
-
-Prepare usages / run smooth (obstacles currently stripped by the loader unless you inject them):
+Single case (same flags):
 
 ```bash
-python example_load_env.py data/bench/easy/
-python -m pipe_smooth.pipeline data/bench/easy/instance_0.yaml -o runs/stage1
+python -m pipe_smooth.pipeline data/easy/instance_0.yaml -o runs/stage1 \
+  -m adam --two-stage --coarse-step 500 --refine-step 200 \
+  --coarse-step-size 0.1 --refine-step-size 0.01 \
+  --clear-kind capsule --union-kind chamfer --margin-ratio 1.5 \
+  --p-max-obs 1024 --p-max-grp 1024 --p-max-union 512
 ```
+
+Also accepts `graph_*.json` / case dirs + `--obstacles`.
+
+**Run folder contents:** `opt.json` (method, clear/union, step sizes, `p_max_*`, …), `weights.json`, `layout.json`, `obstacles.json`, `graph_*.json`, `report.json`, `recorder.pkl`, `store_cfg.json`.  
+`report.json` → `solve.J0` / `JT` use the full two-stage recorder history (coarse + refine).
+
+---
+
+## Viewers
+
+```bash
+# Optimize bench (synthetic cases, weights UI, Start/Replay)
+python -m pipe_smooth.vis_bench.app [-o SAVE_DIR]
+
+# Env YAML → trees / junctions / Hermite (+ obstacles, Clip bar)
+python -m pipe_smooth.vis_instance_topology [ENV.yaml] [-r 0.1]
+
+# Exported JSON dumps (tree_*/partitioned_*/graph_*); File → Load obstacles
+python -m pipe_smooth.vis_topology [file_or_dir ...] [-r 0.1]
+```
+
+| tool | input | use |
+|------|--------|-----|
+| `vis_bench` | built-in examples / saved cases under `runs/` | tune weights, run one optimize |
+| `vis_instance_topology` | prepared env YAML | inspect tree → junction → Hermite; View → Obstacles; Clip |
+| `vis_topology` | `tree_*.json` / `partitioned_*.json` / `graph_*.json` | inspect dumps from a run folder |
