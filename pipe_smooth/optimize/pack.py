@@ -240,8 +240,13 @@ def unpack(x: Any, graphs: Sequence[OptimizeGraph], layout: PackLayout, backend:
                 vel = vel.at[vn].set(x[vo : vo + 3 * vn.size].reshape(-1, 3))  # type: ignore
             g.pos, g.v = pos, vel  # type: ignore
         else:
+            # Always replace with writable NumPy buffers. JIT ``unpack(..., jax)`` may
+            # leave ``g.pos``/``g.v`` as immutable JAX arrays on the same objects.
+            pos = np.array(g.pos, dtype=float, copy=True)
+            vel = np.array(g.v, dtype=float, copy=True)
             if pn.size:
-                g.pos[pn] = np.asarray(x[po : po + 3 * pn.size]).reshape(-1, 3)
+                pos[pn] = np.asarray(x[po : po + 3 * pn.size], dtype=float).reshape(-1, 3)
             if vn.size:
-                g.v[vn] = np.asarray(x[vo : vo + 3 * vn.size]).reshape(-1, 3)
+                vel[vn] = np.asarray(x[vo : vo + 3 * vn.size], dtype=float).reshape(-1, 3)
+            g.pos, g.v = pos, vel
     return graphs

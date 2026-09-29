@@ -190,5 +190,14 @@ def loss_and_grad(
         _vg_cache["fn"] = jax.jit(jax.value_and_grad(f, argnums=0, has_aux=True))
         _vg_cache["key"] = key
 
+    # Snapshot host DOF: jit ``f`` mutates the same ``graphs`` with JAX arrays/tracers.
+    host = [
+        (np.array(g.pos, dtype=float, copy=True), np.array(g.v, dtype=float, copy=True))
+        for g in graphs
+    ]
     (val, parts), grad = _vg_cache["fn"](x, obs_b, grp_b, union_b)
+    for g, (pos, vel) in zip(graphs, host):
+        g.pos, g.v = pos, vel
+        g.seg_ends = g.seg_xyz = g.seg_radius = None
+    unpack(np.asarray(x), graphs, layout, backend="numpy")
     return val, grad, parts
