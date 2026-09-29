@@ -15,21 +15,6 @@ union cost has big problem, it is scale by radius
 	2. P1,P2的向量角度差与幅度差决定最大曲率
 	所以为每个HermiteSegment添加端点sign也是一个解决方法
 	
-
-
-
-./pipe_smooth/run_instances.sh data/easy -j 4 -m adam \
-  --two-stage --coarse-step 500 --refine-step 200 \
-  --coarse-step-size 0.1 --refine-step-size 0.01 \
-  --clear-kind capsule --union-kind chamfer --margin-ratio 1.5 \
-  --p-max-obs 100000 --p-max-grp 100000 --p-max-union 100000
-  
-  
-./pipe_smooth/run_instances.sh data/easy -j 8 -m adam \
-  --two-stage --coarse-step 500 --refine-step 200 \
-  --coarse-step-size 0.1 --refine-step-size 0.01 \
-  --clear-kind capsule --union-kind chamfer --margin-ratio 1.5 \
-  --p-max-obs 1024 --p-max-grp 1024 --p-max-union 512
  
 ./pipe_smooth/run_instances.sh data/easy -j 8 -m adam \
   --two-stage --coarse-step 500 --refine-step 200 \
@@ -37,8 +22,17 @@ union cost has big problem, it is scale by radius
   --clear-kind ignore --union-kind chamfer --margin-ratio 1.5 \
   --p-max-obs 1024 --p-max-grp 1024 --p-max-union 512
   
-./run_instances.sh data/easy data/hard -j 10 -m all \
-  --two-stage --coarse-step 500 --refine-step 200 \
-  --coarse-step-size 0.1 --refine-step-size 0.01 \
-  --clear-kind all --union-kind chamfer --margin-ratio 1.5 \
-  --p-max-obs 1024 --p-max-grp 1024 --p-max-union 512
+cd pipe_smooth
+./run_instances.sh data/easy data/hard -j 10 -m all --clear-kind all \
+  --two-stage --coarse-step 400 --refine-step 200 \
+  --coarse-step-size 0.05 --refine-step-size 0.01 \
+  --union-kind chamfer --margin-ratio 1.5 \
+  --p-max-obs 2048 --p-max-grp 2048 --p-max-union 512
+  
+  
+  
+./run_instances.sh data/hard -j 4 -m adam  --clear-kind ignore --union-kind ignore --two-stage --coarse-step 300 --refine-step 150   --coarse-step-size 0.05 --refine-step-size 0.01  --union-kind chamfer --margin-ratio 1.5   --p-max-obs 2048 --p-max-grp 2048 --p-max-union 512
+
+
+
+python pipe_smooth/pipeline.py /home/admin123456/Desktop/work/MAPF_Pipeline/pipe_smooth/data/hard/instance_0.yaml -o ./pipe_smooth/runs/debug --clear-kind ignore --union-kind ignore  --coarse-step 300 --refine-step 150   --coarse-step-size 0.05 --refine-step-size 0.01  --union-kind chamfer --margin-ratio 1.5   --p-max-obs 2048 --p-max-grp 2048 --p-max-union 512

@@ -45,7 +45,7 @@ cd pipe_smooth
 | `DATA_DIR …` | one or more instance folders (cwd or under `pipe_smooth/`) |
 | `-j` | parallel workers |
 | `-m` | method, comma-list, or `all` (`adam` / `adam_annealed` / `langevin` / `elastic_qp` / `interior_nlp`) |
-| `--clear-kind` | `capsule` / `hull` / `ignore`, comma-list, or `all` (`ignore` → out dir `_without_obs`) |
+| `--clear-kind` | `capsule` / `hull` / `ignore`, comma-list, or `all` |
 | `--coarse-step` / `--refine-step` | iters per stage (`--refine-step` also used if `--no-two-stage`) |
 | `--coarse-step-size` / `--refine-step-size` | stage step size (see table below) |
 | `--margin-ratio` | clear soft pad = ratio × stage step size (want > 1) |

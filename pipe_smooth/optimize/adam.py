@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import jax
 import jax.numpy as jnp
+from tqdm import tqdm
 
 from pipe_smooth.geometry.assemble import OptimizeGraph
 from pipe_smooth.optimize.loss import LossWeights, loss_and_grad
@@ -52,7 +53,7 @@ def adam(
     clear_active = None
     union_hits = None
 
-    for t in range(1, steps + 1):
+    for t in tqdm(range(1, steps + 1)):
         if (refresh_clear is not None or refresh_union is not None) and (
             t == 1 or (t - 1) % refresh_every == 0
         ):

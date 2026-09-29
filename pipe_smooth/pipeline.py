@@ -294,7 +294,7 @@ def run_optimize(
         p_max_obs=p_max_obs,
         p_max_grp=p_max_grp,
         p_max_union=p_max_union,
-    )
+    )    
     w = weights or LossWeights()
     rec = recorder or Recorder(out_dir=out_dir, record_state=record_state)
     rec.phase = phase or method
@@ -378,11 +378,8 @@ def run_pipeline(
     adam_annealed/langevin also set ``eta_max = delta``).
     Single-pass (``two_stage=False``): ``steps`` if given (vis_bench), else ``refine_steps``.
     Clearance soft pad: ``margin`` if given, else ``margin_ratio * step_size``.
-    When ``clear_kind='ignore'``, append ``_without_obs`` to ``out_dir`` (unless already present).
     """
     out = Path(out_dir)
-    if clear_kind == "ignore" and not out.name.endswith("_without_obs"):
-        out = out.with_name(f"{out.name}_without_obs")
     out.mkdir(parents=True, exist_ok=True)
     store_cfg: dict[str, Any] = {"out_dir": str(out)}
     obs = list(obstacles)
