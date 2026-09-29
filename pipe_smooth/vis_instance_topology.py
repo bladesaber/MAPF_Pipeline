@@ -727,25 +727,37 @@ class TopologyViewer(QMainWindow):
                 )
 
     def _draw_graphs(self):
+        from pipe_smooth.geometry.assemble import HermiteSegment
+
         for g in self.graphs:
-            # rebuild Hermite caches, then draw curves (not node chords)
-            g.refresh(backend="numpy", resolution=self.resolution)
-            ends = g.hermite_ends(backend="numpy")
-            for sid, seg in g.segments.items():
+            ends = np.asarray(g.hermite_ends(backend="numpy"), dtype=float)
+            T = 5
+            for s in range(len(g.segments)):
+                T = max(
+                    T,
+                    HermiteSegment.ts_count_for(
+                        ends[s, 0], ends[s, 1], ends[s, 2], ends[s, 3], self.resolution
+                    ),
+                )
+            g.refresh(ts_count=T, backend="numpy")
+            xyz = np.asarray(g.seg_xyz, float)
+            rad = np.asarray(g.seg_radius, float)
+            for sid in range(len(g.segments)):
                 self._poly(
-                    np.asarray(seg.xyz, float),
+                    xyz[sid],
                     "blue",
                     width=3,
                     name=f"opt:{g.id}:{sid}",
-                    radius=np.asarray(seg.radius, float),
+                    radius=rad[sid],
                 )
                 if self.show_tangents:
                     p0, v0, p1, v1 = ends[sid]
                     self._arrow(p0, v0, "lime", f"opt_t:{g.id}:{sid}:u")
                     self._arrow(p1, v1, "orange", f"opt_t:{g.id}:{sid}:v")
-            for nid, n in g.nodes.items():
+            pos = np.asarray(g.pos, float)
+            for nid in range(len(g.nodes)):
                 actor = self.plotter.add_mesh(
-                    pv.Sphere(radius=0.01, center=n.pos),
+                    pv.Sphere(radius=0.01, center=pos[nid]),
                     color="red",
                     name=f"opt_n:{g.id}:{nid}",
                 )
@@ -755,14 +767,12 @@ class TopologyViewer(QMainWindow):
                 key = f"{g.id}|{up.usage[0]}->{up.usage[1]}"
                 pts, rads = [], []
                 for sid, rev in zip(up.segments, up.reverse):
-                    seg = g.segments[sid]
-                    xyz = np.asarray(seg.xyz, float)
-                    rr = np.asarray(seg.radius, float)
+                    p, rr = xyz[sid], rad[sid]
                     if rev:
-                        xyz, rr = xyz[::-1], rr[::-1]
+                        p, rr = p[::-1], rr[::-1]
                     if pts:
-                        xyz, rr = xyz[1:], rr[1:]
-                    pts.append(xyz)
+                        p, rr = p[1:], rr[1:]
+                    pts.append(p)
                     rads.append(rr)
                 if not pts:
                     continue

@@ -34,7 +34,7 @@ class UnionHit:
     """Directed Chamfer matches inside one complex: samples on a → NN on b.
 
     One record per (junction, edge_a, edge_b, seg_a, seg_b); arrays length (M,).
-    ``ts_*`` are Hermite parameters in stored u→v (same as ``HermiteSegment.samples``).
+    ``ts_*`` are Hermite parameters in stored u→v (same as ``seg_xyz`` linspace).
     ``ds_a`` is source-sample Δs (½ of adjacent chords) for Chamfer weight.
     ``r_sum`` is frozen ``r_a + r_b`` at detection (same scale as ``d_hi``).
     """
@@ -42,8 +42,8 @@ class UnionHit:
     junction: str
     edge_a: str
     edge_b: str
-    seg_a: str
-    seg_b: str
+    seg_a: int
+    seg_b: int
     ts_a: np.ndarray  # (M,)
     ts_b: np.ndarray  # (M,)
     d: np.ndarray  # (M,) detection distance (debug / diagnostics)
@@ -56,9 +56,16 @@ def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]
 
     Only segments whose ``edge`` is in ``graph.junctions[Z]``. Both Chamfer
     directions. Keep d < α (r_a + r_b); group matches by segment pair into arrays.
+    Requires ``graph.refresh`` (``seg_xyz`` / ``seg_radius``).
     """
-    hits: list[UnionHit] = []
+    if graph.seg_xyz is None or graph.seg_radius is None:
+        raise RuntimeError("call refresh before find_union_pairs")
+    seg_xyz = np.asarray(graph.seg_xyz, dtype=float)
+    seg_radius = np.asarray(graph.seg_radius, dtype=float)
+    T = int(seg_xyz.shape[1])
+    ts_full = np.linspace(0.0, 1.0, T)
 
+    hits: list[UnionHit] = []
     for zid, z_edges in graph.junctions.items():
         edge_set = set(z_edges)
         curves: dict[tuple[str, str], tuple] = {}
@@ -68,24 +75,22 @@ def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]
                 seg = graph.segments[sid]
                 if seg.edge not in edge_set:
                     continue
-                ts, xyz, radius = seg.samples(backend="numpy")
-                ts = np.asarray(ts, float)
-                xyz = np.asarray(xyz, float)
-                radius = np.asarray(radius, float)
+                xyz = seg_xyz[sid]
+                radius = seg_radius[sid]
                 # Interiors only — endpoints are ports/joints, not union Chamfer.
                 if xyz.shape[0] < 3:
                     raise RuntimeError(f"segment {sid}: not enough samples for union Chamfer")
                 # Δs on full chain, then take interior samples (ROADMAP Δℓ)
                 edge_len = np.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
-                dl = 0.5 * (edge_len[:-1] + edge_len[1:])  # aligns with xyz[1:-1]
-                xyz, ts, radius = xyz[1:-1], ts[1:-1], radius[1:-1]
-                m = len(xyz)
-                pts.append(xyz)
-                rads.append(radius)
+                dl = 0.5 * (edge_len[:-1] + edge_len[1:])
+                xyz_i, ts, radius_i = xyz[1:-1], ts_full[1:-1], radius[1:-1]
+                m = len(xyz_i)
+                pts.append(xyz_i)
+                rads.append(radius_i)
                 eids.append(np.full(m, seg.edge, dtype=object))
-                sids.append(np.full(m, sid, dtype=object))
-                tvals.append(ts)  # ts on full chain, then take interior samples (ROADMAP t)
-                dls.append(dl)  # Δs on full chain, then take interior samples (ROADMAP Δℓ)
+                sids.append(np.full(m, sid, dtype=np.int32))
+                tvals.append(ts)
+                dls.append(dl)
             if pts:
                 curves[path.usage] = (
                     np.concatenate(pts),
@@ -124,7 +129,7 @@ def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]
 
                 rec = np.empty(
                     d_m.shape[0],
-                    dtype=[("ea", "O"), ("eb", "O"), ("sa", "O"), ("sb", "O")],
+                    dtype=[("ea", "O"), ("eb", "O"), ("sa", "i4"), ("sb", "i4")],
                 )
                 rec["ea"], rec["eb"], rec["sa"], rec["sb"] = ea_m, eb_m, sa_m, sb_m
                 uniq, inv = np.unique(rec, return_inverse=True)
@@ -135,8 +140,8 @@ def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]
                             zid,
                             str(u["ea"]),
                             str(u["eb"]),
-                            str(u["sa"]),
-                            str(u["sb"]),
+                            int(u["sa"]),
+                            int(u["sb"]),
                             ta_m[m],
                             tb_m[m],
                             d_m[m],
@@ -167,6 +172,10 @@ def union_cost(
         j = j + xp.sum(d2 / r2 * xp.asarray(h.ds_a))
     return lam * j
 
+
+# ---------------------------------------------------------------------------
+# Fixed-shape union (same ends gather; frozen weights/qb/shift)
+# ---------------------------------------------------------------------------
 
 def pack_union_hits(
     union_hits: Mapping[str, Sequence[UnionHit]] | None,

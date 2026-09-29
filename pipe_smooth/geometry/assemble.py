@@ -1,8 +1,7 @@
 """Build optimize Hermite graph from junction trunk/junction edges + port tangents.
 
-PartitionedTree already splits junction into distinct labeled edges when usage
-runs differ (e.g. junction1_1 vs junction1_2). Assemble densifies each edge once;
-ports / interfaces / shared labeled-edge knots stay shared by node id.
+Geometry true source is SoA on ``OptimizeGraph`` (``pos``/``v``/``radius``,
+``seg_xyz``/``seg_radius``). Nodes/segments are lists; list index is the id.
 """
 
 from __future__ import annotations
@@ -17,23 +16,19 @@ import numpy as np
 
 from pipe_smooth.topology.junction import PartitionedTree, LabeledEdge
 from pipe_smooth.geometry.hermite import unit, hermite_length, sample_hermite
-from pipe_smooth.utils import backend as _backend, to_float_list
+from pipe_smooth.utils import backend as _backend
 
 
 @dataclass
 class HermiteNode:
-    pos: np.ndarray
-    radius: float = 0.5
-    v: np.ndarray | None = None
+    """Node metadata; geometry lives on ``OptimizeGraph.pos/v/radius``."""
+
     fixed_p: bool = False
     fixed_v: bool = False
     role: str = "trunk"  # port | interface | trunk | junction
 
     def export(self) -> dict[str, Any]:
         return {
-            "pos": to_float_list(self.pos),
-            "radius": float(self.radius),
-            "v": None if self.v is None else to_float_list(self.v),
             "fixed_p": bool(self.fixed_p),
             "fixed_v": bool(self.fixed_v),
             "role": self.role,
@@ -41,11 +36,7 @@ class HermiteNode:
 
     @classmethod
     def load(cls, data: dict[str, Any]) -> "HermiteNode":
-        v = data.get("v")
         return cls(
-            pos=np.asarray(data["pos"], dtype=float),
-            radius=float(data.get("radius", 0.5)),
-            v=None if v is None else np.asarray(v, dtype=float),
             fixed_p=bool(data.get("fixed_p", False)),
             fixed_v=bool(data.get("fixed_v", False)),
             role=str(data.get("role", "trunk")),
@@ -54,103 +45,49 @@ class HermiteNode:
 
 @dataclass
 class HermiteSegment:
-    id: str
     edge: str
     kind: str  # trunk | junction
-    u: str
-    v: str
-    ts_count: int = 10  # sample count along [0,1]; set via ts_count_for / sampling
-    # stored Hermite ends use (u_sign * nodes[u].v, v_sign * nodes[v].v);
-    # assemble may leave None until usage-reverse resolve
-    u_sign: float | None = 1.0
-    v_sign: float | None = 1.0
-
-    ts: object | None = None  # (n,) cached parameters
-    xyz: object | None = None  # (n, 3) cached samples along stored u→v
-    radius: object | None = None  # (n,) linear radius along stored u→v
+    u: int  # node index
+    v: int  # node index
 
     def export(self) -> dict[str, Any]:
-        """Topology only; caches (ts/xyz/radius) rebuilt by ``refresh``."""
         return {
-            "id": self.id,
             "edge": self.edge,
             "kind": self.kind,
-            "u": self.u,
-            "v": self.v,
-            "ts_count": int(self.ts_count),
-            "u_sign": self.u_sign,
-            "v_sign": self.v_sign,
+            "u": int(self.u),
+            "v": int(self.v),
         }
 
     @classmethod
     def load(cls, data: dict[str, Any]) -> "HermiteSegment":
         return cls(
-            id=str(data["id"]),
             edge=str(data["edge"]),
             kind=str(data["kind"]),
-            u=str(data["u"]),
-            v=str(data["v"]),
-            ts_count=int(data.get("ts_count", 17)),
-            u_sign=float(data.get("u_sign", 1.0)),
-            v_sign=float(data.get("v_sign", 1.0)),
+            u=int(data["u"]),
+            v=int(data["v"]),
         )
-
-    def radius_at(self, t: float, nodes: dict[str, HermiteNode]) -> float:
-        """Linear radius on [0, 1] between endpoint node radii."""
-        r0 = float(nodes[self.u].radius)
-        r1 = float(nodes[self.v].radius)
-        return (1.0 - t) * r0 + t * r1
 
     @staticmethod
     def ts_count_for(p0, v0, p1, v1, resolution: float) -> int:
-        """Number of t-samples for ≈arc-length spacing ``resolution``.
-
-        Same rule as ``sample_usage_path``: n = max(2, ceil(L / resolution)).
-        """
         if resolution <= 0:
             raise ValueError(f"resolution must be > 0, got {resolution}")
-        L = float(hermite_length(np.asarray(p0), np.asarray(v0), np.asarray(p1), np.asarray(v1), backend="numpy"))
+        L = float(
+            hermite_length(
+                np.asarray(p0), np.asarray(v0), np.asarray(p1), np.asarray(v1),
+                backend="numpy",
+            )
+        )
         return max(5, int(math.ceil(L / resolution)))
-
-    def refresh(
-        self,
-        p0,
-        p1,
-        v0,
-        v1,
-        r0: float,
-        r1: float,
-        resolution: float | None = None,
-        backend: str = "numpy",
-    ):
-        if resolution is not None:
-            self.ts_count = self.ts_count_for(p0, v0, p1, v1, resolution)
-        xp = _backend(backend)
-        self.ts = xp.linspace(0.0, 1.0, self.ts_count)        
-        self.xyz = sample_hermite(p0, v0, p1, v1, n=self.ts_count, backend=backend)
-        self.radius = (1.0 - self.ts) * float(r0) + self.ts * float(r1)
-        return self
-
-    def samples(self, backend: str = "numpy"):
-        """Cached (ts, xyz, radius) along u→v, converted for callers outside AD."""
-        if self.xyz is None or self.ts is None or self.radius is None:
-            raise RuntimeError(f"segment {self.id}: call refresh before samples")
-        xp = _backend(backend)
-        return xp.asarray(self.ts), xp.asarray(self.xyz), xp.asarray(self.radius)
 
 
 @dataclass
 class OptimizeUsagePath:
-    """Usage as ordered labeled edges and densified Hermite segments.
-
-    ``edges`` / ``edges_reverse``: PartitionedTree labeled-edge walk (same as topology).
-    ``segments`` / ``reverse``: Hermite segment ids along that walk (travel vs stored u→v).
-    """
+    """Usage walk; ``segments`` are int indices into ``OptimizeGraph.segments``."""
 
     usage: tuple[str, str]
     edges: list[str] = field(default_factory=list)
     edges_reverse: list[bool] = field(default_factory=list)
-    segments: list[str] = field(default_factory=list)
+    segments: list[int] = field(default_factory=list)
     reverse: list[bool] = field(default_factory=list)
     v_start: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
     v_end: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
@@ -160,10 +97,10 @@ class OptimizeUsagePath:
             "usage": [self.usage[0], self.usage[1]],
             "edges": list(self.edges),
             "edges_reverse": [bool(x) for x in self.edges_reverse],
-            "segments": list(self.segments),
+            "segments": [int(s) for s in self.segments],
             "reverse": [bool(x) for x in self.reverse],
-            "v_start": to_float_list(self.v_start),
-            "v_end": to_float_list(self.v_end),
+            "v_start": np.asarray(self.v_start).tolist(),
+            "v_end": np.asarray(self.v_end).tolist(),
         }
 
     @classmethod
@@ -173,45 +110,130 @@ class OptimizeUsagePath:
             usage=(str(u[0]), str(u[1])),
             edges=[str(e) for e in data.get("edges") or []],
             edges_reverse=[bool(x) for x in data.get("edges_reverse") or []],
-            segments=[str(s) for s in data.get("segments") or []],
+            segments=[int(s) for s in data.get("segments") or []],
             reverse=[bool(x) for x in data.get("reverse") or []],
             v_start=np.asarray(data.get("v_start", [1.0, 0.0, 0.0]), dtype=float),
             v_end=np.asarray(data.get("v_end", [1.0, 0.0, 0.0]), dtype=float),
         )
 
-    def port_derivatives(self, backend: str = "numpy"):
-        """Port end derivatives (v_start, v_end) for the requested backend."""
-        xp = _backend(backend)
-        return xp.asarray(self.v_start), xp.asarray(self.v_end)
-
 
 @dataclass
 class OptimizeGraph:
-    """Hermite graph for one pipe group.
-
-    **Tangent assumption:** each Hermite end has one geometric derivative direction.
-    Usages that traverse a segment forward/backward only **flip the sign** (±);
-    they never assign non-colinear port tangents to the same stored end. Therefore
-    ``hermite_ends`` may keep the first usage's clamp per ``seg_id`` safely.
-    Call ``check_usage_tangents_colinear`` after assemble to verify.
-    """
+    """Hermite graph: ``nodes[i]`` / ``segments[s]``; SoA rows share the same indices."""
 
     id: str
-    nodes: dict[str, HermiteNode]
-    segments: dict[str, HermiteSegment]
-    edge_segs: dict[str, list[str]] = field(default_factory=dict)  # labeled edge -> Hermite segs
-    junctions: dict[str, list[str]] = field(default_factory=dict)  # complex id -> labeled edge ids
+    nodes: list[HermiteNode]
+    segments: list[HermiteSegment]
+
+    # SoA node geometry
+    pos: np.ndarray = field(default_factory=lambda: np.zeros((0, 3)))
+    v: np.ndarray = field(default_factory=lambda: np.zeros((0, 3)))
+    radius: np.ndarray = field(default_factory=lambda: np.zeros((0,)))
+
+    # static ends gather (filled by ``bind_ends_tables``; not recomputed in hot paths)
+    # segment indices for u and v ends
+    u_idx: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=np.int32))
+    v_idx: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=np.int32))
+    u_sign: np.ndarray = field(default_factory=lambda: np.zeros((0,)))
+    v_sign: np.ndarray = field(default_factory=lambda: np.zeros((0,)))
+    # segment indices for port v0 and v1 ends
+    port_v0_mask: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=bool))
+    port_v1_mask: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=bool))
+    port_v0: np.ndarray = field(default_factory=lambda: np.zeros((0, 3)))
+    port_v1: np.ndarray = field(default_factory=lambda: np.zeros((0, 3)))
+
+    # unique 3-point joints for curvature: travel-order prev→curr (first sighting)
+    joint_s0: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=np.int32))
+    joint_s1: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=np.int32))
+    joint_flip0: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=bool))
+    joint_flip1: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=bool))
+
+    # SoA segment samples / ends (derived from pos/v; refresh after DOF changes)
+    seg_ends: object | None = None  # (S, 4, 3) last hermite_ends
+    seg_xyz: object | None = None  # (S, T, 3)
+    seg_radius: object | None = None  # (S, T)
+
+    edge_segs: dict[str, list[int]] = field(default_factory=dict)
+    junctions: dict[str, list[str]] = field(default_factory=dict)
     usage_paths: list[OptimizeUsagePath] = field(default_factory=list)
 
+    def bind_ends_tables(self) -> "OptimizeGraph":
+        """Build static seg→node gather + port clamps. Requires ``u_sign``/``v_sign`` already set."""
+        S = len(self.segments)
+        self.u_idx = np.array([seg.u for seg in self.segments], dtype=np.int32)
+        self.v_idx = np.array([seg.v for seg in self.segments], dtype=np.int32)
+        if len(self.u_sign) != S or len(self.v_sign) != S:
+            raise RuntimeError("u_sign/v_sign must be set (length S) before bind_ends_tables")
+        port_v0_mask = np.zeros(S, dtype=bool)
+        port_v1_mask = np.zeros(S, dtype=bool)
+        port_v0 = np.zeros((S, 3), dtype=float)
+        port_v1 = np.zeros((S, 3), dtype=float)
+        seen = np.zeros(S, dtype=bool)
+        for path in self.usage_paths:
+            nseg = len(path.segments)
+            for i, (s, rev) in enumerate(zip(path.segments, path.reverse)):
+                if seen[s]:
+                    continue
+                seen[s] = True
+                if rev:
+                    if i == 0:
+                        port_v1_mask[s] = True
+                        port_v1[s] = -np.asarray(path.v_start, dtype=float)
+                    if i == nseg - 1:
+                        port_v0_mask[s] = True
+                        port_v0[s] = -np.asarray(path.v_end, dtype=float)
+                else:
+                    if i == 0:
+                        port_v0_mask[s] = True
+                        port_v0[s] = np.asarray(path.v_start, dtype=float)
+                    if i == nseg - 1:
+                        port_v1_mask[s] = True
+                        port_v1[s] = np.asarray(path.v_end, dtype=float)
+        if S and not bool(seen.all()):
+            raise RuntimeError(f"segments missing from usage paths: {np.where(~seen)[0]}")
+        self.port_v0_mask, self.port_v1_mask = port_v0_mask, port_v1_mask
+        self.port_v0, self.port_v1 = port_v0, port_v1
+        return self.bind_joint_tables()
+
+    def bind_joint_tables(self) -> "OptimizeGraph":
+        """Unique unordered joints; orientation from first travel sighting."""
+        s0s: list[int] = []
+        s1s: list[int] = []
+        f0s: list[bool] = []
+        f1s: list[bool] = []
+        seen: set[tuple[int, int]] = set()
+        for path in self.usage_paths:
+            prev_s: int | None = None
+            prev_rev = False
+            for s, rev in zip(path.segments, path.reverse):
+                if prev_s is not None:
+                    key = (min(prev_s, s), max(prev_s, s))
+                    if key not in seen:
+                        seen.add(key)
+                        s0s.append(prev_s)
+                        s1s.append(s)
+                        f0s.append(prev_rev)
+                        f1s.append(rev)
+                prev_s, prev_rev = s, rev
+        self.joint_s0 = np.asarray(s0s, dtype=np.int32)
+        self.joint_s1 = np.asarray(s1s, dtype=np.int32)
+        self.joint_flip0 = np.asarray(f0s, dtype=bool)
+        self.joint_flip1 = np.asarray(f1s, dtype=bool)
+        return self
+
     def export(self, path: str | Path) -> None:
-        """Write graph JSON (nested types via their ``export``; no sample caches)."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "type": "OptimizeGraph",
             "id": self.id,
-            "nodes": {nid: n.export() for nid, n in self.nodes.items()},
-            "segments": {sid: s.export() for sid, s in self.segments.items()},
+            "nodes": [n.export() for n in self.nodes],
+            "pos": np.asarray(self.pos).tolist(),
+            "v": np.asarray(self.v).tolist(),
+            "radius": np.asarray(self.radius).tolist(),
+            "segments": [s.export() for s in self.segments],
+            "u_sign": np.asarray(self.u_sign).tolist(),
+            "v_sign": np.asarray(self.v_sign).tolist(),
             "edge_segs": {k: list(v) for k, v in self.edge_segs.items()},
             "junctions": {k: list(v) for k, v in self.junctions.items()},
             "usage_paths": [p.export() for p in self.usage_paths],
@@ -221,88 +243,53 @@ class OptimizeGraph:
     @classmethod
     def load(cls, path: str | Path) -> "OptimizeGraph":
         data = json.loads(Path(path).read_text())
+        nodes = [HermiteNode.load(nd) for nd in (data.get("nodes") or [])]
+        segments = [HermiteSegment.load(s) for s in (data.get("segments") or [])]
+        S = len(segments)
         g = cls(
             id=str(data["id"]),
-            nodes={nid: HermiteNode.load(n) for nid, n in (data.get("nodes") or {}).items()},
-            segments={
-                sid: HermiteSegment.load(s) for sid, s in (data.get("segments") or {}).items()
-            },
-            edge_segs={k: list(v) for k, v in (data.get("edge_segs") or {}).items()},
-            junctions={k: list(v) for k, v in (data.get("junctions") or {}).items()},
+            nodes=nodes,
+            segments=segments,
+            pos=np.asarray(data["pos"], dtype=float).reshape(-1, 3),
+            v=np.asarray(data["v"], dtype=float).reshape(-1, 3),
+            radius=np.asarray(data["radius"], dtype=float).reshape(-1),
+            u_sign=np.asarray(data["u_sign"], dtype=float).reshape(S),
+            v_sign=np.asarray(data["v_sign"], dtype=float).reshape(S),
+            edge_segs={k: [int(x) for x in vv] for k, vv in (data.get("edge_segs") or {}).items()},
+            junctions={k: list(vv) for k, vv in (data.get("junctions") or {}).items()},
             usage_paths=[OptimizeUsagePath.load(p) for p in data.get("usage_paths") or []],
         )
-        return g
+        return g.bind_ends_tables()
 
-    def refresh(self, resolution: float | None = None, backend: str = "numpy"):
-        """Refresh every segment once. Call after unpack. Port ends override v0/v1."""
+    def hermite_ends(self, backend: str = "numpy"):
+        """``(S, 4, 3)`` = p0, v0, p1, v1 from SoA + stored port clamps."""
+        xp = _backend(backend)
+        pos, vel = xp.asarray(self.pos), xp.asarray(self.v)
+        u, vv = self.u_idx, self.v_idx
+        p0, p1 = pos[u], pos[vv]
+        v0 = xp.asarray(self.u_sign)[:, None] * vel[u]
+        v1 = xp.asarray(self.v_sign)[:, None] * vel[vv]
+        m0 = xp.asarray(self.port_v0_mask)[:, None]
+        m1 = xp.asarray(self.port_v1_mask)[:, None]
+        v0 = xp.where(m0, xp.asarray(self.port_v0), v0)
+        v1 = xp.where(m1, xp.asarray(self.port_v1), v1)
+        return xp.stack([p0, v0, p1, v1], axis=1)
+
+    def refresh(self, ts_count: int = 10, backend: str = "numpy"):
+        """Batched refresh of all segment curves into ``seg_xyz`` / ``seg_radius``."""
+        xp = _backend(backend)
+        T = max(int(ts_count), 2)
         ends = self.hermite_ends(backend=backend)
-        for sid, (p0, v0, p1, v1) in ends.items():
-            seg = self.segments[sid]
-            nu, nv = self.nodes[seg.u], self.nodes[seg.v]
-            seg.refresh(
-                p0,
-                p1,
-                v0,
-                v1,
-                float(nu.radius),
-                float(nv.radius),
-                resolution=resolution,
-                backend=backend,
-            )
+        self.seg_ends = ends
+        p0, v0, p1, v1 = ends[:, 0], ends[:, 1], ends[:, 2], ends[:, 3]
+        self.seg_xyz = sample_hermite(p0, v0, p1, v1, n=T, backend=backend)
+        ts = xp.linspace(0.0, 1.0, T)
+        r0 = xp.asarray(self.radius)[self.u_idx]
+        r1 = xp.asarray(self.radius)[self.v_idx]
+        self.seg_radius = (1.0 - ts[None, :]) * r0[:, None] + ts[None, :] * r1[:, None]
         return self
 
-    def hermite_ends(self, backend: str = "numpy") -> dict[str, tuple]:
-        """seg_id → (p0, v0, p1, v1) along stored u→v (same port clamps as refresh).
-
-        First usage that touches a seg wins the port clamp write. Safe under the
-        colinear ± assumption (see class docstring / ``check_usage_tangents_colinear``).
-        """
-        xp = _backend(backend)
-        out: dict[str, tuple] = {}
-        seen: set[str] = set()
-        for path in self.usage_paths:
-            nseg = len(path.segments)
-            v_start, v_end = path.port_derivatives(backend=backend)
-            for i, (sid, rev) in enumerate(zip(path.segments, path.reverse)):
-                if sid in seen:
-                    continue
-                seen.add(sid)
-                seg = self.segments[sid]
-                nu, nv = self.nodes[seg.u], self.nodes[seg.v]
-                p0, p1 = nu.pos, nv.pos
-                # xp.asarray keeps JAX tracers; np.asarray would break AD
-                v0 = None if nu.v is None else seg.u_sign * xp.asarray(nu.v)  # type: ignore
-                v1 = None if nv.v is None else seg.v_sign * xp.asarray(nv.v)  # type: ignore
-                if rev:
-                    if i == 0:
-                        v1 = -v_start
-                    if i == nseg - 1:
-                        v0 = -v_end
-                else:
-                    if i == 0:
-                        v0 = v_start
-                    if i == nseg - 1:
-                        v1 = v_end
-                out[sid] = (
-                    xp.asarray(p0),
-                    xp.asarray(v0),
-                    xp.asarray(p1),
-                    xp.asarray(v1),
-                )
-        for sid in self.segments:
-            if sid not in seen:
-                raise RuntimeError(f"segment {sid}: not found in usage paths")
-        return out
-
     def check_usage_tangents_colinear(self, atol: float = 1e-6) -> None:
-        """Raise if two usages disagree on the geometric derivative at one stored end.
-
-        For each path start/end on a segment, map the travel port derivative into the
-        stored u→v frame (reverse ⇒ sign flip on the opposite end). All claims at
-        ``(seg_id, 'u'|'v')`` must match up to sign: same ``||v||`` and parallel
-        direction (hermite_ends / ± assumption).
-        """
-
         def _same_end_derivative(a, b) -> bool:
             a = np.asarray(a, dtype=float).reshape(3)
             b = np.asarray(b, dtype=float).reshape(3)
@@ -313,39 +300,34 @@ class OptimizeGraph:
                 return True
             return abs(abs(float(np.dot(a / na, b / nb))) - 1.0) <= atol
 
-        # sid -> end -> list of claimed stored-frame derivatives
-        claims: dict[str, dict[str, list]] = {
-            sid: {"u": [], "v": []} for sid in self.segments
-        }
+        claims: list[dict[str, list]] = [{"u": [], "v": []} for _ in self.segments]
         for path in self.usage_paths:
             nseg = len(path.segments)
-            for i, (sid, rev) in enumerate(zip(path.segments, path.reverse)):
+            for i, (s, rev) in enumerate(zip(path.segments, path.reverse)):
                 if i == 0:
-                    # travel start → stored end
                     if rev:
-                        claims[sid]["v"].append(-np.asarray(path.v_start, dtype=float))
+                        claims[s]["v"].append(-np.asarray(path.v_start, dtype=float))
                     else:
-                        claims[sid]["u"].append(np.asarray(path.v_start, dtype=float))
+                        claims[s]["u"].append(np.asarray(path.v_start, dtype=float))
                 if i == nseg - 1:
                     if rev:
-                        claims[sid]["u"].append(-np.asarray(path.v_end, dtype=float))
+                        claims[s]["u"].append(-np.asarray(path.v_end, dtype=float))
                     else:
-                        claims[sid]["v"].append(np.asarray(path.v_end, dtype=float))
+                        claims[s]["v"].append(np.asarray(path.v_end, dtype=float))
 
-        for sid, ends in claims.items():
+        for s, ends in enumerate(claims):
             for which, vecs in ends.items():
                 if len(vecs) < 2:
                     continue
                 ref = vecs[0]
-                for k, v in enumerate(vecs[1:], start=1):
-                    if not _same_end_derivative(ref, v):
+                for k, vec in enumerate(vecs[1:], start=1):
+                    if not _same_end_derivative(ref, vec):
                         na = float(np.linalg.norm(ref))
-                        nb = float(np.linalg.norm(v))
+                        nb = float(np.linalg.norm(vec))
                         raise ValueError(
-                            f"OptimizeGraph {self.id!r}: segment {sid!r} stored-{which} "
+                            f"OptimizeGraph {self.id!r}: segment {s} stored-{which} "
                             f"has inconsistent usage derivatives (claim 0 vs {k}: "
-                            f"||v||={na:.6g} vs {nb:.6g}); "
-                            f"hermite_ends assumes usages only flip ± with equal magnitude"
+                            f"||v||={na:.6g} vs {nb:.6g})"
                         )
 
     def sample_usage_path(self, path: OptimizeUsagePath, resolution: float = 0.5):
@@ -360,37 +342,30 @@ class OptimizeGraph:
             raise ValueError(f"resolution must be > 0, got {resolution}")
         pts, rads = [], []
         nseg = len(path.segments)
-        for i, (sid, rev) in enumerate(zip(path.segments, path.reverse)):
-            seg = self.segments[sid]
-            nu, nv = self.nodes[seg.u], self.nodes[seg.v]
+        for i, (s, rev) in enumerate(zip(path.segments, path.reverse)):
+            seg = self.segments[s]
+            iu, iv = seg.u, seg.v
             if rev:
-                p0, v0 = nv.pos, -seg.v_sign * nv.v  # type: ignore
-                p1, v1 = nu.pos, -seg.u_sign * nu.v  # type: ignore
+                p0, v0 = self.pos[iv], -self.v_sign[s] * self.v[iv]
+                p1, v1 = self.pos[iu], -self.u_sign[s] * self.v[iu]
+                r0, r1 = float(self.radius[iv]), float(self.radius[iu])
             else:
-                p0, v0 = nu.pos, seg.u_sign * nu.v  # type: ignore
-                p1, v1 = nv.pos, seg.v_sign * nv.v  # type: ignore
+                p0, v0 = self.pos[iu], self.u_sign[s] * self.v[iu]
+                p1, v1 = self.pos[iv], self.v_sign[s] * self.v[iv]
+                r0, r1 = float(self.radius[iu]), float(self.radius[iv])
             if i == 0:
                 v0 = path.v_start
             if i == nseg - 1:
                 v1 = path.v_end
             n = HermiteSegment.ts_count_for(p0, v0, p1, v1, resolution)
-            seg.ts_count = n
             xyz = sample_hermite(p0, v0, p1, v1, n=n, backend="numpy")
-            # radius from travel-direction endpoints; linear in same t as sample_hermite
-            r0 = float(nv.radius if rev else nu.radius)
-            r1 = float(nu.radius if rev else nv.radius)
             ts = np.linspace(0.0, 1.0, n)
             if pts:
-                xyz = xyz[1:]  # drop duplicate joint
-                ts = ts[1:]
+                xyz, ts = xyz[1:], ts[1:]
             pts.append(xyz)
             rads.append((1.0 - ts) * r0 + ts * r1)
         if not pts:
-            return {
-                "usage": path.usage,
-                "xyz": np.zeros((0, 3)),
-                "radius": np.zeros((0,)),
-            }
+            return {"usage": path.usage, "xyz": np.zeros((0, 3)), "radius": np.zeros((0,))}
         return {
             "usage": path.usage,
             "xyz": np.concatenate(pts, axis=0),
@@ -405,28 +380,33 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
     for Z in junction.complexes:
         shared.update(Z.interfaces)
 
-    nodes_out: dict[str, HermiteNode] = {}
-    segments: dict[str, HermiteSegment] = {}
-    edge_segs: dict[str, list[str]] = {}  # eid -> hermite segment ids along e.nodes
+    # assemble-time string keys → int node index (dropped after build)
+    name_to_i: dict[str, int] = {}
+    nodes: list[HermiteNode] = []
+    pos_tmp: list[np.ndarray] = []
+    v_tmp: list[np.ndarray | None] = []
+    radius_tmp: list[float] = []
+    segments: list[HermiteSegment] = []
+    u_signs: list[float | None] = []
+    v_signs: list[float | None] = []
+    edge_segs: dict[str, list[int]] = {}
 
-    def add_node(kid, pos, role, radius):
-        if kid not in nodes_out:
-            is_port = role == "port"
-            nodes_out[kid] = HermiteNode(
-                pos=np.asarray(pos, dtype=float),
-                radius=float(radius),
-                v=None,  # unset until densify / port clamp
-                fixed_p=is_port,
-                fixed_v=is_port,
-                role=role,
-            )
+    def add_node(kid, pos, role, radius) -> int:
+        if kid in name_to_i:
+            return name_to_i[kid]
+        is_port = role == "port"
+        name_to_i[kid] = len(nodes)
+        nodes.append(HermiteNode(fixed_p=is_port, fixed_v=is_port, role=role))
+        pos_tmp.append(np.asarray(pos, dtype=float))
+        v_tmp.append(None)
+        radius_tmp.append(float(radius))
+        return name_to_i[kid]
 
     def densify_edge(e: LabeledEdge):
         nids = e.nodes
         if len(nids) < 2:
-            edge_segs[e.id] = []
-            return
-        segs_here = []
+            raise ValueError(f"Edge {e.id} has less than 2 nodes")
+        segs_here: list[int] = []
 
         def local_id(nid: str) -> str:
             # ports / interfaces stay global; all other knots are private to this labeled edge
@@ -455,46 +435,45 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
             chain_pos.append(p_b)
             chain_r.append(r_b)
 
+            chain_i: list[int] = []
             for kid, p, r in zip(chain_ids, chain_pos, chain_r):
                 if kid in shared:
                     role = "port" if (kid in jnodes and jnodes[kid].terminal_id) else "interface"
                     r = float(jnodes[kid].radius) if kid in jnodes else r
                 else:
                     role = e.kind
-                add_node(kid, p, role, r)
+                chain_i.append(add_node(kid, p, role, r))
 
-            for j in range(len(chain_ids) - 1):
+            for j in range(len(chain_i) - 1):
                 p0, p1 = chain_pos[j], chain_pos[j + 1]
                 seg_L = float(np.linalg.norm(p1 - p0))
                 tang = unit(p1 - p0, backend="numpy")
-                u, v_id = chain_ids[j], chain_ids[j + 1]
+                u_id, v_id = chain_i[j], chain_i[j + 1]
 
                 if e.kind == "trunk":
                     # trunk anchors node.v; stored frame signs are +1
-                    if not nodes_out[u].fixed_v and nodes_out[u].v is None:
-                        nodes_out[u].v = tang * seg_L
-                    if not nodes_out[v_id].fixed_v and nodes_out[v_id].v is None:
-                        nodes_out[v_id].v = tang * seg_L
+                    if not nodes[u_id].fixed_v and v_tmp[u_id] is None:
+                        v_tmp[u_id] = tang * seg_L
+                    if not nodes[v_id].fixed_v and v_tmp[v_id] is None:
+                        v_tmp[v_id] = tang * seg_L
                     u_sign = v_sign = 1.0
                 else:
                     # junction: init unset knots; interface already set → sign later
-                    if nodes_out[u].v is None and not nodes_out[u].fixed_v:
-                        nodes_out[u].v = tang * seg_L
+                    if v_tmp[u_id] is None and not nodes[u_id].fixed_v:
+                        v_tmp[u_id] = tang * seg_L
                         u_sign = 1.0
                     else:
-                        u_sign = None if not nodes_out[u].fixed_v else 1.0
-                    if nodes_out[v_id].v is None and not nodes_out[v_id].fixed_v:
-                        nodes_out[v_id].v = tang * seg_L
+                        u_sign = None if not nodes[u_id].fixed_v else 1.0
+                    if v_tmp[v_id] is None and not nodes[v_id].fixed_v:
+                        v_tmp[v_id] = tang * seg_L
                         v_sign = 1.0
                     else:
-                        v_sign = None if not nodes_out[v_id].fixed_v else 1.0
+                        v_sign = None if not nodes[v_id].fixed_v else 1.0
 
-                sid = f"{e.id}_{i}_{j}"
-                segments[sid] = HermiteSegment(
-                    id=sid, edge=e.id, kind=e.kind, u=u, v=v_id,
-                    u_sign=u_sign, v_sign=v_sign,
-                )
-                segs_here.append(sid)
+                segs_here.append(len(segments))
+                segments.append(HermiteSegment(edge=e.id, kind=e.kind, u=u_id, v=v_id))
+                u_signs.append(u_sign)
+                v_signs.append(v_sign)
         edge_segs[e.id] = segs_here
 
     # trunk first (anchors shared v), then junction
@@ -503,15 +482,15 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
     for e in junction.junction_edges:
         densify_edge(e)
 
-    usage_paths = []
+    usage_paths: list[OptimizeUsagePath] = []
     for up in junction.usage_paths:
         seg_ids, rev_flags = [], []
         for eid, rev in zip(up.edges, up.reverse):
             segs = list(edge_segs[eid])
             if rev:
                 segs.reverse()
-            for sid in segs:
-                seg_ids.append(sid)
+            for s in segs:
+                seg_ids.append(s)
                 rev_flags.append(rev)
         usage_paths.append(
             OptimizeUsagePath(
@@ -530,41 +509,52 @@ def assemble_hermite_graph(junction: PartitionedTree, length_max: float = 8.0) -
         for i in range(len(path.segments) - 1):
             sa, ra = path.segments[i], path.reverse[i]
             sb, rb = path.segments[i + 1], path.reverse[i + 1]
-            A, B = segments[sa], segments[sb]
             sA, sB = (-1.0 if ra else 1.0), (-1.0 if rb else 1.0)
-            eA = A.u_sign if ra else A.v_sign
-            eB = B.v_sign if rb else B.u_sign
+            eA = u_signs[sa] if ra else v_signs[sa]
+            eB = v_signs[sb] if rb else u_signs[sb]
             if eA is None and eB is None:
                 raise RuntimeError(f"both signs unset at joint {sa}|{sb}")
             if eA is None:
                 eA = sA * sB * eB  # type: ignore[operator]
                 if ra:
-                    A.u_sign = eA
+                    u_signs[sa] = eA
                 else:
-                    A.v_sign = eA
+                    v_signs[sa] = eA
             elif eB is None:
                 eB = sB * sA * eA
                 if rb:
-                    B.v_sign = eB
+                    v_signs[sb] = eB
                 else:
-                    B.u_sign = eB
+                    u_signs[sb] = eB
             else:
                 if not np.isclose(sA * eA, sB * eB):
                     raise RuntimeError(
                         f"sign mismatch at joint {sa}|{sb}: {sA*eA} vs {sB*eB}"
                     )
 
-    for sid, seg in segments.items():
-        if seg.u_sign is None or seg.v_sign is None:
-            raise RuntimeError(f"segment {sid}: unresolved u_sign/v_sign")
+    for s in range(len(segments)):
+        if u_signs[s] is None or v_signs[s] is None:
+            raise RuntimeError(f"segment {s}: unresolved u_sign/v_sign")
+
+    pos = np.stack(pos_tmp) if pos_tmp else np.zeros((0, 3))
+    radius = np.asarray(radius_tmp, dtype=float)
+    v = np.zeros((len(nodes), 3), dtype=float)
+    for i, vv in enumerate(v_tmp):
+        if vv is not None:
+            v[i] = vv
 
     g = OptimizeGraph(
         id=junction.id,
-        nodes=nodes_out,
+        nodes=nodes,
         segments=segments,
+        pos=pos,
+        v=v,
+        radius=radius,
+        u_sign=np.asarray(u_signs, dtype=float),
+        v_sign=np.asarray(v_signs, dtype=float),
         edge_segs=edge_segs,
         junctions={Z.id: list(Z.edges) for Z in junction.complexes},
         usage_paths=usage_paths,
     )
     g.check_usage_tangents_colinear()
-    return g
+    return g.bind_ends_tables()

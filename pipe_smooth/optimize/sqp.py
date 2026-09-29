@@ -56,8 +56,10 @@ import osqp
 from scipy import sparse
 
 from pipe_smooth.costs.clear import (
-    clear_capsule_active_constraint,
-    clear_hull_active_constraint,
+    clear_capsule_constraint_pack,
+    clear_hull_constraint_pack,
+    pack_capsule_active,
+    pack_hull_active,
 )
 from pipe_smooth.costs.space import graph_space_band_constraint, graph_tangent_constraint
 from pipe_smooth.geometry.assemble import OptimizeGraph
@@ -70,7 +72,10 @@ from pipe_smooth.utils import backend as _backend
 def constraints(
     graphs: Sequence[OptimizeGraph],
     *,
-    clear_active=None,
+    x=None,
+    layout: PackLayout | None = None,
+    clear_obs_buf=None,
+    clear_grp_buf=None,
     clear_kind: Literal["capsule", "hull"] = "capsule",
     eps_band: float = 0.2,
     upper_only: bool = True,
@@ -81,12 +86,15 @@ def constraints(
 ):
     """SQP inequality stack (§7.1–7.2). Feasible iff all residuals ``g(x) <= 0``.
 
-    Flat inequality vector ``g(x)≤0`` = clearance (+ optional space / tangent).
+    Flat inequality vector ``g(x)≤0`` = packed clearance (+ optional space / tangent).
 
     Args:
-        graphs: OptimizeGraph sequence (``hermite_ends`` / ``refresh``)
-        clear_active: frozen narrowphase pairs, or ``None`` (no clearance block)
-        clear_kind: ``'capsule'`` | ``'hull'`` active-set residual
+        graphs: OptimizeGraph sequence (``refresh`` before space / tangent blocks)
+        x: packed free DOF; required with layout/bufs for clearance
+        layout: ``PackLayout`` for ``ends_from_x`` gather
+        clear_obs_buf, clear_grp_buf: frozen packed clear buffers from
+            ``pack_capsule_active`` / ``pack_hull_active``, or ``None`` (no clearance)
+        clear_kind: ``'capsule'`` | ``'hull'`` → ``clear_*_constraint_pack``
         eps_band: relative Δs band width ε (§7.1.1)
         upper_only: if True, only spacing upper bound
         beta_v: Hermite tangent scale vs chord (§7.1.2)
@@ -100,11 +108,19 @@ def constraints(
     xp = _backend(backend)
     blocks = []
 
-    if clear_active is not None:
+    if clear_obs_buf is not None and clear_grp_buf is not None and layout is not None and x is not None:
         if clear_kind == "capsule":
-            blocks.append(clear_capsule_active_constraint(clear_active, graphs, backend=backend))
+            blocks.append(
+                clear_capsule_constraint_pack(
+                    x, clear_obs_buf, clear_grp_buf, layout, backend=backend
+                )
+            )
         else:
-            blocks.append(clear_hull_active_constraint(clear_active, graphs, backend=backend))
+            blocks.append(
+                clear_hull_constraint_pack(
+                    x, clear_obs_buf, clear_grp_buf, layout, backend=backend
+                )
+            )
 
     if use_space:
         for g in graphs:
@@ -197,7 +213,7 @@ def elastic_qp(
 
     w = replace(weights, mu_obs=0.0, mu_grp=0.0, eta=0.0, mu_v=0.0)
     x = jnp.asarray(pack(graphs, layout, backend="numpy"), dtype=jnp.float32)
-    clear_active = None
+    clear_obs_buf = clear_grp_buf = None
     union_hits = None
     n = int(layout.n)
 
@@ -209,7 +225,15 @@ def elastic_qp(
             for g in graphs:
                 g.refresh(backend="numpy")
             if refresh_clear is not None:
-                clear_active = refresh_clear(graphs)
+                active = refresh_clear(graphs)
+                if clear_kind == "capsule":
+                    clear_obs_buf, clear_grp_buf = pack_capsule_active(
+                        active, layout, backend="jax"
+                    )
+                else:
+                    clear_obs_buf, clear_grp_buf = pack_hull_active(
+                        active, layout, backend="jax"
+                    )
             if refresh_union is not None:
                 union_hits = refresh_union(graphs)
 
@@ -223,7 +247,10 @@ def elastic_qp(
                 gr.refresh(backend="jax")
             return constraints(
                 graphs,
-                clear_active=clear_active,
+                x=xx,
+                layout=layout,
+                clear_obs_buf=clear_obs_buf,
+                clear_grp_buf=clear_grp_buf,
                 clear_kind=clear_kind,  # type: ignore[arg-type]
                 eps_band=eps_band,
                 upper_only=upper_only,

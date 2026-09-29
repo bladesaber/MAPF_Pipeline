@@ -10,6 +10,7 @@ Packed path (``pack_*_active`` + ``clear_*_packed``): fixed-shape buffers +
 
 from __future__ import annotations
 
+import warnings
 from typing import Any, Sequence, TYPE_CHECKING
 
 import numpy as np
@@ -54,6 +55,9 @@ def clear_balls(
 ):
     """Soft clearance μ Σ φ on an **active set** (§6.4.2 / §7.2).
 
+    .. deprecated::
+        Prefer packed clear (``clear_*_packed`` / ``PackLayout.ends_from_x``).
+
     Narrowphase supplies the full required gap ``d_req`` (radii + margin already
     folded in). Call only for pairs with d_geom < d_req.
 
@@ -68,6 +72,11 @@ def clear_balls(
     Returns:
         Scalar μ Σ [d_req - sign*||a-b||]_+^σ ².
     """
+    warnings.warn(
+        "clear_balls is deprecated; use clear_*_packed",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     xp = _backend(backend)
     a, b = xp.asarray(a), xp.asarray(b)
     d_geom = xp.asarray(sign) * xp.linalg.norm(a - b, axis=-1)
@@ -82,14 +91,30 @@ def clear_capsule_active(
     soft_sigma: float = 1e-2,
     backend: str = "numpy",
 ):
-    """Soft J_clear from capsule narrowphase pairs (frozen hits, live Hermite)."""
+    """Soft J_clear from capsule narrowphase pairs (frozen hits, live Hermite).
+
+    .. deprecated::
+        Prefer ``pack_capsule_active`` + ``clear_capsule_packed``.
+    """
+    warnings.warn(
+        "clear_capsule_active is deprecated; use pack_capsule_active + clear_capsule_packed",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     xp = _backend(backend)
-    ends = {(g.id, sid): e for g in graphs for sid, e in g.hermite_ends(backend=backend).items()}
+    ends: dict[tuple[str, int], Any] = {}
+    for g in graphs:
+        if g.seg_ends is None:
+            raise RuntimeError("call refresh before clear_capsule_active")
+        e = xp.asarray(g.seg_ends)
+        for s in range(int(e.shape[0])):
+            ends[(g.id, s)] = e[s]
     narrow_obs, narrow_grp = active
     j = xp.asarray(0.0)
 
     for p in narrow_obs:
-        p0, v0, p1, v1 = ends[(p.group_id, p.seg_id)]
+        e = ends[(p.group_id, int(p.seg_id))]
+        p0, v0, p1, v1 = e[0], e[1], e[2], e[3]
         for h in p.hits:
             g0 = eval_hermite(p0, v0, p1, v1, h.hermite_t0, backend=backend)
             g1 = eval_hermite(p0, v0, p1, v1, h.hermite_t1, backend=backend)
@@ -99,8 +124,10 @@ def clear_capsule_active(
             )
 
     for p in narrow_grp:
-        a0, av0, a1, av1 = ends[(p.group_a, p.seg_a)]
-        b0, bv0, b1, bv1 = ends[(p.group_b, p.seg_b)]
+        ea = ends[(p.group_a, int(p.seg_a))]
+        eb = ends[(p.group_b, int(p.seg_b))]
+        a0, av0, a1, av1 = ea[0], ea[1], ea[2], ea[3]
+        b0, bv0, b1, bv1 = eb[0], eb[1], eb[2], eb[3]
         for h in p.hits:
             qa0 = eval_hermite(a0, av0, a1, av1, h.hermite_t0_a, backend=backend)
             qa1 = eval_hermite(a0, av0, a1, av1, h.hermite_t1_a, backend=backend)
@@ -123,14 +150,30 @@ def clear_hull_active(
     soft_sigma: float = 1e-2,
     backend: str = "numpy",
 ):
-    """Soft J_clear from Hull4 GJK pairs (frozen weights/qb/shift, live Hermite)."""
+    """Soft J_clear from Hull4 GJK pairs (frozen weights/qb/shift, live Hermite).
+
+    .. deprecated::
+        Prefer ``pack_hull_active`` + ``clear_hull_packed``.
+    """
+    warnings.warn(
+        "clear_hull_active is deprecated; use pack_hull_active + clear_hull_packed",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     xp = _backend(backend)
-    ends = {(g.id, sid): e for g in graphs for sid, e in g.hermite_ends(backend=backend).items()}
+    ends: dict[tuple[str, int], Any] = {}
+    for g in graphs:
+        if g.seg_ends is None:
+            raise RuntimeError("call refresh before clear_hull_active")
+        e = xp.asarray(g.seg_ends)
+        for s in range(int(e.shape[0])):
+            ends[(g.id, s)] = e[s]
     narrow_obs, narrow_grp = active
     j = xp.asarray(0.0)
 
     for p in narrow_obs:
-        p0, v0, p1, v1 = ends[(p.group_id, p.seg_id)]
+        e = ends[(p.group_id, int(p.seg_id))]
+        p0, v0, p1, v1 = e[0], e[1], e[2], e[3]
         C = hermite_bezier_controls(p0, v0, p1, v1, backend=backend)
         C_sub = bezier_on_interval(C, p.hermite_t0, p.hermite_t1, backend=backend)
         qa = xp.asarray(p.weights) @ (C_sub + xp.asarray(p.shift))
@@ -139,8 +182,10 @@ def clear_hull_active(
         )
 
     for p in narrow_grp:
-        a0, av0, a1, av1 = ends[(p.group_a, p.seg_a)]
-        b0, bv0, b1, bv1 = ends[(p.group_b, p.seg_b)]
+        ea = ends[(p.group_a, int(p.seg_a))]
+        eb = ends[(p.group_b, int(p.seg_b))]
+        a0, av0, a1, av1 = ea[0], ea[1], ea[2], ea[3]
+        b0, bv0, b1, bv1 = eb[0], eb[1], eb[2], eb[3]
         Ca = hermite_bezier_controls(a0, av0, a1, av1, backend=backend)
         Cb = hermite_bezier_controls(b0, bv0, b1, bv1, backend=backend)
         Ca_sub = bezier_on_interval(Ca, p.hermite_t0_a, p.hermite_t1_a, backend=backend)
@@ -161,6 +206,9 @@ def clear_capsule_active_constraint(
 ):
     """SQP capsule clearance (§7.2.1). Feasible iff all residuals ``<= 0``.
 
+    .. deprecated::
+        Prefer packed clear + SQP residuals from fixed-shape buffers.
+
     Frozen hits, live Hermite. Per hit (``req = 0`` if ``sign < 0``, else ``d_req``):
       ``g = req - sign * ||qa - qb||  <= 0``
 
@@ -172,13 +220,25 @@ def clear_capsule_active_constraint(
     Returns:
         Flat vector of residuals ``g`` with ``g <= 0`` feasible (one entry per hit).
     """
+    warnings.warn(
+        "clear_capsule_active_constraint is deprecated; use clear_capsule_constraint_pack",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     xp = _backend(backend)
-    ends = {(g.id, sid): e for g in graphs for sid, e in g.hermite_ends(backend=backend).items()}
+    ends: dict[tuple[str, int], Any] = {}
+    for g in graphs:
+        if g.seg_ends is None:
+            raise RuntimeError("call refresh before clear_capsule_active_constraint")
+        e = xp.asarray(g.seg_ends)
+        for s in range(int(e.shape[0])):
+            ends[(g.id, s)] = e[s]
     narrow_obs, narrow_grp = active
     parts = []
 
     for p in narrow_obs:
-        p0, v0, p1, v1 = ends[(p.group_id, p.seg_id)]
+        e = ends[(p.group_id, int(p.seg_id))]
+        p0, v0, p1, v1 = e[0], e[1], e[2], e[3]
         for h in p.hits:
             g0 = eval_hermite(p0, v0, p1, v1, h.hermite_t0, backend=backend)
             g1 = eval_hermite(p0, v0, p1, v1, h.hermite_t1, backend=backend)
@@ -187,8 +247,10 @@ def clear_capsule_active_constraint(
             parts.append(xp.asarray(0.0 if h.sign < 0 else h.d_req) - d)
 
     for p in narrow_grp:
-        a0, av0, a1, av1 = ends[(p.group_a, p.seg_a)]
-        b0, bv0, b1, bv1 = ends[(p.group_b, p.seg_b)]
+        ea = ends[(p.group_a, int(p.seg_a))]
+        eb = ends[(p.group_b, int(p.seg_b))]
+        a0, av0, a1, av1 = ea[0], ea[1], ea[2], ea[3]
+        b0, bv0, b1, bv1 = eb[0], eb[1], eb[2], eb[3]
         for h in p.hits:
             qa0 = eval_hermite(a0, av0, a1, av1, h.hermite_t0_a, backend=backend)
             qa1 = eval_hermite(a0, av0, a1, av1, h.hermite_t1_a, backend=backend)
@@ -211,6 +273,9 @@ def clear_hull_active_constraint(
 ):
     """SQP Hull4/GJK clearance (§7.2.2). Feasible iff all residuals ``<= 0``.
 
+    .. deprecated::
+        Prefer packed clear + SQP residuals from fixed-shape buffers.
+
     Frozen weights/qb/shift, live Hermite. Per pair (``req = 0`` if ``sign < 0``, else ``d_req``):
       ``g = req - sign * ||qa - qb||  <= 0``
 
@@ -222,13 +287,25 @@ def clear_hull_active_constraint(
     Returns:
         Flat vector of residuals ``g`` with ``g <= 0`` feasible (one entry per pair).
     """
+    warnings.warn(
+        "clear_hull_active_constraint is deprecated; use clear_hull_constraint_pack",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     xp = _backend(backend)
-    ends = {(g.id, sid): e for g in graphs for sid, e in g.hermite_ends(backend=backend).items()}
+    ends: dict[tuple[str, int], Any] = {}
+    for g in graphs:
+        if g.seg_ends is None:
+            raise RuntimeError("call refresh before clear_hull_active_constraint")
+        e = xp.asarray(g.seg_ends)
+        for s in range(int(e.shape[0])):
+            ends[(g.id, s)] = e[s]
     narrow_obs, narrow_grp = active
     parts = []
 
     for p in narrow_obs:
-        p0, v0, p1, v1 = ends[(p.group_id, p.seg_id)]
+        e = ends[(p.group_id, int(p.seg_id))]
+        p0, v0, p1, v1 = e[0], e[1], e[2], e[3]
         C = hermite_bezier_controls(p0, v0, p1, v1, backend=backend)
         C_sub = bezier_on_interval(C, p.hermite_t0, p.hermite_t1, backend=backend)
         qa = xp.asarray(p.weights) @ (C_sub + xp.asarray(p.shift))
@@ -236,8 +313,10 @@ def clear_hull_active_constraint(
         parts.append(xp.asarray(0.0 if p.sign < 0 else p.d_req) - d)
 
     for p in narrow_grp:
-        a0, av0, a1, av1 = ends[(p.group_a, p.seg_a)]
-        b0, bv0, b1, bv1 = ends[(p.group_b, p.seg_b)]
+        ea = ends[(p.group_a, int(p.seg_a))]
+        eb = ends[(p.group_b, int(p.seg_b))]
+        a0, av0, a1, av1 = ea[0], ea[1], ea[2], ea[3]
+        b0, bv0, b1, bv1 = eb[0], eb[1], eb[2], eb[3]
         Ca = hermite_bezier_controls(a0, av0, a1, av1, backend=backend)
         Cb = hermite_bezier_controls(b0, bv0, b1, bv1, backend=backend)
         Ca_sub = bezier_on_interval(Ca, p.hermite_t0_a, p.hermite_t1_a, backend=backend)
@@ -378,6 +457,53 @@ def clear_capsule_packed(
     return j
 
 
+def clear_capsule_constraint_pack(
+    x,
+    obs_buf: dict[str, Any],
+    grp_buf: dict[str, Any],
+    layout: PackLayout,
+    backend: str = "numpy",
+):
+    """SQP capsule clearance residuals ``g = mask*(req - sign*||qa-qb||)``; ``g<=0`` feasible.
+
+    Same buffers / ``ends_from_x`` as ``clear_capsule_packed``. ``req=0`` if ``sign<0`` else ``d_req``.
+    Flat length ``p_max_obs + p_max_grp`` (padded slots masked to 0).
+    """
+    xp = _backend(backend)
+    ends = layout.ends_from_x(x, backend=backend)
+    parts = []
+
+    if layout.p_max_obs > 0:
+        E = ends[obs_buf["seg_idx"]]
+        p0, v0, p1, v1 = E[:, 0], E[:, 1], E[:, 2], E[:, 3]
+        tc = obs_buf["chord_t"][:, None]
+        qa = (1.0 - tc) * eval_hermite(
+            p0, v0, p1, v1, obs_buf["hermite_t0"], backend=backend
+        ) + tc * eval_hermite(p0, v0, p1, v1, obs_buf["hermite_t1"], backend=backend)
+        d = obs_buf["sign"] * _safe_norm(qa - obs_buf["qb"], backend=backend)
+        req = xp.where(obs_buf["sign"] < 0, 0.0, obs_buf["d_req"])
+        parts.append(obs_buf["mask"] * (req - d))
+
+    if layout.p_max_grp > 0:
+        Ea, Eb = ends[grp_buf["seg_a"]], ends[grp_buf["seg_b"]]
+        a0, av0, a1, av1 = Ea[:, 0], Ea[:, 1], Ea[:, 2], Ea[:, 3]
+        b0, bv0, b1, bv1 = Eb[:, 0], Eb[:, 1], Eb[:, 2], Eb[:, 3]
+        ta = grp_buf["chord_t_a"][:, None]
+        tb = grp_buf["chord_t_b"][:, None]
+        qa = (1.0 - ta) * eval_hermite(
+            a0, av0, a1, av1, grp_buf["hermite_t0_a"], backend=backend
+        ) + ta * eval_hermite(a0, av0, a1, av1, grp_buf["hermite_t1_a"], backend=backend)
+        qb = (1.0 - tb) * eval_hermite(
+            b0, bv0, b1, bv1, grp_buf["hermite_t0_b"], backend=backend
+        ) + tb * eval_hermite(b0, bv0, b1, bv1, grp_buf["hermite_t1_b"], backend=backend)
+        d = grp_buf["sign"] * _safe_norm(qa - qb, backend=backend)
+        req = xp.where(grp_buf["sign"] < 0, 0.0, grp_buf["d_req"])
+        parts.append(grp_buf["mask"] * (req - d))
+
+    if not parts:
+        return xp.zeros((0,))
+    return xp.concatenate(parts, axis=0)
+
 # ---------------------------------------------------------------------------
 # Fixed-shape hull clear (same ends gather; frozen weights/qb/shift)
 # ---------------------------------------------------------------------------
@@ -496,4 +622,48 @@ def clear_hull_packed(
             grp_buf["mask"] * phi(d_geom, grp_buf["d_req"], soft_sigma=soft_sigma, backend=backend)
         )
     return j
+
+
+def clear_hull_constraint_pack(
+    x,
+    obs_buf: dict[str, Any],
+    grp_buf: dict[str, Any],
+    layout: PackLayout,
+    backend: str = "numpy",
+):
+    """SQP hull clearance residuals; same layout as ``clear_hull_packed`` / capsule pack."""
+    xp = _backend(backend)
+    ends = layout.ends_from_x(x, backend=backend)
+    parts = []
+
+    if layout.p_max_obs > 0:
+        E = ends[obs_buf["seg_idx"]]
+        p0, v0, p1, v1 = E[:, 0], E[:, 1], E[:, 2], E[:, 3]
+        C_sub = hermite_bezier_on_interval(
+            p0, v0, p1, v1, obs_buf["hermite_t0"], obs_buf["hermite_t1"], backend=backend
+        )
+        qa = xp.einsum("pi,pij->pj", obs_buf["weights"], C_sub + obs_buf["shift"])
+        d = obs_buf["sign"] * _safe_norm(qa - obs_buf["qb"], backend=backend)
+        req = xp.where(obs_buf["sign"] < 0, 0.0, obs_buf["d_req"])
+        parts.append(obs_buf["mask"] * (req - d))
+
+    if layout.p_max_grp > 0:
+        Ea, Eb = ends[grp_buf["seg_a"]], ends[grp_buf["seg_b"]]
+        a0, av0, a1, av1 = Ea[:, 0], Ea[:, 1], Ea[:, 2], Ea[:, 3]
+        b0, bv0, b1, bv1 = Eb[:, 0], Eb[:, 1], Eb[:, 2], Eb[:, 3]
+        Ca_sub = hermite_bezier_on_interval(
+            a0, av0, a1, av1, grp_buf["hermite_t0_a"], grp_buf["hermite_t1_a"], backend=backend
+        )
+        Cb_sub = hermite_bezier_on_interval(
+            b0, bv0, b1, bv1, grp_buf["hermite_t0_b"], grp_buf["hermite_t1_b"], backend=backend
+        )
+        qa = xp.einsum("pi,pij->pj", grp_buf["weights_a"], Ca_sub + grp_buf["shift_a"])
+        qb = xp.einsum("pi,pij->pj", grp_buf["weights_b"], Cb_sub + grp_buf["shift_b"])
+        d = grp_buf["sign"] * _safe_norm(qa - qb, backend=backend)
+        req = xp.where(grp_buf["sign"] < 0, 0.0, grp_buf["d_req"])
+        parts.append(grp_buf["mask"] * (req - d))
+
+    if not parts:
+        return xp.zeros((0,))
+    return xp.concatenate(parts, axis=0)
 

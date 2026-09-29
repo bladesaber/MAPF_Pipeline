@@ -54,13 +54,15 @@ def _params_from_sliders(sliders: dict[str, Slider]):
 
 
 def _eval_five(p0, v0, p1, v1, xyz, ts) -> dict[str, float]:
-    r = RADIUS
+    r = np.full((1, xyz.shape[0]), RADIUS)
+    xyz_b = xyz[None]
+    p0b, v0b, p1b, v1b = p0[None], v0[None], p1[None], v1[None]
     return {
-        "k_bend": float(k_bend(xyz, r)),
-        "k_bend_approx": float(k_bend_approx(xyz, r)),
-        "k_menger": float(k_menger(xyz, r)),
-        "k_fd": float(k_fd(xyz, r)),
-        "k_hermite": float(k_hermite(p0, v0, p1, v1, r, ts)),
+        "k_bend": float(k_bend(xyz_b, r)),
+        "k_bend_approx": float(k_bend_approx(xyz_b, r)),
+        "k_menger": float(k_menger(xyz_b, r)),
+        "k_fd": float(k_fd(xyz_b, r)),
+        "k_hermite": float(k_hermite(p0b, v0b, p1b, v1b, r, ts)),
     }
 
 

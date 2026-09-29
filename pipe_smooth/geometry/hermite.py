@@ -78,10 +78,24 @@ def eval_hermite_ts(p0, v0, p1, v1, ts, backend: str = "numpy"):
 
 
 def sample_hermite(p0, v0, p1, v1, n: int = 16, backend: str = "numpy"):
-    """(n, 3) uniform samples on [0, 1], inclusive endpoints."""
+    """Uniform samples on [0, 1], inclusive endpoints.
+
+    ``p``/``v`` shape ``(3,)`` → ``(n, 3)``; shape ``(S, 3)`` → ``(S, n, 3)``.
+    """
     xp = _backend(backend)
     n = max(int(n), 2)
-    return eval_hermite_ts(p0, v0, p1, v1, xp.linspace(0.0, 1.0, n), backend=backend)
+    p0 = xp.asarray(p0)
+    ts = xp.linspace(0.0, 1.0, n)
+    if p0.ndim == 1:
+        return eval_hermite(p0, v0, p1, v1, ts, backend=backend)
+    return eval_hermite(
+        p0[:, None, :],
+        xp.asarray(v0)[:, None, :],
+        xp.asarray(p1)[:, None, :],
+        xp.asarray(v1)[:, None, :],
+        ts[None, :],
+        backend=backend,
+    )
 
 
 def hermite_length(p0, v0, p1, v1, backend: str = "numpy"):

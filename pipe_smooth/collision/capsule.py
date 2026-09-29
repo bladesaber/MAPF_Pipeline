@@ -90,7 +90,7 @@ class NarrowObsPair:
     """Active segment–obstacle pair after capsule narrowphase."""
 
     group_id: str
-    seg_id: str
+    seg_id: int
     obs_name: str
     d_geom: float
     hits: tuple[ObsContactHit, ...] = ()  # closest (+ neighbors); empty if unset
@@ -98,7 +98,7 @@ class NarrowObsPair:
     def export(self) -> dict:
         return {
             "group_id": self.group_id,
-            "seg_id": self.seg_id,
+            "seg_id": int(self.seg_id),
             "obs_name": self.obs_name,
             "d_geom": float(self.d_geom),
             "hits": [h.export() for h in self.hits],
@@ -110,18 +110,18 @@ class NarrowGrpPair:
     """Active cross-group segment–segment pair after capsule narrowphase."""
 
     group_a: str
-    seg_a: str
+    seg_a: int
     group_b: str
-    seg_b: str
+    seg_b: int
     d_geom: float
     hits: tuple[GrpContactHit, ...] = ()  # closest (+ neighbors)
 
     def export(self) -> dict:
         return {
             "group_a": self.group_a,
-            "seg_a": self.seg_a,
+            "seg_a": int(self.seg_a),
             "group_b": self.group_b,
-            "seg_b": self.seg_b,
+            "seg_b": int(self.seg_b),
             "d_geom": float(self.d_geom),
             "hits": [h.export() for h in self.hits],
         }
@@ -392,7 +392,7 @@ def find_narrowphase_pairs(
 ) -> tuple[list[NarrowObsPair], list[NarrowGrpPair]]:
     """Filter broadphase pairs with capsule kernels; keep pairs with non-empty hits.
 
-    Uses cached Hermite samples from ``seg.samples()`` (call ``graph.refresh`` first).
+    Uses ``seg_xyz`` / ``seg_radius`` (call ``graph.refresh`` first).
     Narrowphase runs on consecutive sample chords along stored u→v.
     """
     by_obs = {obs.name: obs for obs in obstacles}
@@ -400,20 +400,24 @@ def find_narrowphase_pairs(
     narrow_grp: list[NarrowGrpPair] = []
 
     # (group_id, seg_id) → chords (a, b, r, hermite_t0, hermite_t1)
-    chords_by: dict[tuple[str, str], list[tuple]] = {}
+    chords_by: dict[tuple[str, int], list[tuple]] = {}
     for g in graphs:
-        for sid, seg in g.segments.items():
-            ts, xyz, radius = seg.samples(backend="numpy")
-            n = int(ts.shape[0])
+        if g.seg_xyz is None or g.seg_radius is None:
+            raise RuntimeError(f"graph {g.id}: call refresh before capsule narrowphase")
+        xyz = np.asarray(g.seg_xyz, dtype=float)
+        radius = np.asarray(g.seg_radius, dtype=float)
+        T = int(xyz.shape[1])
+        ts = np.linspace(0.0, 1.0, T)
+        for sid in range(len(g.segments)):
             chords_by[(g.id, sid)] = [
                 (
-                    xyz[k],
-                    xyz[k + 1],
-                    float(max(float(radius[k]), float(radius[k + 1]))),
+                    xyz[sid, k],
+                    xyz[sid, k + 1],
+                    float(max(float(radius[sid, k]), float(radius[sid, k + 1]))),
                     float(ts[k]),
                     float(ts[k + 1]),
                 )
-                for k in range(n - 1)
+                for k in range(T - 1)
             ]
 
     for p in broad_obs:

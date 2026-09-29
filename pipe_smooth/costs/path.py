@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pipe_smooth.utils import backend as _backend
 from pipe_smooth.geometry.assemble import OptimizeGraph
-from pipe_smooth.geometry.hermite import eval_hermite_kappa, eval_hermite_ts
+from pipe_smooth.geometry.hermite import eval_hermite, eval_hermite_d1, eval_hermite_d2
 
 _EPS = 1e-12
 
@@ -26,14 +26,39 @@ def path_length(xyz, w=None, backend: str = "numpy"):
 
     Squared chords (no sqrt): same [length²] as ``space_cost``, stronger pull on
     long gaps; α/η stay scale-comparable under geometric rescaling.
+
+    ``xyz`` shape ``(T, 3)`` → scalar; ``(S, T, 3)`` → sum over all segments
+    (or pass ``w`` with matching leading dims for weighted chords).
     """
     xp = _backend(backend)
     xyz = xp.asarray(xyz)
-    d2 = xp.sum((xyz[1:] - xyz[:-1]) ** 2, axis=-1)
+    d2 = xp.sum((xyz[..., 1:, :] - xyz[..., :-1, :]) ** 2, axis=-1)
     if w is None:
         return xp.sum(d2)
     w = xp.asarray(w)
-    return xp.sum(0.5 * (w[:-1] + w[1:]) * d2)
+    return xp.sum(0.5 * (w[..., :-1] + w[..., 1:]) * d2)
+
+
+def _check_batch(xyz, radius, w):
+    assert xyz.ndim == 3 and xyz.shape[-1] == 3, f"xyz need (B,T,3), got {getattr(xyz, 'shape', None)}"
+    assert radius.ndim == 2 and radius.shape == xyz.shape[:2], (
+        f"radius need (B,T)={xyz.shape[:2]}, got {getattr(radius, 'shape', None)}"
+    )
+    if w is not None:
+        assert w.ndim == 2 and w.shape == xyz.shape[:2], (
+            f"w need (B,T)={xyz.shape[:2]}, got {getattr(w, 'shape', None)}"
+        )
+
+
+def _check_ports(t_start, t_end, B):
+    if t_start is not None:
+        assert t_start.ndim == 2 and t_start.shape == (B, 3), (
+            f"t_start need (B,3)=({B},3), got {getattr(t_start, 'shape', None)}"
+        )
+    if t_end is not None:
+        assert t_end.ndim == 2 and t_end.shape == (B, 3), (
+            f"t_end need (B,3)=({B},3), got {getattr(t_end, 'shape', None)}"
+        )
 
 
 def k_bend(
@@ -50,38 +75,41 @@ def k_bend(
     add end turns vs first / last chord. `radius` (N,) or scalar.
     """
     xp = _backend(backend)
-    xyz = xp.asarray(xyz)
-    radius = xp.asarray(radius)
-    if radius.ndim == 0:
-        radius = xp.full((xyz.shape[0],), radius)
-    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
-    t = (xyz[1:] - xyz[:-1]) / (ds[:, None] + _EPS)
-    dl = 0.5 * (ds[:-1] + ds[1:])
-    wi = xp.ones((xyz.shape[0],), dtype=xyz.dtype) if w is None else xp.asarray(w)
+    xyz, radius = xp.asarray(xyz), xp.asarray(radius)
+    _check_batch(xyz, radius, w)
+    B = int(xyz.shape[0])
+    wi = xp.ones(xyz.shape[:2], dtype=xyz.dtype) if w is None else xp.asarray(w)
+    if t_start is not None:
+        t_start = xp.asarray(t_start)
+    if t_end is not None:
+        t_end = xp.asarray(t_end)
+    _check_ports(t_start, t_end, B)
 
+    ds = xp.linalg.norm(xyz[:, 1:] - xyz[:, :-1], axis=-1) # (B, T-1)
+    t = (xyz[:, 1:] - xyz[:, :-1]) / (ds[..., None] + _EPS) # (B, T-1, 3)
+    dl = 0.5 * (ds[:, :-1] + ds[:, 1:]) # (B, T-2)
+    
     # θ ∈ [0,π]; avoid arccos (singular as cos→1).
     # Smooth ||cross|| so JAX grad is finite when chords are parallel (θ→0).
-    c = xp.cross(t[:-1], t[1:])
-    cn = xp.sqrt(xp.sum(c * c, axis=-1) + _EPS)
-    theta = xp.arctan2(cn, xp.sum(t[:-1] * t[1:], axis=-1))
-    K = xp.sum(wi[1:-1] * (theta ** 2) * (radius[1:-1] ** 2) / (dl + _EPS))
+    c = xp.cross(t[:, :-1], t[:, 1:])
+    cn = xp.sqrt(xp.sum(c * c, axis=-1) + _EPS)  # (B, T-2)
+    theta = xp.arctan2(cn, xp.sum(t[:, :-1] * t[:, 1:], axis=-1))  # (B, T-2)
+    K = xp.sum(wi[:, 1:-1] * (theta ** 2) * (radius[:, 1:-1] ** 2) / (dl + _EPS))
 
     if t_start is not None:
-        ts = xp.asarray(t_start)
-        ts = ts / (xp.linalg.norm(ts) + _EPS)
-        c0 = xp.cross(ts, t[0])
+        ts = t_start / (xp.linalg.norm(t_start, axis=-1, keepdims=True) + _EPS)
+        c0 = xp.cross(ts, t[:, 0])
         th0 = xp.arctan2(
-            xp.sqrt(xp.sum(c0 * c0) + _EPS), xp.sum(ts * t[0])
+            xp.sqrt(xp.sum(c0 * c0, axis=-1) + _EPS), xp.sum(ts * t[:, 0], axis=-1)
         )
-        K = K + wi[0] * (th0 ** 2) * (radius[0] ** 2) / (ds[0] + _EPS)
+        K = K + xp.sum(wi[:, 0] * (th0 ** 2) * (radius[:, 0] ** 2) / (ds[:, 0] + _EPS))
     if t_end is not None:
-        te = xp.asarray(t_end)
-        te = te / (xp.linalg.norm(te) + _EPS)
-        c1 = xp.cross(t[-1], te)
+        te = t_end / (xp.linalg.norm(t_end, axis=-1, keepdims=True) + _EPS)
+        c1 = xp.cross(t[:, -1], te)
         th1 = xp.arctan2(
-            xp.sqrt(xp.sum(c1 * c1) + _EPS), xp.sum(t[-1] * te)
+            xp.sqrt(xp.sum(c1 * c1, axis=-1) + _EPS), xp.sum(t[:, -1] * te, axis=-1)
         )
-        K = K + wi[-1] * (th1 ** 2) * (radius[-1] ** 2) / (ds[-1] + _EPS)
+        K = K + xp.sum(wi[:, -1] * (th1 ** 2) * (radius[:, -1] ** 2) / (ds[:, -1] + _EPS))
     return K
 
 
@@ -99,26 +127,32 @@ def k_bend_approx(
     sharp corners must be fully penalized.
     """
     xp = _backend(backend)
-    xyz = xp.asarray(xyz)
-    radius = xp.asarray(radius)
-    if radius.ndim == 0:
-        radius = xp.full((xyz.shape[0],), radius)
-    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
-    t = (xyz[1:] - xyz[:-1]) / (ds[:, None] + _EPS)
-    dl = 0.5 * (ds[:-1] + ds[1:])
-    wi = xp.ones((xyz.shape[0],), dtype=xyz.dtype) if w is None else xp.asarray(w)
+    xyz, radius = xp.asarray(xyz), xp.asarray(radius)
+    _check_batch(xyz, radius, w)
+    B = int(xyz.shape[0])
+    wi = xp.ones(xyz.shape[:2], dtype=xyz.dtype) if w is None else xp.asarray(w)
+    if t_start is not None:
+        t_start = xp.asarray(t_start)
+    if t_end is not None:
+        t_end = xp.asarray(t_end)
+    _check_ports(t_start, t_end, B)
 
-    dt2 = xp.sum((t[1:] - t[:-1]) ** 2, axis=-1)
-    K = xp.sum(wi[1:-1] * dt2 * (radius[1:-1] ** 2) / (dl + _EPS))
+    ds = xp.linalg.norm(xyz[:, 1:] - xyz[:, :-1], axis=-1)
+    t = (xyz[:, 1:] - xyz[:, :-1]) / (ds[..., None] + _EPS)
+    dl = 0.5 * (ds[:, :-1] + ds[:, 1:])
+    dt2 = xp.sum((t[:, 1:] - t[:, :-1]) ** 2, axis=-1)
+    K = xp.sum(wi[:, 1:-1] * dt2 * (radius[:, 1:-1] ** 2) / (dl + _EPS))
 
     if t_start is not None:
-        ts = xp.asarray(t_start)
-        ts = ts / (xp.linalg.norm(ts) + _EPS)
-        K = K + wi[0] * xp.sum((t[0] - ts) ** 2) * (radius[0] ** 2) / (ds[0] + _EPS)
+        ts = t_start / (xp.linalg.norm(t_start, axis=-1, keepdims=True) + _EPS)
+        K = K + xp.sum(
+            wi[:, 0] * xp.sum((t[:, 0] - ts) ** 2, axis=-1) * (radius[:, 0] ** 2) / (ds[:, 0] + _EPS)
+        )
     if t_end is not None:
-        te = xp.asarray(t_end)
-        te = te / (xp.linalg.norm(te) + _EPS)
-        K = K + wi[-1] * xp.sum((te - t[-1]) ** 2) * (radius[-1] ** 2) / (ds[-1] + _EPS)
+        te = t_end / (xp.linalg.norm(t_end, axis=-1, keepdims=True) + _EPS)
+        K = K + xp.sum(
+            wi[:, -1] * xp.sum((te - t[:, -1]) ** 2, axis=-1) * (radius[:, -1] ** 2) / (ds[:, -1] + _EPS)
+        )
     return K
 
 
@@ -137,17 +171,21 @@ def k_menger(
     Menger points; interior stays pure Menger).
     """
     xp = _backend(backend)
-    xyz = xp.asarray(xyz)
-    radius = xp.asarray(radius)
-    if radius.ndim == 0:
-        radius = xp.full((xyz.shape[0],), radius)
-    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
-    dl = 0.5 * (ds[:-1] + ds[1:])
-    wi = xp.ones((xyz.shape[0],), dtype=xyz.dtype) if w is None else xp.asarray(w)
+    xyz, radius = xp.asarray(xyz), xp.asarray(radius)
+    _check_batch(xyz, radius, w)
+    B = int(xyz.shape[0])
+    wi = xp.ones(xyz.shape[:2], dtype=xyz.dtype) if w is None else xp.asarray(w)
+    if t_start is not None:
+        t_start = xp.asarray(t_start)
+    if t_end is not None:
+        t_end = xp.asarray(t_end)
+    _check_ports(t_start, t_end, B)
 
-    a = xyz[1:-1] - xyz[:-2]
-    b = xyz[2:] - xyz[1:-1]
-    c = xyz[2:] - xyz[:-2]
+    ds = xp.linalg.norm(xyz[:, 1:] - xyz[:, :-1], axis=-1)
+    dl = 0.5 * (ds[:, :-1] + ds[:, 1:])
+    a = xyz[:, 1:-1] - xyz[:, :-2]
+    b = xyz[:, 2:] - xyz[:, 1:-1]
+    c = xyz[:, 2:] - xyz[:, :-2]
     ab = xp.cross(a, b)
     cross = xp.sqrt(xp.sum(ab * ab, axis=-1) + _EPS)
     denom = (
@@ -155,25 +193,26 @@ def k_menger(
         + _EPS
     )
     kappa_m = 2.0 * cross / denom
-    K = xp.sum(wi[1:-1] * (kappa_m * radius[1:-1]) ** 2 * dl)
+    K = xp.sum(wi[:, 1:-1] * (kappa_m * radius[:, 1:-1]) ** 2 * dl)
 
-    # Terminals: κ ≈ θ / Δs from port tangent vs first/last chord (not 3-point Menger)
     if t_start is not None:
-        ts = xp.asarray(t_start)
-        ts = ts / (xp.linalg.norm(ts) + _EPS)
-        t0 = (xyz[1] - xyz[0]) / (ds[0] + _EPS)
+        ts = t_start / (xp.linalg.norm(t_start, axis=-1, keepdims=True) + _EPS)
+        t0 = (xyz[:, 1] - xyz[:, 0]) / (ds[:, 0, None] + _EPS)
         c0 = xp.cross(ts, t0)
-        th0 = xp.arctan2(xp.sqrt(xp.sum(c0 * c0) + _EPS), xp.sum(ts * t0))
-        km0 = th0 / (ds[0] + _EPS)
-        K = K + wi[0] * (km0 * radius[0]) ** 2 * ds[0]
+        th0 = xp.arctan2(
+            xp.sqrt(xp.sum(c0 * c0, axis=-1) + _EPS), xp.sum(ts * t0, axis=-1)
+        )
+        km0 = th0 / (ds[:, 0] + _EPS)
+        K = K + xp.sum(wi[:, 0] * (km0 * radius[:, 0]) ** 2 * ds[:, 0])
     if t_end is not None:
-        te = xp.asarray(t_end)
-        te = te / (xp.linalg.norm(te) + _EPS)
-        t1 = (xyz[-1] - xyz[-2]) / (ds[-1] + _EPS)
+        te = t_end / (xp.linalg.norm(t_end, axis=-1, keepdims=True) + _EPS)
+        t1 = (xyz[:, -1] - xyz[:, -2]) / (ds[:, -1, None] + _EPS)
         c1 = xp.cross(t1, te)
-        th1 = xp.arctan2(xp.sqrt(xp.sum(c1 * c1) + _EPS), xp.sum(t1 * te))
-        km1 = th1 / (ds[-1] + _EPS)
-        K = K + wi[-1] * (km1 * radius[-1]) ** 2 * ds[-1]
+        th1 = xp.arctan2(
+            xp.sqrt(xp.sum(c1 * c1, axis=-1) + _EPS), xp.sum(t1 * te, axis=-1)
+        )
+        km1 = th1 / (ds[:, -1] + _EPS)
+        K = K + xp.sum(wi[:, -1] * (km1 * radius[:, -1]) ** 2 * ds[:, -1])
     return K
 
 
@@ -186,13 +225,19 @@ def kappa_menger(xyz, t_start=None, t_end=None, backend: str = "numpy"):
     """
     xp = _backend(backend)
     xyz = xp.asarray(xyz)
-    n = int(xyz.shape[0])
-    if n < 3:
-        raise ValueError(f"kappa_menger needs len(xyz)>=3, got {n}")
-    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
-    a = xyz[1:-1] - xyz[:-2]
-    b = xyz[2:] - xyz[1:-1]
-    c = xyz[2:] - xyz[:-2]
+    assert xyz.ndim == 3 and xyz.shape[-1] == 3, f"xyz need (B,T,3), got {xyz.shape}"
+    B, n = int(xyz.shape[0]), int(xyz.shape[1])
+    assert n >= 3, f"kappa_menger needs T>=3, got {n}"
+    if t_start is not None:
+        t_start = xp.asarray(t_start)
+    if t_end is not None:
+        t_end = xp.asarray(t_end)
+    _check_ports(t_start, t_end, B)
+
+    ds = xp.linalg.norm(xyz[:, 1:] - xyz[:, :-1], axis=-1)
+    a = xyz[:, 1:-1] - xyz[:, :-2]
+    b = xyz[:, 2:] - xyz[:, 1:-1]
+    c = xyz[:, 2:] - xyz[:, :-2]
     ab = xp.cross(a, b)
     cross = xp.sqrt(xp.sum(ab * ab, axis=-1) + _EPS)
     denom = (
@@ -201,22 +246,20 @@ def kappa_menger(xyz, t_start=None, t_end=None, backend: str = "numpy"):
         * xp.linalg.norm(c, axis=-1)
         + _EPS
     )
-    kappa = xp.zeros((n,), dtype=xyz.dtype)
-    kappa[1:-1] = 2.0 * cross / denom
+    z0 = xp.zeros((B, 1), dtype=xyz.dtype)
+    kappa = xp.concatenate([z0, 2.0 * cross / denom, z0], axis=1)
     if t_start is not None:
-        ts = xp.asarray(t_start)
-        ts = ts / (xp.linalg.norm(ts) + _EPS)
-        t0 = (xyz[1] - xyz[0]) / (ds[0] + _EPS)
+        ts = t_start / (xp.linalg.norm(t_start, axis=-1, keepdims=True) + _EPS)
+        t0 = (xyz[:, 1] - xyz[:, 0]) / (ds[:, 0, None] + _EPS)
         c0 = xp.cross(ts, t0)
-        th0 = xp.arctan2(xp.sqrt(xp.sum(c0 * c0) + _EPS), xp.sum(ts * t0))
-        kappa[0] = th0 / (ds[0] + _EPS)
+        th0 = xp.arctan2(xp.sqrt(xp.sum(c0 * c0, axis=-1) + _EPS), xp.sum(ts * t0, axis=-1))
+        kappa = xp.concatenate([(th0 / (ds[:, 0] + _EPS))[:, None], kappa[:, 1:]], axis=1)
     if t_end is not None:
-        te = xp.asarray(t_end)
-        te = te / (xp.linalg.norm(te) + _EPS)
-        t1 = (xyz[-1] - xyz[-2]) / (ds[-1] + _EPS)
+        te = t_end / (xp.linalg.norm(t_end, axis=-1, keepdims=True) + _EPS)
+        t1 = (xyz[:, -1] - xyz[:, -2]) / (ds[:, -1, None] + _EPS)
         c1 = xp.cross(t1, te)
-        th1 = xp.arctan2(xp.sqrt(xp.sum(c1 * c1) + _EPS), xp.sum(t1 * te))
-        kappa[-1] = th1 / (ds[-1] + _EPS)
+        th1 = xp.arctan2(xp.sqrt(xp.sum(c1 * c1, axis=-1) + _EPS), xp.sum(t1 * te, axis=-1))
+        kappa = xp.concatenate([kappa[:, :-1], (th1 / (ds[:, -1] + _EPS))[:, None]], axis=1)
     return kappa
 
 
@@ -235,36 +278,40 @@ def k_fd(
     For cubic-Hermite κ(t) use `k_hermite`.
     """
     xp = _backend(backend)
-    xyz = xp.asarray(xyz)
-    radius = xp.asarray(radius)
-    if radius.ndim == 0:
-        radius = xp.full((xyz.shape[0],), radius)
-    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
-    t = (xyz[1:] - xyz[:-1]) / (ds[:, None] + _EPS)
-    dl = 0.5 * (ds[:-1] + ds[1:])
-    wi = xp.ones((xyz.shape[0],), dtype=xyz.dtype) if w is None else xp.asarray(w)
-
-    # Interior: centered chords for γ', Δt/Δℓ for γ'' — O(h) (first-order) on uneven samples
-    d1 = (xyz[2:] - xyz[:-2]) / ((ds[:-1] + ds[1:])[:, None] + _EPS)
-    # d2 ≈ γ'': difference of successive unit chord tangents t_i=(x_{i+1}-x_i)/Δs_i,
-    # divided by local spacing Δℓ=½(Δs_{i-1}+Δs_i)
-    d2 = (t[1:] - t[:-1]) / (dl[:, None] + _EPS)
-    kappa = xp.linalg.norm(xp.cross(d1, d2), axis=-1) / (xp.linalg.norm(d1, axis=-1) ** 3 + _EPS)
-    K = xp.sum(wi[1:-1] * (kappa * radius[1:-1]) ** 2 * dl)
-
-    # Terminals: one-sided (forward / backward) using port unit tangents
+    xyz, radius = xp.asarray(xyz), xp.asarray(radius)
+    _check_batch(xyz, radius, w)
+    B = int(xyz.shape[0])
+    wi = xp.ones(xyz.shape[:2], dtype=xyz.dtype) if w is None else xp.asarray(w)
     if t_start is not None:
-        ts = xp.asarray(t_start)
-        ts = ts / (xp.linalg.norm(ts) + _EPS)
-        d2_0 = (t[0] - ts) / (ds[0] + _EPS)
-        km0 = xp.linalg.norm(xp.cross(ts, d2_0)) / (xp.linalg.norm(ts) ** 3 + _EPS)
-        K = K + wi[0] * (km0 * radius[0]) ** 2 * ds[0]
+        t_start = xp.asarray(t_start)
     if t_end is not None:
-        te = xp.asarray(t_end)
-        te = te / (xp.linalg.norm(te) + _EPS)
-        d2_1 = (te - t[-1]) / (ds[-1] + _EPS)
-        km1 = xp.linalg.norm(xp.cross(te, d2_1)) / (xp.linalg.norm(te) ** 3 + _EPS)
-        K = K + wi[-1] * (km1 * radius[-1]) ** 2 * ds[-1]
+        t_end = xp.asarray(t_end)
+    _check_ports(t_start, t_end, B)
+
+    ds = xp.linalg.norm(xyz[:, 1:] - xyz[:, :-1], axis=-1)
+    t = (xyz[:, 1:] - xyz[:, :-1]) / (ds[..., None] + _EPS)
+    dl = 0.5 * (ds[:, :-1] + ds[:, 1:])
+    d1 = (xyz[:, 2:] - xyz[:, :-2]) / ((ds[:, :-1] + ds[:, 1:])[..., None] + _EPS)
+    d2 = (t[:, 1:] - t[:, :-1]) / (dl[..., None] + _EPS)
+    kappa = xp.linalg.norm(xp.cross(d1, d2), axis=-1) / (
+        xp.linalg.norm(d1, axis=-1) ** 3 + _EPS
+    )
+    K = xp.sum(wi[:, 1:-1] * (kappa * radius[:, 1:-1]) ** 2 * dl)
+
+    if t_start is not None:
+        ts = t_start / (xp.linalg.norm(t_start, axis=-1, keepdims=True) + _EPS)
+        d2_0 = (t[:, 0] - ts) / (ds[:, 0, None] + _EPS)
+        km0 = xp.linalg.norm(xp.cross(ts, d2_0), axis=-1) / (
+            xp.linalg.norm(ts, axis=-1) ** 3 + _EPS
+        )
+        K = K + xp.sum(wi[:, 0] * (km0 * radius[:, 0]) ** 2 * ds[:, 0])
+    if t_end is not None:
+        te = t_end / (xp.linalg.norm(t_end, axis=-1, keepdims=True) + _EPS)
+        d2_1 = (te - t[:, -1]) / (ds[:, -1, None] + _EPS)
+        km1 = xp.linalg.norm(xp.cross(te, d2_1), axis=-1) / (
+            xp.linalg.norm(te, axis=-1) ** 3 + _EPS
+        )
+        K = K + xp.sum(wi[:, -1] * (km1 * radius[:, -1]) ** 2 * ds[:, -1])
     return K
 
 
@@ -289,111 +336,101 @@ def k_hermite(
     then leave t_start/t_end as None. `ts` on [0,1], len>=3. `radius` scalar, (2,), or (n,).
     """
     xp = _backend(backend)
-    ts = xp.asarray(ts)
-    n = int(ts.shape[0])
-    if n < 3:
-        raise ValueError(f"k_hermite needs len(ts)>=3, got {n}")
-
-    xyz = eval_hermite_ts(p0, v0, p1, v1, ts, backend=backend)
-    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
-    dl = 0.5 * (ds[:-1] + ds[1:])
-    t_chord = (xyz[1:] - xyz[:-1]) / (ds[:, None] + _EPS)
-
-    radius = xp.asarray(radius)
-    if radius.ndim == 0:
-        r = xp.full((n,), radius)
-    elif radius.shape == (2,):
-        r = (1.0 - ts) * radius[0] + ts * radius[1]
-    else:
-        r = radius
-
-    wi = xp.ones((n,), dtype=xyz.dtype) if w is None else xp.asarray(w)
-    K = 0.0
-    for i in range(1, n - 1):
-        kappa = eval_hermite_kappa(p0, v0, p1, v1, ts[i], backend=backend)
-        K = K + wi[i] * (kappa * r[i]) ** 2 * dl[i - 1]
-
-    # Optional port clamps: one-sided FD (do not replace analytic κ at ends — Hermite
-    # already has κ(0),κ(1) from v0,v1; use these when port direction ≠ segment v)
+    p0, v0, p1, v1 = xp.asarray(p0), xp.asarray(v0), xp.asarray(p1), xp.asarray(v1)
+    ts, radius = xp.asarray(ts), xp.asarray(radius)
+    assert p0.ndim == 2 and p0.shape[-1] == 3, f"p0 need (B,3), got {p0.shape}"
+    assert v0.shape == p0.shape and p1.shape == p0.shape and v1.shape == p0.shape
+    assert ts.ndim == 1 and int(ts.shape[0]) >= 3, f"ts need (T,), T>=3, got {ts.shape}"
+    B, n = int(p0.shape[0]), int(ts.shape[0])
+    assert radius.shape == (B, n), f"radius need (B,T)=({B},{n}), got {radius.shape}"
+    wi = xp.ones((B, n), dtype=p0.dtype) if w is None else xp.asarray(w)
+    if w is not None:
+        assert wi.shape == (B, n), f"w need (B,T)=({B},{n}), got {wi.shape}"
     if t_start is not None:
-        tp = xp.asarray(t_start)
-        tp = tp / (xp.linalg.norm(tp) + _EPS)
-        d2_0 = (t_chord[0] - tp) / (ds[0] + _EPS)
-        km0 = xp.linalg.norm(xp.cross(tp, d2_0)) / (xp.linalg.norm(tp) ** 3 + _EPS)
-        K = K + wi[0] * (km0 * r[0]) ** 2 * ds[0]
+        t_start = xp.asarray(t_start)
     if t_end is not None:
-        tp = xp.asarray(t_end)
-        tp = tp / (xp.linalg.norm(tp) + _EPS)
-        d2_1 = (tp - t_chord[-1]) / (ds[-1] + _EPS)
-        km1 = xp.linalg.norm(xp.cross(tp, d2_1)) / (xp.linalg.norm(tp) ** 3 + _EPS)
-        K = K + wi[-1] * (km1 * r[-1]) ** 2 * ds[-1]
+        t_end = xp.asarray(t_end)
+    _check_ports(t_start, t_end, B)
+
+    xyz = eval_hermite(
+        p0[:, None, :], v0[:, None, :], p1[:, None, :], v1[:, None, :], ts[None, :],
+        backend=backend,
+    )
+    ds = xp.linalg.norm(xyz[:, 1:] - xyz[:, :-1], axis=-1)
+    dl = 0.5 * (ds[:, :-1] + ds[:, 1:])
+    t_chord = (xyz[:, 1:] - xyz[:, :-1]) / (ds[..., None] + _EPS)
+
+    ti = ts[1:-1]
+    d1 = eval_hermite_d1(
+        p0[:, None, :], v0[:, None, :], p1[:, None, :], v1[:, None, :], ti[None, :],
+        backend=backend,
+    )
+    d2 = eval_hermite_d2(
+        p0[:, None, :], v0[:, None, :], p1[:, None, :], v1[:, None, :], ti[None, :],
+        backend=backend,
+    )
+    kappa = xp.linalg.norm(xp.cross(d1, d2), axis=-1) / (
+        xp.linalg.norm(d1, axis=-1) ** 3 + _EPS
+    )
+    K = xp.sum(wi[:, 1:-1] * (kappa * radius[:, 1:-1]) ** 2 * dl)
+
+    if t_start is not None:
+        tp = t_start / (xp.linalg.norm(t_start, axis=-1, keepdims=True) + _EPS)
+        d2_0 = (t_chord[:, 0] - tp) / (ds[:, 0, None] + _EPS)
+        km0 = xp.linalg.norm(xp.cross(tp, d2_0), axis=-1) / (
+            xp.linalg.norm(tp, axis=-1) ** 3 + _EPS
+        )
+        K = K + xp.sum(wi[:, 0] * (km0 * radius[:, 0]) ** 2 * ds[:, 0])
+    if t_end is not None:
+        tp = t_end / (xp.linalg.norm(t_end, axis=-1, keepdims=True) + _EPS)
+        d2_1 = (tp - t_chord[:, -1]) / (ds[:, -1, None] + _EPS)
+        km1 = xp.linalg.norm(xp.cross(tp, d2_1), axis=-1) / (
+            xp.linalg.norm(tp, axis=-1) ** 3 + _EPS
+        )
+        K = K + xp.sum(wi[:, -1] * (km1 * radius[:, -1]) ** 2 * ds[:, -1])
     return K
 
 
 def graph_length(graph: OptimizeGraph, backend: str = "numpy"):
     """Σ chord energy (path_length) over Hermite segments; each seg once.
 
-    Requires ``graph.refresh``.
+    Requires ``graph.refresh`` (uses ``seg_xyz`` ``(S, T, 3)``).
     """
-    xp = _backend(backend)
-    total = xp.asarray(0.0)
-    for seg in graph.segments.values():
-        _, xyz, _ = seg.samples(backend=backend)
-        total = total + path_length(xyz, backend=backend)
-    return total
+    return path_length(graph.seg_xyz, backend=backend)
 
 
 def graph_curvature(graph: OptimizeGraph, backend: str = "numpy"):
-    """Σ k_bend: each seg interior once; each unordered joint (seg_a, seg_b) once.
+    """Σ k_bend: each seg interior once + each unique 3-point joint once.
 
-    Requires ``graph.refresh``. Cache is stored u→v; ``reverse`` flips to travel
-    direction. New seg: ``prev[-2:]+xyz[1:]`` (joint + interior). Already-seen seg
-    with a new joint: joint-only window ``prev[-2:]+xyz[1:2]``.
+    Requires ``graph.refresh`` and ``bind_ends_tables`` / ``bind_joint_tables``.
+    Interiors use ``seg_xyz`` (u→v) with ``port_v*``; joints use ``joint_*``.
     """
     xp = _backend(backend)
-    total = xp.asarray(0.0)
-    seen_seg: set[str] = set()
-    seen_joint: set[tuple[str, str]] = set()
-    for path in graph.usage_paths:
-        nseg = len(path.segments)
-        prev_sid = None
-        prev_xyz = prev_r = None
-        for i, (sid, rev) in enumerate(zip(path.segments, path.reverse)):
-            _, xyz, radius = graph.segments[sid].samples(backend=backend)
-            if rev:
-                xyz = xyz[::-1]
-                radius = radius[::-1]
+    if graph.seg_xyz is None or graph.seg_radius is None:
+        raise RuntimeError("call refresh before graph_curvature")
+    xyz = xp.asarray(graph.seg_xyz)
+    radius = xp.asarray(graph.seg_radius)
 
-            t_end = path.v_end if i == nseg - 1 else None
-            joint_key = None if prev_sid is None else tuple(sorted((prev_sid, sid)))
+    # ports in u→v; unmasked → chord dir so port term is ~0
+    t0 = (xyz[:, 1] - xyz[:, 0]) / (
+        xp.linalg.norm(xyz[:, 1] - xyz[:, 0], axis=-1, keepdims=True) + _EPS
+    )
+    t1 = (xyz[:, -1] - xyz[:, -2]) / (
+        xp.linalg.norm(xyz[:, -1] - xyz[:, -2], axis=-1, keepdims=True) + _EPS
+    )
+    t_start = xp.where(xp.asarray(graph.port_v0_mask)[:, None], xp.asarray(graph.port_v0), t0)
+    t_end = xp.where(xp.asarray(graph.port_v1_mask)[:, None], xp.asarray(graph.port_v1), t1)
+    K = k_bend(xyz, radius, t_start=t_start, t_end=t_end, backend=backend)
 
-            if sid not in seen_seg:
-                seen_seg.add(sid)
-                if joint_key is not None:
-                    seen_joint.add(joint_key)  # type: ignore
-                if i == 0 or prev_xyz is None:
-                    total = total + k_bend(
-                        xyz,
-                        radius,
-                        t_start=path.v_start if i == 0 else None,
-                        t_end=t_end,
-                        backend=backend,
-                    )
-                else:
-                    # joint + current interior; do not rescore previous interiors
-                    xyz_c = xp.concatenate([prev_xyz[-2:], xyz[1:]], axis=0)
-                    r_c = xp.concatenate([prev_r[-2:], radius[1:]], axis=0)  # type: ignore
-                    total = total + k_bend(
-                        xyz_c, r_c, t_start=None, t_end=t_end, backend=backend
-                    )
-            elif joint_key is not None and joint_key not in seen_joint:
-                # seg already scored; still pick up a new interface onto it
-                seen_joint.add(joint_key)  # type: ignore
-                xyz_c = xp.concatenate([prev_xyz[-2:], xyz[1:2]], axis=0)  # type: ignore
-                r_c = xp.concatenate([prev_r[-2:], radius[1:2]], axis=0)  # type: ignore
-                total = total + k_bend(xyz_c, r_c, backend=backend)
-
-            prev_sid = sid
-            prev_xyz, prev_r = xyz, radius
-    return total
+    s0, s1 = xp.asarray(graph.joint_s0), xp.asarray(graph.joint_s1)
+    if int(s0.shape[0]) == 0:
+        return K
+    f0, f1 = xp.asarray(graph.joint_flip0), xp.asarray(graph.joint_flip1)
+    a = xp.where(f0[:, None, None], xyz[s0][:, ::-1, :], xyz[s0])
+    b = xp.where(f1[:, None, None], xyz[s1][:, ::-1, :], xyz[s1])
+    ra = xp.where(f0[:, None], radius[s0][:, ::-1], radius[s0])
+    rb = xp.where(f1[:, None], radius[s1][:, ::-1], radius[s1])
+    j_xyz = xp.concatenate([a[:, -2:, :], b[:, 1:2, :]], axis=1)
+    j_r = xp.concatenate([ra[:, -2:], rb[:, 1:2]], axis=1)
+    return K + k_bend(j_xyz, j_r, backend=backend)
 

@@ -111,17 +111,22 @@ def path_report(
     """Usage-path metrics (§8.1.2): per-usage → group → aggregate.
 
     ``L`` / ``kr_max`` (= max κ·r) from each usage polyline. ``V`` is voxel-union of
-    sample spheres (segments once) at group / aggregate.
+    sample spheres (segments once) at group / aggregate. Requires ``graph.refresh``.
     """
     groups: dict[str, Any] = {}
     for g in graphs:
+        if g.seg_xyz is None or g.seg_radius is None:
+            raise RuntimeError(f"graph {g.id}: call refresh before path_report")
+        seg_xyz = np.asarray(g.seg_xyz, dtype=float)
+        seg_radius = np.asarray(g.seg_radius, dtype=float)
         usages: dict[str, Any] = {}
-        seen_seg: set[str] = set()
+        seen_seg: set[int] = set()
         g_xyz, g_r = [], []
         for path in g.usage_paths:
             pts, rads = [], []
             for sid, rev in zip(path.segments, path.reverse):
-                _, xyz, radius = g.segments[sid].samples(backend="numpy")
+                xyz = seg_xyz[sid]
+                radius = seg_radius[sid]
                 if sid not in seen_seg:
                     seen_seg.add(sid)
                     g_xyz.append(xyz)
@@ -137,8 +142,12 @@ def path_report(
             xyz = np.concatenate(pts, axis=0)
             radius = np.concatenate(rads, axis=0)
             kappa = np.asarray(
-                kappa_menger(xyz, t_start=path.v_start, t_end=path.v_end)
-            )
+                kappa_menger(
+                    xyz[None],
+                    t_start=np.asarray(path.v_start)[None],
+                    t_end=np.asarray(path.v_end)[None],
+                )
+            )[0]
             key = f"{path.usage[0]}->{path.usage[1]}"
             usages[key] = {
                 "L": float(np.linalg.norm(xyz[1:] - xyz[:-1], axis=-1).sum()),
@@ -198,6 +207,8 @@ def performance_report(
     wall_time: float | None = None,
 ) -> dict[str, Any]:
     """Clearance + path + solve reports on current graphs."""
+    for g in graphs:
+        g.refresh(backend="numpy")
     clear = clearance_report(graphs, obstacles, kind=clear_kind, margin=margin)
     path = path_report(graphs)
     solve = (

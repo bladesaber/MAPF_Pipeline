@@ -625,8 +625,8 @@ class BenchViewer(QMainWindow):
             pitch=float(sp_pitch.value()),
             radius=float(sp_rad.value()),
         )
-        n0 = self.graphs[0].nodes
-        self.resolution = float(np.linalg.norm(n0["n1"].pos - n0["n0"].pos))
+        n0 = self.graphs[0]
+        self.resolution = float(np.linalg.norm(n0.pos[1] - n0.pos[0]))
         self.obstacles = []
         self._write_obstacles()
         for gr in self.graphs:
@@ -855,6 +855,8 @@ class BenchViewer(QMainWindow):
         self.plotter.render()
 
     def redraw(self):
+        from pipe_smooth.geometry.assemble import HermiteSegment
+
         mode = self.viz_mode.currentText()
         self._node_actors = {}
         self._usage_actors = []
@@ -868,38 +870,50 @@ class BenchViewer(QMainWindow):
             (0.70, 0.30, 0.80),
         )
         for g in self.graphs:
-            g.refresh(backend="numpy", resolution=max(self.resolution * 0.25, 1e-3))
+            ends = np.asarray(g.hermite_ends(backend="numpy"), dtype=float)
+            spacing = max(float(self.resolution) * 0.25, 1e-3)
+            T = 5
+            for s in range(len(g.segments)):
+                T = max(
+                    T,
+                    HermiteSegment.ts_count_for(
+                        ends[s, 0], ends[s, 1], ends[s, 2], ends[s, 3], spacing
+                    ),
+                )
+            g.refresh(ts_count=T, backend="numpy")
+            xyz = np.asarray(g.seg_xyz, float)
+            rad = np.asarray(g.seg_radius, float)
+            pos = np.asarray(g.pos, float)
             if mode != "point":
-                for seg in g.segments.values():
-                    xyz = np.asarray(seg.xyz, float)
-                    if xyz.ndim != 2 or xyz.shape[0] < 2:
+                for sid in range(len(g.segments)):
+                    pts = xyz[sid]
+                    if pts.ndim != 2 or pts.shape[0] < 2:
                         continue
-                    line = pv.lines_from_points(xyz)
+                    line = pv.lines_from_points(pts)
                     self.plotter.add_mesh(line, color="blue", line_width=2)
                     if mode == "point+line+tube":
-                        line["radius"] = np.asarray(seg.radius, float)
+                        line["radius"] = rad[sid]
                         tube = line.tube(scalars="radius", absolute=True, n_sides=12)
                         self.plotter.add_mesh(tube, color="lightblue", opacity=0.35)
-            for nid, n in g.nodes.items():
+            for nid in range(len(g.nodes)):
                 actor = self.plotter.add_mesh(
                     pv.Sphere(radius=0.075, center=(0.0, 0.0, 0.0)),
                     color="red",
                     name=f"n:{g.id}:{nid}",
                 )
-                pos = np.asarray(n.pos, float)
-                actor.SetPosition(float(pos[0]), float(pos[1]), float(pos[2]))
-                self._node_actors[(g.id, nid)] = actor
+                actor.SetPosition(float(pos[nid, 0]), float(pos[nid, 1]), float(pos[nid, 2]))
+                self._node_actors[(g.id, nid)] = actor  # type: ignore[assignment]
 
             for up in g.usage_paths:
                 key = f"{g.id}|{up.usage[0]}->{up.usage[1]}"
                 chunks = []
                 for sid, rev in zip(up.segments, up.reverse):
-                    xyz = np.asarray(g.segments[sid].xyz, float)
+                    pts = xyz[sid]
                     if rev:
-                        xyz = xyz[::-1]
+                        pts = pts[::-1]
                     if chunks:
-                        xyz = xyz[1:]
-                    chunks.append(xyz)
+                        pts = pts[1:]
+                    chunks.append(pts)
                 if not chunks:
                     continue
                 path = np.concatenate(chunks, axis=0)
@@ -942,12 +956,12 @@ class BenchViewer(QMainWindow):
 
     def _update_points(self):
         for g in self.graphs:
-            for nid, n in g.nodes.items():
-                actor = self._node_actors.get((g.id, nid))
+            pos = np.asarray(g.pos, float)
+            for nid in range(len(g.nodes)):
+                actor = self._node_actors.get((g.id, nid))  # type: ignore[arg-type]
                 if actor is None:
                     continue
-                pos = np.asarray(n.pos, float)
-                actor.SetPosition(float(pos[0]), float(pos[1]), float(pos[2]))  # type: ignore
+                actor.SetPosition(float(pos[nid, 0]), float(pos[nid, 1]), float(pos[nid, 2]))  # type: ignore
         self.plotter.render()
 
     def _set_busy(self, busy: bool):

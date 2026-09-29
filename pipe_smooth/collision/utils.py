@@ -1,6 +1,6 @@
 """AABB broadphase: OptimizeGraph segments vs obstacles and vs other groups.
 
-Hermite → Bézier-control AABB via ``hermite_ends`` (stored u→v, same as refresh);
+Hermite → Bézier-control AABB via ``hermite_ends`` / ``seg_ends`` (stored u→v);
 R-tree (3D) for queries. Narrowphase / active-set stay outside this module.
 """
 
@@ -24,7 +24,7 @@ class BroadObsPair:
     """Broadphase hit: one Hermite segment vs one static obstacle."""
 
     group_id: str
-    seg_id: str
+    seg_id: int
     obs_name: str
 
 
@@ -33,9 +33,9 @@ class BroadGrpPair:
     """Broadphase hit: Hermite segments from two different groups (i < j)."""
 
     group_a: str
-    seg_a: str
+    seg_a: int
     group_b: str
-    seg_b: str
+    seg_b: int
 
 
 def hermite_aabb(p0, v0, p1, v1, r: float = 0.0, margin: float = 0.0):
@@ -77,14 +77,17 @@ def find_broadphase_pairs(
         return obs_pairs, grp_pairs
 
     # --- segment boxes per group: [(seg_id, mn, mx), ...] ---
-    boxes: list[list[tuple[str, np.ndarray, np.ndarray]]] = []
+    boxes: list[list[tuple[int, np.ndarray, np.ndarray]]] = []
     for g in graphs:
-        ends = g.hermite_ends(backend="numpy")
-        segs: list[tuple[str, np.ndarray, np.ndarray]] = []
-        for sid, (p0, v0, p1, v1) in ends.items():
-            seg = g.segments[sid]
-            nu, nv = g.nodes[seg.u], g.nodes[seg.v]
-            r = max(float(nu.radius), float(nv.radius))
+        ends = np.asarray(
+            g.seg_ends if g.seg_ends is not None else g.hermite_ends(backend="numpy"),
+            dtype=float,
+        )
+        rad = np.asarray(g.radius, dtype=float)
+        segs: list[tuple[int, np.ndarray, np.ndarray]] = []
+        for sid, seg in enumerate(g.segments):
+            p0, v0, p1, v1 = ends[sid]
+            r = max(float(rad[seg.u]), float(rad[seg.v]))
             mn, mx = hermite_aabb(p0, v0, p1, v1, r=r, margin=margin)
             segs.append((sid, mn, mx))  # type: ignore[arg-type]
         boxes.append(segs)

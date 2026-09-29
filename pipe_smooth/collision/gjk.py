@@ -35,7 +35,7 @@ class NarrowHullObsPair:
     """
 
     group_id: str
-    seg_id: str
+    seg_id: int
     obs_name: str
     d_geom: float
     d_req: float
@@ -49,7 +49,7 @@ class NarrowHullObsPair:
     def export(self) -> dict:
         return {
             "group_id": self.group_id,
-            "seg_id": self.seg_id,
+            "seg_id": int(self.seg_id),
             "obs_name": self.obs_name,
             "d_geom": float(self.d_geom),
             "d_req": float(self.d_req),
@@ -67,9 +67,9 @@ class NarrowHullGrpPair:
     """One active Hull4↔Hull4 cross-group contact after GJK (flat, no nested hit)."""
 
     group_a: str
-    seg_a: str
+    seg_a: int
     group_b: str
-    seg_b: str
+    seg_b: int
     d_geom: float
     d_req: float
     hermite_t0_a: float
@@ -85,9 +85,9 @@ class NarrowHullGrpPair:
     def export(self) -> dict:
         return {
             "group_a": self.group_a,
-            "seg_a": self.seg_a,
+            "seg_a": int(self.seg_a),
             "group_b": self.group_b,
-            "seg_b": self.seg_b,
+            "seg_b": int(self.seg_b),
             "d_geom": float(self.d_geom),
             "d_req": float(self.d_req),
             "hermite_t0_a": float(self.hermite_t0_a),
@@ -234,24 +234,28 @@ def find_narrowphase_pairs(
 ) -> tuple[list[NarrowHullObsPair], list[NarrowHullGrpPair]]:
     """Filter broadphase pairs with Hull4 GJK; keep active pairs (d_geom < d_req).
 
-    Each Hermite segment → subdivided Bézier Hull4s. Interval ends come from
-    cached ``seg.samples()`` ts (call ``graph.refresh`` first). Obstacles use
+    Each Hermite segment → subdivided Bézier Hull4s. Interval ends from
+    ``seg_xyz`` linspace (call ``graph.refresh`` first). Obstacles use
     ``to_coal()`` (native convex Sphere/Capsule/Box).
     """
     obs_coal = {obs.name: obs.to_coal() for obs in obstacles}
 
     # (group_id, seg_id) → list of (Hull4, hermite_t0, hermite_t1)
-    hulls_by: dict[tuple[str, str], list[tuple[Hull4, float, float]]] = {}
+    hulls_by: dict[tuple[str, int], list[tuple[Hull4, float, float]]] = {}
     for g in graphs:
-        ends = g.hermite_ends(backend="numpy")
-        for sid, (p0, v0, p1, v1) in ends.items():
-            seg = g.segments[sid]
-            nu, nv = g.nodes[seg.u], g.nodes[seg.v]
-            # Stored u→v ends match refresh / samples ts (not travel-direction).
+        if g.seg_xyz is None:
+            raise RuntimeError(f"graph {g.id}: call refresh before hull narrowphase")
+        ends = np.asarray(
+            g.seg_ends if g.seg_ends is not None else g.hermite_ends(backend="numpy"),
+            dtype=float,
+        )
+        rad = np.asarray(g.radius, dtype=float)
+        T = int(np.asarray(g.seg_xyz).shape[1])
+        ts = np.linspace(0.0, 1.0, T)
+        for sid, seg in enumerate(g.segments):
+            p0, v0, p1, v1 = ends[sid]
             C = hermite_bezier_controls(p0, v0, p1, v1, backend="numpy")
-            r = max(float(nu.radius), float(nv.radius))
-            ts, _, _ = seg.samples(backend="numpy")
-            n = int(ts.shape[0])
+            r = max(float(rad[seg.u]), float(rad[seg.v]))
             hulls_by[(g.id, sid)] = [
                 (
                     Hull4.from_pts(
@@ -261,7 +265,7 @@ def find_narrowphase_pairs(
                     float(ts[k]),
                     float(ts[k + 1]),
                 )
-                for k in range(n - 1)
+                for k in range(T - 1)
             ]
 
     narrow_obs: list[NarrowHullObsPair] = []

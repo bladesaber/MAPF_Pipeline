@@ -11,8 +11,6 @@ import jax
 import numpy as np
 
 from pipe_smooth.costs.clear import (
-    clear_capsule_active,
-    clear_hull_active,
     pack_capsule_active,
     clear_capsule_packed,
     pack_hull_active,
@@ -20,7 +18,7 @@ from pipe_smooth.costs.clear import (
 )
 from pipe_smooth.costs.path import graph_curvature, graph_length
 from pipe_smooth.costs.space import graph_space, graph_tangent_reg
-from pipe_smooth.costs.union import union_cost, pack_union_hits, union_cost_packed
+from pipe_smooth.costs.union import pack_union_hits, union_cost_packed
 
 from pipe_smooth.geometry.assemble import OptimizeGraph
 from pipe_smooth.optimize.pack import PackLayout, unpack
@@ -45,9 +43,7 @@ def total_loss(
     graphs: Sequence[OptimizeGraph],
     weights: LossWeights,
     *,
-    clear_active=None,
     clear_kind: Literal["capsule", "hull"] = "capsule",
-    union_hits: dict[str, Any] | None = None,
     layout: PackLayout | None = None,
     x=None,
     clear_obs_buf: dict[str, Any] | None = None,
@@ -55,11 +51,10 @@ def total_loss(
     union_buf: dict[str, Any] | None = None,
     backend: str = "numpy",
 ):
-    """(J, parts) with frozen active clearance / union sets (outside AD detection).
+    """(J, parts) with packed clear/union buffers (detection outside AD).
 
-    Prefer packed buffers (``clear_*_buf`` / ``union_buf`` + ``layout`` + ``x``) for
-    JIT-stable clear/union. Legacy ``clear_active`` / ``union_hits`` still work.
-    ``parts``: L, K, space, v, union, clear.
+    Clear/union need ``layout`` + ``x`` + bufs. ``parts``: L, K, space, v, union, clear.
+    Graphs must be refreshed (``seg_xyz`` / ``seg_ends``).
     """
     xp = _backend(backend)
     w = weights
@@ -75,44 +70,27 @@ def total_loss(
         if w.mu_v != 0.0:
             parts["v"] = parts["v"] + graph_tangent_reg(g, mu=w.mu_v, backend=backend)
 
-    if w.lam != 0.0:
-        if union_buf is not None and layout is not None and x is not None:
-            parts["union"] = union_cost_packed(
-                x, union_buf, layout, lam=w.lam, backend=backend
-            )
-        elif union_hits:
-            for g in graphs:
-                if g.id in union_hits:
-                    parts["union"] = parts["union"] + union_cost(
-                        union_hits[g.id], g, lam=w.lam, backend=backend
-                    )
+    if w.lam != 0.0 and union_buf is not None and layout is not None and x is not None:
+        parts["union"] = union_cost_packed(
+            x, union_buf, layout, lam=w.lam, backend=backend
+        )
 
-    if w.mu_obs != 0.0 or w.mu_grp != 0.0:
-        if (
-            clear_obs_buf is not None
-            and clear_grp_buf is not None
-            and layout is not None
-            and x is not None
-        ):
-            clear_fn = clear_capsule_packed if clear_kind == "capsule" else clear_hull_packed
-            parts["clear"] = clear_fn(
-                x,
-                clear_obs_buf,
-                clear_grp_buf,
-                layout,
-                mu_obs=w.mu_obs,
-                mu_grp=w.mu_grp,
-                backend=backend,
-            )
-        elif clear_active is not None:
-            clear_fn = clear_capsule_active if clear_kind == "capsule" else clear_hull_active
-            parts["clear"] = clear_fn(
-                clear_active,
-                graphs,
-                mu_obs=w.mu_obs,
-                mu_grp=w.mu_grp,
-                backend=backend,
-            )
+    if (w.mu_obs != 0.0 or w.mu_grp != 0.0) and (
+        clear_obs_buf is not None
+        and clear_grp_buf is not None
+        and layout is not None
+        and x is not None
+    ):
+        clear_fn = clear_capsule_packed if clear_kind == "capsule" else clear_hull_packed
+        parts["clear"] = clear_fn(
+            x,
+            clear_obs_buf,
+            clear_grp_buf,
+            layout,
+            mu_obs=w.mu_obs,
+            mu_grp=w.mu_grp,
+            backend=backend,
+        )
 
     j = parts["L"] + parts["K"] + parts["space"] + parts["v"] + parts["union"] + parts["clear"]
     return j, parts
@@ -173,7 +151,7 @@ def loss_and_grad(
         obs_b, grp_b = pack_capsule_active(active, layout, backend="jax")
     else:
         obs_b, grp_b = pack_hull_active(active, layout, backend="jax")
-    
+
     union_b = pack_union_hits(union_hits, layout, backend="jax")
 
     key = (

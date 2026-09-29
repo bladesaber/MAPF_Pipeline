@@ -51,6 +51,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from pipe_smooth.costs.clear import pack_capsule_active, pack_hull_active
 from pipe_smooth.geometry.assemble import OptimizeGraph
 from pipe_smooth.optimize.loss import LossWeights, loss_and_grad
 from pipe_smooth.optimize.pack import PackLayout, pack, unpack
@@ -103,7 +104,7 @@ def interior_nlp(
 
     w = replace(weights, mu_obs=0.0, mu_grp=0.0, eta=0.0, mu_v=0.0)
     x = np.asarray(pack(graphs, layout, backend="numpy"), dtype=np.float64)
-    clear_active = None
+    clear_obs_buf = clear_grp_buf = None
     union_hits = None
     n = int(layout.n)
 
@@ -115,7 +116,15 @@ def interior_nlp(
             for g in graphs:
                 g.refresh(backend="numpy")
             if refresh_clear is not None:
-                clear_active = refresh_clear(graphs)
+                active = refresh_clear(graphs)
+                if clear_kind == "capsule":
+                    clear_obs_buf, clear_grp_buf = pack_capsule_active(
+                        active, layout, backend="jax"
+                    )
+                else:
+                    clear_obs_buf, clear_grp_buf = pack_hull_active(
+                        active, layout, backend="jax"
+                    )
             if refresh_union is not None:
                 union_hits = refresh_union(graphs)
 
@@ -137,7 +146,10 @@ def interior_nlp(
                 gr.refresh(backend="jax")
             return constraints(
                 graphs,
-                clear_active=clear_active,
+                x=xx_j,
+                layout=layout,
+                clear_obs_buf=clear_obs_buf,
+                clear_grp_buf=clear_grp_buf,
                 clear_kind=clear_kind,  # type: ignore[arg-type]
                 eps_band=eps_band,
                 upper_only=upper_only,

@@ -21,8 +21,9 @@ def space_cost(xyz, eta: float = 1.0, ds_max=None, soft_sigma: float = 1e-2, bac
     """
     xp = _backend(backend)
     xyz = xp.asarray(xyz)
-    ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
-    mean = xp.mean(ds)
+    assert xyz.ndim == 3 and xyz.shape[-1] == 3, f"xyz need (B,T,3), got {xyz.shape}"
+    ds = xp.linalg.norm(xyz[:, 1:] - xyz[:, :-1], axis=-1)
+    mean = xp.mean(ds, axis=-1, keepdims=True)  # (B, 1)
     j = xp.sum((ds - mean) ** 2)
     if ds_max is not None:
         j = j + xp.sum(softplus(ds - ds_max, sigma=soft_sigma, backend=backend) ** 2)
@@ -37,14 +38,11 @@ def graph_space(
     backend: str = "numpy",
 ):
     """Σ space_cost over Hermite segments; each seg once. Requires ``graph.refresh``."""
-    xp = _backend(backend)
-    total = xp.asarray(0.0)
-    for seg in graph.segments.values():
-        _, xyz, _ = seg.samples(backend=backend)
-        total = total + space_cost(
-            xyz, eta=eta, ds_max=ds_max, soft_sigma=soft_sigma, backend=backend
-        )
-    return total
+    if graph.seg_xyz is None:
+        raise RuntimeError("call refresh before graph_space")
+    return space_cost(
+        graph.seg_xyz, eta=eta, ds_max=ds_max, soft_sigma=soft_sigma, backend=backend
+    )
 
 
 def graph_tangent_reg(
@@ -59,12 +57,14 @@ def graph_tangent_reg(
     β=1 ≈ straight uniform-t speed ||γ'||=chord; β≪1 tightens handles (anti κ-spike).
     """
     xp = _backend(backend)
-    j = xp.asarray(0.0)
-    for p0, v0, p1, v1 in graph.hermite_ends(backend=backend).values():
-        vmax = beta * (xp.linalg.norm(p1 - p0) + _EPS)
-        j = j + softplus(xp.linalg.norm(v0) - vmax, sigma=soft_sigma, backend=backend) ** 2
-        j = j + softplus(xp.linalg.norm(v1) - vmax, sigma=soft_sigma, backend=backend) ** 2
-    return mu * j
+    if graph.seg_ends is None:
+        raise RuntimeError("call refresh before graph_tangent_reg")
+    ends = xp.asarray(graph.seg_ends)  # (S, 4, 3)
+    p0, v0, p1, v1 = ends[:, 0], ends[:, 1], ends[:, 2], ends[:, 3] # (S, 3)
+    vmax = beta * (xp.linalg.norm(p1 - p0, axis=-1) + _EPS) # (S, )
+    j = softplus(xp.linalg.norm(v0, axis=-1) - vmax, sigma=soft_sigma, backend=backend) ** 2
+    j = j + softplus(xp.linalg.norm(v1, axis=-1) - vmax, sigma=soft_sigma, backend=backend) ** 2
+    return mu * xp.sum(j)
 
 
 def graph_tangent_constraint(
@@ -87,14 +87,18 @@ def graph_tangent_constraint(
         Flat vector of residuals ``g`` with ``g <= 0`` feasible (two entries per segment).
     """
     xp = _backend(backend)
-    parts = []
-    for p0, v0, p1, v1 in graph.hermite_ends(backend=backend).values():
-        vmax = beta * (xp.linalg.norm(p1 - p0) + _EPS)
-        parts.append(xp.linalg.norm(v0) - vmax)
-        parts.append(xp.linalg.norm(v1) - vmax)
-    if not parts:
+    if graph.seg_ends is None:
+        raise RuntimeError("call refresh before graph_tangent_constraint")
+    ends = xp.asarray(graph.seg_ends)
+    if int(ends.shape[0]) == 0:
         return xp.zeros((0,))
-    return xp.stack(parts)
+    p0, v0, p1, v1 = ends[:, 0], ends[:, 1], ends[:, 2], ends[:, 3]
+    vmax = beta * (xp.linalg.norm(p1 - p0, axis=-1) + _EPS) # (S, )
+    g = xp.stack(
+        [xp.linalg.norm(v0, axis=-1) - vmax, xp.linalg.norm(v1, axis=-1) - vmax],
+        axis=1,
+    )
+    return g.reshape(-1)
 
 
 def graph_space_band_constraint(
@@ -119,17 +123,16 @@ def graph_space_band_constraint(
         Flat vector of residuals ``g`` with ``g <= 0`` feasible (one block per segment).
     """
     xp = _backend(backend)
-    parts = []
-    for seg in graph.segments.values():
-        _, xyz, _ = seg.samples(backend=backend)
-        ds = xp.linalg.norm(xyz[1:] - xyz[:-1], axis=-1)
-        mean = xp.mean(ds)
-        hi = ds - (1.0 + eps) * mean
-        if upper_only:
-            parts.append(hi)
-        else:
-            lo = (1.0 - eps) * mean - ds
-            parts.append(xp.concatenate([hi, lo], axis=0))
-    if not parts:
+    if graph.seg_xyz is None:
+        raise RuntimeError("call refresh before graph_space_band_constraint")
+    xyz = xp.asarray(graph.seg_xyz)
+    assert xyz.ndim == 3 and xyz.shape[-1] == 3, f"seg_xyz need (S,T,3), got {xyz.shape}"
+    if int(xyz.shape[0]) == 0:
         return xp.zeros((0,))
-    return xp.concatenate(parts, axis=0)
+    ds = xp.linalg.norm(xyz[:, 1:] - xyz[:, :-1], axis=-1)
+    mean = xp.mean(ds, axis=-1, keepdims=True)
+    hi = ds - (1.0 + eps) * mean
+    if upper_only:
+        return hi.reshape(-1)
+    lo = (1.0 - eps) * mean - ds
+    return xp.concatenate([hi, lo], axis=-1).reshape(-1)
