@@ -186,7 +186,7 @@ def load_graphs(path: str | Path) -> list[OptimizeGraph]:
         raise ValueError(f"graph input must be .json or a directory, got {path}")
     graphs = [OptimizeGraph.load(p) for p in files]
     for g in graphs:
-        g.refresh(backend="numpy")
+        g.refresh(backend="numpy", store=True)
     return graphs
 
 
@@ -247,7 +247,7 @@ def build_graphs(
     parts = build_junctions_all(trees, domain=domain, tau0=tau0, alpha=alpha)
     graphs = [assemble_hermite_graph(p, length_max=length_max) for p in parts]
     for g in graphs:
-        g.refresh(backend="numpy")
+        g.refresh(backend="numpy", store=True)
     return {"trees": trees, "parts": parts, "graphs": graphs}
 
 

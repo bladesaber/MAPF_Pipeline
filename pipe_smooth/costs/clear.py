@@ -104,9 +104,7 @@ def clear_capsule_active(
     xp = _backend(backend)
     ends: dict[tuple[str, int], Any] = {}
     for g in graphs:
-        if g.seg_ends is None:
-            raise RuntimeError("call refresh before clear_capsule_active")
-        e = xp.asarray(g.seg_ends)
+        e = xp.asarray(g.hermite_ends(backend=backend))
         for s in range(int(e.shape[0])):
             ends[(g.id, s)] = e[s]
     narrow_obs, narrow_grp = active
@@ -163,9 +161,7 @@ def clear_hull_active(
     xp = _backend(backend)
     ends: dict[tuple[str, int], Any] = {}
     for g in graphs:
-        if g.seg_ends is None:
-            raise RuntimeError("call refresh before clear_hull_active")
-        e = xp.asarray(g.seg_ends)
+        e = xp.asarray(g.hermite_ends(backend=backend))
         for s in range(int(e.shape[0])):
             ends[(g.id, s)] = e[s]
     narrow_obs, narrow_grp = active
@@ -228,9 +224,7 @@ def clear_capsule_active_constraint(
     xp = _backend(backend)
     ends: dict[tuple[str, int], Any] = {}
     for g in graphs:
-        if g.seg_ends is None:
-            raise RuntimeError("call refresh before clear_capsule_active_constraint")
-        e = xp.asarray(g.seg_ends)
+        e = xp.asarray(g.hermite_ends(backend=backend))
         for s in range(int(e.shape[0])):
             ends[(g.id, s)] = e[s]
     narrow_obs, narrow_grp = active
@@ -295,9 +289,7 @@ def clear_hull_active_constraint(
     xp = _backend(backend)
     ends: dict[tuple[str, int], Any] = {}
     for g in graphs:
-        if g.seg_ends is None:
-            raise RuntimeError("call refresh before clear_hull_active_constraint")
-        e = xp.asarray(g.seg_ends)
+        e = xp.asarray(g.hermite_ends(backend=backend))
         for s in range(int(e.shape[0])):
             ends[(g.id, s)] = e[s]
     narrow_obs, narrow_grp = active

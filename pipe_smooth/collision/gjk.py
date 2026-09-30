@@ -235,20 +235,16 @@ def find_narrowphase_pairs(
     """Filter broadphase pairs with Hull4 GJK; keep active pairs (d_geom < d_req).
 
     Each Hermite segment → subdivided Bézier Hull4s. Interval ends from
-    ``seg_xyz`` linspace (call ``graph.refresh`` first). Obstacles use
-    ``to_coal()`` (native convex Sphere/Capsule/Box).
+    ``seg_*`` (``refresh(..., store=True)``). Obstacles use ``to_coal()``.
     """
     obs_coal = {obs.name: obs.to_coal() for obs in obstacles}
 
     # (group_id, seg_id) → list of (Hull4, hermite_t0, hermite_t1)
     hulls_by: dict[tuple[str, int], list[tuple[Hull4, float, float]]] = {}
     for g in graphs:
-        if g.seg_xyz is None:
-            raise RuntimeError(f"graph {g.id}: call refresh before hull narrowphase")
-        ends = np.asarray(
-            g.seg_ends if g.seg_ends is not None else g.hermite_ends(backend="numpy"),
-            dtype=float,
-        )
+        if g.seg_ends is None or g.seg_xyz is None:
+            g.refresh(backend="numpy", store=True)
+        ends = np.asarray(g.seg_ends, dtype=float)
         rad = np.asarray(g.radius, dtype=float)
         T = int(np.asarray(g.seg_xyz).shape[1])
         ts = np.linspace(0.0, 1.0, T)

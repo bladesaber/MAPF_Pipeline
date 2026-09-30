@@ -54,7 +54,7 @@ import numpy as np
 from pipe_smooth.costs.clear import pack_capsule_active, pack_hull_active
 from pipe_smooth.geometry.assemble import OptimizeGraph
 from pipe_smooth.optimize.loss import LossWeights, loss_and_grad
-from pipe_smooth.optimize.pack import PackLayout, pack, unpack
+from pipe_smooth.optimize.pack import PackLayout, pack, unpack, refresh_from_x
 from pipe_smooth.optimize.recorder import Recorder
 from pipe_smooth.optimize.sqp import constraints
 
@@ -114,7 +114,7 @@ def interior_nlp(
         ):
             unpack(x, graphs, layout, backend="numpy")
             for g in graphs:
-                g.refresh(backend="numpy")
+                g.refresh(backend="numpy", store=True)
             if refresh_clear is not None:
                 active = refresh_clear(graphs)
                 if clear_kind == "capsule":
@@ -141,9 +141,7 @@ def interior_nlp(
 
         def _c_fn(xx):
             xx_j = jnp.asarray(xx, dtype=jnp.float32)
-            unpack(xx_j, graphs, layout, backend="jax")
-            for gr in graphs:
-                gr.refresh(backend="jax")
+            samples = refresh_from_x(xx_j, graphs, layout, backend="jax")
             return constraints(
                 graphs,
                 x=xx_j,
@@ -156,6 +154,7 @@ def interior_nlp(
                 beta_v=beta_v,
                 use_space=weights.eta > 0.0,
                 use_tangent=weights.mu_v > 0.0,
+                samples=samples,
                 backend="jax",
             )
 
@@ -248,4 +247,4 @@ def interior_nlp(
         raise RuntimeError("recorder.best_x is None; no step recorded a state")
     unpack(recorder.best_x, graphs, layout, backend="numpy")
     for g in graphs:
-        g.refresh(backend="numpy")
+        g.refresh(backend="numpy", store=True)

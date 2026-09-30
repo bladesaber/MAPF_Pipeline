@@ -250,3 +250,26 @@ def unpack(x: Any, graphs: Sequence[OptimizeGraph], layout: PackLayout, backend:
                 vel[vn] = np.asarray(x[vo : vo + 3 * vn.size], dtype=float).reshape(-1, 3)
             g.pos, g.v = pos, vel
     return graphs
+
+
+def refresh_from_x(
+    x: Any,
+    graphs: Sequence[OptimizeGraph],
+    layout: PackLayout,
+    ts_count: int = 10,
+    backend: str = "jax",
+):
+    """Per-graph ``(ends, xyz, radius)`` from packed ``x``; does not write ``graphs``."""
+    xp = _backend(backend)
+    x = xp.asarray(x)
+    out = []
+    for gi, g in enumerate(graphs):
+        pos, vel = xp.asarray(g.pos), xp.asarray(g.v)
+        pn, vn = layout.free_pos_idx[gi], layout.free_v_idx[gi]
+        po, vo = layout.free_pos_offset[gi], layout.free_v_offset[gi]
+        if pn.size:
+            pos = pos.at[pn].set(x[po : po + 3 * pn.size].reshape(-1, 3))  # type: ignore
+        if vn.size:
+            vel = vel.at[vn].set(x[vo : vo + 3 * vn.size].reshape(-1, 3))  # type: ignore
+        out.append(g.refresh(pos, vel, ts_count, backend))
+    return out

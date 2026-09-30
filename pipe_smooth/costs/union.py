@@ -56,10 +56,10 @@ def find_union_pairs(graph: OptimizeGraph, alpha: float = 1.0) -> list[UnionHit]
 
     Only segments whose ``edge`` is in ``graph.junctions[Z]``. Both Chamfer
     directions. Keep d < α (r_a + r_b); group matches by segment pair into arrays.
-    Requires ``graph.refresh`` (``seg_xyz`` / ``seg_radius``).
+    Uses ``seg_xyz`` / ``seg_radius`` (``refresh(..., store=True)`` first).
     """
     if graph.seg_xyz is None or graph.seg_radius is None:
-        raise RuntimeError("call refresh before find_union_pairs")
+        graph.refresh(backend="numpy", store=True)
     seg_xyz = np.asarray(graph.seg_xyz, dtype=float)
     seg_radius = np.asarray(graph.seg_radius, dtype=float)
     T = int(seg_xyz.shape[1])

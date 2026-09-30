@@ -1,6 +1,6 @@
 """AABB broadphase: OptimizeGraph segments vs obstacles and vs other groups.
 
-Hermite → Bézier-control AABB via ``hermite_ends`` / ``seg_ends`` (stored u→v);
+Hermite → Bézier-control AABB via ``hermite_ends`` (stored u→v);
 R-tree (3D) for queries. Narrowphase / active-set stay outside this module.
 """
 

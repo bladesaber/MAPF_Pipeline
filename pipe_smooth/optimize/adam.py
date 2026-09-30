@@ -59,7 +59,7 @@ def adam(
         ):
             unpack(np.asarray(x), graphs, layout, backend="numpy")
             for g in graphs:
-                g.refresh(backend="numpy")
+                g.refresh(backend="numpy", store=True)
             if refresh_clear is not None:
                 clear_active = refresh_clear(graphs)
             if refresh_union is not None:
@@ -90,7 +90,7 @@ def adam(
         raise RuntimeError("recorder.best_x is None; no step recorded a state")
     unpack(recorder.best_x, graphs, layout, backend="numpy")
     for g in graphs:
-        g.refresh(backend="numpy")
+        g.refresh(backend="numpy", store=True)
 
 
 def adam_annealed(
@@ -139,7 +139,7 @@ def adam_annealed(
         ):
             unpack(np.asarray(x), graphs, layout, backend="numpy")
             for g in graphs:
-                g.refresh(backend="numpy")
+                g.refresh(backend="numpy", store=True)
             if refresh_clear is not None:
                 clear_active = refresh_clear(graphs)
             if refresh_union is not None:
@@ -183,4 +183,4 @@ def adam_annealed(
         raise RuntimeError("recorder.best_x is None; no step recorded a state")
     unpack(recorder.best_x, graphs, layout, backend="numpy")
     for g in graphs:
-        g.refresh(backend="numpy")
+        g.refresh(backend="numpy", store=True)

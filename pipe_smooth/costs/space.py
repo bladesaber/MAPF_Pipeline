@@ -36,12 +36,13 @@ def graph_space(
     ds_max=None,
     soft_sigma: float = 1e-2,
     backend: str = "numpy",
+    xyz=None,
 ):
-    """Σ space_cost over Hermite segments; each seg once. Requires ``graph.refresh``."""
-    if graph.seg_xyz is None:
-        raise RuntimeError("call refresh before graph_space")
+    """Σ space_cost over Hermite segments; each seg once. Pass ``xyz`` (no ``seg_*``)."""
+    if xyz is None:
+        _, xyz, _ = graph.refresh(backend=backend)
     return space_cost(
-        graph.seg_xyz, eta=eta, ds_max=ds_max, soft_sigma=soft_sigma, backend=backend
+        xyz, eta=eta, ds_max=ds_max, soft_sigma=soft_sigma, backend=backend
     )
 
 
@@ -51,15 +52,16 @@ def graph_tangent_reg(
     mu: float = 1.0,
     soft_sigma: float = 1e-2,
     backend: str = "numpy",
+    ends=None,
 ):
     """μ Σ [||v|| - β||p1-p0||]_+^σ ² on each Hermite end (port clamps via hermite_ends).
 
     β=1 ≈ straight uniform-t speed ||γ'||=chord; β≪1 tightens handles (anti κ-spike).
     """
     xp = _backend(backend)
-    if graph.seg_ends is None:
-        raise RuntimeError("call refresh before graph_tangent_reg")
-    ends = xp.asarray(graph.seg_ends)  # (S, 4, 3)
+    if ends is None:
+        ends, _, _ = graph.refresh(backend=backend)
+    ends = xp.asarray(ends)  # (S, 4, 3)
     p0, v0, p1, v1 = ends[:, 0], ends[:, 1], ends[:, 2], ends[:, 3] # (S, 3)
     vmax = beta * (xp.linalg.norm(p1 - p0, axis=-1) + _EPS) # (S, )
     j = softplus(xp.linalg.norm(v0, axis=-1) - vmax, sigma=soft_sigma, backend=backend) ** 2
@@ -71,6 +73,7 @@ def graph_tangent_constraint(
     graph: OptimizeGraph,
     beta: float = 0.4,
     backend: str = "numpy",
+    ends=None,
 ):
     """SQP Hermite tangent-norm bound (§7.1.2). Feasible iff all residuals ``<= 0``.
 
@@ -87,9 +90,9 @@ def graph_tangent_constraint(
         Flat vector of residuals ``g`` with ``g <= 0`` feasible (two entries per segment).
     """
     xp = _backend(backend)
-    if graph.seg_ends is None:
-        raise RuntimeError("call refresh before graph_tangent_constraint")
-    ends = xp.asarray(graph.seg_ends)
+    if ends is None:
+        ends, _, _ = graph.refresh(backend=backend)
+    ends = xp.asarray(ends)
     if int(ends.shape[0]) == 0:
         return xp.zeros((0,))
     p0, v0, p1, v1 = ends[:, 0], ends[:, 1], ends[:, 2], ends[:, 3]
@@ -106,6 +109,7 @@ def graph_space_band_constraint(
     eps: float = 0.2,
     upper_only: bool = False,
     backend: str = "numpy",
+    xyz=None,
 ):
     """SQP sample-spacing band (§7.1.1). Feasible iff all returned residuals ``<= 0``.
 
@@ -123,9 +127,9 @@ def graph_space_band_constraint(
         Flat vector of residuals ``g`` with ``g <= 0`` feasible (one block per segment).
     """
     xp = _backend(backend)
-    if graph.seg_xyz is None:
-        raise RuntimeError("call refresh before graph_space_band_constraint")
-    xyz = xp.asarray(graph.seg_xyz)
+    if xyz is None:
+        _, xyz, _ = graph.refresh(backend=backend)
+    xyz = xp.asarray(xyz)
     assert xyz.ndim == 3 and xyz.shape[-1] == 3, f"seg_xyz need (S,T,3), got {xyz.shape}"
     if int(xyz.shape[0]) == 0:
         return xp.zeros((0,))

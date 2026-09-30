@@ -64,7 +64,7 @@ from pipe_smooth.costs.clear import (
 from pipe_smooth.costs.space import graph_space_band_constraint, graph_tangent_constraint
 from pipe_smooth.geometry.assemble import OptimizeGraph
 from pipe_smooth.optimize.loss import LossWeights, loss_and_grad
-from pipe_smooth.optimize.pack import PackLayout, pack, unpack
+from pipe_smooth.optimize.pack import PackLayout, pack, unpack, refresh_from_x
 from pipe_smooth.optimize.recorder import Recorder
 from pipe_smooth.utils import backend as _backend
 
@@ -82,6 +82,7 @@ def constraints(
     beta_v: float = 0.4,
     use_space: bool = True,
     use_tangent: bool = True,
+    samples=None,
     backend: str = "jax",
 ):
     """SQP inequality stack (§7.1–7.2). Feasible iff all residuals ``g(x) <= 0``.
@@ -123,16 +124,18 @@ def constraints(
             )
 
     if use_space:
-        for g in graphs:
+        for i, g in enumerate(graphs):
+            xyz = None if samples is None else samples[i][1]
             parts = graph_space_band_constraint(
-                g, eps=eps_band, upper_only=upper_only, backend=backend
+                g, eps=eps_band, upper_only=upper_only, backend=backend, xyz=xyz
             )
             if parts.size > 0:
                 blocks.append(parts)
 
     if use_tangent:
-        for g in graphs:
-            parts = graph_tangent_constraint(g, beta=beta_v, backend=backend)
+        for i, g in enumerate(graphs):
+            ends = None if samples is None else samples[i][0]
+            parts = graph_tangent_constraint(g, beta=beta_v, backend=backend, ends=ends)
             if parts.size > 0:
                 blocks.append(parts)
 
@@ -223,7 +226,7 @@ def elastic_qp(
         ):
             unpack(np.asarray(x), graphs, layout, backend="numpy")
             for g in graphs:
-                g.refresh(backend="numpy")
+                g.refresh(backend="numpy", store=True)
             if refresh_clear is not None:
                 active = refresh_clear(graphs)
                 if clear_kind == "capsule":
@@ -242,9 +245,7 @@ def elastic_qp(
         )
 
         def c_fn(xx):
-            unpack(xx, graphs, layout, backend="jax")
-            for gr in graphs:
-                gr.refresh(backend="jax")
+            samples = refresh_from_x(xx, graphs, layout, backend="jax")
             return constraints(
                 graphs,
                 x=xx,
@@ -257,6 +258,7 @@ def elastic_qp(
                 beta_v=beta_v,
                 use_space=weights.eta > 0.0,
                 use_tangent=weights.mu_v > 0.0,
+                samples=samples,
                 backend="jax",
             )
 
@@ -324,4 +326,4 @@ def elastic_qp(
         raise RuntimeError("recorder.best_x is None; no step recorded a state")
     unpack(recorder.best_x, graphs, layout, backend="numpy")
     for g in graphs:
-        g.refresh(backend="numpy")
+        g.refresh(backend="numpy", store=True)

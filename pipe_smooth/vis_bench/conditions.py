@@ -222,7 +222,7 @@ def _assemble(
     )
     part = build_junctions(tree, domain, tau0=tau0, alpha=alpha)
     g = assemble_hermite_graph(part, length_max=sp)
-    g.refresh(backend="numpy")
+    g.refresh(backend="numpy", store=True)
     return g, tree, part
 
 

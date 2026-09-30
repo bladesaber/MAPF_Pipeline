@@ -739,9 +739,10 @@ class TopologyViewer(QMainWindow):
                         ends[s, 0], ends[s, 1], ends[s, 2], ends[s, 3], self.resolution
                     ),
                 )
-            g.refresh(ts_count=T, backend="numpy")
-            xyz = np.asarray(g.seg_xyz, float)
-            rad = np.asarray(g.seg_radius, float)
+            ends, xyz, rad = g.refresh(ts_count=T, backend="numpy", store=True)
+            ends = np.asarray(ends, float)
+            xyz = np.asarray(xyz, float)
+            rad = np.asarray(rad, float)
             for sid in range(len(g.segments)):
                 self._poly(
                     xyz[sid],

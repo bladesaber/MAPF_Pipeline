@@ -880,9 +880,10 @@ class BenchViewer(QMainWindow):
                         ends[s, 0], ends[s, 1], ends[s, 2], ends[s, 3], spacing
                     ),
                 )
-            g.refresh(ts_count=T, backend="numpy")
-            xyz = np.asarray(g.seg_xyz, float)
-            rad = np.asarray(g.seg_radius, float)
+            ends, xyz, rad = g.refresh(ts_count=T, backend="numpy", store=True)
+            ends = np.asarray(ends, float)
+            xyz = np.asarray(xyz, float)
+            rad = np.asarray(rad, float)
             pos = np.asarray(g.pos, float)
             if mode != "point":
                 for sid in range(len(g.segments)):

@@ -392,8 +392,7 @@ def find_narrowphase_pairs(
 ) -> tuple[list[NarrowObsPair], list[NarrowGrpPair]]:
     """Filter broadphase pairs with capsule kernels; keep pairs with non-empty hits.
 
-    Uses ``seg_xyz`` / ``seg_radius`` (call ``graph.refresh`` first).
-    Narrowphase runs on consecutive sample chords along stored u→v.
+    Uses ``seg_xyz`` / ``seg_radius`` (``refresh(..., store=True)`` first).
     """
     by_obs = {obs.name: obs for obs in obstacles}
     narrow_obs: list[NarrowObsPair] = []
@@ -403,7 +402,7 @@ def find_narrowphase_pairs(
     chords_by: dict[tuple[str, int], list[tuple]] = {}
     for g in graphs:
         if g.seg_xyz is None or g.seg_radius is None:
-            raise RuntimeError(f"graph {g.id}: call refresh before capsule narrowphase")
+            g.refresh(backend="numpy", store=True)
         xyz = np.asarray(g.seg_xyz, dtype=float)
         radius = np.asarray(g.seg_radius, dtype=float)
         T = int(xyz.shape[1])

@@ -391,25 +391,26 @@ def k_hermite(
     return K
 
 
-def graph_length(graph: OptimizeGraph, backend: str = "numpy"):
+def graph_length(graph: OptimizeGraph, backend: str = "numpy", xyz=None):
     """Σ chord energy (path_length) over Hermite segments; each seg once.
 
-    Requires ``graph.refresh`` (uses ``seg_xyz`` ``(S, T, 3)``).
+    Pass ``xyz`` from ``refresh`` / ``refresh_from_x`` (no ``seg_*`` cache).
     """
-    return path_length(graph.seg_xyz, backend=backend)
+    if xyz is None:
+        _, xyz, _ = graph.refresh(backend=backend)
+    return path_length(xyz, backend=backend)
 
 
-def graph_curvature(graph: OptimizeGraph, backend: str = "numpy"):
+def graph_curvature(graph: OptimizeGraph, backend: str = "numpy", xyz=None, radius=None):
     """Σ k_bend: each seg interior once + each unique 3-point joint once.
 
-    Requires ``graph.refresh`` and ``bind_ends_tables`` / ``bind_joint_tables``.
-    Interiors use ``seg_xyz`` (u→v) with ``port_v*``; joints use ``joint_*``.
+    Pass ``xyz``/``radius`` from ``refresh`` (no ``seg_*`` cache).
     """
     xp = _backend(backend)
-    if graph.seg_xyz is None or graph.seg_radius is None:
-        raise RuntimeError("call refresh before graph_curvature")
-    xyz = xp.asarray(graph.seg_xyz)
-    radius = xp.asarray(graph.seg_radius)
+    if xyz is None or radius is None:
+        _, xyz, radius = graph.refresh(backend=backend)
+    xyz = xp.asarray(xyz)
+    radius = xp.asarray(radius)
 
     # ports in u→v; unmasked → chord dir so port term is ~0
     t0 = (xyz[:, 1] - xyz[:, 0]) / (

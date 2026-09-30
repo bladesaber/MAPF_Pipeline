@@ -1,7 +1,7 @@
 """Build optimize Hermite graph from junction trunk/junction edges + port tangents.
 
-Geometry true source is SoA on ``OptimizeGraph`` (``pos``/``v``/``radius``,
-``seg_xyz``/``seg_radius``). Nodes/segments are lists; list index is the id.
+Geometry true source is SoA ``pos``/``v``/``radius``. ``refresh`` returns
+``(ends, xyz, radius)``; pass ``store=True`` to cache on ``seg_*`` for detection.
 """
 
 from __future__ import annotations
@@ -148,7 +148,7 @@ class OptimizeGraph:
     joint_flip0: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=bool))
     joint_flip1: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=bool))
 
-    # SoA segment samples / ends (derived from pos/v; refresh after DOF changes)
+    # SoA segment samples / ends (derived from pos/v; refresh(..., store=True))
     seg_ends: object | None = None  # (S, 4, 3) last hermite_ends
     seg_xyz: object | None = None  # (S, T, 3)
     seg_radius: object | None = None  # (S, T)
@@ -261,10 +261,20 @@ class OptimizeGraph:
         )
         return g.bind_ends_tables()
 
-    def hermite_ends(self, backend: str = "numpy"):
-        """``(S, 4, 3)`` = p0, v0, p1, v1 from SoA + stored port clamps."""
+    def hermite_ends(self, pos=None, v=None, backend: str = "numpy"):
+        """Gather Hermite end states ``(S, 4, 3)`` = p0, v0, p1, v1 (+ port clamps).
+
+        Args:
+            pos: node positions ``(N, 3)``; default ``self.pos``
+            v: node tangents ``(N, 3)``; default ``self.v``
+            backend: ``'numpy'`` | ``'jax'``
+
+        Returns:
+            ends: ``(S, 4, 3)`` segment ends in stored u→v order
+        """
         xp = _backend(backend)
-        pos, vel = xp.asarray(self.pos), xp.asarray(self.v)
+        pos = xp.asarray(self.pos if pos is None else pos)
+        vel = xp.asarray(self.v if v is None else v)
         u, vv = self.u_idx, self.v_idx
         p0, p1 = pos[u], pos[vv]
         v0 = xp.asarray(self.u_sign)[:, None] * vel[u]
@@ -275,19 +285,35 @@ class OptimizeGraph:
         v1 = xp.where(m1, xp.asarray(self.port_v1), v1)
         return xp.stack([p0, v0, p1, v1], axis=1)
 
-    def refresh(self, ts_count: int = 10, backend: str = "numpy"):
-        """Batched refresh of all segment curves into ``seg_xyz`` / ``seg_radius``."""
+    def refresh(
+        self, pos=None, v=None, ts_count: int = 10, backend: str = "numpy", store: bool = False
+    ):
+        """Sample all Hermite segments from ``pos``/``v``.
+
+        Args:
+            pos: node positions ``(N, 3)``; default ``self.pos``
+            v: node tangents ``(N, 3)``; default ``self.v``
+            ts_count: samples per segment (inclusive endpoints)
+            backend: ``'numpy'`` | ``'jax'``
+            store: if True (numpy only), write ``seg_ends`` / ``seg_xyz`` / ``seg_radius``
+
+        Returns:
+            ends: ``(S, 4, 3)`` from ``hermite_ends``
+            xyz: ``(S, T, 3)`` curve samples
+            radius: ``(S, T)`` linearly interpolated radii
+        """
         xp = _backend(backend)
+        ends = self.hermite_ends(pos, v, backend)
         T = max(int(ts_count), 2)
-        ends = self.hermite_ends(backend=backend)
-        self.seg_ends = ends
-        p0, v0, p1, v1 = ends[:, 0], ends[:, 1], ends[:, 2], ends[:, 3]
-        self.seg_xyz = sample_hermite(p0, v0, p1, v1, n=T, backend=backend)
+        xyz = sample_hermite(ends[:, 0], ends[:, 1], ends[:, 2], ends[:, 3], n=T, backend=backend)
         ts = xp.linspace(0.0, 1.0, T)
         r0 = xp.asarray(self.radius)[self.u_idx]
         r1 = xp.asarray(self.radius)[self.v_idx]
-        self.seg_radius = (1.0 - ts[None, :]) * r0[:, None] + ts[None, :] * r1[:, None]
-        return self
+        radius = (1.0 - ts[None, :]) * r0[:, None] + ts[None, :] * r1[:, None]
+        if store:
+            assert backend == "numpy", "store=True only supported for numpy backend"
+            self.seg_ends, self.seg_xyz, self.seg_radius = ends, xyz, radius
+        return ends, xyz, radius
 
     def check_usage_tangents_colinear(self, atol: float = 1e-6) -> None:
         def _same_end_derivative(a, b) -> bool:

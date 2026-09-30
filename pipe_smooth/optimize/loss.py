@@ -21,7 +21,7 @@ from pipe_smooth.costs.space import graph_space, graph_tangent_reg
 from pipe_smooth.costs.union import pack_union_hits, union_cost_packed
 
 from pipe_smooth.geometry.assemble import OptimizeGraph
-from pipe_smooth.optimize.pack import PackLayout, unpack
+from pipe_smooth.optimize.pack import PackLayout, refresh_from_x
 from pipe_smooth.optimize.pack_helper import sync_layout_budgets
 from pipe_smooth.utils import backend as _backend
 
@@ -49,26 +49,36 @@ def total_loss(
     clear_obs_buf: dict[str, Any] | None = None,
     clear_grp_buf: dict[str, Any] | None = None,
     union_buf: dict[str, Any] | None = None,
+    samples=None,
     backend: str = "numpy",
 ):
     """(J, parts) with packed clear/union buffers (detection outside AD).
 
     Clear/union need ``layout`` + ``x`` + bufs. ``parts``: L, K, space, v, union, clear.
-    Graphs must be refreshed (``seg_xyz`` / ``seg_ends``).
+    Pass ``samples`` from ``refresh_from_x`` (AD); else each graph calls ``refresh``.
     """
     xp = _backend(backend)
     w = weights
     z = xp.asarray(0.0)
     parts = {"L": z, "K": z, "space": z, "v": z, "union": z, "clear": z}
-    for g in graphs:
+    if samples is None:
+        samples = [g.refresh(backend=backend) for g in graphs]
+    for i, g in enumerate(graphs):
+        ends, xyz, radius = samples[i]
         if w.alpha != 0:
-            parts["L"] = parts["L"] + w.alpha * graph_length(g, backend=backend)
+            parts["L"] = parts["L"] + w.alpha * graph_length(g, backend=backend, xyz=xyz)
         if w.beta != 0:
-            parts["K"] = parts["K"] + w.beta * graph_curvature(g, backend=backend)
+            parts["K"] = parts["K"] + w.beta * graph_curvature(
+                g, backend=backend, xyz=xyz, radius=radius
+            )
         if w.eta != 0.0:
-            parts["space"] = parts["space"] + graph_space(g, eta=w.eta, backend=backend)
+            parts["space"] = parts["space"] + graph_space(
+                g, eta=w.eta, backend=backend, xyz=xyz
+            )
         if w.mu_v != 0.0:
-            parts["v"] = parts["v"] + graph_tangent_reg(g, mu=w.mu_v, backend=backend)
+            parts["v"] = parts["v"] + graph_tangent_reg(
+                g, mu=w.mu_v, backend=backend, ends=ends
+            )
 
     if w.lam != 0.0 and union_buf is not None and layout is not None and x is not None:
         parts["union"] = union_cost_packed(
@@ -111,7 +121,7 @@ def loss_and_grad(
     clear_kind: Literal["capsule", "hull"] = "capsule",
     union_hits: dict[str, Any] | None = None,
 ):
-    """(J, ∇_x J, parts). Unpack → refresh → packed clear/union on ``x``.
+    """(J, ∇_x J, parts). ``refresh_from_x`` + packed clear/union on ``x``.
 
     Packs active sets outside AD; ``jit`` only depends on fixed ``p_max_*`` shapes.
     """
@@ -172,9 +182,7 @@ def loss_and_grad(
     if _vg_cache["key"] != key:
 
         def f(xx, obs_buf, grp_buf, uni_buf):
-            unpack(xx, graphs, layout, backend="jax")
-            for g in graphs:
-                g.refresh(backend="jax")
+            samples = refresh_from_x(xx, graphs, layout, backend="jax")
             return total_loss(
                 graphs,
                 weights,
@@ -184,20 +192,12 @@ def loss_and_grad(
                 clear_obs_buf=obs_buf,
                 clear_grp_buf=grp_buf,
                 union_buf=uni_buf,
+                samples=samples,
                 backend="jax",
             )
 
         _vg_cache["fn"] = jax.jit(jax.value_and_grad(f, argnums=0, has_aux=True))
         _vg_cache["key"] = key
 
-    # Snapshot host DOF: jit ``f`` mutates the same ``graphs`` with JAX arrays/tracers.
-    host = [
-        (np.array(g.pos, dtype=float, copy=True), np.array(g.v, dtype=float, copy=True))
-        for g in graphs
-    ]
     (val, parts), grad = _vg_cache["fn"](x, obs_b, grp_b, union_b)
-    for g, (pos, vel) in zip(graphs, host):
-        g.pos, g.v = pos, vel
-        g.seg_ends = g.seg_xyz = g.seg_radius = None
-    unpack(np.asarray(x), graphs, layout, backend="numpy")
     return val, grad, parts
