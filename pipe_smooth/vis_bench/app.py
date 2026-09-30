@@ -16,6 +16,7 @@ CLI
 
   --save-dir   root for cases (default: ``pipe_smooth/runs``)
 
+Menu → File → Load YAML… loads an instance env.
 Menu → Examples → Elbow / S-curve / Spiral / Branch union / M-shape… builds a case and clears stale runs.
 """
 
@@ -31,16 +32,19 @@ from pathlib import Path
 
 import numpy as np
 import pyvista as pv
+import yaml
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg  # type: ignore
 from matplotlib.figure import Figure
 from PyQt5.QtCore import QThread, QTimer, pyqtSignal
 from PyQt5.QtWidgets import (
+    QAction,
     QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -58,12 +62,19 @@ from PyQt5.QtWidgets import (
 )
 from pyvistaqt import QtInteractor
 
-from pipe_smooth.collision import SphereObs
+from pipe_smooth.collision import AabbObs, CapsuleObs, SphereObs
 from pipe_smooth.geometry.assemble import OptimizeGraph
 from pipe_smooth.optimize.loss import LossWeights
 from pipe_smooth.optimize.pack import PackLayout, unpack
 from pipe_smooth.optimize.recorder import Recorder
-from pipe_smooth.pipeline import METHODS, run_pipeline
+from pipe_smooth.pipeline import (
+    METHODS,
+    build_graphs,
+    dump_obstacles,
+    load_obstacles,
+    load_obstacles_file,
+    run_pipeline,
+)
 from pipe_smooth.vis_bench.conditions import (
     MAX_BRANCH,
     M_USAGE_PAIRS,
@@ -82,6 +93,33 @@ _CLEAR_KEYS = (
     "n_hit_grp",
     "max_shortfall",
     "ok",
+)
+
+_GROUP_COLS = (
+    (0.90, 0.35, 0.20),
+    (0.20, 0.70, 0.35),
+    (0.25, 0.45, 0.95),
+    (0.90, 0.75, 0.15),
+    (0.70, 0.30, 0.80),
+    (0.10, 0.75, 0.75),
+    (0.95, 0.50, 0.20),
+    (0.55, 0.35, 0.20),
+    (0.40, 0.80, 0.55),
+    (0.85, 0.25, 0.55),
+    (0.30, 0.55, 0.85),
+    (0.75, 0.85, 0.25),
+    (0.55, 0.20, 0.45),
+    (0.15, 0.60, 0.55),
+    (0.95, 0.65, 0.45),
+    (0.45, 0.45, 0.75),
+    (0.80, 0.40, 0.15),
+    (0.35, 0.75, 0.20),
+    (0.60, 0.25, 0.90),
+    (0.20, 0.85, 0.85),
+    (0.85, 0.55, 0.70),
+    (0.50, 0.65, 0.30),
+    (0.15, 0.40, 0.70),
+    (0.70, 0.70, 0.40),
 )
 
 # method → {name: (kind, default, *extra)}  kind: float | int | bool | choice
@@ -174,8 +212,11 @@ class BenchViewer(QMainWindow):
         self._replay_xs: list = []
         self._replay_i = 0
         self._replay_lay: PackLayout | None = None
-        self._node_actors: dict[tuple[str, str], object] = {}
+        self._node_poly: dict[str, object] = {}  # gid → PolyData (batched points)
+        self._group_actors: dict[str, list] = {}  # gid → actors
         self._usage_actors: list[tuple[str, object]] = []  # (usage key, actor)
+        self._obs_actor = None
+        self.show_obstacles = True
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._replay_tick)
 
@@ -288,11 +329,15 @@ class BenchViewer(QMainWindow):
         self.viz_mode.currentTextChanged.connect(self._on_viz_mode)
         row_v.addWidget(self.viz_mode)
         vv.addLayout(row_v)
+        vv.addWidget(QLabel("Groups"))
+        self.group_box = QVBoxLayout()
+        vv.addLayout(self.group_box)
         vv.addWidget(QLabel("Usage paths"))
         self.usage_box = QVBoxLayout()
         vv.addLayout(self.usage_box)
         vv.addStretch(1)
         self.mid_box.addItem(viz_w, "Viz")
+        self.group_on: dict[str, bool] = {}
         self.usage_on: dict[str, bool] = {}
         split.addWidget(mid)
 
@@ -326,6 +371,14 @@ class BenchViewer(QMainWindow):
         split.setStretchFactor(1, 1)
         split.setStretchFactor(2, 1)
 
+        mf = self.menuBar().addMenu("&File")
+        mf.addAction("Load YAML…").triggered.connect(self._load_yaml)
+        mvw = self.menuBar().addMenu("&View")
+        act_obs = QAction("Obstacles", self)
+        act_obs.setCheckable(True)
+        act_obs.setChecked(True)
+        act_obs.toggled.connect(self._toggle_obstacles)
+        mvw.addAction(act_obs)
         m = self.menuBar().addMenu("&Examples")
         m.addAction("Elbow 90…").triggered.connect(self._example_elbow90)
         m.addAction("S-curve + 2 obs…").triggered.connect(self._example_s_curve)
@@ -463,6 +516,46 @@ class BenchViewer(QMainWindow):
             self.j_ax.text(0.5, 0.5, "no J curve", ha="center", va="center")
             self.j_ax.set_axis_off()
         self.j_canvas.draw_idle()
+
+    def _load_yaml(self):
+        start = Path(__file__).resolve().parents[1] / "data" / "hard"
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load YAML",
+            str(start if start.is_dir() else self.save_dir),
+            "YAML (*.yaml *.yml)",
+        )
+        if not path:
+            return
+        path = Path(path)
+        try:
+            env = yaml.safe_load(path.read_text()) or {}
+            graphs = build_graphs(env)["graphs"]
+            obs = load_obstacles(env, clear_kind="capsule")
+        except Exception as e:
+            QMessageBox.warning(self, "Load YAML", str(e))
+            return
+
+        self.resolution = float((env.get("grid") or {}).get("resolution", 1.0))
+        self.case_dir = self.save_dir / path.stem
+        self.case_dir.mkdir(parents=True, exist_ok=True)
+        for p in self._runs():
+            shutil.rmtree(p)
+        self._last_run = None
+        self.graphs = graphs
+        self.obstacles = list(obs)
+        self._write_obstacles()
+        for g in self.graphs:
+            g.export(self.case_dir / f"graph_{g.id}.json")
+        self.setWindowTitle(f"optimize bench — {path.stem}")
+        self.clear_kind.setCurrentText("capsule")
+        self._show_report(None)
+        self.progress.setValue(0)
+        self.progress_lbl.setText("")
+        self._set_busy(False)
+        self._fill_usage_checks()
+        self.redraw()
+        self.plotter.reset_camera()
 
     def _example_elbow90(self):
         dlg = QDialog(self)
@@ -784,31 +877,15 @@ class BenchViewer(QMainWindow):
 
     def _write_obstacles(self):
         assert self.case_dir is not None
-        spheres = [
-            {"c": np.asarray(o.c, float).tolist(), "r": float(o.r), "name": o.name}
-            for o in self.obstacles
-            if isinstance(o, SphereObs)
-        ]
-        (self.case_dir / "obstacles.json").write_text(
-            json.dumps({"spheres": spheres}, indent=2)
-        )
+        dump_obstacles(self.obstacles, self.case_dir / "obstacles.json")
 
     def _load_obstacles(self):
         self.obstacles = []
         if self.case_dir is None:
             return
         path = self.case_dir / "obstacles.json"
-        if not path.exists():
-            return
-        raw = json.loads(path.read_text())
-        for i, s in enumerate(raw.get("spheres") or []):
-            self.obstacles.append(
-                SphereObs(
-                    c=np.asarray(s["c"], float),
-                    r=float(s["r"]),
-                    name=str(s.get("name", f"sphere{i}")),
-                )
-            )
+        if path.exists():
+            self.obstacles = load_obstacles_file(path, clear_kind="capsule")
 
     def _next_run_dir(self) -> Path:
         assert self.case_dir is not None
@@ -827,6 +904,26 @@ class BenchViewer(QMainWindow):
             self.redraw()
 
     def _fill_usage_checks(self):
+        while self.group_box.count():
+            item = self.group_box.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        prev_g = dict(self.group_on)
+        self.group_on = {}
+        for g in self.graphs:
+            gid = str(g.id)
+            self.group_on[gid] = prev_g.get(gid, True)
+            cb = QCheckBox(gid)
+            cb.setChecked(self.group_on[gid])
+            cb.toggled.connect(
+                lambda on, k=gid: (
+                    self.group_on.__setitem__(k, on),
+                    self._sync_group_vis(),
+                )
+            )
+            self.group_box.addWidget(cb)
+
         while self.usage_box.count():
             item = self.usage_box.takeAt(0)
             w = item.widget()
@@ -848,28 +945,31 @@ class BenchViewer(QMainWindow):
                 )
                 self.usage_box.addWidget(cb)
 
-    def _sync_usage_vis(self):
-        """Toggle usage overlays only — no Hermite rebuild."""
-        for key, actor in self._usage_actors:
-            actor.SetVisibility(bool(self.usage_on.get(key, False)))  # type: ignore
+    def _sync_group_vis(self):
+        for gid, actors in self._group_actors.items():
+            vis = bool(self.group_on.get(gid, True))
+            for a in actors:
+                a.SetVisibility(vis)  # type: ignore
         self.plotter.render()
+
+    def _sync_usage_vis(self):
+        """Rebuild scene when usage toggles (overlays are only built when on)."""
+        if self.graphs and not self._timer.isActive():
+            self.redraw()
 
     def redraw(self):
         from pipe_smooth.geometry.assemble import HermiteSegment
 
         mode = self.viz_mode.currentText()
-        self._node_actors = {}
+        self._node_poly = {}
+        self._group_actors = {}
         self._usage_actors = []
         self.plotter.clear()
         self.plotter.add_axes()
-        _cols = (
-            (0.90, 0.35, 0.20),
-            (0.20, 0.70, 0.35),
-            (0.25, 0.45, 0.95),
-            (0.90, 0.75, 0.15),
-            (0.70, 0.30, 0.80),
-        )
-        for g in self.graphs:
+        for gi, g in enumerate(self.graphs):
+            gid = str(g.id)
+            col = _GROUP_COLS[gi % len(_GROUP_COLS)]
+            actors: list = []
             ends = np.asarray(g.hermite_ends(backend="numpy"), dtype=float)
             spacing = max(float(self.resolution) * 0.25, 1e-3)
             T = 5
@@ -881,32 +981,48 @@ class BenchViewer(QMainWindow):
                     ),
                 )
             ends, xyz, rad = g.refresh(ts_count=T, backend="numpy", store=True)
-            ends = np.asarray(ends, float)
             xyz = np.asarray(xyz, float)
             rad = np.asarray(rad, float)
             pos = np.asarray(g.pos, float)
             if mode != "point":
+                lines, tubes = [], []
                 for sid in range(len(g.segments)):
                     pts = xyz[sid]
                     if pts.ndim != 2 or pts.shape[0] < 2:
                         continue
                     line = pv.lines_from_points(pts)
-                    self.plotter.add_mesh(line, color="blue", line_width=2)
+                    lines.append(line)
                     if mode == "point+line+tube":
                         line["radius"] = rad[sid]
-                        tube = line.tube(scalars="radius", absolute=True, n_sides=12)
-                        self.plotter.add_mesh(tube, color="lightblue", opacity=0.35)
-            for nid in range(len(g.nodes)):
-                actor = self.plotter.add_mesh(
-                    pv.Sphere(radius=0.075, center=(0.0, 0.0, 0.0)),
-                    color="red",
-                    name=f"n:{g.id}:{nid}",
+                        tubes.append(line.tube(scalars="radius", absolute=True, n_sides=8))
+                if lines:
+                    actors.append(
+                        self.plotter.add_mesh(
+                            pv.merge(lines), color=col, line_width=2, render=False
+                        )
+                    )
+                if tubes:
+                    actors.append(
+                        self.plotter.add_mesh(
+                            pv.merge(tubes), color=col, opacity=0.35, render=False
+                        )
+                    )
+            pdata = pv.PolyData(pos.copy())
+            actors.append(
+                self.plotter.add_mesh(
+                    pdata,
+                    color=col,
+                    point_size=5,
+                    render_points_as_spheres=True,
+                    render=False,
                 )
-                actor.SetPosition(float(pos[nid, 0]), float(pos[nid, 1]), float(pos[nid, 2]))
-                self._node_actors[(g.id, nid)] = actor  # type: ignore[assignment]
+            )
+            self._node_poly[g.id] = pdata
 
             for up in g.usage_paths:
                 key = f"{g.id}|{up.usage[0]}->{up.usage[1]}"
+                if not self.usage_on.get(key, False):
+                    continue
                 chunks = []
                 for sid, rev in zip(up.segments, up.reverse):
                     pts = xyz[sid]
@@ -920,10 +1036,14 @@ class BenchViewer(QMainWindow):
                 path = np.concatenate(chunks, axis=0)
                 if path.shape[0] < 2:
                     continue
-                col = _cols[abs(hash(key)) % len(_cols)]
                 line_actor = self.plotter.add_mesh(
-                    pv.lines_from_points(path), color=col, line_width=5, name=f"u:{key}"
+                    pv.lines_from_points(path),
+                    color=col,
+                    line_width=5,
+                    name=f"u:{key}",
+                    render=False,
                 )
+                actors.append(line_actor)
                 self._usage_actors.append((key, line_actor))
                 step = max(1, (path.shape[0] - 1) // 4)
                 tip = max(float(self.resolution) * 0.4, 0.12)
@@ -943,26 +1063,57 @@ class BenchViewer(QMainWindow):
                         ),
                         color=col,
                         name=f"u:{key}:a{ai}",
+                        render=False,
                     )
+                    actors.append(arr)
                     self._usage_actors.append((key, arr))
                     ai += 1
+
+            vis = bool(self.group_on.get(gid, True))
+            for a in actors:
+                a.SetVisibility(vis)  # type: ignore
+            self._group_actors[gid] = actors
+
+        obs_meshes = []
         for o in self.obstacles:
             if isinstance(o, SphereObs):
-                self.plotter.add_mesh(
-                    pv.Sphere(radius=float(o.r), center=np.asarray(o.c, float)),
-                    color="orange",
-                    opacity=0.45,
+                obs_meshes.append(pv.Sphere(radius=float(o.r), center=np.asarray(o.c, float)))
+            elif isinstance(o, CapsuleObs):
+                a, b = np.asarray(o.a, float), np.asarray(o.b, float)
+                obs_meshes.append(
+                    pv.lines_from_points(np.vstack([a, b])).tube(radius=float(o.r))
                 )
-        self._sync_usage_vis()
+            elif isinstance(o, AabbObs):
+                mn, mx = np.asarray(o.mn, float), np.asarray(o.mx, float)
+                obs_meshes.append(
+                    pv.Box(
+                        bounds=(
+                            float(mn[0]), float(mx[0]),
+                            float(mn[1]), float(mx[1]),
+                            float(mn[2]), float(mx[2]),
+                        )
+                    )
+                )
+        self._obs_actor = None
+        if obs_meshes:
+            self._obs_actor = self.plotter.add_mesh(
+                pv.merge(obs_meshes), color="orange", opacity=0.45, render=False
+            )
+            self._obs_actor.SetVisibility(bool(self.show_obstacles))  # type: ignore
+        self.plotter.render()
+
+    def _toggle_obstacles(self, on: bool):
+        self.show_obstacles = bool(on)
+        if self._obs_actor is not None:
+            self._obs_actor.SetVisibility(self.show_obstacles)  # type: ignore
+            self.plotter.render()
 
     def _update_points(self):
         for g in self.graphs:
-            pos = np.asarray(g.pos, float)
-            for nid in range(len(g.nodes)):
-                actor = self._node_actors.get((g.id, nid))  # type: ignore[arg-type]
-                if actor is None:
-                    continue
-                actor.SetPosition(float(pos[nid, 0]), float(pos[nid, 1]), float(pos[nid, 2]))  # type: ignore
+            pdata = self._node_poly.get(g.id)
+            if pdata is None:
+                continue
+            pdata.points = np.asarray(g.pos, float)  # type: ignore[attr-defined]
         self.plotter.render()
 
     def _set_busy(self, busy: bool):

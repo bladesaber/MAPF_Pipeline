@@ -286,7 +286,7 @@ class OptimizeGraph:
         return xp.stack([p0, v0, p1, v1], axis=1)
 
     def refresh(
-        self, pos=None, v=None, ts_count: int = 10, backend: str = "numpy", store: bool = False
+        self, pos=None, v=None, ts_count: int = 5, backend: str = "numpy", store: bool = False
     ):
         """Sample all Hermite segments from ``pos``/``v``.
 

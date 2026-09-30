@@ -1,8 +1,7 @@
 
 
-
-union cost has big problem, it is scale by radius
-
+@pipe_smooth/runs/s_curvewhen using ipopt, it throw error 'The numpy.ndarray conversion method __array__() was called on traced array with shape float32[46,3]
+See https://docs.jax.dev/en/latest/errors.html#jax.errors.TracerArrayConversionError' . please don't change the files, just provide comment
 
 
 
