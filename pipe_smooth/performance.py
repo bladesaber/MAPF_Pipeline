@@ -32,6 +32,7 @@ def refresh_capsule(
     obstacles,
     margin: float,
     *,
+    batch: bool = True,
     with_neighbors: bool = False,
     max_hits_aabb: int | None = 1,
 ):
@@ -42,6 +43,7 @@ def refresh_capsule(
         broad_obs,
         broad_grp,
         margin=margin,
+        batch=batch,
         with_neighbors=with_neighbors,
         max_hits_aabb=max_hits_aabb,
     )

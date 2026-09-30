@@ -1,8 +1,13 @@
 from .capsule import (
     capsule_ball,
+    capsule_ball_batch,
     capsule_capsule,
+    capsule_capsule_batch,
     capsule_aabb,
+    capsule_aabb_batch,
     find_narrowphase_pairs,
+    find_narrowphase_pairs_loop,
+    find_narrowphase_pairs_batch,
     ObsContactHit,
     GrpContactHit,
     NarrowObsPair,
@@ -13,9 +18,14 @@ from .utils import hermite_aabb, find_broadphase_pairs, BroadObsPair, BroadGrpPa
 
 __all__ = [
     "capsule_ball",
+    "capsule_ball_batch",
     "capsule_capsule",
+    "capsule_capsule_batch",
     "capsule_aabb",
+    "capsule_aabb_batch",
     "find_narrowphase_pairs",
+    "find_narrowphase_pairs_loop",
+    "find_narrowphase_pairs_batch",
     "ObsContactHit",
     "GrpContactHit",
     "NarrowObsPair",

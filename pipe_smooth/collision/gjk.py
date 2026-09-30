@@ -234,45 +234,63 @@ def find_narrowphase_pairs(
 ) -> tuple[list[NarrowHullObsPair], list[NarrowHullGrpPair]]:
     """Filter broadphase pairs with Hull4 GJK; keep active pairs (d_geom < d_req).
 
-    Each Hermite segment → subdivided Bézier Hull4s. Interval ends from
-    ``seg_*`` (``refresh(..., store=True)``). Obstacles use ``to_coal()``.
+    Builds Hull4s only for segments in ``broad_*``. Hull AABB midphase runs
+    before ``signed_distance``. Obstacles use ``to_coal()``.
     """
+    by_g = {g.id: g for g in graphs}
     obs_coal = {obs.name: obs.to_coal() for obs in obstacles}
+    obs_box = {obs.name: obs.aabb(margin) for obs in obstacles}
+    m = float(margin)
 
-    # (group_id, seg_id) → list of (Hull4, hermite_t0, hermite_t1)
-    hulls_by: dict[tuple[str, int], list[tuple[Hull4, float, float]]] = {}
-    for g in graphs:
+    need: dict[str, set[int]] = {}
+    for p in broad_obs:
+        need.setdefault(p.group_id, set()).add(p.seg_id)
+    for p in broad_grp:
+        need.setdefault(p.group_a, set()).add(p.seg_a)
+        need.setdefault(p.group_b, set()).add(p.seg_b)
+
+    # (group_id, seg_id) → list of (Hull4, hermite_t0, hermite_t1, mn, mx)
+    hulls_by: dict[tuple[str, int], list[tuple[Hull4, float, float, np.ndarray, np.ndarray]]] = {}
+    for gid, sids in need.items():
+        g = by_g[gid]
         if g.seg_ends is None or g.seg_xyz is None:
             g.refresh(backend="numpy", store=True)
         ends = np.asarray(g.seg_ends, dtype=float)
         rad = np.asarray(g.radius, dtype=float)
         T = int(np.asarray(g.seg_xyz).shape[1])
         ts = np.linspace(0.0, 1.0, T)
-        for sid, seg in enumerate(g.segments):
+        for sid in sids:
+            seg = g.segments[sid]
             p0, v0, p1, v1 = ends[sid]
             C = hermite_bezier_controls(p0, v0, p1, v1, backend="numpy")
             r = max(float(rad[seg.u]), float(rad[seg.v]))
-            hulls_by[(g.id, sid)] = [
-                (
-                    Hull4.from_pts(
-                        bezier_on_interval(C, float(ts[k]), float(ts[k + 1])),
-                        r=r,
-                    ),
-                    float(ts[k]),
-                    float(ts[k + 1]),
-                )
-                for k in range(T - 1)
-            ]
+            hulls = []
+            for k in range(T - 1):
+                ht0, ht1 = float(ts[k]), float(ts[k + 1])
+                hull = Hull4.from_pts(bezier_on_interval(C, ht0, ht1), r=r)
+                mn, mx = hull.aabb(margin)
+                hulls.append((hull, ht0, ht1, mn, mx))
+            hulls_by[(gid, sid)] = hulls
 
     narrow_obs: list[NarrowHullObsPair] = []
     narrow_grp: list[NarrowHullGrpPair] = []
 
     for p in broad_obs:
         s_obs, T_obs = obs_coal[p.obs_name]
-        for hull, ht0, ht1 in hulls_by.get((p.group_id, p.seg_id), ()):
+        omn, omx = obs_box[p.obs_name]
+        for hull, ht0, ht1, cmn, cmx in hulls_by.get((p.group_id, p.seg_id), ()):
+            if (
+                cmn[0] > omx[0]
+                or omn[0] > cmx[0]
+                or cmn[1] > omx[1]
+                or omn[1] > cmx[1]
+                or cmn[2] > omx[2]
+                or omn[2] > cmx[2]
+            ):
+                continue
             d_geom, qa, qb = signed_distance(*hull.to_coal(), s_obs, T_obs)
             # coal sphere/capsule/box already has obstacle size; only pad pipe r + margin
-            d_req = float(hull.r) + float(margin)
+            d_req = float(hull.r) + m
             if not np.isfinite(d_geom) or d_geom >= d_req:
                 continue
             sign = 1.0 if d_geom >= 0.0 else -1.0
@@ -293,10 +311,19 @@ def find_narrowphase_pairs(
             )
 
     for p in broad_grp:
-        for ha, ht0_a, ht1_a in hulls_by.get((p.group_a, p.seg_a), ()):
-            for hb, ht0_b, ht1_b in hulls_by.get((p.group_b, p.seg_b), ()):
+        for ha, ht0_a, ht1_a, mn_a, mx_a in hulls_by.get((p.group_a, p.seg_a), ()):
+            for hb, ht0_b, ht1_b, mn_b, mx_b in hulls_by.get((p.group_b, p.seg_b), ()):
+                if (
+                    mn_a[0] > mx_b[0]
+                    or mn_b[0] > mx_a[0]
+                    or mn_a[1] > mx_b[1]
+                    or mn_b[1] > mx_a[1]
+                    or mn_a[2] > mx_b[2]
+                    or mn_b[2] > mx_a[2]
+                ):
+                    continue
                 d_geom, qa, qb = signed_distance(*ha.to_coal(), *hb.to_coal())
-                d_req = float(ha.r) + float(hb.r) + float(margin)
+                d_req = float(ha.r) + float(hb.r) + m
                 if not np.isfinite(d_geom) or d_geom >= d_req:
                     continue
                 sign = 1.0 if d_geom >= 0.0 else -1.0

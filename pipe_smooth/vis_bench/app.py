@@ -217,6 +217,7 @@ class BenchViewer(QMainWindow):
         self._usage_actors: list[tuple[str, object]] = []  # (usage key, actor)
         self._obs_actor = None
         self.show_obstacles = True
+        self.obs_opacity = 0.45
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._replay_tick)
 
@@ -329,6 +330,16 @@ class BenchViewer(QMainWindow):
         self.viz_mode.currentTextChanged.connect(self._on_viz_mode)
         row_v.addWidget(self.viz_mode)
         vv.addLayout(row_v)
+        row_op = QHBoxLayout()
+        row_op.addWidget(QLabel("obs opacity"))
+        self.obs_opacity_spin = QDoubleSpinBox()
+        self.obs_opacity_spin.setRange(0.0, 1.0)
+        self.obs_opacity_spin.setSingleStep(0.05)
+        self.obs_opacity_spin.setDecimals(2)
+        self.obs_opacity_spin.setValue(self.obs_opacity)
+        self.obs_opacity_spin.valueChanged.connect(self._on_obs_opacity)
+        row_op.addWidget(self.obs_opacity_spin)
+        vv.addLayout(row_op)
         vv.addWidget(QLabel("Groups"))
         self.group_box = QVBoxLayout()
         vv.addLayout(self.group_box)
@@ -1097,7 +1108,10 @@ class BenchViewer(QMainWindow):
         self._obs_actor = None
         if obs_meshes:
             self._obs_actor = self.plotter.add_mesh(
-                pv.merge(obs_meshes), color="orange", opacity=0.45, render=False
+                pv.merge(obs_meshes),
+                color="gray",
+                opacity=float(self.obs_opacity),
+                render=False,
             )
             self._obs_actor.SetVisibility(bool(self.show_obstacles))  # type: ignore
         self.plotter.render()
@@ -1106,6 +1120,12 @@ class BenchViewer(QMainWindow):
         self.show_obstacles = bool(on)
         if self._obs_actor is not None:
             self._obs_actor.SetVisibility(self.show_obstacles)  # type: ignore
+            self.plotter.render()
+
+    def _on_obs_opacity(self, value: float):
+        self.obs_opacity = float(value)
+        if self._obs_actor is not None:
+            self._obs_actor.GetProperty().SetOpacity(self.obs_opacity)  # type: ignore
             self.plotter.render()
 
     def _update_points(self):

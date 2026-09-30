@@ -13,7 +13,7 @@ UI
   View → GroupTree | …      switch which layer is drawn (full redraw)
   View → Point | Point+line | Point+tube   edge draw mode
   View → Obstacles          show / hide env obstacles (AABB / capsule / sphere)
-  Clip bar                  axis-aligned clip plane (X/Y/Z + slider)
+  Clip bar                  axis-aligned clip plane (X/Y/Z + slider) + obstacle opacity
   Right toolbox             per-layer checkboxes; toggles actor visibility only
     Groups                  show / hide a whole pipe group
     Labeled edges           (partition) per ``gid|eid`` edge
@@ -104,6 +104,7 @@ class TopologyViewer(QMainWindow):
         self.opt_seg_on: dict[str, bool] = {}  # "gid|sid"
         self.obstacles: list = []
         self.show_obstacles = True
+        self.obstacle_opacity = 0.35
         self._actors: dict[str, object] = {}
         self._obs_actors: list[object] = []
         self._domain_actor = None
@@ -131,18 +132,34 @@ class TopologyViewer(QMainWindow):
         self.clip_slider.valueChanged.connect(self._sync_clip)
         self.clip_pos_lbl = QLabel("—")
         self.clip_pos_lbl.setMinimumWidth(64)
+        self.obs_opacity_slider = QSlider(Qt.Horizontal)  # type: ignore
+        self.obs_opacity_slider.setRange(0, 100)
+        self.obs_opacity_slider.setValue(int(round(self.obstacle_opacity * 100)))
+        self.obs_opacity_slider.setFixedWidth(120)
+        self.obs_opacity_slider.valueChanged.connect(self._set_obstacle_opacity)
+        self.obs_opacity_lbl = QLabel(f"{self.obstacle_opacity:.2f}")
+        self.obs_opacity_lbl.setMinimumWidth(36)
         clip_bar.addWidget(self.clip_cb)
         clip_bar.addWidget(QLabel("Axis"))
         clip_bar.addWidget(self.clip_axis)
         clip_bar.addWidget(self.clip_slider)
         clip_bar.addWidget(self.clip_pos_lbl)
+        clip_bar.addWidget(QLabel("Obs α"))
+        clip_bar.addWidget(self.obs_opacity_slider)
+        clip_bar.addWidget(self.obs_opacity_lbl)
         clip_bar.addStretch(1)
-        root.addLayout(clip_bar)
+        root.addLayout(clip_bar, 0)
 
         split = QSplitter()
-        root.addWidget(split)
-        self.plotter = QtInteractor(self)  # type: ignore
-        split.addWidget(self.plotter.interactor)
+        root.addWidget(split, 1)
+        # Parent QtInteractor to a host inside the splitter — parenting to
+        # QMainWindow leaves an orphan gray widget above the central layout.
+        plot_host = QWidget()
+        plot_lay = QVBoxLayout(plot_host)
+        plot_lay.setContentsMargins(0, 0, 0, 0)
+        self.plotter = QtInteractor(plot_host)  # type: ignore
+        plot_lay.addWidget(self.plotter.interactor)
+        split.addWidget(plot_host)
 
         right = QWidget()
         rv = QVBoxLayout(right)
@@ -151,6 +168,7 @@ class TopologyViewer(QMainWindow):
         split.addWidget(right)
         split.setStretchFactor(0, 4)
         split.setStretchFactor(1, 1)
+        split.setSizes([1100, 300])
 
         self.box_tree = QWidget()
         self.box_part = QWidget()
@@ -270,6 +288,13 @@ class TopologyViewer(QMainWindow):
         self.show_obstacles = bool(on)
         for actor in self._obs_actors:
             actor.SetVisibility(self.show_obstacles)  # type: ignore
+        self.plotter.render()
+
+    def _set_obstacle_opacity(self, value: int):
+        self.obstacle_opacity = float(value) / 100.0
+        self.obs_opacity_lbl.setText(f"{self.obstacle_opacity:.2f}")
+        for actor in self._obs_actors:
+            actor.GetProperty().SetOpacity(self.obstacle_opacity)  # type: ignore
         self.plotter.render()
 
     def _edit_tangent_ratio(self):
@@ -559,7 +584,7 @@ class TopologyViewer(QMainWindow):
             else:
                 continue
             actor = self.plotter.add_mesh(
-                mesh, color="gray", opacity=0.35, name=name
+                mesh, color="gray", opacity=float(self.obstacle_opacity), name=name
             )
             actor.SetVisibility(bool(self.show_obstacles))  # type: ignore
             self._obs_actors.append(actor)
@@ -652,7 +677,7 @@ class TopologyViewer(QMainWindow):
             for nid, n in t.nodes.items():
                 actor = self.plotter.add_mesh(
                     pv.Sphere(
-                        radius=max(0.15, 0.35 * float(n.radius)),
+                        radius=0.5,
                         center=n.pos,
                     ),
                     color="blue" if n.terminal_id else "lightgray",
