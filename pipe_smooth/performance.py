@@ -27,10 +27,23 @@ Obstacle = SphereObs | CapsuleObs | AabbObs
 ClearKind = Literal["capsule", "hull", "ignore"]
 
 
-def refresh_capsule(graphs, obstacles, margin: float):
+def refresh_capsule(
+    graphs,
+    obstacles,
+    margin: float,
+    *,
+    with_neighbors: bool = False,
+    max_hits_aabb: int | None = 1,
+):
     broad_obs, broad_grp = find_broadphase_pairs(graphs, obstacles, margin=margin)
     return find_narrowphase_pairs(
-        graphs, obstacles, broad_obs, broad_grp, margin=margin
+        graphs,
+        obstacles,
+        broad_obs,
+        broad_grp,
+        margin=margin,
+        with_neighbors=with_neighbors,
+        max_hits_aabb=max_hits_aabb,
     )
 
 

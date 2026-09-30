@@ -3,7 +3,8 @@
 Capsule = line segment ⊕ ball(r). Returns (d_geom, hits); d_req lives on each hit.
 ObsContactHit: Hermite ends (hermite_t0/t1), local chord_t, qb on the obstacle.
 GrpContactHit: same for both groups (…_a / …_b).
-Neighbor chord_t's stabilize AD clearance. Detection outside AD (§7.2).
+Neighbor chord_t's stabilize AD clearance (toggle via ``with_neighbors``).
+Detection outside AD (§7.2).
 """
 
 from __future__ import annotations
@@ -128,7 +129,16 @@ class NarrowGrpPair:
 
 
 def capsule_ball(
-    a, b, r, c, r_obs=0.0, margin=0.0, *, hermite_t0: float = 0.0, hermite_t1: float = 1.0
+    a,
+    b,
+    r,
+    c,
+    r_obs=0.0,
+    margin=0.0,
+    *,
+    hermite_t0: float = 0.0,
+    hermite_t1: float = 1.0,
+    with_neighbors: bool = False,
 ) -> tuple[float, tuple[ObsContactHit, ...]]:
     """Distance from capsule (segment ab, radius r) to a ball (center c, radius r_obs).
 
@@ -142,6 +152,8 @@ def capsule_ball(
         r_obs: obstacle ball radius (0 for a point)
         margin: extra separation δ in d_req = r + r_obs + margin
         hermite_t0, hermite_t1: parent Hermite params of chord ends a, b
+        with_neighbors: if True, also emit mid/edge band samples (±dt/2, ±dt);
+            if False, only the closest hit
 
     Returns:
         d_geom, hits (tuple of ObsContactHit; hits[0] is closest; d_req on each hit)
@@ -164,14 +176,15 @@ def capsule_ball(
     # Along-chord half-width where dist to ball center stays ≤ d_req:
     # d(Δs)^2 = d_geom^2 + Δs^2 ≤ d_req^2  ⇒  Δs = sqrt(d_req^2 - d_geom^2);
     # chord param step dt = Δs / L; hits at t0, t0±dt/2, t0±dt.
-    dt = float(np.sqrt(max(0.0, d_req * d_req - d_geom * d_geom))) / L
-    if dt > 1e-9:
-        # neighbors: mid (±dt/2) and band edge (±dt); closest t0 already in ts
-        for s in (-1.0, 1.0):
-            for frac in (0.5, 1.0):
-                tk = float(np.clip(t0 + s * frac * dt, 0.0, 1.0))
-                if all(abs(tk - t) > 1e-9 for t in ts):
-                    ts.append(tk)
+    if with_neighbors:
+        dt = float(np.sqrt(max(0.0, d_req * d_req - d_geom * d_geom))) / L
+        if dt > 1e-9:
+            # neighbors: mid (±dt/2) and band edge (±dt); closest t0 already in ts
+            for s in (-1.0, 1.0):
+                for frac in (0.5, 1.0):
+                    tk = float(np.clip(t0 + s * frac * dt, 0.0, 1.0))
+                    if all(abs(tk - t) > 1e-9 for t in ts):
+                        ts.append(tk)
     ht0, ht1 = float(hermite_t0), float(hermite_t1)
     hits = tuple(
         ObsContactHit(ht0, ht1, t, qb.copy(), 1.0, d_req) for t in ts
@@ -193,6 +206,7 @@ def capsule_capsule(
     hermite_t1: float = 1.0,
     hermite_t0_b: float = 0.0,
     hermite_t1_b: float = 1.0,
+    with_neighbors: bool = True,
 ) -> tuple[float, tuple[ObsContactHit, ...] | tuple[GrpContactHit, ...]]:
     """Distance between two capsules (segments ab / a2b2 with radii r / r2).
 
@@ -213,6 +227,8 @@ def capsule_capsule(
             group's Hermite chord
         hermite_t0, hermite_t1: parent Hermite params of chord ends a, b
         hermite_t0_b, hermite_t1_b: parent Hermite params of a2, b2 (GrpContactHit only)
+        with_neighbors: if True, also emit mid/edge band samples (±dt/2, ±dt);
+            if False, only the closest hit
 
     Returns:
         d_geom, hits (empty if inactive; hits[0] is closest; d_req on each hit)
@@ -281,13 +297,14 @@ def capsule_capsule(
 
     t0 = float(alpha)
     ts = [t0]
-    dt = float(np.sqrt(max(0.0, d_req * d_req - d_geom * d_geom))) / L
-    if dt > 1e-9:
-        for s in (-1.0, 1.0):
-            for frac in (0.5, 1.0):
-                tk = float(np.clip(t0 + s * frac * dt, 0.0, 1.0))
-                if all(abs(tk - t) > 1e-9 for t in ts):
-                    ts.append(tk)
+    if with_neighbors:
+        dt = float(np.sqrt(max(0.0, d_req * d_req - d_geom * d_geom))) / L
+        if dt > 1e-9:
+            for s in (-1.0, 1.0):
+                for frac in (0.5, 1.0):
+                    tk = float(np.clip(t0 + s * frac * dt, 0.0, 1.0))
+                    if all(abs(tk - t) > 1e-9 for t in ts):
+                        ts.append(tk)
 
     sgn = 1.0
     ht0, ht1 = float(hermite_t0), float(hermite_t1)
@@ -321,11 +338,12 @@ def capsule_aabb(
     *,
     hermite_t0: float = 0.0,
     hermite_t1: float = 1.0,
+    max_hits: int | None = 1,
 ) -> tuple[float, tuple[ObsContactHit, ...]]:
     """Distance from capsule (segment ab, radius r) to a solid AABB [mn, mx].
 
-    Samples n_samp points on ab. d_geom = min gap. Hits = samples with gap < d_req
-    (closest first); no extra mid/edge band (n_samp already covers the chord).
+    Samples n_samp points on ab. d_geom = min gap. Hits = samples with gap < d_req,
+    sorted by gap ascending (closest first); no extra mid/edge band.
 
     Args:
         a, b: segment endpoints, shape (3,)
@@ -334,6 +352,8 @@ def capsule_aabb(
         margin: extra separation δ in d_req = r + margin
         n_samp: samples on ab (inclusive ends)
         hermite_t0, hermite_t1: parent Hermite params of chord ends a, b
+        max_hits: if set, keep at most this many hits after sorting by gap;
+            ``None`` keeps all active samples
 
     Returns:
         d_geom, hits (tuple of ObsContactHit; hits[0] is closest; d_req on each hit)
@@ -370,12 +390,14 @@ def capsule_aabb(
 
     ibest = int(np.argmin(gaps))
     d_geom = float(gaps[ibest])
-    # hits: samples with gap < d_req only; closest first (empty if all >= d_req)
+    # hits: samples with gap < d_req only; sorted by gap (empty if all >= d_req)
     if d_geom >= d_req:
         return d_geom, ()
 
+    order = sorted((i for i in range(n_samp) if gaps[i] < d_req), key=lambda i: gaps[i])
+    if max_hits is not None:
+        order = order[: max(int(max_hits), 0)]
     ht0, ht1 = float(hermite_t0), float(hermite_t1)
-    order = [ibest] + [i for i in range(n_samp) if i != ibest and gaps[i] < d_req]
     hits = tuple(
         ObsContactHit(ht0, ht1, float(ts[i]), qbs[i].copy(), float(signs[i]), d_req)
         for i in order
@@ -389,63 +411,97 @@ def find_narrowphase_pairs(
     broad_obs: Sequence[BroadObsPair] = (),
     broad_grp: Sequence[BroadGrpPair] = (),
     margin: float = 0.0,
+    *,
+    with_neighbors: bool = False,
+    max_hits_aabb: int | None = 1,
 ) -> tuple[list[NarrowObsPair], list[NarrowGrpPair]]:
     """Filter broadphase pairs with capsule kernels; keep pairs with non-empty hits.
 
-    Uses ``seg_xyz`` / ``seg_radius`` (``refresh(..., store=True)`` first).
+    Builds chords only for segments in ``broad_*``. Chord AABB midphase runs
+    before exact ``capsule_*`` tests.
+    ``with_neighbors`` → ball/capsule; ``max_hits_aabb`` → aabb kernel.
     """
     by_obs = {obs.name: obs for obs in obstacles}
+    by_g = {g.id: g for g in graphs}
     narrow_obs: list[NarrowObsPair] = []
     narrow_grp: list[NarrowGrpPair] = []
+    m = float(margin)
 
-    # (group_id, seg_id) → chords (a, b, r, hermite_t0, hermite_t1)
+    need: dict[str, set[int]] = {}
+    for p in broad_obs:
+        need.setdefault(p.group_id, set()).add(p.seg_id)
+    for p in broad_grp:
+        need.setdefault(p.group_a, set()).add(p.seg_a)
+        need.setdefault(p.group_b, set()).add(p.seg_b)
+
+    # (group_id, seg_id) → list of (a, b, r, ht0, ht1, mn, mx); mn/mx padded by r+margin
     chords_by: dict[tuple[str, int], list[tuple]] = {}
-    for g in graphs:
+    for gid, sids in need.items():
+        g = by_g[gid]
         if g.seg_xyz is None or g.seg_radius is None:
             g.refresh(backend="numpy", store=True)
         xyz = np.asarray(g.seg_xyz, dtype=float)
         radius = np.asarray(g.seg_radius, dtype=float)
         T = int(xyz.shape[1])
         ts = np.linspace(0.0, 1.0, T)
-        for sid in range(len(g.segments)):
-            chords_by[(g.id, sid)] = [
-                (
-                    xyz[sid, k],
-                    xyz[sid, k + 1],
-                    float(max(float(radius[sid, k]), float(radius[sid, k + 1]))),
-                    float(ts[k]),
-                    float(ts[k + 1]),
+        for sid in sids:
+            chords = []
+            for k in range(T - 1):
+                a, b = xyz[sid, k], xyz[sid, k + 1]
+                r = float(max(float(radius[sid, k]), float(radius[sid, k + 1])))
+                pad = r + m
+                chords.append(
+                    (
+                        a,
+                        b,
+                        r,
+                        float(ts[k]),
+                        float(ts[k + 1]),
+                        np.minimum(a, b) - pad,
+                        np.maximum(a, b) + pad,
+                    )
                 )
-                for k in range(T - 1)
-            ]
+            chords_by[(gid, sid)] = chords
+
+    obs_box = {o.name: o.aabb(margin) for o in obstacles}
 
     for p in broad_obs:
         obs = by_obs[p.obs_name]
-        for a, b, r, ht0, ht1 in chords_by.get((p.group_id, p.seg_id), ()):
+        omn, omx = obs_box[p.obs_name]
+        for a, b, r, ht0, ht1, cmn, cmx in chords_by.get((p.group_id, p.seg_id), ()):
+            if (
+                cmn[0] > omx[0]
+                or omn[0] > cmx[0]
+                or cmn[1] > omx[1]
+                or omn[1] > cmx[1]
+                or cmn[2] > omx[2]
+                or omn[2] > cmx[2]
+            ):
+                continue
             if obs.kind == "sphere":
                 o = cast(SphereObs, obs)
                 d_geom, hits = capsule_ball(
-                    a, b, r, o.c, o.r, margin, hermite_t0=ht0, hermite_t1=ht1
+                    a, b, r, o.c, o.r, margin,
+                    hermite_t0=ht0, hermite_t1=ht1, with_neighbors=with_neighbors,
                 )
             elif obs.kind == "capsule":
                 o = cast(CapsuleObs, obs)
                 d_geom, hits = capsule_capsule(
-                    a, b, r, o.a, o.b, o.r, margin, hermite_t0=ht0, hermite_t1=ht1
+                    a, b, r, o.a, o.b, o.r, margin,
+                    hermite_t0=ht0, hermite_t1=ht1, with_neighbors=with_neighbors,
                 )
             elif obs.kind == "aabb":
                 o = cast(AabbObs, obs)
                 d_geom, hits = capsule_aabb(
-                    a, b, r, o.mn, o.mx, margin, hermite_t0=ht0, hermite_t1=ht1
+                    a, b, r, o.mn, o.mx, margin,
+                    hermite_t0=ht0, hermite_t1=ht1, max_hits=max_hits_aabb,
                 )
             else:
                 raise ValueError(f"unknown obstacle kind: {obs.kind!r}")
             if hits:
                 narrow_obs.append(
                     NarrowObsPair(
-                        p.group_id,
-                        p.seg_id,
-                        p.obs_name,
-                        d_geom,
+                        p.group_id, p.seg_id, p.obs_name, d_geom,
                         cast(tuple[ObsContactHit, ...], hits),
                     )
                 )
@@ -453,30 +509,28 @@ def find_narrowphase_pairs(
     for p in broad_grp:
         chords_a = chords_by.get((p.group_a, p.seg_a), ())
         chords_b = chords_by.get((p.group_b, p.seg_b), ())
-        for a, b, ra, ht0_a, ht1_a in chords_a:
-            for a2, b2, rb, ht0_b, ht1_b in chords_b:
+        for a, b, ra, ht0_a, ht1_a, mn_a, mx_a in chords_a:
+            for a2, b2, rb, ht0_b, ht1_b, mn_b, mx_b in chords_b:
+                if (
+                    mn_a[0] > mx_b[0]
+                    or mn_b[0] > mx_a[0]
+                    or mn_a[1] > mx_b[1]
+                    or mn_b[1] > mx_a[1]
+                    or mn_a[2] > mx_b[2]
+                    or mn_b[2] > mx_a[2]
+                ):
+                    continue
                 d_geom, hits = capsule_capsule(
-                    a,
-                    b,
-                    ra,
-                    a2,
-                    b2,
-                    rb,
-                    margin,
+                    a, b, ra, a2, b2, rb, margin,
                     other_is_obs=False,
-                    hermite_t0=ht0_a,
-                    hermite_t1=ht1_a,
-                    hermite_t0_b=ht0_b,
-                    hermite_t1_b=ht1_b,
+                    hermite_t0=ht0_a, hermite_t1=ht1_a,
+                    hermite_t0_b=ht0_b, hermite_t1_b=ht1_b,
+                    with_neighbors=with_neighbors,
                 )
                 if hits:
                     narrow_grp.append(
                         NarrowGrpPair(
-                            p.group_a,
-                            p.seg_a,
-                            p.group_b,
-                            p.seg_b,
-                            d_geom,
+                            p.group_a, p.seg_a, p.group_b, p.seg_b, d_geom,
                             cast(tuple[GrpContactHit, ...], hits),
                         )
                     )
