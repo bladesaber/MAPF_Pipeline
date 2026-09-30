@@ -38,6 +38,8 @@ Not constraints (by construction / soft-only)
 Solver (this file)
     cyipopt Problem + JAX ``loss_and_grad`` / ``constraints`` (dense Jg for MVP).
     Interior-point NLP; entry point ``interior_nlp`` (avoids clashing with ``cyipopt``).
+
+FIXME: terrible performance; need to find answers from JAX and IPOPT.
 """
 
 from __future__ import annotations

@@ -4,6 +4,8 @@ Any pair with to_coal() -> (shape, Transform3s) uses signed_distance.
 Witness points lie on coal shape surfaces (hull / box / sphere / capsule).
 
 coal’s Boost.Python stubs are incomplete → basedpyright false positives on ctors.
+
+FIXME: no support for batch operations; single pair at a time.
 """
 
 # pyright: reportCallIssue=false, reportArgumentType=false

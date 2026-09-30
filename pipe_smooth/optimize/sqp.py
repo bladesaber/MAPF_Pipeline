@@ -41,6 +41,8 @@ Solver (this file)
         min  ½||Δx||² + (∇J)ᵀΔx + w 1ᵀs
         s.t. g + Jg Δx - s ≤ 0,  s ≥ 0,  ||Δx||_∞ ≤ trust
     Large-scale interior-point NLP: see ipopt.py (same problem).
+
+FIXME: terrible performance; need to find answers from JAX and OSQP.
 """
 
 from __future__ import annotations
