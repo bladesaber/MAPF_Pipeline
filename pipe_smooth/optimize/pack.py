@@ -267,6 +267,8 @@ def refresh_from_x(
         pos, vel = xp.asarray(g.pos), xp.asarray(g.v)
         pn, vn = layout.free_pos_idx[gi], layout.free_v_idx[gi]
         po, vo = layout.free_pos_offset[gi], layout.free_v_offset[gi]
+        # JAX functional update: new pos/vel arrays; does not mutate g.pos / g.v
+        # (asarray above may alias; .at[].set always returns a copy-on-write result).
         if pn.size:
             pos = pos.at[pn].set(x[po : po + 3 * pn.size].reshape(-1, 3))  # type: ignore
         if vn.size:

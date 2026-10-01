@@ -63,10 +63,11 @@ OPT_DEFAULTS: dict[str, dict[str, Any]] = {
         "w_slack": 1e3,
     },
     "interior_nlp": {
-        "max_iter": 5,
+        "max_iter": 20,
         "eps_band": 0.2,
         "upper_only": True,
         "beta_v": 0.4,
+        "delta": 0.1,
     },
 }
 # Which kw is the outer step / trust size for coarse→refine.
@@ -76,6 +77,7 @@ OPT_STEP_KEY: dict[str, str] = {
     "adam_annealed": "delta",
     "langevin": "delta",
     "elastic_qp": "trust",
+    "interior_nlp": "delta",
 }
 
 
@@ -314,7 +316,7 @@ def run_optimize(
     kw: dict[str, Any] = dict(
         steps=steps,
         clear_kind="capsule" if clear_kind == "ignore" else clear_kind,
-        refresh_clear=refresh_clear,
+        refresh_clear=None if clear_kind == "ignore" else refresh_clear,
         refresh_union=union_cb,
         refresh_every=refresh_every,
         recorder=rec,

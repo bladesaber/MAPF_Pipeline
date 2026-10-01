@@ -39,10 +39,9 @@ Not constraints (by construction / soft-only)
 Solver (this file)
     Each outer step: ∇J + linearize g(x)≤0 → OSQP elastic QP
         min  ½||Δx||² + (∇J)ᵀΔx + w 1ᵀs
-        s.t. g + Jg Δx - s ≤ 0,  s ≥ 0,  ||Δx||_∞ ≤ trust
+        s.t. g + Jg Δx - s ≤ 0,  s ≥ 0,  ||Δx||_∞ ≤ δ
+    Accept/reject via ρ=ared/pred; adapt δ (real trust-region).
     Large-scale interior-point NLP: see ipopt.py (same problem).
-
-FIXME: terrible performance; need to find answers from JAX and OSQP.
 """
 
 from __future__ import annotations
@@ -64,8 +63,9 @@ from pipe_smooth.costs.clear import (
     pack_hull_active,
 )
 from pipe_smooth.costs.space import graph_space_band_constraint, graph_tangent_constraint
+from pipe_smooth.costs.union import pack_union_hits
 from pipe_smooth.geometry.assemble import OptimizeGraph
-from pipe_smooth.optimize.loss import LossWeights, loss_and_grad
+from pipe_smooth.optimize.loss import LossWeights, loss_and_grad, total_loss
 from pipe_smooth.optimize.pack import PackLayout, pack, unpack, refresh_from_x
 from pipe_smooth.optimize.recorder import Recorder
 from pipe_smooth.utils import backend as _backend
@@ -195,12 +195,15 @@ def elastic_qp(
         min_{z}  ½ zᵀ P z + qᵀ z
         s.t.     l ≤ A z ≤ u
 
+    Trust region (∞-norm): accept/reject via ``ρ = ared/pred`` on soft ``J``
+    with model ``m(d)=J+gᵀd+½‖d‖²``; shrink/expand ``delta`` from ``ρ``.
+
     Args:
         graphs: OptimizeGraph sequence (packed / refreshed in-place)
         layout: PackLayout for free Hermite DOF
         weights: LossWeights; η/μ_v > 0 enable space / tangent blocks; μ_obs/μ_grp ignored here
         steps: outer sequential-convex iterations
-        trust: ∞-norm trust on ``Δx``
+        trust: initial ∞-norm trust radius on ``Δx`` (adapted online)
         eps_band: spacing band ε passed to ``constraints``
         upper_only: spacing upper-only flag
         beta_v: tangent-norm scale vs chord
@@ -221,6 +224,8 @@ def elastic_qp(
     clear_obs_buf = clear_grp_buf = None
     union_hits = None
     n = int(layout.n)
+    delta = float(trust)
+    delta_min, delta_max = 1e-4, max(1.0, delta)
 
     for t in range(1, steps + 1):
         if (refresh_clear is not None or refresh_union is not None) and (
@@ -275,7 +280,7 @@ def elastic_qp(
         # ------------------------------
 
         # Elastic QP: min ½||Δx||² + gradᵀΔx + w 1ᵀs
-        #   g + Jg Δx - s ≤ 0,  s≥0,  |Δx|≤trust  (always feasible)
+        #   g + Jg Δx - s ≤ 0,  s≥0,  |Δx|≤delta
         m = c.size
         if t == 1 or t == steps or t % log_every == 0:
             val_f = float(val)
@@ -288,9 +293,8 @@ def elastic_qp(
         P = sparse.block_diag(
             [sparse.eye(n, format="csc"), sparse.csc_matrix((m, m))], format="csc"
         )
-        q = np.concatenate(
-            [np.asarray(grad, dtype=np.float64).reshape(-1), w_slack * np.ones(m)]
-        )
+        gvec = np.asarray(grad, dtype=np.float64).reshape(-1)
+        q = np.concatenate([gvec, w_slack * np.ones(m)])
         if m:
             A = sparse.vstack(
                 [
@@ -302,27 +306,57 @@ def elastic_qp(
                 ],
                 format="csc",
             )
-            l = np.concatenate([np.full(m, -np.inf), -trust * np.ones(n), np.zeros(m)])
-            u = np.concatenate([-c, trust * np.ones(n), np.full(m, np.inf)])
+            l = np.concatenate([np.full(m, -np.inf), -delta * np.ones(n), np.zeros(m)])
+            u = np.concatenate([-c, delta * np.ones(n), np.full(m, np.inf)])
         else:
             A = sparse.eye(n, format="csc")
-            l = -trust * np.ones(n)
-            u = trust * np.ones(n)
+            l = -delta * np.ones(n)
+            u = delta * np.ones(n)
             P = sparse.eye(n, format="csc")
-            q = np.asarray(grad, dtype=np.float64).reshape(-1)
+            q = gvec
 
         prob = osqp.OSQP()
         prob.setup(P=P, q=q, A=A, l=l, u=u, verbose=False, polish=True)
         res = prob.solve()
         ok = res.info.status_val in (1, 2)  # solved / solved inaccurate
         if not ok or res.x is None:
+            delta = max(delta_min, 0.25 * delta)
             if verbose:
-                print(f"elastic_qp {t}/{steps}  OSQP status={res.info.status} — stop")
-            break
-        x = x + jnp.asarray(res.x[:n], dtype=x.dtype)
+                print(f"elastic_qp {t}/{steps}  OSQP={res.info.status}  shrink δ={delta:.3g}")
+            if delta <= delta_min:
+                break
+            continue
+
+        dx = np.asarray(res.x[:n], dtype=np.float64).reshape(-1)
+        # model m(d)=J+gᵀd+½‖d‖²  →  pred = m(0)-m(d)
+        pred = float(-(gvec @ dx + 0.5 * (dx @ dx)))
+        if pred <= 1e-16:
+            delta = max(delta_min, 0.25 * delta)
+            continue
+
+        x_trial = x + jnp.asarray(dx, dtype=x.dtype)
+        samples = refresh_from_x(x_trial, graphs, layout, backend="jax")
+        uni = pack_union_hits(union_hits, layout, backend="jax")
+        val_new, _ = total_loss(
+            graphs, w, layout=layout, x=x_trial, union_buf=uni, samples=samples, backend="jax"
+        )
+        ared = float(val) - float(val_new)
+        rho = ared / pred
+
+        if rho < 0.25:
+            delta = max(delta_min, 0.25 * delta)
+        elif rho > 0.75 and float(np.linalg.norm(dx, ord=np.inf)) >= 0.9 * delta:
+            delta = min(delta_max, 2.0 * delta)
+
+        accepted = rho > 0.1
+        if accepted:
+            x = x_trial
 
         if verbose and (t == 1 or t == steps or t % log_every == 0):
-            print(f"elastic_qp {t}/{steps}  J={float(val):.6g}  m={m}  status={res.info.status}")
+            print(
+                f"elastic_qp {t}/{steps}  J={float(val):.6g}  ρ={rho:.3g}  "
+                f"δ={delta:.3g}  {'ok' if accepted else 'rej'}  m={m}"
+            )
 
     if recorder.best_x is None:
         raise RuntimeError("recorder.best_x is None; no step recorded a state")

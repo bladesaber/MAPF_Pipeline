@@ -71,11 +71,11 @@ def interior_nlp(
     eps_band: float = 0.2,
     upper_only: bool = True,
     beta_v: float = 0.4,
+    delta: float | None = None,
     clear_kind: str = "capsule",
     refresh_clear: Callable[[Sequence[OptimizeGraph]], Any] | None = None,
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 1,
-    log_every: int = 5,
     recorder: Recorder,
     verbose: bool = False,
 ) -> None:
@@ -93,12 +93,12 @@ def interior_nlp(
         eps_band: spacing band ε passed to ``constraints``
         upper_only: spacing upper-only flag
         beta_v: tangent-norm scale vs chord
+        delta: if set, each outer solve uses box ``x±delta``; None = free
         clear_kind: ``'capsule'`` | ``'hull'`` clearance residual
         refresh_clear: callback → frozen clear active set (outside AD)
         refresh_union: callback → frozen union hits for soft ``J_union``
         refresh_every: refresh period in outer steps
-        log_every: recorder period (plus first & last); IPOPT callbacks still sync
-        recorder: history / best-x logger (one record per logged outer round)
+        recorder: history / best-x logger (one record per outer round)
         verbose: IPOPT print_level / outer ``J``
     """
     if not recorder.phase:
@@ -160,22 +160,38 @@ def interior_nlp(
                 backend="jax",
             )
 
+        def _active_g(c, Jc=None):
+            """Drop padded clear rows (mask==0); keep space/tangent tail. JAX stays full-size."""
+            c = np.asarray(c, dtype=np.float64).reshape(-1)
+            if clear_obs_buf is None or clear_grp_buf is None:
+                return (c, np.asarray(Jc, dtype=np.float64).reshape(-1)) if Jc is not None else c
+            mask = np.concatenate(
+                [
+                    np.asarray(clear_obs_buf["mask"], dtype=np.float64).reshape(-1),
+                    np.asarray(clear_grp_buf["mask"], dtype=np.float64).reshape(-1),
+                ]
+            )
+            keep = np.ones(c.size, dtype=bool)
+            keep[: mask.size] = mask > 0.5
+            c = c[keep]
+            if Jc is None:
+                return c
+            J = np.asarray(Jc, dtype=np.float64).reshape(-1, n)
+            return c, J[keep].reshape(-1)
+
         def _c_and_jac(xx):
-            """One primal: g and dense Jg via VJP (row-major flat jac)."""
+            """One primal: g and dense Jg via VJP (row-major flat jac); active clear only."""
             xx_j = jnp.asarray(xx, dtype=jnp.float32)
             c, vjp = jax.vjp(_c_fn, xx_j)
             c = jnp.reshape(c, (-1,))
             if c.size == 0:
                 return np.zeros((0,), np.float64), np.zeros((0,), np.float64)
             Jc = jax.vmap(lambda e: vjp(e)[0])(jnp.eye(c.size, dtype=c.dtype))
-            return (
-                np.asarray(c, dtype=np.float64).reshape(-1),
-                np.asarray(Jc, dtype=np.float64).reshape(-1),
-            )
+            return _active_g(c, Jc)
 
         val0, _, parts0 = _obj_grad(x)
 
-        g0 = np.asarray(_c_fn(jnp.asarray(x, dtype=jnp.float32)), dtype=np.float64).reshape(-1)
+        g0 = _active_g(_c_fn(jnp.asarray(x, dtype=jnp.float32)))
         m = int(g0.size)
 
         class _Prob:
@@ -211,26 +227,30 @@ def interior_nlp(
                 return jc
 
         prob = _Prob()
+        if delta is None:
+            lb = ub = None
+        else:
+            lb, ub = x - float(delta), x + float(delta)
         if m:
             nlp = cyipopt.Problem(  # type: ignore[attr-defined]
                 n=n,
                 m=m,
                 problem_obj=prob,
-                lb=None,
-                ub=None,
+                lb=lb,
+                ub=ub,
                 cl=np.full(m, -1e19),
                 cu=np.zeros(m),
             )
         else:
             nlp = cyipopt.Problem(  # type: ignore[attr-defined]
-                n=n, m=0, problem_obj=prob, lb=None, ub=None
+                n=n, m=0, problem_obj=prob, lb=lb, ub=ub
             )
         nlp.add_option("max_iter", int(max_iter))
         nlp.add_option("print_level", 5 if verbose else 0)
         x, info = nlp.solve(x)
 
         # reuse last IPOPT callback evals (avoid extra _obj_grad / _c_fn)
-        if t == 1 or t == steps or t % log_every == 0:
+        if t == 1 or t == steps or t % refresh_every == 0:
             val_f = float(info.get("obj_val", prob.last_f if prob.last_f is not None else val0))
             g_f = prob.last_c
             max_viol = float(np.max(g_f)) if g_f is not None and g_f.size else 0.0
@@ -242,7 +262,8 @@ def interior_nlp(
                 print(f"interior_nlp {t}/{steps}  J={val_f:.6g}  m={m}  status={info['status']}")
         elif verbose:
             print(f"interior_nlp {t}/{steps}  m={m}  status={info['status']}")
-        if info["status"] < 0:
+        # -1 = max_iter exceeded (expected per outer); only harder failures abort
+        if int(info["status"]) < -1:
             break
 
     if recorder.best_x is None:

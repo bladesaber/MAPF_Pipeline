@@ -15,10 +15,21 @@ _EPS = 1e-12
 
 
 def softplus(z, sigma: float = 1e-2, backend: str = "numpy"):
-    """Smooth hinge [z]_+^σ = σ log(1 + exp(z/σ))."""
+    """Smooth hinge [z]_+^σ = σ log(1 + exp(z/σ)) via stable ``logaddexp``.
+
+    ``logaddexp(a, b) = log(exp(a)+exp(b))`` factors out ``m=max(a,b)``:
+    ``m + log(exp(a-m)+exp(b-m))``. Example ``a=1000, b=0``: naive
+    ``log(exp(1000)+1)`` overflows; stable form is
+    ``1000 + log(1 + exp(-1000)) ≈ 1000``.
+
+    Args:
+        z: residual (scalar or array); softplus ≈ max(z, 0) for small σ
+        sigma: hinge softness; smaller → closer to ReLU
+        backend: 'numpy' | 'jax'
+    """
     xp = _backend(backend)
     z = xp.asarray(z)
-    return sigma * xp.log1p(xp.exp(z / sigma))
+    return sigma * xp.logaddexp(0.0, z / sigma)
 
 
 def path_length(xyz, w=None, backend: str = "numpy"):

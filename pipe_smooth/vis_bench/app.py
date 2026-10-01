@@ -162,10 +162,11 @@ _OPT_SPECS: dict[str, dict[str, tuple]] = {
         "refresh_every": ("int", 5),
     },
     "interior_nlp": {
-        "max_iter": ("int", 5),
+        "max_iter": ("int", 15),
         "eps_band": ("float", 0.2),
         "upper_only": ("bool", True),
         "beta_v": ("float", 0.4),
+        "delta": ("float", 0.1),
         "refresh_every": ("int", 1),
     },
 }
@@ -296,6 +297,9 @@ class BenchViewer(QMainWindow):
         self.steps.setRange(1, 100000)
         self.steps.setValue(50)
         row.addWidget(self.steps)
+        self.verbose = QCheckBox("verbose")
+        self.verbose.setChecked(False)
+        row.addWidget(self.verbose)
         ov.addLayout(row)
         self.opt_form = QFormLayout()
         self.opt_widgets: dict[str, QWidget] = {}
@@ -1169,7 +1173,7 @@ class BenchViewer(QMainWindow):
             steps=steps,
             out_dir=out,
             record_state=True,
-            verbose=False,
+            verbose=bool(self.verbose.isChecked()),
             **self._opt_kwargs(),
         )
         self.progress.setMaximum(steps)
