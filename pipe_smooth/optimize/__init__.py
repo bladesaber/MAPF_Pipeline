@@ -2,7 +2,7 @@ from .pack import PackLayout, layout, pack, unpack
 from .loss import LossWeights, total_loss, loss_and_grad
 from .adam import adam, adam_annealed
 from .langevin import langevin, langevin_ema
-from .sqp import elastic_qp, constraints
+from .sqp import elastic_qp, constraints, active_g
 from .ipopt import interior_nlp
 from .recorder import Recorder
 
@@ -21,5 +21,6 @@ __all__ = [
     "elastic_qp",
     "interior_nlp",
     "constraints",
+    "active_g",
     "Recorder",
 ]

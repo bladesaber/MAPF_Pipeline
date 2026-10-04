@@ -33,12 +33,16 @@ Writes `runs/<folder>/<method>/<clear_kind>/instance_*/`.
 
 ```bash
 cd pipe_smooth
-./run_instances.sh data/easy data/hard -j 8 -m all --clear-kind all \
+./run_instances.sh data/hard -j 8 -m all --clear-kind all \
   --two-stage --coarse-step 500 --refine-step 200 \
   --coarse-step-size 0.1 --refine-step-size 0.01 \
   --union-kind chamfer --margin-ratio 1.5 \
   --p-max-obs 1024 --p-max-grp 1024 --p-max-union 512
 ```
+
+`interior_nlp` has an inner IPOPT loop (`max_iter`, default 20). Bash rescales outer
+iters to `ceil(N / IPOPT_MAX_ITER)` so total work ≈ adam-style budget
+(e.g. coarse 500 → 25 outer × 20 inner). Override with env `IPOPT_MAX_ITER`.
 
 | flag | role |
 |------|------|
@@ -46,7 +50,7 @@ cd pipe_smooth
 | `-j` | parallel workers |
 | `-m` | method, comma-list, or `all` (`adam` / `adam_annealed` / `langevin` / `elastic_qp` / `interior_nlp`) |
 | `--clear-kind` | `capsule` / `hull` / `ignore`, comma-list, or `all` |
-| `--coarse-step` / `--refine-step` | iters per stage (`--refine-step` also used if `--no-two-stage`) |
+| `--coarse-step` / `--refine-step` | iters per stage (`--refine-step` also used if `--no-two-stage`); for `interior_nlp` these are adam-equivalent budgets (rescaled, see above) |
 | `--coarse-step-size` / `--refine-step-size` | stage step size (see table below) |
 | `--margin-ratio` | clear soft pad = ratio × stage step size (want > 1) |
 | `--union-kind` | `chamfer` / `ignore` (skip junction Chamfer refresh) |
@@ -61,7 +65,7 @@ cd pipe_smooth
 | `adam` | `lr` |
 | `adam_annealed` / `langevin` | `delta` and `eta_max` (kept equal; Langevin EM rate = trust length) |
 | `elastic_qp` | `trust` |
-| `interior_nlp` | no step-size key (two-stage falls back to a single pass) |
+| `interior_nlp` | `delta` (box `x±delta` each outer solve) |
 
 Single case (same flags):
 

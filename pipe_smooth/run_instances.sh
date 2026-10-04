@@ -34,6 +34,8 @@ COARSE_STEPS="${COARSE_STEPS:-50}"
 REFINE_STEPS="${REFINE_STEPS:-50}"
 COARSE_STEP_SIZE="${COARSE_STEP_SIZE:-0.1}"
 REFINE_STEP_SIZE="${REFINE_STEP_SIZE:-0.01}"
+# interior_nlp: outer ≈ adam_steps / max_iter (ceil), so total IPOPT work ~ matches
+IPOPT_MAX_ITER="${IPOPT_MAX_ITER:-20}"
 
 usage() {
   cat <<EOF
@@ -59,8 +61,13 @@ usage: $0 DATA_DIR [DATA_DIR ...] [options...]
   --refine-step-size F      refine lr/delta/trust (default 0.01)
   -h, --help
 
+  Note: for interior_nlp, coarse/refine steps are rescaled to
+        ceil(N / IPOPT_MAX_ITER) (default max_iter=20) so outer×inner
+        ≈ the adam-style budget.
+
 Env: JOBS METHOD(S) CLEAR_KIND(S) UNION_KIND MARGIN_RATIO P_MAX_* REFRESH_EVERY
-     TWO_STAGE COARSE_STEPS REFINE_STEPS COARSE_STEP_SIZE REFINE_STEP_SIZE PYTHON
+     TWO_STAGE COARSE_STEPS REFINE_STEPS COARSE_STEP_SIZE REFINE_STEP_SIZE
+     IPOPT_MAX_ITER PYTHON
 EOF
 }
 
@@ -218,18 +225,35 @@ echo "jobs_total=${#JOBS_LIST[@]}  parallel=${JOBS}"
 echo "union=${UNION_KIND}  margin_ratio=${MARGIN_RATIO}"
 echo "iters coarse=${COARSE_STEPS} refine=${REFINE_STEPS}  two_stage=${TWO_STAGE}"
 echo "step_size coarse=${COARSE_STEP_SIZE} refine=${REFINE_STEP_SIZE}"
+if printf '%s\n' "${METHODS[@]}" | grep -qx interior_nlp; then
+  _ic=$(( (COARSE_STEPS + IPOPT_MAX_ITER - 1) / IPOPT_MAX_ITER ))
+  _ir=$(( (REFINE_STEPS + IPOPT_MAX_ITER - 1) / IPOPT_MAX_ITER ))
+  (( _ic < 1 )) && _ic=1
+  (( _ir < 1 )) && _ir=1
+  echo "interior_nlp rescale: outer coarse=${_ic} refine=${_ir}  (max_iter=${IPOPT_MAX_ITER})"
+fi
 
 run_one() {
   local spec="$1" env out_root method clear_kind tag name out log rc
+  local coarse_steps refine_steps extra_args=""
   IFS='|' read -r env out_root method clear_kind tag <<<"${spec}"
   name="$(basename "${env}" .yaml)"
   out="${out_root}/${name}"
   mkdir -p "${out}"
   log="${out}/run.log"
+  coarse_steps="${COARSE_STEPS}"
+  refine_steps="${REFINE_STEPS}"
+  if [[ "${method}" == "interior_nlp" ]]; then
+    coarse_steps=$(( (COARSE_STEPS + IPOPT_MAX_ITER - 1) / IPOPT_MAX_ITER ))
+    refine_steps=$(( (REFINE_STEPS + IPOPT_MAX_ITER - 1) / IPOPT_MAX_ITER ))
+    (( coarse_steps < 1 )) && coarse_steps=1
+    (( refine_steps < 1 )) && refine_steps=1
+    extra_args="--coarse-step ${coarse_steps} --refine-step ${refine_steps}"
+  fi
   echo "=== ${tag} → ${out} ==="
   set +e
   # shellcheck disable=SC2086
-  eval "\"${PYTHON}\" -m pipe_smooth.pipeline \"${env}\" -o \"${out}\" -m \"${method}\" --clear-kind \"${clear_kind}\" ${PIPE_ARGS_STR}" \
+  eval "\"${PYTHON}\" -m pipe_smooth.pipeline \"${env}\" -o \"${out}\" -m \"${method}\" --clear-kind \"${clear_kind}\" ${PIPE_ARGS_STR} ${extra_args}" \
     >"${log}" 2>&1
   rc=$?
   set -e
@@ -241,7 +265,7 @@ run_one() {
   return "${rc}"
 }
 export -f run_one
-export PYTHON PIPE_ARGS_STR
+export PYTHON PIPE_ARGS_STR COARSE_STEPS REFINE_STEPS IPOPT_MAX_ITER
 
 cd "${ROOT}"
 fail=0

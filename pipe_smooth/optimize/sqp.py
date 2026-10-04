@@ -168,6 +168,40 @@ def c_and_jac(c_fn, x):
     )
 
 
+def active_g(c, clear_obs_buf=None, clear_grp_buf=None, Jc=None, *, n: int | None = None):
+    """Drop padded clear rows (``mask==0``); keep space/tangent tail.
+
+    JAX/pack stay full ``p_max``; call this after numpy conversion before OSQP/IPOPT.
+    ``Jc`` may be ``(m, n)`` or flat ``(m*n,)``; returned ``Jc`` is always ``(m_active, n)``.
+    Pass ``n`` (DOF) when ``Jc`` is flat; for 2D ``Jc`` it defaults to ``Jc.shape[1]``.
+    """
+    c = np.asarray(c, dtype=np.float64).reshape(-1)
+    m_full = int(c.size)
+    keep = None
+    if clear_obs_buf is not None and clear_grp_buf is not None and m_full:
+        mask = np.concatenate(
+            [
+                np.asarray(clear_obs_buf["mask"], dtype=np.float64).reshape(-1),
+                np.asarray(clear_grp_buf["mask"], dtype=np.float64).reshape(-1),
+            ]
+        )
+        keep = np.ones(m_full, dtype=bool)
+        keep[: mask.size] = mask > 0.5
+        c = c[keep]
+    if Jc is None:
+        return c
+    Jc = np.asarray(Jc, dtype=np.float64)
+    if Jc.ndim == 1:
+        if n is None:
+            raise ValueError("active_g: pass n=... when Jc is flat")
+        Jc = Jc.reshape(m_full, int(n)) if m_full else np.zeros((0, int(n)), dtype=np.float64)
+    elif n is not None and int(Jc.shape[1]) != int(n):
+        raise ValueError(f"active_g: Jc.shape[1]={Jc.shape[1]} != n={n}")
+    if keep is not None:
+        Jc = Jc[keep]
+    return c, Jc
+
+
 def elastic_qp(
     graphs: Sequence[OptimizeGraph],
     layout: PackLayout,
@@ -183,7 +217,6 @@ def elastic_qp(
     refresh_clear: Callable[[Sequence[OptimizeGraph]], Any] | None = None,
     refresh_union: Callable[[Sequence[OptimizeGraph]], dict] | None = None,
     refresh_every: int = 5,
-    log_every: int = 5,
     recorder: Recorder,
     verbose: bool = False,
 ) -> None:
@@ -212,7 +245,6 @@ def elastic_qp(
         refresh_clear: callback → frozen clear active set (outside AD)
         refresh_union: callback → frozen union hits for soft ``J_union``
         refresh_every: refresh period in outer steps
-        log_every: recorder period (plus first & last)
         recorder: history / best-x logger
         verbose: print OSQP status / ``J``
     """
@@ -270,6 +302,7 @@ def elastic_qp(
             )
 
         c, Jc = c_and_jac(c_fn, x)
+        c, Jc = active_g(c, clear_obs_buf, clear_grp_buf, Jc, n=n)
         
         # ------ deprecated code (use c_and_jac instead) ------
         # c = np.asarray(c_fn(x), dtype=np.float64).reshape(-1)
@@ -282,7 +315,7 @@ def elastic_qp(
         # Elastic QP: min ½||Δx||² + gradᵀΔx + w 1ᵀs
         #   g + Jg Δx - s ≤ 0,  s≥0,  |Δx|≤delta
         m = c.size
-        if t == 1 or t == steps or t % log_every == 0:
+        if t == 1 or t == steps or t % refresh_every == 0:
             val_f = float(val)
             max_viol = float(np.max(c)) if m else 0.0
             recorder.record(
@@ -352,7 +385,7 @@ def elastic_qp(
         if accepted:
             x = x_trial
 
-        if verbose and (t == 1 or t == steps or t % log_every == 0):
+        if verbose and (t == 1 or t == steps or t % refresh_every == 0):
             print(
                 f"elastic_qp {t}/{steps}  J={float(val):.6g}  ρ={rho:.3g}  "
                 f"δ={delta:.3g}  {'ok' if accepted else 'rej'}  m={m}"

@@ -572,7 +572,7 @@ def main() -> None:
     parser.add_argument(
         "--refresh-every",
         type=int,
-        default=10,
+        default=1,
         dest="refresh_every",
         help="re-detect clear/union active sets every N steps (default 10)",
     )

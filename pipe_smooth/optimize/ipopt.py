@@ -58,7 +58,7 @@ from pipe_smooth.geometry.assemble import OptimizeGraph
 from pipe_smooth.optimize.loss import LossWeights, loss_and_grad
 from pipe_smooth.optimize.pack import PackLayout, pack, unpack, refresh_from_x
 from pipe_smooth.optimize.recorder import Recorder
-from pipe_smooth.optimize.sqp import constraints
+from pipe_smooth.optimize.sqp import active_g, constraints
 
 
 def interior_nlp(
@@ -160,25 +160,6 @@ def interior_nlp(
                 backend="jax",
             )
 
-        def _active_g(c, Jc=None):
-            """Drop padded clear rows (mask==0); keep space/tangent tail. JAX stays full-size."""
-            c = np.asarray(c, dtype=np.float64).reshape(-1)
-            if clear_obs_buf is None or clear_grp_buf is None:
-                return (c, np.asarray(Jc, dtype=np.float64).reshape(-1)) if Jc is not None else c
-            mask = np.concatenate(
-                [
-                    np.asarray(clear_obs_buf["mask"], dtype=np.float64).reshape(-1),
-                    np.asarray(clear_grp_buf["mask"], dtype=np.float64).reshape(-1),
-                ]
-            )
-            keep = np.ones(c.size, dtype=bool)
-            keep[: mask.size] = mask > 0.5
-            c = c[keep]
-            if Jc is None:
-                return c
-            J = np.asarray(Jc, dtype=np.float64).reshape(-1, n)
-            return c, J[keep].reshape(-1)
-
         def _c_and_jac(xx):
             """One primal: g and dense Jg via VJP (row-major flat jac); active clear only."""
             xx_j = jnp.asarray(xx, dtype=jnp.float32)
@@ -187,11 +168,12 @@ def interior_nlp(
             if c.size == 0:
                 return np.zeros((0,), np.float64), np.zeros((0,), np.float64)
             Jc = jax.vmap(lambda e: vjp(e)[0])(jnp.eye(c.size, dtype=c.dtype))
-            return _active_g(c, Jc)
+            c, Jc = active_g(c, clear_obs_buf, clear_grp_buf, Jc, n=n)
+            return c, np.asarray(Jc, dtype=np.float64).reshape(-1)
 
         val0, _, parts0 = _obj_grad(x)
 
-        g0 = _active_g(_c_fn(jnp.asarray(x, dtype=jnp.float32)))
+        g0 = active_g(_c_fn(jnp.asarray(x, dtype=jnp.float32)), clear_obs_buf, clear_grp_buf)
         m = int(g0.size)
 
         class _Prob:
