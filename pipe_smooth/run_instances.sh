@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PYTHON="${PYTHON:-python}"
 
-ALL_METHODS=(adam adam_annealed langevin elastic_qp interior_nlp)
+ALL_METHODS=(adam adam_annealed langevin)
 ALL_CLEAR_KINDS=(capsule hull ignore)
 
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"

@@ -349,7 +349,7 @@ def elastic_qp(
             q = gvec
 
         prob = osqp.OSQP()
-        prob.setup(P=P, q=q, A=A, l=l, u=u, verbose=False, polish=True)
+        prob.setup(P=P, q=q, A=A, l=l, u=u, verbose=verbose, polish=True)
         res = prob.solve()
         ok = res.info.status_val in (1, 2)  # solved / solved inaccurate
         if not ok or res.x is None:

@@ -378,7 +378,8 @@ def run_pipeline(
     ``two_stage``: coarse then refine. Per stage: ``coarse_steps`` / ``refine_steps``
     and step size (``lr`` / ``delta`` / ``trust`` ← ``*_step_size``;
     adam_annealed/langevin also set ``eta_max = delta``).
-    Single-pass (``two_stage=False``): ``steps`` if given (vis_bench), else ``refine_steps``.
+    Single-pass (``two_stage=False``): ``steps`` if given (vis_bench), else ``refine_steps``;
+    step size comes from ``refine_step_size``.
     Clearance soft pad: ``margin`` if given, else ``margin_ratio * step_size``.
     """
     out = Path(out_dir)
@@ -402,7 +403,7 @@ def run_pipeline(
         ]
     else:
         n_single = int(steps if steps is not None else n_refine)
-        stage_steps = [(None, n_single, method)]
+        stage_steps = [(refine_step_size, n_single, method)]
 
     wall_time = 0.0
     opt: dict[str, Any] | None = None
