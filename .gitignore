@@ -52,6 +52,7 @@ pipe_design/tools/data/movingai/**/report/**
 *.synctex.gz
 *.toc
 *.gz
+*.dvi
 
 # jsonl
 *.jsonl

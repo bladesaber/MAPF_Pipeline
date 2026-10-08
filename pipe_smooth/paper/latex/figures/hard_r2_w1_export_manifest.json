@@ -1,0 +1,31 @@
+{
+  "run_root": "/home/admin123456/Desktop/work/MAPF_Pipeline/pipe_smooth/runs/hard_r2_w1/adam/capsule",
+  "instances": [
+    "instance_0",
+    "instance_1"
+  ],
+  "showcase_group": "g2",
+  "files": [
+    "hard_r2_w1_export_manifest.json",
+    "hard_r2_w1_instance_0_J.pdf",
+    "hard_r2_w1_instance_0_J.png",
+    "hard_r2_w1_instance_0_after.png",
+    "hard_r2_w1_instance_0_before.png",
+    "hard_r2_w1_instance_0_g2_after.png",
+    "hard_r2_w1_instance_0_g2_alt_after.png",
+    "hard_r2_w1_instance_0_g2_alt_before.png",
+    "hard_r2_w1_instance_0_g2_before.png",
+    "hard_r2_w1_instance_0_pair.pdf",
+    "hard_r2_w1_instance_0_pair.png",
+    "hard_r2_w1_instance_1_J.pdf",
+    "hard_r2_w1_instance_1_J.png",
+    "hard_r2_w1_instance_1_after.png",
+    "hard_r2_w1_instance_1_before.png",
+    "hard_r2_w1_instance_1_g2_after.png",
+    "hard_r2_w1_instance_1_g2_alt_after.png",
+    "hard_r2_w1_instance_1_g2_alt_before.png",
+    "hard_r2_w1_instance_1_g2_before.png",
+    "hard_r2_w1_instance_1_pair.pdf",
+    "hard_r2_w1_instance_1_pair.png"
+  ]
+}

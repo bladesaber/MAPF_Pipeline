@@ -1,0 +1,36 @@
+% !TEX root = main.tex
+% =============================================================================
+% Related work (compact for technical report)
+% =============================================================================
+
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Discrete pipe routing.}
+Belov et al.~\cite{belov2020pr} adapt MAPF-style search to 3D pipe routing;
+surveys of plant-scale automatic routing emphasize sequential CAD and
+MIP/sampling pipelines~\cite{blokland2023pipe}.
+Our companion report~\cite{deng2025pipe_design} treats \emph{multi-group}
+routing under permanent occupancy and supplies the coarse layouts we refine.
+That work stops at discrete embeddings; continuous centerline cleanup is left
+open.
+
+\paragraph{Robotic path smoothing.}
+CHOMP, STOMP, TEB, and TrajOpt~\cite{zucker2013chomp,kalakrishnan2011stomp,roesmann2013teb,schulman2014trajopt}
+refine a single temporary trajectory under smoothness and collision costs.
+We inherit the gradient-centric idea, but a one-path objective does not encode
+shared trunks, permanent cross-group tubes, or the multi-usage junction conflict
+of Sec.~\ref{sec:problem:junction}.
+
+\paragraph{Fairing, CAD, and physics polish.}
+Elastic-rod / curve fairing~\cite{moreton1992functional,bergou2008discrete}
+and clothoid primitives~\cite{fraichard2004from} motivate soft bend energies on
+one open curve; sparse circular-arc encodings are a poor fit for dense
+grid-routed manifolds.
+Parametric Hermite / NURBS centerlines are standard in CAD~\cite{piegl1997nurbs},
+yet manual fillets do not resolve multi-usage joins under hard clearance.
+Adjoint CFD / shape optimization sits \emph{downstream}: it typically deforms a
+fixed channel layout and does not create a locally split junction
+(Sec.~\ref{sec:problem:pipeline}).
+Our contribution is the combination---branched, usage-coupled refine under
+permanent tubular occupancy---not any single fairing or collision ingredient.

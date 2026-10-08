@@ -1,0 +1,67 @@
+% !TEX root = main.tex
+% =============================================================================
+% Introduction / background
+% =============================================================================
+
+\section{Introduction}
+\label{sec:intro}
+
+Additive manufacturing (AM) allows compact hydraulic components whose internal
+channels follow free-form three-dimensional paths rather than intersecting
+drilled holes.
+A representative design case is multi-group channel layout in rotary
+direct-drive servo valves: terminals are partitioned into groups; pipes of
+different groups must remain geometrically separated for all poses of interest,
+while pipes within a group may share trunks and branch into tree-like
+manifolds.
+Once a channel is placed it permanently occupies volume, so later groups must
+clear earlier geometry.
+
+Our companion work on discrete multi-group pipe routing under permanent
+geometric occupancy~\cite{deng2025pipe_design} addresses the combinatorial
+layout problem: given ports, obstacles, and group topologies, produce a
+conflict-free coarse embedding on a constructive 3D grid benchmark, evaluated
+by fixed-budget success of CBS, PBS, and priority planning.
+That paper explicitly leaves post-layout smoothing as orthogonal follow-on
+work.
+The layouts it returns are feasible but still grid-angular; the present report
+refines those centerlines.
+
+\paragraph{Why robotic path smoothing is not enough.}
+Trajectory fairing methods such as CHOMP, STOMP, TEB, and TrajOpt typically
+optimize a single open curve for a temporary agent under time-indexed or soft
+obstacle costs~\cite{zucker2013chomp,kalakrishnan2011stomp,roesmann2013teb,schulman2014trajopt}.
+Pipe refinement differs along several axes that we make precise in
+Sec.~\ref{sec:problem}: permanent tubular occupancy, branched topology with
+degree-$\ge 3$ junctions, costs driven by declared usages rather than one
+$s$--$t$ path.
+The central geometric conflict is not ``make one spline smoother,'' but
+\emph{how several overlapping usages share a trunk while remaining fair at every
+declared terminal-to-terminal flow}.
+
+\paragraph{Scope of this report.}
+We formalize topology-preserving, multi-usage geometric refinement
+under permanent tubular occupancy (Sec.~\ref{sec:problem}), survey adjacent
+literatures (Sec.~\ref{sec:related}), and describe a hybrid trunk-share /
+junction-split Hermite parameterization (Sec.~\ref{sec:method}) with soft path
+and clearance costs (Sec.~\ref{sec:costs}).
+Gradient-based experiments on synthetic instances with capsule clearance follow
+in later sections.
+We do not claim a new optimal continuous planner, commercial CAD parity, or
+CFD-validated hydraulic improvement; those belong to later CAD and fluid
+optimization, not to this geometric pass.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+  \item \textbf{Problem.} A clear formulation of post-routing centerline
+        refinement for branched, multi-usage, permanently occupied tubes,
+        including the shared-junction versus locally split junction regimes.
+  \item \textbf{Method sketch.} Hybrid trunk-share / junction-split variables
+        with soft length/curvature and clearance costs, hard ports and
+        topology by construction, and hard clearance at accept
+        (detailed in later sections).
+  \item \textbf{Empirical note.} On hard multi-group synthetic cases, gradient
+        refine with capsule clearance yields feasible designs with
+        $\kappa r_{\max}\lesssim 1$ and large relative objective drop
+        (Sec.~\ref{sec:experiments}).
+\end{enumerate}

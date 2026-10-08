@@ -1,0 +1,21 @@
+% !TEX root = main.tex
+% =============================================================================
+% Conclusion (compact; no separate Discussion)
+% =============================================================================
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+We formalized topology-preserving, multi-usage pipe centerline refinement under
+permanent tubular occupancy, and instantiated it with hybrid trunk-share /
+junction-split Hermite variables, soft path / clearance / union / spacing
+costs, and hard clearance at accept.
+On $50$ hard multi-group synthetic instances with capsule clearance, the refine
+reaches full hard-accept success, $\kappa r_{\max}\lesssim 1$, and about a
+$95\%$ relative drop in the soft objective.
+
+The objective here is geometric: $K$ is a bend proxy, not pressure drop, and
+capsule clearance is a fast narrowphase rather than exact CAD interference.
+Fluid PDE polish and automatic weight schedules are left to later work; this
+report only claims a usable geometric stage between discrete multi-group
+routing and subsequent solid / physics optimization.

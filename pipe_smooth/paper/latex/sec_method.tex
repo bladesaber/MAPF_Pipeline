@@ -1,0 +1,207 @@
+% !TEX root = main.tex
+% =============================================================================
+% Method: hybrid trunk-share / junction-split + Hermite
+% Cost formulas → sec_costs (next).
+% =============================================================================
+
+\section{Method}
+\label{sec:method}
+
+This section fixes the parameterization and the optimize loop; cost formulas
+are in Sec.~\ref{sec:costs}.
+
+\subsection{Pipeline overview}
+\label{sec:method:pipeline}
+
+For each group independently (cross-group coupling enters only through
+clearance):
+
+\begin{enumerate}
+  \item \textbf{Tree.} Deduplicate the coarse grid / polyline embedding into an
+        undirected tree $\mathcal{T}$ (or forest): nodes are terminals and
+        branch points; edges carry the coarse polylines and radii.
+  \item \textbf{Junction partition.} Grow junction complexes around
+        degree-$\ge 3$ nodes; label remaining edges as trunks
+        (Sec.~\ref{sec:method:partition}).
+  \item \textbf{Hermite graph.} Instantiate cubic Hermite segments on labeled
+        edges. Trunk knots are shared; junction knots are private per labeled
+        junction edge; ports and trunk--junction interfaces are clamped for
+        $C^{0}/C^{1}$ by construction (Sec.~\ref{sec:method:hermite}).
+  \item \textbf{Assemble \& optimize.} Sample usages, minimize soft $J$ by
+        gradient steps, accept under hard clearance (Alg.~\ref{alg:refine}).
+\end{enumerate}
+
+Groups couple only through $J_{\mathrm{clear}}$ and the final accept test.
+Topology $\mathcal{T}$ and $\mathcal{U}$ are never rewritten.
+
+\subsection{Junction partition: where DOF are private}
+\label{sec:method:partition}
+
+The hybrid rule is: \emph{share controls wherever usages share physical pipe;
+add private controls only where multi-usage curvature conflicts}.
+
+\paragraph{Grow complexes.}
+Seed every tree node of degree $\ge 3$.
+Grow a zone around each seed by tree-path length with threshold
+$\tau=\max(\tau_0,\,\alpha\,r_{\mathrm{local}},\,\beta\,R_{\mathrm{bend}})$.
+After the zone grow, any connected trunk component whose total length is shorter
+than a threshold $\tau_{\mathrm{trunk}}$ is absorbed into junction (so nearby
+seeds separated by a short trunk become one complex $Z$).
+Edges inside $Z$ are labeled \texttt{junction}; edges outside all complexes are
+\texttt{trunk}.
+
+\paragraph{Variable layout.}
+Table~\ref{tab:regions} summarizes roles after the label pass.
+When building the Hermite graph we apply one privatization rule:
+\emph{ports and complex interfaces keep a single global knot; every other
+sample on a labeled edge is private to that edge}, so two junction edges that
+meet at the same coarse branch point do not share interior $(p,v)$.
+Usages do not each own a full duplicate spline; they inherit geometry by
+walking the labeled edges on their tree path.
+Junction chains stay short, so new freedom appears only near the conflict in
+Fig.~\ref{fig:y-shape}.
+
+\begin{table}[H]
+  \centering
+  \caption{Region roles after junction partition.}
+  \label{tab:regions}
+  \begin{tabular}{@{}p{0.16\linewidth}p{0.28\linewidth}p{0.24\linewidth}p{0.24\linewidth}@{}}
+    \toprule
+    Region & Geometry & Variables & Continuity \\
+    \midrule
+    Trunk
+      & Edges outside all complexes
+      & Shared Hermite knots $X_{\mathrm{trunk}}$
+      & Intrinsic (one curve) \\
+    Junction
+      & Interior of complex $Z$
+      & Private knots \emph{per labeled junction edge}
+      & Meets trunk at interface \\
+    Interface
+      & Complex boundary
+      & Shared endpoints (+ clamped tangents)
+      & Hard $C^{0}$; hard $C^{1}$ by construction \\
+    Ports
+      & Group terminals
+      & Fixed position / axis tangent
+      & Hard clamps \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Y example (how a local split appears).}
+On $A$--$J$--$C$ with $B$--$J$ and
+$\mathcal{U}=\{A\!\to\!C,\,B\!\to\!C,\,A\!\to\!B\}$, the coarse embedding places
+all three branches at one point $J$.
+After partition, each usage is a short alternating chain of
+\emph{shared trunks} and \emph{private junction edges}:
+\begin{align*}
+A\!\to\!C &:\;
+  A_{\mathrm{trunk}}
+  \;\to\;
+  AC_{\mathrm{junc}}
+  \;\to\;
+  C_{\mathrm{trunk}},
+\\
+B\!\to\!C &:\;
+  B_{\mathrm{trunk}}
+  \;\to\;
+  BC_{\mathrm{junc}}
+  \;\to\;
+  C_{\mathrm{trunk}},
+\\
+A\!\to\!B &:\;
+  A_{\mathrm{trunk}}
+  \;\to\;
+  AB_{\mathrm{junc}}
+  \;\to\;
+  B_{\mathrm{trunk}}.
+\end{align*}
+Here $A_{\mathrm{trunk}}$, $B_{\mathrm{trunk}}$, and $C_{\mathrm{trunk}}$ are
+shared Hermite geometry (every usage that enters that arm reads the same knots).
+The three junction edges $AC_{\mathrm{junc}}$, $BC_{\mathrm{junc}}$, and
+$AB_{\mathrm{junc}}$ are independent: each has its own interior $(p,v)$, even
+though they all start at the same coarse coordinates near $J$.
+Thus $A\!\to\!C$ and $B\!\to\!C$ couple through $C_{\mathrm{trunk}}$, while
+$A\!\to\!B$ can fair through $AB_{\mathrm{junc}}$ without forcing a hairpin at a
+single shared point.
+Initialization copies the shared-junction layout, so the private junction knots
+begin coincident; during optimization they may separate and open the void in
+Fig.~\ref{fig:y-shape}b---a continuous motion of already-private DOF, not a
+discrete mode switch.
+
+\subsection{Cubic Hermite representation}
+\label{sec:method:hermite}
+
+Each labeled edge is a chain of cubic Hermite segments.
+A segment with ends $(p_0,v_0)$ and $(p_1,v_1)$ is, for $t\in[0,1]$,
+\begin{equation}
+\label{eq:hermite}
+\gamma(t)
+=
+H_{00}(t)\,p_0
++ H_{10}(t)\,v_0
++ H_{01}(t)\,p_1
++ H_{11}(t)\,v_1,
+\end{equation}
+with the standard Hermite basis
+\begin{align*}
+H_{00}(t) &= 2t^{3}-3t^{2}+1, &
+H_{10}(t) &= t^{3}-2t^{2}+t, \\
+H_{01}(t) &= -2t^{3}+3t^{2}, &
+H_{11}(t) &= t^{3}-t^{2}.
+\end{align*}
+Thus $\gamma(0)=p_0$, $\gamma(1)=p_1$, $\gamma'(0)=v_0$, $\gamma'(1)=v_1$.
+Shared nodes enforce hard $C^{0}$ and $C^{1}$: every incident segment reads the
+same $(p,v)$.
+
+\paragraph{Clamps.}
+Port nodes fix $p$ and align $v$ with the prescribed unit vector.
+Interface nodes between trunk and junction share $p$ (and, by construction,
+compatible $v$) so that usage walks stay $G^{1}$ across the complex boundary.
+Only movable trunk knots and private junction knots enter the decision
+vector $x$.
+
+\subsection{Assemble and optimize}
+\label{sec:method:opt}
+
+Alg.~\ref{alg:refine} minimizes the soft objective of Sec.~\ref{sec:costs} by
+first-order steps on $\nabla_x J$ and accepts a design only under hard obstacle /
+cross-group clearance.
+Cost formulas are in Sec.~\ref{sec:costs}; which first-order variant we use in
+practice is an implementation detail reported with the experiments.
+
+\begin{algorithm}[H]
+\caption{Usage assembly and gradient refine (per multi-group instance)}
+\label{alg:refine}
+\begin{algorithmic}[1]
+\Require Hermite graphs $\{G_g\}$, usages $\mathcal{U}$, weights, steps $T$, refresh period $k$
+\State $x \leftarrow$ concatenate free node positions and tangents $(p,v)$ across groups
+\For{$t = 1,\ldots,T$}
+  \State write $x$ into the Hermite graphs
+  \If{$t=1$ or $(t-1) \bmod k = 0$}
+    \State find candidate colliding pairs by proximity (broadphase):
+    \Statex \quad $\mathcal{N}_{\mathrm{obs}}$: tube samples vs obstacle primitives
+    \Statex \quad $\mathcal{N}_{\mathrm{grp}}$: tube samples of group $g$ vs group $g'$
+    \Statex \quad $\mathcal{N}_{\mathrm{union}}$: nearby junction samples within a complex
+  \EndIf
+  \For{each usage $u \in \mathcal{U}$}
+    \State follow $u$'s path on $\mathcal{T}$ (shared trunks + private junctions)
+    \State sample Hermite segments along that path $\to \gamma_u,\, r_u$
+  \EndFor
+  \State $J_{\mathrm{path}} \leftarrow$ length / curvature on $\{\gamma_u,r_u\}$
+        \Comment{Sec.~\ref{sec:costs}}
+  \State $J_{\mathrm{space}} \leftarrow$ spacing penalty on chord gaps
+  \State $J_{\mathrm{clear}} \leftarrow$ soft gaps on pairs in
+        $\mathcal{N}_{\mathrm{obs}}\cup\mathcal{N}_{\mathrm{grp}}$
+  \State $J_{\mathrm{union}} \leftarrow$ soft compactness on pairs in
+        $\mathcal{N}_{\mathrm{union}}$
+  \State $J \leftarrow J_{\mathrm{path}}+J_{\mathrm{space}}+J_{\mathrm{clear}}+J_{\mathrm{union}}$
+  \State differentiate $J$ w.r.t.\ $x$ through the sampling map (reverse-mode AD)
+  \State $x \leftarrow$ gradient-based update using $\nabla_x J$
+\EndFor
+\State write $x$ back; hard-check obstacle / cross-group clearance (no soft margin)
+\State \textbf{accept} iff hard hit count $= 0$; else reject / raise clearance weights
+\Ensure accepted Hermite graphs, or failure
+\end{algorithmic}
+\end{algorithm}

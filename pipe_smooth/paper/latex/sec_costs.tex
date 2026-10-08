@@ -1,0 +1,196 @@
+% !TEX root = main.tex
+% =============================================================================
+% Cost functions
+% =============================================================================
+
+\section{Cost Functions}
+\label{sec:costs}
+
+Alg.~\ref{alg:refine} minimizes a scalar soft objective
+\begin{equation}
+\label{eq:J}
+J(x)
+=
+J_{\mathrm{path}}(x)
++
+J_{\mathrm{clear}}(x)
++
+J_{\mathrm{union}}(x)
++
+J_{\mathrm{space}}(x).
+\end{equation}
+Terms below are evaluated on Hermite samples (and proximity pairs from
+Alg.~\ref{alg:refine}).
+
+\subsection{Path costs}
+\label{sec:costs:path}
+
+We set
+\begin{equation}
+J_{\mathrm{path}}
+=
+\alpha\,L
++
+\beta\,K.
+\end{equation}
+Let $\mathcal{E}$ be the set of Hermite segments (trunk and junction) and
+$\mathcal{J}$ the set of unordered segment--segment joints discovered by walking
+usages.
+
+\paragraph{Aggregation (not a naive usage sum).}
+Chord energy charges each physical segment once,
+\begin{equation}
+L
+=
+\sum_{e\in\mathcal{E}}
+L_e,
+\end{equation}
+so a shared trunk is not multiplied by how many usages traverse it.
+Curvature sums segment interiors once and every distinct usage joint once,
+\begin{equation}
+K
+=
+\sum_{e\in\mathcal{E}}
+K_e^{\mathrm{int}}
++
+\sum_{\{e,e'\}\in\mathcal{J}}
+K_{e,e'}^{\mathrm{joint}}.
+\end{equation}
+Walking $\mathcal{U}$ is still required for $K$: the hairpin at a shared $Y$
+lives at \emph{which} segments meet, even when trunk interiors were already
+scored.
+A naive $\sum_u L_u$ (or $\sum_u K_u$ over full usage polylines) would
+over-count shared material and over-pull trunks.
+
+\paragraph{Chord energy.}
+On a sample chain $\{x_i\}$, we use squared chords rather than
+$\sum_i\|x_{i+1}-x_i\|_2$:
+\begin{equation}
+L_e
+=
+\sum_{i}
+\|x_{i+1}-x_i\|_2^{2}
+\end{equation}
+(with optional sample weights $\bar w_i=\tfrac12(w_i+w_{i+1})$).
+Squaring penalizes uneven gap distributions more strongly than raw chord length
+(one long chord costs more than several short ones of equal total length).
+
+\paragraph{Radius-aware bend.}
+The same centerline turn is worse for a fatter tube, so we penalize a
+dimensionless bend related to $\kappa r$, not bare $\kappa$.
+With unit chords $t_i$ and turning angle
+\begin{equation}
+\theta_i
+=
+\mathrm{atan2}\big(\|t_{i-1}\times t_i\|_2,\; t_{i-1}\cdot t_i\big)
+\in[0,\pi]
+\end{equation}
+(preferred over $\arccos(t_{i-1}\cdot t_i)$, which is ill-behaved as
+$\theta\!\to\!0$), the bend energy on a chain is
+\begin{equation}
+\label{eq:Kbend}
+\sum_{i}
+\frac{(\theta_i\, r_i)^{2}}{\Delta\ell_i+\varepsilon}
+\approx
+\int (\kappa r)^{2}\,\mathrm{d}s,
+\end{equation}
+with chord lengths $\Delta s_i=\|x_{i+1}-x_i\|_2$ and
+$\Delta\ell_i=\tfrac12(\Delta s_{i-1}+\Delta s_i)$.
+The same kernel is applied on segment interiors ($K_e^{\mathrm{int}}$) and on
+three-point windows at usage joints ($K_{e,e'}^{\mathrm{joint}}$).
+
+\subsection{Clearance}
+\label{sec:costs:clear}
+
+For two capsule / ball witnesses with centers $a,b$ and radii $r_a,r_b$, let
+$d_{\mathrm{req}}=r_a+r_b+\delta_{\mathrm{margin}}$ and
+\begin{equation}
+\phi(a,b;r_a,r_b)
+=
+\Big(
+\big[
+d_{\mathrm{req}}-\|a-b\|_2
+\big]_+^{\sigma}
+\Big)^{2},
+\end{equation}
+where $[\cdot]_+^\sigma$ is a softplus hinge.
+Then
+\begin{equation}
+J_{\mathrm{clear}}
+=
+J_{\mathrm{obs}}
++
+J_{\mathrm{grp}},
+\end{equation}
+with $J_{\mathrm{obs}}$ summing $\phi$ over tube--obstacle pairs in
+$\mathcal{N}_{\mathrm{obs}}$ and $J_{\mathrm{grp}}$ summing $\phi$ over
+cross-group pairs in $\mathcal{N}_{\mathrm{grp}}$
+(Alg.~\ref{alg:refine}).
+Weights $\mu_{\mathrm{obs}}$ and $\mu_{\mathrm{grp}}$ scale the two sums.
+
+\paragraph{Hard accept.}
+After the loop we recompute residuals on obstacle / cross-group pairs
+\emph{without} the soft margin used inside $J_{\mathrm{clear}}$ and accept only
+if the hard hit count is zero (Alg.~\ref{alg:refine}).
+Capsule proxies are incomplete relative to exact swept solids, but sufficient
+for the geometric refine before CAD.
+
+\subsection{Junction union}
+\label{sec:costs:union}
+
+Private junction patches are under-determined by $L$ and $K$ alone.
+Inside each complex $Z$, let $\gamma_u^{Z}$ be the samples of usage $u$ on
+junction edges of $Z$, and let $\mathcal{U}_Z$ be the usages that enter $Z$.
+For a point $x$ with radius $r_x$ and a curve $\gamma$ with nearest-sample
+radius $r_\star$, set $r_{\Sigma}=r_x+r_\star$ and
+\begin{equation}
+\psi(d;r_{\Sigma})
+=
+\begin{cases}
+\displaystyle\bigl(d/r_{\Sigma}\bigr)^{2}
+  & d < \alpha\, r_{\Sigma}, \\[0.4em]
+0 & \text{otherwise,}
+\end{cases}
+\end{equation}
+with cutoff factor $\alpha\sim O(1)$.
+The pairwise Chamfer
+\begin{equation}
+\mathrm{Ch}(\gamma_u^{Z},\gamma_v^{Z})
+=
+\sum_{x\in\gamma_u^{Z}}
+\psi\big(d(x,\gamma_v^{Z});r_{\Sigma}\big)\,\Delta s(x)
+\;+\;
+\sum_{y\in\gamma_v^{Z}}
+\psi\big(d(y,\gamma_u^{Z});r_{\Sigma}\big)\,\Delta s(y)
+\end{equation}
+then defines
+\begin{equation}
+J_{\mathrm{union}}
+=
+\lambda
+\sum_{Z}
+\sum_{\{u,v\}\subset\mathcal{U}_Z}
+\mathrm{Ch}(\gamma_u^{Z},\gamma_v^{Z}).
+\end{equation}
+While usages remain within about one radius sum, $\psi$ pulls them into a
+compact bundle; once they separate beyond the cutoff (local split,
+Fig.~\ref{fig:y-shape}b), the force releases.
+Radius normalization keeps $\lambda$ comparable across tube sizes.
+
+\subsection{Spacing regularizer}
+\label{sec:costs:space}
+
+Hermite segments are sampled in the parameter $t\in[0,1]$, not in arc length.
+Without a spacing term, the optimizer can stretch $\|\gamma'(t)\|$ so that large
+gaps open between samples: soft clearance and bend then see only a sparse,
+biased subset of the curve.
+We therefore use
+\begin{equation}
+J_{\mathrm{space}}
+=
+\eta
+\sum_{i}
+\big(\Delta s_i-\overline{\Delta s}\big)^{2},
+\end{equation}
+where $\overline{\Delta s}$ is the mean chord on the chain, to keep sample gaps
+comparable and reduce this parameterization artifact.

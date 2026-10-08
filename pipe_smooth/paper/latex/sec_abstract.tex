@@ -1,0 +1,33 @@
+% !TEX root = main.tex
+% =============================================================================
+% Abstract
+% =============================================================================
+
+\begin{abstract}
+Discrete multi-group pipe routers place channels on a grid or coarse graph.
+The resulting centerlines are topologically feasible but typically contain many
+axis-aligned corners. For permanently occupied fluid tubes---as in
+additively manufactured hydraulic manifolds---those corners are undesirable:
+they degrade geometric fairness and, in practice, flow quality.
+This technical report studies the downstream geometric stage that starts from a
+fixed routing topology and a feasible coarse layout, and refines tubular
+centerlines under permanent clearance.
+
+Unlike classical robotic path smoothing, which usually fair one temporary
+open trajectory, our setting is a branched manifold with declared terminal
+usages, finite tube radii, and static cross-group occupancy.
+We formalize the refinement problem, highlight the multi-usage junction
+conflict that a single shared branch point cannot resolve, and outline a
+hybrid trunk-share / junction-split parameterization with soft geometric costs
+and hard clearance acceptance.
+On a multi-group suite ($8$ groups $\times$ $8$ terminals, $r{=}2$) with
+capsule clearance, the refine reaches full hard-accept success,
+$\kappa r\lesssim 1$, and about a $95\%$ relative drop in the soft objective.
+Physics-based pressure-drop optimization is intentionally deferred to a later
+PDE stage; here the objective remains geometric.
+\end{abstract}
+
+\paragraph{Code.}
+Reference implementation, instance loaders, and batch runners are in
+\url{https://github.com/bladesaber/MAPF_Pipeline}
+(branch \texttt{branch\_quan}), under \texttt{pipe\_smooth/}.

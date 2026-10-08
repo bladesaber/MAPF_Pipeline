@@ -1,0 +1,34 @@
+% Technical report: pipe centerline refinement.
+%   cd pipe_smooth/paper/latex && pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{hyperref}
+\usepackage{natbib}
+
+\title{Topology-Preserving Multi-Usage Pipe Centerline Refinement\\
+under Permanent Tubular Occupancy}
+\author{Deng}
+\date{}
+
+\begin{document}
+\maketitle
+
+\input{sec_abstract}
+\input{sec_intro}
+\input{sec_problem}
+\input{sec_related}
+\input{sec_method}
+\input{sec_costs}
+\input{sec_experiments}
+\input{sec_conclusion}
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}
