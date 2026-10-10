@@ -1,9 +1,0 @@
-When Altair's PolyNURBS converts an implicit/topology optimization shape to NURBS, it isn’t executing a magic formula; it uses a multi-stage pipeline:
-1. SDF to Mesh: Extracting a raw triangular mesh via Marching Cubes. (option)
-2. Quad Wrapping: Converting triangles into a clean, structured quadrilateral "cage".
-3. Subdivision Math: Using a subdivision scheme (like Catmull-Clark) to mathematically define a smooth, continuous limit surface over that cage.
-4. NURBS Conversion: Translating each quadrilateral face of the subdivision cage into an exact, continuous bi-cubic NURBS patch
-
-
-
-are these papers still follow: 1. Quad Wrapping 2. Subdivision 3. NURBS?
